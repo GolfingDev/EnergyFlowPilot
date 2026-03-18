@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.4.11612.150 stable
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TibberVictronController.Web", "TibberVictronController.Web.csproj", "{B278D902-5FC0-B455-9B11-7E3B879C3E6C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B278D902-5FC0-B455-9B11-7E3B879C3E6C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B278D902-5FC0-B455-9B11-7E3B879C3E6C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B278D902-5FC0-B455-9B11-7E3B879C3E6C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B278D902-5FC0-B455-9B11-7E3B879C3E6C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {1ECC26C9-7111-4F7F-B185-48DA4F58EAC7}
+	EndGlobalSection
+EndGlobal
