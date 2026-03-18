@@ -28,6 +28,7 @@ public class VictronOptions
     public bool DryRun { get; set; } = true;
     public VictronTopicOptions Topics { get; set; } = new();
     public VictronWriteTopicOptions WriteTopics { get; set; } = new();
+    public int KeepAliveSeconds { get;  set; }
 }
 
 public class VictronTopicOptions

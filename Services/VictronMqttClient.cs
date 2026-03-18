@@ -15,6 +15,8 @@ public class VictronMqttClient
     private readonly object _sync = new();
 
     private EnergyState _state = new();
+    private CancellationTokenSource _keepAliveCts;
+    private object _keepAliveTask;
 
     public VictronMqttClient(ILogger<VictronMqttClient> logger, IOptions<VictronOptions> options)
     {
@@ -53,12 +55,35 @@ public class VictronMqttClient
 
         await _client.SubscribeAsync(subscribeOptions.Build(), cancellationToken);
 
-        var keepAlive = new MqttApplicationMessageBuilder()
-            .WithTopic($"R/{_options.PortalId}/keepalive")
-            .WithPayload("")
-            .Build();
+        _keepAliveCts?.Cancel();
+        _keepAliveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        await _client.PublishAsync(keepAlive, cancellationToken);
+        _keepAliveTask = Task.Run(async () =>
+        {
+            while (!_keepAliveCts.IsCancellationRequested)
+            {
+                try
+                {
+                    var keepAliveMessage = new MqttApplicationMessageBuilder()
+                        .WithTopic($"R/{_options.PortalId}/keepalive")
+                        .WithPayload("")
+                        .Build();
+
+                    await _client.PublishAsync(keepAliveMessage, _keepAliveCts.Token);
+                    await Task.Delay(TimeSpan.FromSeconds(_options.KeepAliveSeconds), _keepAliveCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Victron keepalive failed");
+                    await Task.Delay(TimeSpan.FromSeconds(5), _keepAliveCts.Token);
+                }
+            }
+        }, _keepAliveCts.Token);
+
 
         _logger.LogInformation("Connected to Victron MQTT {Host}:{Port}", _options.Host, _options.Port);
     }
