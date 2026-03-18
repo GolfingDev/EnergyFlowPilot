@@ -20,12 +20,20 @@ public class AppDbContext : DbContext
             entity.HasIndex(x => x.TimestampUtc);
             entity.Property(x => x.Action).IsRequired();
             entity.Property(x => x.Reason).IsRequired();
+            entity.Property(x => x.TimestampUtc)
+                .HasConversion(
+                    v => v.ToUniversalTime(),
+                    v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
         });
 
         modelBuilder.Entity<EnergyStateHistoryEntry>(entity =>
         {
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.TimestampUtc);
+            entity.Property(x => x.TimestampUtc)
+                .HasConversion(
+                    v => v.ToUniversalTime(),
+                    v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
         });
     }
 }

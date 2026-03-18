@@ -25,7 +25,7 @@ public enum BatteryAction
 public class DecisionHistoryEntry
 {
     public int Id { get; set; }
-    public DateTimeOffset TimestampUtc { get; set; }
+    public DateTime TimestampUtc { get; set; }
     public string Action { get; set; } = string.Empty;
     public double TargetPowerWatts { get; set; }
     public decimal CurrentPrice { get; set; }
@@ -35,7 +35,7 @@ public class DecisionHistoryEntry
 public class EnergyStateHistoryEntry
 {
     public int Id { get; set; }
-    public DateTimeOffset TimestampUtc { get; set; }
+    public DateTime TimestampUtc { get; set; }
     public double GridPowerWatts { get; set; }
     public double BatterySocPercent { get; set; }
     public double BatteryPowerWatts { get; set; }
@@ -47,7 +47,12 @@ public record TibberChartPoint(
     DateTimeOffset StartsAt,
     decimal Price,
     string Action,
-    double ForecastSocPercent);
+    double ForecastSocPercent,
+    double ForecastConsumptionWatts,
+    double ForecastBatteryPowerWatts,
+    double ForecastPvPowerWatts,
+    double ForecastGridPowerWatts,
+    string Reason);
 
 public record DashboardResponse(
     EnergyState CurrentState,

@@ -21,7 +21,7 @@
   </style>
 </head>
 <body>
-  <h1>Tibber Victron Dashboard – Forecast mit SoC-Simulation</h1>
+  <h1>Malkmus Strom Automation</h1>
 
   <div class="cards">
     <div class="card"><div>SoC</div><div class="value" id="soc">-</div></div>
@@ -32,26 +32,26 @@
 
   <div class="grid">
     <div class="panel">
-      <h2>Tibber Preise und Forecast-Aktion</h2>
+        <h2>Malkmus Strom Automation</h2>
       <div class="legend">
         <span><i class="dot" style="background:#2ecc71"></i>Lädt</span>
         <span><i class="dot" style="background:#e74c3c"></i>Entlädt</span>
         <span><i class="dot" style="background:#95a5a6"></i>Warten</span>
         <span><i class="dot" style="background:#4fc3f7"></i>Forecast SoC</span>
       </div>
-      <canvas id="priceChart" height="120"></canvas>
+      <canvas id="priceChart" height="80"></canvas>
     </div>
 
     <div class="panel">
       <h2>Verbrauchsverlauf letzte 24h</h2>
-      <canvas id="consumptionChart" height="120"></canvas>
+      <canvas id="consumptionChart" height="80"></canvas>
     </div>
 
     <div class="panel">
       <h2>Letzte Entscheidungen</h2>
       <table class="table" id="decisionTable">
         <thead>
-          <tr><th>Zeit</th><th>Aktion</th><th>Preis</th><th>Begründung</th></tr>
+          <tr><th>Zeit</th><th>Aktion</th><th>Leistung</th><th>Preis</th><th>Begründung</th></tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -144,6 +144,7 @@
       const prices = data.tibberPrices.map(x => Number(x.price));
       const pointColors = data.tibberPrices.map(x => actionColor(x.action));
       const forecastSoc = data.tibberPrices.map(x => Number(x.forecastSocPercent));
+      const forecastBatteryPower = data.tibberPrices.map(x => Number(x.forecastBatteryPowerWatts));
 
       const avgPrice = prices.length ? prices.reduce((sum, value) => sum + value, 0) / prices.length : 0;
       const avgLine = prices.map(() => avgPrice);
@@ -208,7 +209,7 @@
                     return `Durchschnitt: ${Number(ctx.raw).toFixed(3)} €/kWh`;
                   }
                   const point = data.tibberPrices[ctx.dataIndex];
-                  return `Preis: ${Number(point.price).toFixed(3)} €/kWh | ${actionLabel(point.action)} | SoC: ${Number(point.forecastSocPercent).toFixed(1)} %`;
+                  return `Preis: ${Number(point.price).toFixed(3)} €/kWh | ${actionLabel(point.action)} | SoC: ${Number(point.forecastSocPercent).toFixed(1)} % | Verbrauch: ${Number(point.forecastConsumptionWatts).toFixed(0)} W | Batterie: ${Number(point.forecastBatteryPowerWatts).toFixed(0)} W | Netz: ${Number(point.forecastGridPowerWatts).toFixed(0)} W`;
                 }
               }
             }
@@ -277,6 +278,7 @@
         tr.innerHTML = `
           <td>${formatDate(row.timestampUtc)}</td>
           <td>${actionLabel(row.action)}</td>
+          <td>${Number(row.targetPowerWatts).toFixed(0)} W</td>
           <td>${Number(row.currentPrice).toFixed(3)} €/kWh</td>
           <td>${row.reason}</td>`;
         tbody.appendChild(tr);

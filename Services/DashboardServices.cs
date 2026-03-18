@@ -57,7 +57,6 @@ public class DashboardQueryService : IDashboardQueryService
     {
         var prices = await _tibberPriceProvider.GetUpcomingPricesAsync(cancellationToken);
         var simulatedState = _victron.GetCurrentState();
-
         var result = new List<TibberChartPoint>();
 
         foreach (var price in prices.OrderBy(x => x.StartsAt))
@@ -76,13 +75,20 @@ public class DashboardQueryService : IDashboardQueryService
                 price.StartsAt,
                 cancellationToken);
 
+            var nextState = ProjectStateForNextHour(forecastState, decision);
+
             result.Add(new TibberChartPoint(
                 price.StartsAt,
                 price.TotalPricePerKwh,
                 decision.Action.ToString(),
-                forecastState.BatterySocPercent));
+                nextState.BatterySocPercent,
+                forecastState.HouseConsumptionWatts,
+                nextState.BatteryPowerWatts,
+                nextState.PvPowerWatts,
+                nextState.GridPowerWatts,
+                decision.Reason));
 
-            simulatedState = ProjectStateForNextHour(forecastState, decision);
+            simulatedState = nextState;
         }
 
         return result;
@@ -97,18 +103,30 @@ public class DashboardQueryService : IDashboardQueryService
             _ => 0
         };
 
-        var deltaKwh = (signedBatteryPowerWatts / 1000.0) * 1.0;
-        var deltaSoc = (_controllerOptions.BatteryUsableCapacityKwh > 0)
+        var deltaKwh = signedBatteryPowerWatts / 1000.0;
+        var deltaSoc = _controllerOptions.BatteryUsableCapacityKwh > 0
             ? (deltaKwh / _controllerOptions.BatteryUsableCapacityKwh) * 100.0
             : 0.0;
 
-        var nextSoc = currentState.BatterySocPercent + deltaSoc;
-        nextSoc = Math.Max(0, Math.Min(100, nextSoc));
+        var nextSoc = Math.Clamp(currentState.BatterySocPercent + deltaSoc, 0, 100);
+        var pvPower = Math.Max(0, currentState.PvPowerWatts);
+        var houseConsumption = Math.Max(0, currentState.HouseConsumptionWatts);
+
+        var gridPower = houseConsumption - pvPower;
+        if (decision.Action == BatteryAction.Charge)
+        {
+            gridPower += Math.Abs(decision.TargetPowerWatts);
+        }
+        else if (decision.Action == BatteryAction.Discharge)
+        {
+            gridPower -= Math.Abs(decision.TargetPowerWatts);
+        }
 
         return currentState with
         {
             BatterySocPercent = nextSoc,
-            BatteryPowerWatts = signedBatteryPowerWatts
+            BatteryPowerWatts = signedBatteryPowerWatts,
+            GridPowerWatts = gridPower
         };
     }
 }

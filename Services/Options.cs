@@ -45,3 +45,17 @@ public class VictronWriteTopicOptions
     public string ChargeState { get; set; } = string.Empty;
     public string ChargeDischargeSetpoint { get; set; } = string.Empty;
 }
+
+public class ForecastOptions
+{
+    public bool UseConfiguredBlocksOnly { get; set; } = true;
+    public double DefaultHouseConsumptionWatts { get; set; } = 500;
+    public List<ForecastConsumptionBlock> ConsumptionBlocks { get; set; } = new();
+}
+
+public class ForecastConsumptionBlock
+{
+    public int StartHour { get; set; }
+    public int EndHour { get; set; }
+    public double HouseConsumptionWatts { get; set; }
+}

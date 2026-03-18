@@ -46,7 +46,6 @@ public class DecisionEngine
 
         var next12h = prices
             .Where(p => p.StartsAt >= decisionTime)
-            .Take(12)
             .ToList();
 
         var avg12h = next12h.Any() ? next12h.Average(x => x.TotalPricePerKwh) : currentPrice.TotalPricePerKwh;
@@ -82,6 +81,7 @@ public class DecisionEngine
         var batteryLow = state.BatterySocPercent <= _options.MinSocPercent;
         var batteryHighEnough = state.BatterySocPercent >= _options.DischargeSocPercent;
         var batteryCanCharge = state.BatterySocPercent < _options.MaxSocPercent;
+        var netDemandWatts = Math.Max(0, expectedConsumptionNextHourWh - Math.Max(0, state.PvPowerWatts));
 
         if (batteryLow)
         {
@@ -99,26 +99,26 @@ public class DecisionEngine
                 BatteryAction.Charge,
                 target,
                 currentPrice.TotalPricePerKwh,
-                $"Günstiger Preis ({currentPrice.TotalPricePerKwh:F3}) bei SoC {state.BatterySocPercent:F1}%");
+                $"Günstiger Preis ({currentPrice.TotalPricePerKwh:F3}) bei SoC {state.BatterySocPercent:F1}% | Verbrauch {expectedConsumptionNextHourWh:F0}W");
         }
 
         if (isExpensive && batteryHighEnough)
         {
             var target = Math.Min(
                 _options.MaxDischargePowerWatts,
-                Math.Max(300, state.HouseConsumptionWatts - Math.Max(0, state.PvPowerWatts)));
+                Math.Max(300, netDemandWatts));
 
             return new Decision(
                 BatteryAction.Discharge,
                 target,
                 currentPrice.TotalPricePerKwh,
-                $"Teurer Preis ({currentPrice.TotalPricePerKwh:F3}) bei SoC {state.BatterySocPercent:F1}%");
+                $"Teurer Preis ({currentPrice.TotalPricePerKwh:F3}) bei SoC {state.BatterySocPercent:F1}% | Nettobedarf {netDemandWatts:F0}W");
         }
 
         return new Decision(
             BatteryAction.Hold,
             0,
             currentPrice.TotalPricePerKwh,
-            $"Hold: Preis {currentPrice.TotalPricePerKwh:F3}, Ø12h {avg12h:F3}, Verbrauchsprognose {expectedConsumptionNextHourWh:F0}Wh");
+            $"Hold: Preis {currentPrice.TotalPricePerKwh:F3}, Ø12h {avg12h:F3}, Verbrauchsprognose {expectedConsumptionNextHourWh:F0}W");
     }
 }
