@@ -39,8 +39,17 @@ public class EnergyControllerService : BackgroundService
                 var decisionHistoryStore = scope.ServiceProvider.GetRequiredService<IDecisionHistoryStore>();
                 var stateHistoryStore = scope.ServiceProvider.GetRequiredService<IEnergyStateHistoryStore>();
 
+                var snapshot = _victron.GetSnapshot();
+
+                if (snapshot.IsStale)
+                {
+                    _logger.LogWarning("Skipping controller cycle because live data is stale. Last update: {LastUpdateUtc}", snapshot.LastMessageUtc);
+                    await Task.Delay(TimeSpan.FromSeconds(_options.DecisionLoopSeconds), stoppingToken);
+                    continue;
+                }
+
                 var prices = await _tibber.GetUpcomingPricesAsync(stoppingToken);
-                var state = _victron.GetCurrentState();
+                var state = snapshot.State;
 
                 await stateHistoryStore.AddAsync(state, stoppingToken);
 

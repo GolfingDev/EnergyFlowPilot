@@ -9,6 +9,11 @@ public record EnergyState(
     double HouseConsumptionWatts = 0,
     double PvPowerWatts = 0);
 
+public record EnergyStateSnapshot(
+    EnergyState State,
+    DateTime LastMessageUtc,
+    bool IsStale);
+
 public record Decision(
     BatteryAction Action,
     double TargetPowerWatts,
@@ -47,15 +52,12 @@ public record TibberChartPoint(
     DateTimeOffset StartsAt,
     decimal Price,
     string Action,
-    double ForecastSocPercent,
-    double ForecastConsumptionWatts,
-    double ForecastBatteryPowerWatts,
-    double ForecastPvPowerWatts,
-    double ForecastGridPowerWatts,
-    string Reason);
+    double ForecastSocPercent);
 
 public record DashboardResponse(
     EnergyState CurrentState,
     IReadOnlyList<DecisionHistoryEntry> Decisions,
     IReadOnlyList<EnergyStateHistoryEntry> StateHistory,
-    IReadOnlyList<TibberChartPoint> TibberPrices);
+    IReadOnlyList<TibberChartPoint> TibberPrices,
+    DateTime LastStateUpdateUtc,
+    bool IsStateStale);

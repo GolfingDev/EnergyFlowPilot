@@ -6,7 +6,7 @@ using TibberVictronController.Web.Models;
 
 namespace TibberVictronController.Web.Services;
 
-public class VictronMqttClient
+public class VictronMqttClient : IAsyncDisposable
 {
     private readonly ILogger<VictronMqttClient> _logger;
     private readonly VictronOptions _options;
@@ -15,8 +15,9 @@ public class VictronMqttClient
     private readonly object _sync = new();
 
     private EnergyState _state = new();
-    private CancellationTokenSource _keepAliveCts;
-    private object _keepAliveTask;
+    private DateTime _lastMessageUtc = DateTime.MinValue;
+    private Task? _keepAliveTask;
+    private CancellationTokenSource? _keepAliveCts;
 
     public VictronMqttClient(ILogger<VictronMqttClient> logger, IOptions<VictronOptions> options)
     {
@@ -54,47 +55,28 @@ public class VictronMqttClient
         }
 
         await _client.SubscribeAsync(subscribeOptions.Build(), cancellationToken);
-
-        _keepAliveCts?.Cancel();
-        _keepAliveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        _keepAliveTask = Task.Run(async () =>
-        {
-            while (!_keepAliveCts.IsCancellationRequested)
-            {
-                try
-                {
-                    var keepAliveMessage = new MqttApplicationMessageBuilder()
-                        .WithTopic($"R/{_options.PortalId}/keepalive")
-                        .WithPayload("")
-                        .Build();
-
-                    await _client.PublishAsync(keepAliveMessage, _keepAliveCts.Token);
-                    await Task.Delay(TimeSpan.FromSeconds(_options.KeepAliveSeconds), _keepAliveCts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Victron keepalive failed");
-                    await Task.Delay(TimeSpan.FromSeconds(5), _keepAliveCts.Token);
-                }
-            }
-        }, _keepAliveCts.Token);
-
+        await PublishKeepAliveAsync(cancellationToken);
+        StartKeepAliveLoop(cancellationToken);
 
         _logger.LogInformation("Connected to Victron MQTT {Host}:{Port}", _options.Host, _options.Port);
     }
 
-    public EnergyState GetCurrentState()
+    public EnergyStateSnapshot GetSnapshot()
     {
         lock (_sync)
         {
-            return _state with { };
+            var age = _lastMessageUtc == DateTime.MinValue
+                ? TimeSpan.MaxValue
+                : DateTime.UtcNow - _lastMessageUtc;
+
+            return new EnergyStateSnapshot(
+                _state with { },
+                _lastMessageUtc,
+                age > TimeSpan.FromSeconds(Math.Max(5, _options.StaleAfterSeconds)));
         }
     }
+
+    public EnergyState GetCurrentState() => GetSnapshot().State;
 
     public async Task ApplyDecisionAsync(Decision decision, CancellationToken cancellationToken)
     {
@@ -166,9 +148,49 @@ public class VictronMqttClient
             {
                 _state = _state with { PvPowerWatts = value.Value };
             }
+
+            _lastMessageUtc = DateTime.UtcNow;
         }
 
         return Task.CompletedTask;
+    }
+
+    private void StartKeepAliveLoop(CancellationToken cancellationToken)
+    {
+        _keepAliveCts?.Cancel();
+        _keepAliveCts?.Dispose();
+        _keepAliveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var token = _keepAliveCts.Token;
+
+        _keepAliveTask = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, _options.KeepAliveSeconds)), token);
+                    await PublishKeepAliveAsync(token);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Victron keepalive failed");
+                }
+            }
+        }, token);
+    }
+
+    private async Task PublishKeepAliveAsync(CancellationToken cancellationToken)
+    {
+        var keepAlive = new MqttApplicationMessageBuilder()
+            .WithTopic($"R/{_options.PortalId}/keepalive")
+            .WithPayload("")
+            .Build();
+
+        await _client.PublishAsync(keepAlive, cancellationToken);
     }
 
     private string ReplacePortal(string topic) => topic.Replace("{portalId}", _options.PortalId, StringComparison.OrdinalIgnoreCase);
@@ -226,5 +248,20 @@ public class VictronMqttClient
         {
             return null;
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _keepAliveCts?.Cancel();
+        if (_keepAliveTask is not null)
+        {
+            try { await _keepAliveTask; } catch { }
+        }
+        _keepAliveCts?.Dispose();
+        if (_client.IsConnected)
+        {
+            await _client.DisconnectAsync();
+        }
+        _client.Dispose();
     }
 }

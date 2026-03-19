@@ -14,7 +14,9 @@ public static class DashboardApiController
                 dashboard.CurrentState,
                 dashboard.Decisions,
                 dashboard.StateHistory,
-                dashboard.TibberPrices));
+                dashboard.TibberPrices,
+                dashboard.LastStateUpdateUtc,
+                dashboard.IsStateStale));
         });
     }
 }

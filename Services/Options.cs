@@ -12,6 +12,24 @@ public class ControllerOptions
     public double ReserveBufferKwh { get; set; } = 0.75;
     public double BatteryUsableCapacityKwh { get; set; } = 10.0;
     public int DecisionLoopSeconds { get; set; } = 10;
+
+    public int LoopSeconds
+    {
+        get => DecisionLoopSeconds;
+        set => DecisionLoopSeconds = value;
+    }
+
+    public decimal CheapPriceTolerance
+    {
+        get => BaseCheapPriceTolerance;
+        set => BaseCheapPriceTolerance = value;
+    }
+
+    public decimal ExpensivePriceMargin
+    {
+        get => BaseExpensivePriceMargin;
+        set => BaseExpensivePriceMargin = value;
+    }
 }
 
 public class TibberOptions
@@ -26,9 +44,10 @@ public class VictronOptions
     public int Port { get; set; } = 1883;
     public string PortalId { get; set; } = string.Empty;
     public bool DryRun { get; set; } = true;
+    public int KeepAliveSeconds { get; set; } = 30;
+    public int StaleAfterSeconds { get; set; } = 30;
     public VictronTopicOptions Topics { get; set; } = new();
     public VictronWriteTopicOptions WriteTopics { get; set; } = new();
-    public int KeepAliveSeconds { get;  set; }
 }
 
 public class VictronTopicOptions
@@ -45,18 +64,4 @@ public class VictronWriteTopicOptions
     public string Mode { get; set; } = string.Empty;
     public string ChargeState { get; set; } = string.Empty;
     public string ChargeDischargeSetpoint { get; set; } = string.Empty;
-}
-
-public class ForecastOptions
-{
-    public bool UseConfiguredBlocksOnly { get; set; } = true;
-    public double DefaultHouseConsumptionWatts { get; set; } = 500;
-    public List<ForecastConsumptionBlock> ConsumptionBlocks { get; set; } = new();
-}
-
-public class ForecastConsumptionBlock
-{
-    public int StartHour { get; set; }
-    public int EndHour { get; set; }
-    public double HouseConsumptionWatts { get; set; }
 }

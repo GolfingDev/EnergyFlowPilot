@@ -7,7 +7,9 @@ public record DashboardState(
     EnergyState CurrentState,
     IReadOnlyList<DecisionHistoryEntry> Decisions,
     IReadOnlyList<EnergyStateHistoryEntry> StateHistory,
-    IReadOnlyList<TibberChartPoint> TibberPrices);
+    IReadOnlyList<TibberChartPoint> TibberPrices,
+    DateTime LastStateUpdateUtc,
+    bool IsStateStale);
 
 public interface IDashboardQueryService
 {
@@ -45,18 +47,19 @@ public class DashboardQueryService : IDashboardQueryService
 
     public async Task<DashboardState> GetAsync(CancellationToken cancellationToken = default)
     {
-        var current = _victron.GetCurrentState();
+        var snapshot = _victron.GetSnapshot();
         var decisions = await _decisionHistoryStore.GetLast24HoursAsync(cancellationToken);
         var history = await _energyStateHistoryStore.GetLast24HoursAsync(cancellationToken);
         var tibberPrices = await GetChartPointsAsync(cancellationToken);
 
-        return new DashboardState(current, decisions, history, tibberPrices);
+        return new DashboardState(snapshot.State, decisions, history, tibberPrices, snapshot.LastMessageUtc, snapshot.IsStale);
     }
 
     public async Task<IReadOnlyList<TibberChartPoint>> GetChartPointsAsync(CancellationToken cancellationToken = default)
     {
         var prices = await _tibberPriceProvider.GetUpcomingPricesAsync(cancellationToken);
         var simulatedState = _victron.GetCurrentState();
+
         var result = new List<TibberChartPoint>();
 
         foreach (var price in prices.OrderBy(x => x.StartsAt))
@@ -81,12 +84,7 @@ public class DashboardQueryService : IDashboardQueryService
                 price.StartsAt,
                 price.TotalPricePerKwh,
                 decision.Action.ToString(),
-                nextState.BatterySocPercent,
-                forecastState.HouseConsumptionWatts,
-                nextState.BatteryPowerWatts,
-                nextState.PvPowerWatts,
-                nextState.GridPowerWatts,
-                decision.Reason));
+                nextState.BatterySocPercent));
 
             simulatedState = nextState;
         }
@@ -103,30 +101,18 @@ public class DashboardQueryService : IDashboardQueryService
             _ => 0
         };
 
-        var deltaKwh = signedBatteryPowerWatts / 1000.0;
-        var deltaSoc = _controllerOptions.BatteryUsableCapacityKwh > 0
+        var deltaKwh = (signedBatteryPowerWatts / 1000.0) * 1.0;
+        var deltaSoc = (_controllerOptions.BatteryUsableCapacityKwh > 0)
             ? (deltaKwh / _controllerOptions.BatteryUsableCapacityKwh) * 100.0
             : 0.0;
 
-        var nextSoc = Math.Clamp(currentState.BatterySocPercent + deltaSoc, 0, 100);
-        var pvPower = Math.Max(0, currentState.PvPowerWatts);
-        var houseConsumption = Math.Max(0, currentState.HouseConsumptionWatts);
-
-        var gridPower = houseConsumption - pvPower;
-        if (decision.Action == BatteryAction.Charge)
-        {
-            gridPower += Math.Abs(decision.TargetPowerWatts);
-        }
-        else if (decision.Action == BatteryAction.Discharge)
-        {
-            gridPower -= Math.Abs(decision.TargetPowerWatts);
-        }
+        var nextSoc = currentState.BatterySocPercent + deltaSoc;
+        nextSoc = Math.Max(0, Math.Min(100, nextSoc));
 
         return currentState with
         {
             BatterySocPercent = nextSoc,
-            BatteryPowerWatts = signedBatteryPowerWatts,
-            GridPowerWatts = gridPower
+            BatteryPowerWatts = signedBatteryPowerWatts
         };
     }
 }

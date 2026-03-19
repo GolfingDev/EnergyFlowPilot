@@ -30,6 +30,22 @@ public class SqliteDecisionHistoryStore : IDecisionHistoryStore
         var nowUtc = DateTime.UtcNow;
         var cutoffUtc = nowUtc.AddHours(-24);
 
+        var last = await _dbContext.DecisionHistory
+            .OrderByDescending(x => x.TimestampUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var shouldInsert = last is null
+            || !string.Equals(last.Action, decision.Action.ToString(), StringComparison.OrdinalIgnoreCase)
+            || Math.Abs(last.TargetPowerWatts - decision.TargetPowerWatts) >= 50
+            || Math.Abs(last.CurrentPrice - decision.CurrentPrice) >= 0.0001m
+            || last.Reason != decision.Reason
+            || (nowUtc - last.TimestampUtc).TotalMinutes >= 10;
+
+        if (!shouldInsert)
+        {
+            return;
+        }
+
         _dbContext.DecisionHistory.Add(new DecisionHistoryEntry
         {
             TimestampUtc = nowUtc,
@@ -75,6 +91,23 @@ public class SqliteEnergyStateHistoryStore : IEnergyStateHistoryStore
     {
         var nowUtc = DateTime.UtcNow;
         var cutoffUtc = nowUtc.AddHours(-24);
+
+        var last = await _dbContext.EnergyStateHistory
+            .OrderByDescending(x => x.TimestampUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var shouldInsert = last is null
+            || (nowUtc - last.TimestampUtc).TotalSeconds >= 30
+            || Math.Abs(last.GridPowerWatts - state.GridPowerWatts) >= 20
+            || Math.Abs(last.HouseConsumptionWatts - state.HouseConsumptionWatts) >= 20
+            || Math.Abs(last.PvPowerWatts - state.PvPowerWatts) >= 20
+            || Math.Abs(last.BatteryPowerWatts - state.BatteryPowerWatts) >= 20
+            || Math.Abs(last.BatterySocPercent - state.BatterySocPercent) >= 0.2;
+
+        if (!shouldInsert)
+        {
+            return;
+        }
 
         _dbContext.EnergyStateHistory.Add(new EnergyStateHistoryEntry
         {

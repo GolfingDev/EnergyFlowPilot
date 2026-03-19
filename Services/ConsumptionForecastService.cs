@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using TibberVictronController.Web.Data;
 
 namespace TibberVictronController.Web.Services;
@@ -12,35 +11,17 @@ public interface IConsumptionForecastService
 public class ConsumptionForecastService : IConsumptionForecastService
 {
     private readonly AppDbContext _dbContext;
-    private readonly ForecastOptions _forecastOptions;
 
-    public ConsumptionForecastService(
-        AppDbContext dbContext,
-        IOptions<ForecastOptions> forecastOptions)
+    public ConsumptionForecastService(AppDbContext dbContext)
     {
         _dbContext = dbContext;
-        _forecastOptions = forecastOptions.Value;
     }
 
     public async Task<double> GetExpectedConsumptionWhAsync(DateTimeOffset targetTime, CancellationToken cancellationToken = default)
     {
-        var hour = targetTime.Hour;
-
-        var configuredBlock = _forecastOptions.ConsumptionBlocks
-            .FirstOrDefault(x => hour >= x.StartHour && hour < x.EndHour);
-
-        if (configuredBlock is not null)
-        {
-            return configuredBlock.HouseConsumptionWatts;
-        }
-
-        if (_forecastOptions.UseConfiguredBlocksOnly)
-        {
-            return _forecastOptions.DefaultHouseConsumptionWatts;
-        }
-
         var targetUtc = targetTime.UtcDateTime;
         var weekday = targetUtc.DayOfWeek;
+        var hour = targetUtc.Hour;
         var cutoff = targetUtc.AddDays(-30);
 
         var raw = await _dbContext.EnergyStateHistory
@@ -53,7 +34,7 @@ public class ConsumptionForecastService : IConsumptionForecastService
             .ToListAsync(cancellationToken);
 
         var sameSlot = raw
-            .Where(x => x.TimestampUtc.DayOfWeek == weekday && x.TimestampUtc.Hour == targetUtc.Hour)
+            .Where(x => x.TimestampUtc.DayOfWeek == weekday && x.TimestampUtc.Hour == hour)
             .Select(x => x.HouseConsumptionWatts)
             .ToList();
 
@@ -63,9 +44,10 @@ public class ConsumptionForecastService : IConsumptionForecastService
         }
 
         var fallback = raw
+            .Where(x => x.TimestampUtc >= targetUtc.AddHours(-24))
             .Select(x => x.HouseConsumptionWatts)
             .ToList();
 
-        return fallback.Count > 0 ? fallback.Average() : _forecastOptions.DefaultHouseConsumptionWatts;
+        return fallback.Count > 0 ? fallback.Average() : 500;
     }
 }

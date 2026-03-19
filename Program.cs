@@ -15,7 +15,6 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.Configure<ControllerOptions>(builder.Configuration.GetSection("Controller"));
 builder.Services.Configure<TibberOptions>(builder.Configuration.GetSection("Tibber"));
 builder.Services.Configure<VictronOptions>(builder.Configuration.GetSection("Victron"));
-builder.Services.Configure<ForecastOptions>(builder.Configuration.GetSection("Forecast"));
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
@@ -42,7 +41,6 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     Directory.CreateDirectory(Path.GetDirectoryName(db.Database.GetConnectionString()!.Replace("Data Source=", "", StringComparison.OrdinalIgnoreCase))!);
-    
     db.Database.Migrate();
 }
 

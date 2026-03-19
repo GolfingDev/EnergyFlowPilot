@@ -1,28 +1,112 @@
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tibber Victron Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 24px; background: #111; color: #f3f3f3; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
-    .card { background: #1b1b1b; border-radius: 14px; padding: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
-    .value { font-size: 1.6rem; font-weight: bold; margin-top: 8px; }
-    .legend { display: flex; gap: 16px; margin: 16px 0; flex-wrap: wrap; }
-    .legend span { display: inline-flex; align-items: center; gap: 8px; }
-    .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
-    .grid { display: grid; grid-template-columns: 1fr; gap: 28px; }
-    .panel { background: #1b1b1b; border-radius: 14px; padding: 16px; }
-    .table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    .table th, .table td { padding: 10px; border-bottom: 1px solid #333; text-align: left; vertical-align: top; }
-    canvas { background: #181818; border-radius: 10px; padding: 8px; }
-  </style>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tibber Victron Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 24px;
+            background: #111;
+            color: #f3f3f3;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: #1b1b1b;
+            border-radius: 14px;
+            padding: 16px;
+            box-shadow: 0 2px 10px rgba(0,0,0,.25);
+        }
+
+        .value {
+            font-size: 1.6rem;
+            font-weight: bold;
+            margin-top: 8px;
+        }
+
+        .legend {
+            display: flex;
+            gap: 16px;
+            margin: 16px 0;
+            flex-wrap: wrap;
+        }
+
+            .legend span {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 28px;
+        }
+
+        .panel {
+            background: #1b1b1b;
+            border-radius: 14px;
+            padding: 16px;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
+
+            .table th, .table td {
+                padding: 10px;
+                border-bottom: 1px solid #333;
+                text-align: left;
+                vertical-align: top;
+            }
+
+        .stat-card {
+            float: left;
+            padding-right:30px;
+        }
+
+        canvas {
+            background: #181818;
+            border-radius: 10px;
+            padding: 8px;
+        }
+    </style>
 </head>
 <body>
     <h1>Malkmus Strom Automation</h1>
-    <div style="padding-left:10px"><small  id="lastSync"></small></div>
+    <!--<div class="stat-card">
+        <div class="label">Letzte Aktualisierung</div>
+        <div class="value" id="lastSync">-</div>
+    </div>-->
+
+    <div class="stat-card">
+        <div class="label">Datenstatus</div>
+        <div class="value" id="dataStatus">-</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="label">Letztes Update</div>
+        <div class="value" id="lastUpdate">-</div>
+    </div>
+    <div style="clear:both"></div>
     <div class="cards">
         <div class="card"><div>SoC</div><div class="value" id="soc">-</div></div>
         <div class="card"><div>Netzleistung</div><div class="value" id="grid">-</div></div>
@@ -141,7 +225,14 @@
             document.getElementById('pv').textContent = `${data.currentState.pvPowerWatts.toFixed(0)} W`;
             document.getElementById('house').textContent = `${data.currentState.houseConsumptionWatts.toFixed(0)} W`;
 
-            document.getElementById('lastSync').textContent = "Letzte Aktualisierung: " + new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString();
+            //document.getElementById('lastSync').textContent = new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString();
+
+            const statusEl = document.getElementById('dataStatus');
+            const lastUpdateEl = document.getElementById('lastUpdate');
+            statusEl.textContent = data.isStateStale ? 'Veraltet' : 'OK';
+            statusEl.style.color = data.isStateStale ? '#ff6b6b' : '#8bd17c';
+            lastUpdateEl.textContent = data.lastStateUpdateUtc ? formatDate(data.lastStateUpdateUtc) : '-';
+
 
             const labels = data.tibberPrices.map(x => new Date(x.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
             const prices = data.tibberPrices.map(x => Number(x.price));
@@ -279,20 +370,20 @@
             for (const row of data.decisions) {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                  <td>${formatDate(row.timestampUtc)}</td>
-                  <td>${actionLabel(row.action)}</td>
-                  <td>${Number(row.targetPowerWatts).toFixed(0)} W</td>
-                  <td>${Number(row.currentPrice).toFixed(3)} €/kWh</td>
-                  <td>${row.reason}</td>`;
+                              <td>${formatDate(row.timestampUtc)}</td>
+                              <td>${actionLabel(row.action)}</td>
+                              <td>${Number(row.targetPowerWatts).toFixed(0)} W</td>
+                              <td>${Number(row.currentPrice).toFixed(3)} €/kWh</td>
+                              <td>${row.reason}</td>`;
                 tbody.appendChild(tr);
             }
         }
 
         loadDashboard();
-        setInterval(loadDashboard, 10000);
+        setInterval(loadDashboard, 1000);
         setInterval(() => {
             if (priceChart) priceChart.draw();
-        }, 10000);
+        }, 2200);
     </script>
 </body>
 </html>
