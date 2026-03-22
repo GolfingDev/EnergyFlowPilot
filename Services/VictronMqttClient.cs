@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using MQTTnet;
+using MQTTnet.Internal;
 using TibberVictronController.Web.Models;
 
 namespace TibberVictronController.Web.Services;
@@ -25,6 +26,15 @@ public class VictronMqttClient : IAsyncDisposable
         _options = options.Value;
         _client = _mqttFactory.CreateMqttClient();
         _client.ApplicationMessageReceivedAsync += OnMessageReceivedAsync;
+    }
+
+    public async Task ReConnectAsync(CancellationToken cancellationToken)
+    {
+        await _client.DisconnectAsync();
+        _keepAliveTask.Dispose();
+        _keepAliveCts.TryCancel();
+
+        await ConnectAsync(cancellationToken);
     }
 
     public async Task ConnectAsync(CancellationToken cancellationToken)

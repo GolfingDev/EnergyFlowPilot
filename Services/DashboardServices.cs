@@ -52,6 +52,9 @@ public class DashboardQueryService : IDashboardQueryService
         var history = await _energyStateHistoryStore.GetLast24HoursAsync(cancellationToken);
         var tibberPrices = await GetChartPointsAsync(cancellationToken);
 
+        if (snapshot.IsStale) {
+            await _victron.ReConnectAsync(cancellationToken);
+        }
         return new DashboardState(snapshot.State, decisions, history, tibberPrices, snapshot.LastMessageUtc, snapshot.IsStale);
     }
 
