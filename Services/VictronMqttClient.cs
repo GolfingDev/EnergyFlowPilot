@@ -7,6 +7,12 @@ using TibberVictronController.Web.Models;
 
 namespace TibberVictronController.Web.Services;
 
+public interface IVictronMqttClient
+{
+    Task StartAsync(CancellationToken cancellationToken);
+    EnergyStateSnapshot GetSnapshot();
+}
+
 public class VictronMqttClient : IVictronMqttClient, IAsyncDisposable
 {
     private readonly ILogger<VictronMqttClient> _logger;
