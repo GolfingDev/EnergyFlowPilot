@@ -26,38 +26,53 @@ public class EnergyControllerService : BackgroundService
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-{
-    await _victronMqttClient.StartAsync(stoppingToken);
-
-    while (!stoppingToken.IsCancellationRequested)
     {
-        try
+        await _victron.ConnectAsync(stoppingToken);
+
+        while (!stoppingToken.IsCancellationRequested)
         {
-            var snapshot = _victronMqttClient.GetSnapshot();
-
-            if (snapshot.IsStale)
+            try
             {
-                _logger.LogWarning(
-                    "Skipping control cycle because MQTT data is stale. Last update: {LastUpdateUtc:O}",
-                    snapshot.LastMessageUtc);
+                using var scope = _scopeFactory.CreateScope();
 
-                await Task.Delay(TimeSpan.FromSeconds(_options.DecisionLoopSeconds), stoppingToken);
-                continue;
+                var decisionEngine = scope.ServiceProvider.GetRequiredService<DecisionEngine>();
+                var decisionHistoryStore = scope.ServiceProvider.GetRequiredService<IDecisionHistoryStore>();
+                var stateHistoryStore = scope.ServiceProvider.GetRequiredService<IEnergyStateHistoryStore>();
+
+                var snapshot = _victron.GetSnapshot();
+
+                if (snapshot.IsStale)
+                {
+                    _logger.LogWarning("Skipping controller cycle because live data is stale. Last update: {LastUpdateUtc}", snapshot.LastMessageUtc);
+                    await Task.Delay(TimeSpan.FromSeconds(_options.DecisionLoopSeconds), stoppingToken);
+                    continue;
+                }
+
+                var prices = await _tibber.GetUpcomingPricesAsync(stoppingToken);
+                var state = snapshot.State;
+
+                await stateHistoryStore.AddAsync(state, stoppingToken);
+
+                if (prices.Count > 0)
+                {
+                    var decision = await decisionEngine.BuildDecisionAsync(state, prices, DateTimeOffset.Now, stoppingToken);
+                    await decisionHistoryStore.AddAsync(decision, stoppingToken);
+                    await _victron.ApplyDecisionAsync(decision, stoppingToken);
+
+                    _logger.LogInformation(
+                        "Decision: {Action}, Reason: {Reason}, Grid={GridPower}W, SoC={BatterySoc}%",
+                        decision.Action,
+                        decision.Reason,
+                        state.GridPowerWatts,
+                        state.BatterySocPercent);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Controller loop failed");
             }
 
-            var state = snapshot.State;
-
-            // normale Verarbeitung hier
-        }
-        catch (OperationCanceledException)
-        {
-            break;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Controller loop failed");
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(_options.DecisionLoopSeconds), stoppingToken);
         }
     }
-}
 }
