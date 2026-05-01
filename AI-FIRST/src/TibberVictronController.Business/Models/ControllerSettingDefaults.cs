@@ -13,6 +13,14 @@ public static class ControllerSettingDefaults
     public const string DecisionLogRetentionDaysKey = "decisionLog.retentionDays";
     public const string ForecastHorizonHoursKey = "forecast.horizonHours";
     public const string GridFeedInCompensationPricePerKwhKey = "gridFeedIn.compensationPricePerKwh";
+    public const string PvForecastProviderKey = "pvForecast.provider";
+    public const string PvForecastApiEndpointKey = "pvForecast.apiEndpoint";
+    public const string PvForecastLatitudeKey = "pvForecast.latitude";
+    public const string PvForecastLongitudeKey = "pvForecast.longitude";
+    public const string PvForecastPeakPowerKwpKey = "pvForecast.peakPowerKwp";
+    public const string PvForecastDeclinationDegreesKey = "pvForecast.declinationDegrees";
+    public const string PvForecastAzimuthDegreesKey = "pvForecast.azimuthDegrees";
+    public const string PvForecastTimeZoneKey = "pvForecast.timeZone";
     public const string TibberApiEndpointKey = "tibber.apiEndpoint";
     public const string TibberHomeSelectionKey = "tibber.homeSelection";
     public const string TibberAccessTokenKey = "tibber.accessToken";
@@ -31,6 +39,14 @@ public static class ControllerSettingDefaults
         new(DecisionLogRetentionDaysKey, "90", ControllerSettingSensitivity.Normal),
         new(ForecastHorizonHoursKey, "24", ControllerSettingSensitivity.Normal),
         new(GridFeedInCompensationPricePerKwhKey, "0.08", ControllerSettingSensitivity.Normal),
+        new(PvForecastProviderKey, "forecastSolarPublic", ControllerSettingSensitivity.Normal),
+        new(PvForecastApiEndpointKey, "https://api.forecast.solar/estimate", ControllerSettingSensitivity.Normal),
+        new(PvForecastLatitudeKey, "52.52", ControllerSettingSensitivity.Normal),
+        new(PvForecastLongitudeKey, "13.405", ControllerSettingSensitivity.Normal),
+        new(PvForecastPeakPowerKwpKey, "10", ControllerSettingSensitivity.Normal),
+        new(PvForecastDeclinationDegreesKey, "35", ControllerSettingSensitivity.Normal),
+        new(PvForecastAzimuthDegreesKey, "0", ControllerSettingSensitivity.Normal),
+        new(PvForecastTimeZoneKey, "Europe/Berlin", ControllerSettingSensitivity.Normal),
         new(TibberApiEndpointKey, "https://api.tibber.com/v1-beta/gql", ControllerSettingSensitivity.Normal),
         new(TibberHomeSelectionKey, "first", ControllerSettingSensitivity.Normal),
         new(TibberAccessTokenKey, null, ControllerSettingSensitivity.Sensitive),

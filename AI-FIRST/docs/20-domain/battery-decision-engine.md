@@ -62,6 +62,34 @@ Forecast charging decisions must consider how long the battery needs to charge:
 - if the available cheap or negative slots do not provide enough energy to reach the target state of charge, the Battery Decision Engine must clearly explain the remaining gap
 - the projected state of charge must be updated slot by slot after every planned charge, discharge, PV surplus and consumption decision
 
+The first forecast simulator calculates each slot in chronological order and includes:
+
+- state of charge before and after the slot
+- expected PV yield
+- expected consumption
+- expected grid import before battery action
+- Tibber price
+- Decision Engine instruction
+- target power in watts
+- structured reasons
+
+The first simulator is intentionally conservative. It uses configured capacity, minimum state of charge and maximum charge/discharge power. It does not execute commands and it does not replace the later realtime decision path.
+
+The forecast application service must orchestrate all required inputs through interfaces:
+
+- Tibber price forecast provider
+- weather/PV forecast provider
+- historical consumption forecast provider
+- battery state provider
+- battery configuration provider
+- persisted controller settings
+
+The service must read the configured feed-in compensation from persisted settings. It must not silently fall back to a hardcoded value when the setting is missing or invalid.
+
+The first real PV forecast provider uses Forecast.Solar Public API. It requires no API key, but it must read site and PV system settings from persisted controller settings. Because the public response is hourly, the provider maps each hourly energy delta evenly to four 15-minute Decision Engine forecast slots. This interpolation must be visible as a provider limitation and must be replaceable later, for example by Solcast or a paid Forecast.Solar tier with finer granularity.
+
+The frontend-facing forecast API must expose DTOs only. Domain models must not be returned directly to the frontend. The first API endpoint delegates to `IBatteryForecastService` and maps the result to a DTO containing time slot, inputs, decision, target power, projected state of charge and structured reasons.
+
 The forecast is advisory for the user interface. It must not directly execute hardware commands.
 
 ## Direct Decision Calculation

@@ -30,6 +30,7 @@ Runtime settings include values such as:
 - MQTT/Victron connection settings
 - Tibber API endpoint and home selection
 - weather provider settings
+- PV forecast provider, location, peak power, module declination, module azimuth and forecast timezone
 
 ## Access Data
 

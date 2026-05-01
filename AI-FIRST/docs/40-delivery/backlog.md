@@ -25,6 +25,13 @@
 21. Add realtime decision logging with configurable retention cleanup.
 22. Add realtime discharge decision path that clamps target power to measured grid import so battery feed-in into the grid is impossible.
 23. Add realtime export absorption decision path that charges from negative grid import unless preserving headroom for future negative-price charging is economically better than configured feed-in compensation.
+24. Expose Battery Decision Engine forecast result through DTO-based API endpoint.
+25. Replace live forecast test console output with an assertion-based integration scenario using the forecast simulator.
+26. Register forecast service and forecast input providers in ASP.NET Core dependency injection.
+27. Add frontend-editable PV forecast settings for location, peak power, module declination, module azimuth and provider selection.
+28. Add optional Solcast provider for higher-quality PV forecasts once access data is configured.
+29. Add DTO-based `GET /api/forecast` endpoint.
+30. Add production DI registration for forecast service after SQLite settings, battery state and consumption providers exist.
 
 ## Rule
 

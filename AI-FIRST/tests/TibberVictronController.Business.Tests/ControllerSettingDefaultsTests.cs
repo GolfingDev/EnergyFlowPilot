@@ -56,6 +56,21 @@ public sealed class ControllerSettingDefaultsTests
     }
 
     [Fact]
+    public void CreateDefaultSettingsContainsForecastSolarPublicDefaults()
+    {
+        var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);
+
+        Assert.Equal("forecastSolarPublic", GetSettingValue(settings, ControllerSettingDefaults.PvForecastProviderKey));
+        Assert.Equal("https://api.forecast.solar/estimate", GetSettingValue(settings, ControllerSettingDefaults.PvForecastApiEndpointKey));
+        Assert.Equal("52.52", GetSettingValue(settings, ControllerSettingDefaults.PvForecastLatitudeKey));
+        Assert.Equal("13.405", GetSettingValue(settings, ControllerSettingDefaults.PvForecastLongitudeKey));
+        Assert.Equal("10", GetSettingValue(settings, ControllerSettingDefaults.PvForecastPeakPowerKwpKey));
+        Assert.Equal("35", GetSettingValue(settings, ControllerSettingDefaults.PvForecastDeclinationDegreesKey));
+        Assert.Equal("0", GetSettingValue(settings, ControllerSettingDefaults.PvForecastAzimuthDegreesKey));
+        Assert.Equal("Europe/Berlin", GetSettingValue(settings, ControllerSettingDefaults.PvForecastTimeZoneKey));
+    }
+
+    [Fact]
     public void CreateDefaultSettingsKeepsSensitiveAccessDataUnconfigured()
     {
         var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);
@@ -86,5 +101,10 @@ public sealed class ControllerSettingDefaultsTests
             () => new ControllerSettingDefinition("setting.withoutDefault", null, ControllerSettingSensitivity.Normal));
 
         Assert.Contains("Eine normale Einstellung braucht einen Default-Wert.", exception.Message);
+    }
+
+    private static string? GetSettingValue(IReadOnlyList<ControllerSetting> settings, string key)
+    {
+        return settings.Single(setting => setting.Key == key).Value;
     }
 }

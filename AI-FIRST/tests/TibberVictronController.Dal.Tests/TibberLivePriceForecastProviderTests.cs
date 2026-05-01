@@ -24,10 +24,10 @@ public sealed class TibberLivePriceForecastProviderTests
     [RequiresEnvironmentVariableFact(AccessTokenEnvironmentVariable)]
     public async Task GetPriceForecastAsyncLoadsRealQuarterHourlyPricesFromTibber()
     {
-        var accessToken = Environment.GetEnvironmentVariable(AccessTokenEnvironmentVariable)!;
-        var apiEndpoint = Environment.GetEnvironmentVariable(ApiEndpointEnvironmentVariable)
+        var accessToken = EnvironmentVariableReader.GetValue(AccessTokenEnvironmentVariable)!;
+        var apiEndpoint = EnvironmentVariableReader.GetValue(ApiEndpointEnvironmentVariable)
             ?? "https://api.tibber.com/v1-beta/gql";
-        var homeSelection = Environment.GetEnvironmentVariable(HomeSelectionEnvironmentVariable)
+        var homeSelection = EnvironmentVariableReader.GetValue(HomeSelectionEnvironmentVariable)
             ?? "first";
         var settingsStore = CreateSettingsStore(apiEndpoint, accessToken, homeSelection);
         var provider = new TibberPriceForecastProvider(new HttpClient(), settingsStore);
@@ -44,10 +44,10 @@ public sealed class TibberLivePriceForecastProviderTests
     [RequiresEnvironmentVariableFact(AccessTokenEnvironmentVariable)]
     public async Task EvaluateUsesRealTibberPricesForCurrentDecisionScenario()
     {
-        var accessToken = Environment.GetEnvironmentVariable(AccessTokenEnvironmentVariable)!;
-        var apiEndpoint = Environment.GetEnvironmentVariable(ApiEndpointEnvironmentVariable)
+        var accessToken = EnvironmentVariableReader.GetValue(AccessTokenEnvironmentVariable)!;
+        var apiEndpoint = EnvironmentVariableReader.GetValue(ApiEndpointEnvironmentVariable)
             ?? "https://api.tibber.com/v1-beta/gql";
-        var homeSelection = Environment.GetEnvironmentVariable(HomeSelectionEnvironmentVariable)
+        var homeSelection = EnvironmentVariableReader.GetValue(HomeSelectionEnvironmentVariable)
             ?? "first";
         var settingsStore = CreateSettingsStore(apiEndpoint, accessToken, homeSelection);
         var priceProvider = new TibberPriceForecastProvider(new HttpClient(), settingsStore);
@@ -85,10 +85,10 @@ public sealed class TibberLivePriceForecastProviderTests
     [RequiresEnvironmentVariableFact(AccessTokenEnvironmentVariable)]
     public async Task EvaluatePrintsRealTibberForecastScenario()
     {
-        var accessToken = Environment.GetEnvironmentVariable(AccessTokenEnvironmentVariable)!;
-        var apiEndpoint = Environment.GetEnvironmentVariable(ApiEndpointEnvironmentVariable)
+        var accessToken = EnvironmentVariableReader.GetValue(AccessTokenEnvironmentVariable)!;
+        var apiEndpoint = EnvironmentVariableReader.GetValue(ApiEndpointEnvironmentVariable)
             ?? "https://api.tibber.com/v1-beta/gql";
-        var homeSelection = Environment.GetEnvironmentVariable(HomeSelectionEnvironmentVariable)
+        var homeSelection = EnvironmentVariableReader.GetValue(HomeSelectionEnvironmentVariable)
             ?? "first";
         var settingsStore = CreateSettingsStore(apiEndpoint, accessToken, homeSelection);
         var priceProvider = new TibberPriceForecastProvider(new HttpClient(), settingsStore);
