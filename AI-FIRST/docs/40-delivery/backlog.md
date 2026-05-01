@@ -35,6 +35,10 @@
 31. Add DB-backed battery configuration provider for forecasts.
 32. Add explicit temporary SOC provider until Victron telemetry is connected.
 33. Add average daily consumption forecast provider with Europe/Berlin local profile.
+34. Add Decision Audit Harness concept and business implementation.
+35. Add Golden Scenario tests for 24h/96-slot decision review.
+36. Add Decision Audit invariant and metamorphic tests.
+37. Add CSV and JSON audit export for user-readable challenge reports.
 
 ## Rule
 
