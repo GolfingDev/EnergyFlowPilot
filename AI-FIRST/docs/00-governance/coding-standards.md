@@ -57,3 +57,11 @@
 - A class should have a clear responsibility.
 - A method should do one understandable thing.
 - If a method needs many comments to be understandable, consider splitting it.
+
+## Constructors And Parameter Lists
+
+- Avoid constructors and methods that require more than two to three parameters.
+- If more values are needed, prefer passing one clearly named parameter object.
+- For configuration-style objects, prefer readable property assignments or options objects over long positional constructor calls.
+- Existing long constructors should be refactored when the touched code would otherwise become harder to read.
+- Exceptions are allowed only when the local pattern is already established and readability remains clearly better than an additional object.
