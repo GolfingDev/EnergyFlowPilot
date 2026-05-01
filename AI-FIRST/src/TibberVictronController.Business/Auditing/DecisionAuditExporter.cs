@@ -31,7 +31,7 @@ public static class DecisionAuditExporter
     public static string ExportCsv(DecisionAuditReport report)
     {
         var csvBuilder = new StringBuilder();
-        csvBuilder.AppendLine("startsAtUtc;endsAtUtc;action;ruleId;reason;alternativeAction;alternativeRejectedReason;tibberPricePerKwh;pvKwh;consumptionKwh;gridImportKwh;gridExportKwh;chargedKwh;dischargedKwh;socBeforePercent;expectedSocPercent;targetPowerWatts");
+        csvBuilder.AppendLine("startsAtUtc;endsAtUtc;action;ruleId;reason;alternativeAction;alternativeRejectedReason;constraintFlags;tibberPricePerKwh;pvKwh;consumptionKwh;gridImportKwh;gridExportKwh;chargedKwh;dischargedKwh;socBeforePercent;expectedSocPercent;targetPowerWatts");
 
         foreach (var slot in report.DecisionSlots)
         {
@@ -44,6 +44,7 @@ public static class DecisionAuditExporter
                 Escape(slot.Reason),
                 Escape(slot.AlternativeAction),
                 Escape(slot.AlternativeRejectedReason),
+                Escape(string.Join(",", slot.ConstraintFlags)),
                 FormatDecimal(slot.TibberPricePerKwh),
                 FormatDecimal(slot.ExpectedPvYieldKwh),
                 FormatDecimal(slot.ExpectedConsumptionKwh),

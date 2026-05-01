@@ -74,14 +74,16 @@ public sealed class DecisionAuditHarness
             {
                 var alternativeEntry = alternativeEntriesByTimeSlot[entry.TimeSlot];
                 var energyMovement = DecisionAuditEnergyCalculator.Calculate(entry);
+                var ruleId = entry.Reasons[0].RuleName;
+                var alternative = CreateAlternativeExplanation(ruleId, alternativeEntry.Decision.Instruction);
 
                 return new DecisionAuditSlot(
                     entry.TimeSlot,
                     MapAction(entry.Decision.Instruction),
-                    entry.Reasons[0].RuleName,
+                    ruleId,
                     entry.Reasons[0].Message,
-                    MapAction(alternativeEntry.Decision.Instruction),
-                    alternativeRejectedReason,
+                    alternative.Action,
+                    alternative.RejectedReason ?? alternativeRejectedReason,
                     entry.TibberPricePerKwh,
                     entry.ExpectedPvYieldKwh,
                     entry.ExpectedConsumptionKwh,
@@ -91,9 +93,49 @@ public sealed class DecisionAuditHarness
                     energyMovement.DischargedEnergyKwh,
                     entry.StateOfChargeBeforePercent,
                     entry.StateOfChargeAfterPercent,
-                    entry.Decision.TargetPowerWatts);
+                    entry.Decision.TargetPowerWatts,
+                    CreateConstraintFlags(ruleId));
             })
             .ToArray();
+    }
+
+    private static DecisionAlternative CreateAlternativeExplanation(
+        string ruleId,
+        BatteryDecisionInstruction baselineInstruction)
+    {
+        return ruleId switch
+        {
+            BatteryForecastRuleIds.WaitForNegativePriceWindow => new DecisionAlternative(
+                "ChargeFromGrid",
+                "Spaeteres Laden ist guenstiger."),
+            BatteryForecastRuleIds.EndSocReserve => new DecisionAlternative(
+                "Discharge",
+                "Konfigurierte Endreserve wuerde unterschritten."),
+            BatteryForecastRuleIds.MinimumSocReserve => new DecisionAlternative(
+                "Discharge",
+                "Minimaler Akkuladestand wuerde unterschritten."),
+            BatteryForecastRuleIds.PreserveHeadroomForNegativePrice => new DecisionAlternative(
+                "ChargeFromPV",
+                "Spaeteres Laden zu negativen Preisen ist wertvoller als die konfigurierte Einspeiseverguetung."),
+            _ => new DecisionAlternative(
+                MapAction(baselineInstruction),
+                null)
+        };
+    }
+
+    private static IReadOnlyList<string> CreateConstraintFlags(string ruleId)
+    {
+        return ruleId switch
+        {
+            BatteryForecastRuleIds.WaitForNegativePriceWindow => new[] { "WAITING_FOR_NEGATIVE_PRICE" },
+            BatteryForecastRuleIds.EndSocReserve => new[] { "END_SOC_RESERVE_PROTECTED" },
+            BatteryForecastRuleIds.MinimumSocReserve => new[] { "MIN_SOC_PROTECTED" },
+            BatteryForecastRuleIds.BatteryFullIdle or BatteryForecastRuleIds.BatteryFullPvSurplus => new[] { "BATTERY_FULL" },
+            BatteryForecastRuleIds.NegativePriceGridCharge or BatteryForecastRuleIds.PlannedGridCharge or BatteryForecastRuleIds.PvSurplusCharge => new[] { "EFFICIENCY_APPLIED" },
+            BatteryForecastRuleIds.DischargeBeforeNegativePriceWindow => new[] { "NEGATIVE_PRICE_ANTICIPATED", "EFFICIENCY_APPLIED" },
+            BatteryForecastRuleIds.ExpensivePriceDischarge => new[] { "END_SOC_RESERVE_PROTECTED", "EFFICIENCY_APPLIED" },
+            _ => Array.Empty<string>()
+        };
     }
 
     private static string MapAction(BatteryDecisionInstruction instruction)
@@ -129,4 +171,6 @@ public sealed class DecisionAuditHarness
             throw new ArgumentOutOfRangeException(nameof(scenario), "Die Einspeiseverguetung darf nicht negativ sein.");
         }
     }
+
+    private sealed record DecisionAlternative(string Action, string? RejectedReason);
 }

@@ -53,6 +53,17 @@ Every audited decision slot must include:
 - reason
 - alternative action
 - alternative rejected reason
+- constraint flags where a safety or planning constraint influenced the decision
+
+Golden scenario assertions must verify more than aggregate metrics:
+
+- 96 slots in a continuous 15-minute grid
+- state of charge never below minimum and never above maximum
+- no empty or action-inconsistent reasons
+- negative prices lead to grid charging when capacity is available and no later negative slot is strictly cheaper
+- battery energy is used before future negative-price windows when consumption and state of charge allow it
+- round-trip efficiency visibly changes state-of-charge progression
+- configured end reserve is explicit in rule id and reason
 
 Audit metrics must include:
 

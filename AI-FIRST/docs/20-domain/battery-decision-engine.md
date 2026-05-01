@@ -61,6 +61,10 @@ Forecast charging decisions must consider how long the battery needs to charge:
 - if multiple slots have the same price, earlier slots should be preferred so the forecast remains deterministic
 - if the available cheap or negative slots do not provide enough energy to reach the target state of charge, the Battery Decision Engine must clearly explain the remaining gap
 - the projected state of charge must be updated slot by slot after every planned charge, discharge, PV surplus and consumption decision
+- the projected state of charge must apply configured round-trip efficiency physically, not only as an audit metric
+- the first efficiency model uses `sqrt(roundTripEfficiencyPercent / 100)` as single-direction efficiency for charging and discharging
+- charging stores less energy than is taken from PV or grid when efficiency is below 100 percent
+- discharging removes more battery energy than reaches the load when efficiency is below 100 percent
 
 The first forecast simulator calculates each slot in chronological order and includes:
 
@@ -174,11 +178,15 @@ The current or forecasted battery state of charge must influence the price strat
 - a full battery cannot be charged
 - a negative Tibber price overrides normal state-of-charge restrictiveness, except when the battery is already full
 - the total usable battery capacity in kWh must come from persisted controller configuration
+- the configurable target end state of charge defines an explainable reserve for the end of the planning horizon
 - the maximum charge power must come from persisted controller configuration and limits how quickly cheap or negative price windows can fill the battery
 - the maximum discharge power must come from persisted controller configuration and limits how quickly expensive price windows can offset grid consumption
 - discharge planning must never exceed current or forecasted grid import, because battery feed-in into the grid is forbidden
 - negative grid import should lead to charging from surplus while the battery is not full
 - preserving headroom for future negative-price grid charging is allowed only when the negative-price value is higher than the configured feed-in compensation
+- before a future negative Tibber price window, the Battery Decision Engine may discharge energy above minimum state of charge to avoid normal or expensive grid import and create charging headroom
+- if a negative Tibber price slot is reached and the battery still has capacity, the Battery Decision Engine must charge from the grid unless a later negative slot is strictly cheaper
+- if configured target end reserve prevents further discharge, the Decision Engine must use an explicit reserve rule and reason
 - a low battery state of charge makes charging easier, so neutral Tibber prices may still lead to charging
 - a high battery state of charge makes grid charging more restrictive, so only the cheapest Tibber prices should lead to charging
 - every state-of-charge override must be included in the structured reasons

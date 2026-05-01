@@ -76,6 +76,7 @@ public sealed class ControllerSettingDefaultsTests
         var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);
 
         Assert.Equal("55", GetSettingValue(settings, ControllerSettingDefaults.BatteryTemporaryStateOfChargePercentKey));
+        Assert.Equal("25", GetSettingValue(settings, ControllerSettingDefaults.BatteryTargetEndStateOfChargePercentKey));
         Assert.Equal("24", GetSettingValue(settings, ControllerSettingDefaults.ConsumptionForecastAverageDailyConsumptionKwhKey));
         Assert.Equal("Europe/Berlin", GetSettingValue(settings, ControllerSettingDefaults.ConsumptionForecastTimeZoneKey));
     }

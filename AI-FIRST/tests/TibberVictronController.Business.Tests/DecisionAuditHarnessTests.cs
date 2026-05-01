@@ -28,6 +28,21 @@ public sealed class DecisionAuditHarnessTests
 
         Assert.Contains(report.DecisionSlots, slot => slot.Action == "ChargeFromGrid");
         Assert.Contains(report.DecisionSlots, slot => slot.Action == "Discharge");
+        Assert.All(report.DecisionSlots, AssertReasonMatchesAction);
+        Assert.All(report.DecisionSlots.Where(slot => slot.TibberPricePerKwh < 0m && slot.ExpectedSocPercent < 100m), slot =>
+            Assert.Equal("ChargeFromGrid", slot.Action));
+        Assert.Contains(report.DecisionSlots, slot =>
+            slot.RuleId == BatteryForecastRuleIds.DischargeBeforeNegativePriceWindow &&
+            slot.TimeSlot.StartsAtUtc.Hour < 12);
+        Assert.Contains(report.DecisionSlots, slot =>
+            slot.RuleId == BatteryForecastRuleIds.NegativePriceGridCharge &&
+            slot.ExpectedSocPercent - slot.StateOfChargeBeforePercent < 6.25m);
+        Assert.Contains(report.DecisionSlots, slot =>
+            slot.RuleId == BatteryForecastRuleIds.ExpensivePriceDischarge &&
+            slot.StateOfChargeBeforePercent - slot.ExpectedSocPercent > slot.DischargedEnergyKwh / scenario.BatteryConfiguration.TotalCapacityKwh * 100m);
+        Assert.Contains(report.DecisionSlots, slot =>
+            slot.TimeSlot.StartsAtUtc.Hour >= 21 &&
+            slot.RuleId == BatteryForecastRuleIds.EndSocReserve);
         Assert.Contains("startsAtUtc", DecisionAuditExporter.ExportCsv(report));
         Assert.Contains("\"metrics\"", DecisionAuditExporter.ExportJson(report));
     }
@@ -64,7 +79,8 @@ public sealed class DecisionAuditHarnessTests
             DischargedEnergyKwh: 0.25m,
             StateOfChargeBeforePercent: 10m,
             ExpectedSocPercent: 8m,
-            TargetPowerWatts: 1000);
+            TargetPowerWatts: 1000,
+            ConstraintFlags: Array.Empty<string>());
         var report = new DecisionAuditReport(
             scenario,
             new[] { invalidSlot },
@@ -121,5 +137,16 @@ public sealed class DecisionAuditHarnessTests
 
         Assert.True(document.RootElement.TryGetProperty("decisionSlots", out var decisionSlots));
         Assert.Equal(96, decisionSlots.GetArrayLength());
+    }
+
+    private static void AssertReasonMatchesAction(DecisionAuditSlot slot)
+    {
+        if (slot.Action != "Idle")
+        {
+            return;
+        }
+
+        Assert.DoesNotContain("Laden aus dem Netz senkt", slot.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("laedt deshalb aus dem Netz", slot.Reason, StringComparison.OrdinalIgnoreCase);
     }
 }

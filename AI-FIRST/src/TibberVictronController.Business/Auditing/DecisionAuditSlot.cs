@@ -21,4 +21,5 @@ public sealed record DecisionAuditSlot(
     decimal DischargedEnergyKwh,
     decimal StateOfChargeBeforePercent,
     decimal ExpectedSocPercent,
-    int TargetPowerWatts);
+    int TargetPowerWatts,
+    IReadOnlyList<string> ConstraintFlags);

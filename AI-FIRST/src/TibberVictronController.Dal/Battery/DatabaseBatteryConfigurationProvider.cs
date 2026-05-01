@@ -46,13 +46,19 @@ public sealed class DatabaseBatteryConfigurationProvider : IBatteryConfiguration
             "Der Batterie-Wirkungsgrad ist nicht konfiguriert.",
             "Der Batterie-Wirkungsgrad muss als Dezimalzahl konfiguriert sein.",
             cancellationToken);
+        var targetEndStateOfChargePercent = await GetRequiredDecimalSettingAsync(
+            ControllerSettingDefaults.BatteryTargetEndStateOfChargePercentKey,
+            "Die Ziel-Endreserve ist nicht konfiguriert.",
+            "Die Ziel-Endreserve muss als Dezimalzahl konfiguriert sein.",
+            cancellationToken);
 
         return new BatteryConfiguration(
             totalCapacityKwh,
             minimumStateOfChargePercent,
             maximumChargePowerWatts,
             maximumDischargePowerWatts,
-            roundTripEfficiencyPercent);
+            roundTripEfficiencyPercent,
+            targetEndStateOfChargePercent);
     }
 
     private async Task<decimal> GetRequiredDecimalSettingAsync(

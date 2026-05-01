@@ -58,6 +58,12 @@ public static class DecisionAuditInvariantValidator
             {
                 violations.Add($"Jeder DecisionSlot braucht RuleId und Reason. Fehler im Slot {slot.TimeSlot.StartsAtUtc:O}.");
             }
+
+            if (slot.Action == "Idle" &&
+                slot.Reason.Contains("Laden aus dem Netz senkt", StringComparison.OrdinalIgnoreCase))
+            {
+                violations.Add($"Idle-Reason beschreibt eine aktive Ladeentscheidung im Slot {slot.TimeSlot.StartsAtUtc:O}.");
+            }
         }
     }
 
@@ -98,12 +104,15 @@ public static class DecisionAuditInvariantValidator
     private static void ValidatePhysicalPowerBoundaries(DecisionAuditReport report, List<string> violations)
     {
         var batteryConfiguration = report.Scenario.BatteryConfiguration;
+        var singleDirectionEfficiency = CalculateSingleDirectionEfficiency(batteryConfiguration.RoundTripEfficiencyPercent);
         var maxChargeSocDelta = CalculateMaximumSocDeltaPercent(
             batteryConfiguration.MaximumChargePowerWatts,
-            batteryConfiguration.TotalCapacityKwh);
+            batteryConfiguration.TotalCapacityKwh,
+            singleDirectionEfficiency);
         var maxDischargeSocDelta = CalculateMaximumSocDeltaPercent(
             batteryConfiguration.MaximumDischargePowerWatts,
-            batteryConfiguration.TotalCapacityKwh);
+            batteryConfiguration.TotalCapacityKwh,
+            1m / singleDirectionEfficiency);
 
         foreach (var slot in report.DecisionSlots)
         {
@@ -122,10 +131,18 @@ public static class DecisionAuditInvariantValidator
         }
     }
 
-    private static decimal CalculateMaximumSocDeltaPercent(int powerWatts, decimal totalCapacityKwh)
+    private static decimal CalculateMaximumSocDeltaPercent(
+        int powerWatts,
+        decimal totalCapacityKwh,
+        decimal efficiencyFactor)
     {
         var slotEnergyKwh = powerWatts / 1000m * 0.25m;
 
-        return slotEnergyKwh / totalCapacityKwh * 100m;
+        return slotEnergyKwh * efficiencyFactor / totalCapacityKwh * 100m;
+    }
+
+    private static decimal CalculateSingleDirectionEfficiency(decimal roundTripEfficiencyPercent)
+    {
+        return (decimal)Math.Sqrt((double)(roundTripEfficiencyPercent / 100m));
     }
 }

@@ -13,7 +13,8 @@ public sealed record BatteryConfiguration
         decimal minimumStateOfChargePercent = 10m,
         int maximumChargePowerWatts = 3000,
         int maximumDischargePowerWatts = 3000,
-        decimal roundTripEfficiencyPercent = 90m)
+        decimal roundTripEfficiencyPercent = 90m,
+        decimal? targetEndStateOfChargePercent = null)
     {
         if (totalCapacityKwh <= 0m)
         {
@@ -40,11 +41,19 @@ public sealed record BatteryConfiguration
             throw new ArgumentOutOfRangeException(nameof(roundTripEfficiencyPercent), "Der Batterie-Wirkungsgrad muss groesser als 0 und hoechstens 100 Prozent sein.");
         }
 
+        var configuredTargetEndStateOfChargePercent = targetEndStateOfChargePercent ?? minimumStateOfChargePercent;
+
+        if (configuredTargetEndStateOfChargePercent < minimumStateOfChargePercent || configuredTargetEndStateOfChargePercent > 100m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(targetEndStateOfChargePercent), "Die Ziel-Endreserve muss zwischen minimalem Akkuladestand und 100 Prozent liegen.");
+        }
+
         TotalCapacityKwh = totalCapacityKwh;
         MinimumStateOfChargePercent = minimumStateOfChargePercent;
         MaximumChargePowerWatts = maximumChargePowerWatts;
         MaximumDischargePowerWatts = maximumDischargePowerWatts;
         RoundTripEfficiencyPercent = roundTripEfficiencyPercent;
+        TargetEndStateOfChargePercent = configuredTargetEndStateOfChargePercent;
     }
 
     /// <summary>
@@ -71,4 +80,9 @@ public sealed record BatteryConfiguration
     /// Gets the configured round-trip efficiency used by future cost optimization.
     /// </summary>
     public decimal RoundTripEfficiencyPercent { get; }
+
+    /// <summary>
+    /// Gets the configured reserve that should remain explainable at the end of the planning horizon.
+    /// </summary>
+    public decimal TargetEndStateOfChargePercent { get; }
 }

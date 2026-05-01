@@ -24,6 +24,8 @@ public sealed class BatteryConfigurationTests
             () => new BatteryConfiguration(10m, minimumStateOfChargePercent: 10m, maximumChargePowerWatts: 3000, maximumDischargePowerWatts: 0));
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new BatteryConfiguration(10m, minimumStateOfChargePercent: 10m, maximumChargePowerWatts: 3000, maximumDischargePowerWatts: 3000, roundTripEfficiencyPercent: 0m));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new BatteryConfiguration(10m, minimumStateOfChargePercent: 20m, targetEndStateOfChargePercent: 10m));
     }
 
     [Theory]
@@ -44,12 +46,14 @@ public sealed class BatteryConfigurationTests
             minimumStateOfChargePercent: 12m,
             maximumChargePowerWatts: 2500,
             maximumDischargePowerWatts: 3200,
-            roundTripEfficiencyPercent: 92m);
+            roundTripEfficiencyPercent: 92m,
+            targetEndStateOfChargePercent: 30m);
 
         Assert.Equal(10.5m, configuration.TotalCapacityKwh);
         Assert.Equal(12m, configuration.MinimumStateOfChargePercent);
         Assert.Equal(2500, configuration.MaximumChargePowerWatts);
         Assert.Equal(3200, configuration.MaximumDischargePowerWatts);
         Assert.Equal(92m, configuration.RoundTripEfficiencyPercent);
+        Assert.Equal(30m, configuration.TargetEndStateOfChargePercent);
     }
 }
