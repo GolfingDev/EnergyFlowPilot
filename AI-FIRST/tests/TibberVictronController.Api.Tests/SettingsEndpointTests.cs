@@ -71,7 +71,7 @@ public sealed class SettingsEndpointTests
 
         var okResult = Assert.IsType<Ok<ControllerStatusResponseDto>>(result);
         Assert.Equal("Healthy", okResult.Value!.Status);
-        Assert.Equal(23, okResult.Value.KnownSettingsCount);
+        Assert.Equal(ControllerSettingDefaults.GetDefinitions().Count, okResult.Value.KnownSettingsCount);
     }
 
     private sealed class FakeControllerSettingsService : IControllerSettingsService
@@ -113,8 +113,8 @@ public sealed class SettingsEndpointTests
 
             return Task.FromResult(new ControllerStatusSnapshot(
                 "Healthy",
-                KnownSettingsCount: 23,
-                PersistedSettingsCount: 23,
+                KnownSettingsCount: ControllerSettingDefaults.GetDefinitions().Count,
+                PersistedSettingsCount: ControllerSettingDefaults.GetDefinitions().Count,
                 ConfiguredSensitiveSettingsCount: 1,
                 UpdatedAtUtc));
         }

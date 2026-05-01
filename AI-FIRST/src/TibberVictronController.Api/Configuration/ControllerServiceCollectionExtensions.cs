@@ -1,8 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using TibberVictronController.Business.Abstractions;
+using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Services;
+using TibberVictronController.Dal.Battery;
+using TibberVictronController.Dal.Consumption;
 using TibberVictronController.Dal.Persistence;
 using TibberVictronController.Dal.Repositories;
+using TibberVictronController.Dal.Tibber;
+using TibberVictronController.Dal.Weather;
 
 namespace TibberVictronController.Api.Configuration;
 
@@ -34,6 +39,12 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IDecisionLogRepository, EfDecisionLogRepository>();
         services.AddScoped<IOperationalEventRepository, EfOperationalEventRepository>();
         services.AddScoped<IControllerSettingsService, ControllerSettingsService>();
+        services.AddScoped<IBatteryConfigurationProvider, DatabaseBatteryConfigurationProvider>();
+        services.AddScoped<IBatteryStateProvider, ConfiguredBatteryStateProvider>();
+        services.AddScoped<IHistoricalConsumptionProvider, AverageDailyConsumptionForecastProvider>();
+        services.AddScoped<IBatteryForecastService, BatteryForecastService>();
+        services.AddHttpClient<ITibberPriceForecastProvider, TibberPriceForecastProvider>();
+        services.AddHttpClient<IWeatherForecastProvider, ForecastSolarPvForecastProvider>();
 
         return services;
     }

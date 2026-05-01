@@ -10,6 +10,9 @@ public static class ControllerSettingDefaults
     public const string BatteryMaximumChargePowerWattsKey = "battery.maximumChargePowerWatts";
     public const string BatteryMaximumDischargePowerWattsKey = "battery.maximumDischargePowerWatts";
     public const string BatteryRoundTripEfficiencyPercentKey = "battery.roundTripEfficiencyPercent";
+    public const string BatteryTemporaryStateOfChargePercentKey = "battery.temporaryStateOfChargePercent";
+    public const string ConsumptionForecastAverageDailyConsumptionKwhKey = "consumptionForecast.averageDailyConsumptionKwh";
+    public const string ConsumptionForecastTimeZoneKey = "consumptionForecast.timeZone";
     public const string DecisionLogRetentionDaysKey = "decisionLog.retentionDays";
     public const string ForecastHorizonHoursKey = "forecast.horizonHours";
     public const string GridFeedInCompensationPricePerKwhKey = "gridFeedIn.compensationPricePerKwh";
@@ -36,6 +39,9 @@ public static class ControllerSettingDefaults
         new(BatteryMaximumChargePowerWattsKey, "3000", ControllerSettingSensitivity.Normal),
         new(BatteryMaximumDischargePowerWattsKey, "3000", ControllerSettingSensitivity.Normal),
         new(BatteryRoundTripEfficiencyPercentKey, "90", ControllerSettingSensitivity.Normal),
+        new(BatteryTemporaryStateOfChargePercentKey, "55", ControllerSettingSensitivity.Normal),
+        new(ConsumptionForecastAverageDailyConsumptionKwhKey, "24", ControllerSettingSensitivity.Normal),
+        new(ConsumptionForecastTimeZoneKey, "Europe/Berlin", ControllerSettingSensitivity.Normal),
         new(DecisionLogRetentionDaysKey, "90", ControllerSettingSensitivity.Normal),
         new(ForecastHorizonHoursKey, "24", ControllerSettingSensitivity.Normal),
         new(GridFeedInCompensationPricePerKwhKey, "0.08", ControllerSettingSensitivity.Normal),

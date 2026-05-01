@@ -83,3 +83,15 @@ Domain code uses `DateTimeOffset` with UTC timestamps.
 SQLite stores these timestamps as Unix milliseconds, so filtering, sorting and indexes work reliably with EF Core.
 
 All cleanup and retention logic must compare UTC timestamps.
+
+## Forecast Input Settings
+
+Until real Victron telemetry and historical consumption persistence are connected, forecast input providers use explicit persisted settings:
+
+- `battery.temporaryStateOfChargePercent`
+- `consumptionForecast.averageDailyConsumptionKwh`
+- `consumptionForecast.timeZone`
+
+These settings are visible and editable through the same settings API as the rest of the controller configuration.
+
+The temporary state of charge is not a silent fallback. It is an explicit configured input and must be replaced by real Victron telemetry in a later step.

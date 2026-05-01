@@ -23,6 +23,9 @@ Runtime settings include values such as:
 - maximum charge power
 - maximum discharge power
 - efficiency assumptions
+- temporary battery state of charge until Victron telemetry is connected
+- average daily consumption forecast value
+- consumption forecast timezone
 - forecast horizon
 - decision log retention in days
 - feed-in compensation price per kWh

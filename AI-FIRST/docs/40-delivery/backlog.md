@@ -32,6 +32,9 @@
 28. Add optional Solcast provider for higher-quality PV forecasts once access data is configured.
 29. Add DTO-based `GET /api/forecast` endpoint.
 30. Add production DI registration for forecast service after SQLite settings, battery state and consumption providers exist.
+31. Add DB-backed battery configuration provider for forecasts.
+32. Add explicit temporary SOC provider until Victron telemetry is connected.
+33. Add average daily consumption forecast provider with Europe/Berlin local profile.
 
 ## Rule
 

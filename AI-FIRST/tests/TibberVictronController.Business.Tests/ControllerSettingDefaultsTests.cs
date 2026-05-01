@@ -71,6 +71,16 @@ public sealed class ControllerSettingDefaultsTests
     }
 
     [Fact]
+    public void CreateDefaultSettingsContainsTemporaryForecastInputDefaults()
+    {
+        var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);
+
+        Assert.Equal("55", GetSettingValue(settings, ControllerSettingDefaults.BatteryTemporaryStateOfChargePercentKey));
+        Assert.Equal("24", GetSettingValue(settings, ControllerSettingDefaults.ConsumptionForecastAverageDailyConsumptionKwhKey));
+        Assert.Equal("Europe/Berlin", GetSettingValue(settings, ControllerSettingDefaults.ConsumptionForecastTimeZoneKey));
+    }
+
+    [Fact]
     public void CreateDefaultSettingsKeepsSensitiveAccessDataUnconfigured()
     {
         var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);
