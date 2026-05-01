@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using System.Globalization;
 using TibberVictronController.Dal.Entities;
 
 namespace TibberVictronController.Dal.Persistence;
@@ -9,6 +10,9 @@ public sealed class ControllerDbContext : DbContext
     private static readonly ValueConverter<DateTimeOffset, long> DateTimeOffsetToUnixMillisecondsConverter = new(
         value => value.ToUnixTimeMilliseconds(),
         value => DateTimeOffset.FromUnixTimeMilliseconds(value));
+    private static readonly ValueConverter<DateOnly, string> DateOnlyToIsoDateConverter = new(
+        value => value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        value => DateOnly.ParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture));
 
     public ControllerDbContext(DbContextOptions<ControllerDbContext> options)
         : base(options)
@@ -23,11 +27,14 @@ public sealed class ControllerDbContext : DbContext
 
     public DbSet<OperationalEventEntity> OperationalEvents => Set<OperationalEventEntity>();
 
+    public DbSet<BatterySavingsDailySummaryEntity> BatterySavingsDailySummaries => Set<BatterySavingsDailySummaryEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureControllerSettings(modelBuilder);
         ConfigureDecisionLogs(modelBuilder);
         ConfigureOperationalEvents(modelBuilder);
+        ConfigureBatterySavings(modelBuilder);
     }
 
     private static void ConfigureControllerSettings(ModelBuilder modelBuilder)
@@ -91,6 +98,22 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(operationalEvent => operationalEvent.OccurredAtUtc)
                 .HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
             entity.HasIndex(operationalEvent => operationalEvent.OccurredAtUtc);
+        });
+    }
+
+    private static void ConfigureBatterySavings(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<BatterySavingsDailySummaryEntity>(entity =>
+        {
+            entity.ToTable("BatterySavingsDailySummaries");
+            entity.HasKey(summary => new { summary.AccountingDate, summary.Currency });
+            entity.Property(summary => summary.AccountingDate)
+                .HasConversion(DateOnlyToIsoDateConverter)
+                .HasMaxLength(10);
+            entity.Property(summary => summary.Currency).HasMaxLength(16);
+            entity.Property(summary => summary.UpdatedAtUtc)
+                .HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.HasIndex(summary => summary.AccountingDate);
         });
     }
 }

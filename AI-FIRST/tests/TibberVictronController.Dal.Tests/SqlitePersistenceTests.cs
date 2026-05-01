@@ -120,6 +120,33 @@ public sealed class SqlitePersistenceTests : IDisposable
         Assert.Equal("HTTP 500", events[0].Details);
     }
 
+    [Fact]
+    public async Task BatterySavingsRepositoryPersistsDailySummariesAndAggregatesRanges()
+    {
+        await using var dbContext = CreateDbContext();
+        await new ControllerDbInitializer(dbContext).InitializeAsync(SeededAtUtc);
+        var repository = new EfBatterySavingsRepository(dbContext);
+        var firstDay = CreateSavingsSummary(new DateOnly(2026, 5, 1), gridCost: 0.10m, avoidedCost: 0.40m);
+        var secondDay = CreateSavingsSummary(new DateOnly(2026, 5, 2), gridCost: 0.20m, avoidedCost: 0.70m);
+
+        await repository.SaveDailySummaryAsync(firstDay);
+        await repository.SaveDailySummaryAsync(secondDay);
+
+        var query = new BatterySavingsQuery
+        {
+            StartDate = new DateOnly(2026, 5, 1),
+            EndDate = new DateOnly(2026, 5, 31),
+            Currency = "EUR"
+        };
+        var summaries = await repository.GetDailySummariesAsync(query);
+        var aggregate = await repository.GetAggregateAsync(query);
+
+        Assert.Equal(2, summaries.Count);
+        Assert.Equal(0.80m, aggregate.NetSavings);
+        Assert.Equal(0.30m, aggregate.GridChargeCost);
+        Assert.Equal(1.10m, aggregate.DischargeAvoidedCost);
+    }
+
     public void Dispose()
     {
         sqliteConnection.Dispose();
@@ -152,5 +179,25 @@ public sealed class SqlitePersistenceTests : IDisposable
             gridExportWatts: null,
             inputSummaryJson: """{"source":"test"}""",
             new[] { new BatteryDecisionReason("TestRule", "Testbegruendung") });
+    }
+
+    private static BatterySavingsDailySummary CreateSavingsSummary(
+        DateOnly accountingDate,
+        decimal gridCost,
+        decimal avoidedCost)
+    {
+        var values = new BatterySavingsDailySummaryValues
+        {
+            AccountingDate = accountingDate,
+            Currency = "EUR",
+            GridChargedEnergyKwh = 1m,
+            GridChargeCost = gridCost,
+            DischargedEnergyKwh = 1m,
+            DischargeAvoidedCost = avoidedCost,
+            NetSavings = avoidedCost - gridCost,
+            UpdatedAtUtc = SeededAtUtc
+        };
+
+        return new BatterySavingsDailySummary(values);
     }
 }

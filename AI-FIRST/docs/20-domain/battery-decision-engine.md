@@ -135,6 +135,27 @@ A decision must contain:
 - rule names
 - result summary
 
+## Savings Accounting
+
+The system should account how much money the battery strategy saved.
+
+The first accounting level stores daily values. Week, month, year and total views are derived by aggregating those daily values.
+
+Daily savings accounting must include:
+
+- energy charged from the grid
+- cost of grid charging based on the Tibber price of the charging slot
+- energy charged from PV surplus
+- opportunity cost of PV surplus charging based on the configured feed-in compensation or PV sale price per kWh
+- discharged energy
+- avoided grid cost based on the Tibber price of the discharging slot
+- net savings as avoided grid cost minus grid charging cost minus PV opportunity cost
+- weighted average grid charge price, PV opportunity price and discharge price where energy exists
+
+The configured `gridFeedIn.compensationPricePerKwh` setting is the first PV sale price input for PV surplus accounting. If a later tariff model needs a separate PV sale price, it must be added as a persisted setting with a default value.
+
+Savings accounting is a reporting function. It must not change the actual Decision Engine action for a slot.
+
 ## Safety Rules
 
 - Do not silently execute risky actions when required data is missing.

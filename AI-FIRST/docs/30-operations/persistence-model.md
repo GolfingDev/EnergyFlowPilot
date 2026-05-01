@@ -76,6 +76,27 @@ Important columns:
 
 Operational events are used for visible, diagnosable failures instead of silent fallbacks.
 
+### BatterySavingsDailySummaries
+
+Stores daily monetary accounting for battery charging and discharging.
+
+Important columns:
+
+- `AccountingDate`
+- `Currency`
+- `GridChargedEnergyKwh`
+- `GridChargeCost`
+- `PvChargedEnergyKwh`
+- `PvOpportunityCost`
+- `DischargedEnergyKwh`
+- `DischargeAvoidedCost`
+- `NetSavings`
+- `UpdatedAtUtc`
+
+The accounting date represents the Europe/Berlin reporting day. The source timestamps remain UTC.
+
+Week, month, year and total reports are calculated by summing daily rows. Weighted average prices are derived from summed energy and cost values.
+
 ## Time Storage
 
 Domain code uses `DateTimeOffset` with UTC timestamps.

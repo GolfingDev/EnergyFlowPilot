@@ -40,6 +40,9 @@
 36. Add Decision Audit invariant and metamorphic tests.
 37. Add CSV and JSON audit export for user-readable challenge reports.
 38. Generate local Decision Audit artifacts for manual review.
+39. Add daily battery savings accounting for charge/discharge reporting.
+40. Persist daily battery savings summaries in SQLite.
+41. Add API and frontend views for daily, weekly, monthly, yearly and total battery savings.
 
 ## Rule
 

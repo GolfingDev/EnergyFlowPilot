@@ -37,6 +37,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<ControllerDbInitializer>();
         services.AddScoped<IControllerSettingStore, EfControllerSettingStore>();
         services.AddScoped<IDecisionLogRepository, EfDecisionLogRepository>();
+        services.AddScoped<IBatterySavingsRepository, EfBatterySavingsRepository>();
         services.AddScoped<IOperationalEventRepository, EfOperationalEventRepository>();
         services.AddScoped<IControllerSettingsService, ControllerSettingsService>();
         services.AddScoped<IBatteryConfigurationProvider, DatabaseBatteryConfigurationProvider>();
