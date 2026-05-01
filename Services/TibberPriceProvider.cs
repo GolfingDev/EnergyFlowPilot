@@ -10,6 +10,8 @@ public class TibberPriceProvider
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly TibberOptions _options;
+    private IReadOnlyList<PricePoint>? _cache;
+    private DateTime _cacheUtc;
 
     public TibberPriceProvider(IHttpClientFactory httpClientFactory, IOptions<TibberOptions> options)
     {
@@ -19,11 +21,28 @@ public class TibberPriceProvider
 
     public async Task<IReadOnlyList<PricePoint>> GetUpcomingPricesAsync(CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(_options.AccessToken))
+        if (_cache is not null && (DateTime.UtcNow - _cacheUtc).TotalSeconds < Math.Max(30, _options.CacheSeconds))
         {
-            return BuildDemoPrices();
+            return _cache;
         }
 
+        IReadOnlyList<PricePoint> result;
+        if (string.IsNullOrWhiteSpace(_options.AccessToken))
+        {
+            result = BuildDemoPrices();
+        }
+        else
+        {
+            result = await FetchTibberPricesAsync(cancellationToken);
+        }
+
+        _cache = result;
+        _cacheUtc = DateTime.UtcNow;
+        return result;
+    }
+
+    private async Task<IReadOnlyList<PricePoint>> FetchTibberPricesAsync(CancellationToken cancellationToken)
+    {
         var client = _httpClientFactory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.AccessToken);
 
@@ -43,10 +62,7 @@ public class TibberPriceProvider
         }";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.tibber.com/v1-beta/gql");
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(new { query }),
-            Encoding.UTF8,
-            "application/json");
+        request.Content = new StringContent(JsonSerializer.Serialize(new { query }), Encoding.UTF8, "application/json");
 
         using var response = await client.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -54,21 +70,14 @@ public class TibberPriceProvider
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
 
-        var pricePoints = new List<PricePoint>();
-
-        var homes = doc.RootElement
-            .GetProperty("data")
-            .GetProperty("viewer")
-            .GetProperty("homes");
-
+        var homes = doc.RootElement.GetProperty("data").GetProperty("viewer").GetProperty("homes");
         if (homes.GetArrayLength() == 0)
         {
             return BuildDemoPrices();
         }
 
-        var priceInfo = homes[0]
-            .GetProperty("currentSubscription")
-            .GetProperty("priceInfo");
+        var priceInfo = homes[0].GetProperty("currentSubscription").GetProperty("priceInfo");
+        var pricePoints = new List<PricePoint>();
 
         foreach (var bucket in new[] { "today", "tomorrow" })
         {
@@ -79,13 +88,12 @@ public class TibberPriceProvider
 
             foreach (var item in arr.EnumerateArray())
             {
-                if (!item.TryGetProperty("startsAt", out var startsAtProp) ||
-                    !item.TryGetProperty("total", out var totalProp))
+                if (!item.TryGetProperty("startsAt", out var startsAtProp) || !item.TryGetProperty("total", out var totalProp))
                 {
                     continue;
                 }
 
-                if (!DateTime.TryParse(startsAtProp.GetString(), out var startsAt))
+                if (!DateTimeOffset.TryParse(startsAtProp.GetString(), out var startsAt))
                 {
                     continue;
                 }
@@ -102,17 +110,19 @@ public class TibberPriceProvider
         return pricePoints
             .Where(x => x.StartsAt >= DateTimeOffset.Now.AddHours(-1))
             .OrderBy(x => x.StartsAt)
+            .Take(Math.Max(24, _options.PriceLookaheadHours * 4))
             .ToList();
     }
 
     private static IReadOnlyList<PricePoint> BuildDemoPrices()
     {
-        var now = DateTime.Now;
-        return Enumerable.Range(0, 36)
+        var now = DateTimeOffset.Now;
+        return Enumerable.Range(0, 96)
             .Select(i =>
             {
-                var price = 0.20m + (decimal)(Math.Sin(i / 3.0) * 0.08 + 0.1);
-                return new PricePoint(new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, now.Kind).AddHours(i), Math.Round(price, 3));
+                var time = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, 0, 0, now.Offset).AddMinutes(i * 15);
+                var basePrice = 0.17m + (decimal)(Math.Sin(i / 4.0) * 0.06 + 0.08);
+                return new PricePoint(time, Math.Round(basePrice, 3));
             })
             .ToList();
     }

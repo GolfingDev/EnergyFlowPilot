@@ -11,18 +11,17 @@ public class VictronMqttClient : IAsyncDisposable
 {
     private readonly ILogger<VictronMqttClient> _logger;
     private readonly VictronOptions _options;
-    private readonly MqttClientFactory _mqttFactory = new();
     private readonly object _sync = new();
-    private readonly SemaphoreSlim _connectionLock = new(1, 1);
 
     private IMqttClient? _client;
+    private Task? _backgroundTask;
+    private Task? _keepAliveTask;
+    private CancellationTokenSource? _runCts;
+    private CancellationTokenSource? _keepAliveCts;
+    private bool _started;
+
     private EnergyState _state = new();
     private DateTime _lastMessageUtc = DateTime.MinValue;
-    private Task? _keepAliveTask;
-    private CancellationTokenSource? _keepAliveCts;
-    private Task? _watchdogTask;
-    private CancellationTokenSource? _watchdogCts;
-    private bool _started;
 
     public VictronMqttClient(ILogger<VictronMqttClient> logger, IOptions<VictronOptions> options)
     {
@@ -30,18 +29,17 @@ public class VictronMqttClient : IAsyncDisposable
         _options = options.Value;
     }
 
-    public async Task ConnectAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
         if (_started)
         {
-            return;
+            return Task.CompletedTask;
         }
 
         _started = true;
-        _watchdogCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        await EnsureConnectedAsync(_watchdogCts.Token);
-        _watchdogTask = Task.Run(() => WatchdogLoopAsync(_watchdogCts.Token), _watchdogCts.Token);
+        _runCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _backgroundTask = Task.Run(() => RunLoopAsync(_runCts.Token), _runCts.Token);
+        return Task.CompletedTask;
     }
 
     public EnergyStateSnapshot GetSnapshot()
@@ -59,8 +57,6 @@ public class VictronMqttClient : IAsyncDisposable
         }
     }
 
-    public EnergyState GetCurrentState() => GetSnapshot().State;
-
     public async Task ApplyDecisionAsync(Decision decision, CancellationToken cancellationToken)
     {
         if (_options.DryRun)
@@ -70,57 +66,55 @@ public class VictronMqttClient : IAsyncDisposable
         }
 
         var client = _client;
-        if (client is null || !client.IsConnected)
+        if (client is null || !client.IsConnected || string.IsNullOrWhiteSpace(_options.WriteTopics.ChargeDischargeSetpoint))
         {
-            _logger.LogWarning("Skipping write command because MQTT client is not connected.");
+            _logger.LogWarning("Victron MQTT write skipped because client is not connected.");
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(_options.WriteTopics.ChargeDischargeSetpoint))
+        var signedPower = decision.Action switch
         {
-            var topic = $"W/{_options.PortalId}/{_options.WriteTopics.ChargeDischargeSetpoint}";
-            var payload = JsonSerializer.Serialize(new
-            {
-                value = decision.Action switch
-                {
-                    BatteryAction.Charge => Math.Abs(decision.TargetPowerWatts),
-                    BatteryAction.Discharge => -Math.Abs(decision.TargetPowerWatts),
-                    _ => 0
-                }
-            });
+            BatteryAction.Charge => Math.Abs(decision.TargetPowerWatts),
+            BatteryAction.Discharge => -Math.Abs(decision.TargetPowerWatts),
+            _ => 0
+        };
 
-            var message = new MqttApplicationMessageBuilder()
-                .WithTopic(topic)
-                .WithPayload(payload)
-                .Build();
+        var topic = $"W/{_options.PortalId}/{_options.WriteTopics.ChargeDischargeSetpoint}";
+        var payload = JsonSerializer.Serialize(new { value = signedPower });
 
-            await client.PublishAsync(message, cancellationToken);
-        }
+        var message = new MqttApplicationMessageBuilder()
+            .WithTopic(topic)
+            .WithPayload(payload)
+            .Build();
+
+        await client.PublishAsync(message, cancellationToken);
     }
 
-    private async Task WatchdogLoopAsync(CancellationToken cancellationToken)
+    private async Task RunLoopAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                await EnsureConnectedAsync(cancellationToken);
 
-                var client = _client;
-                if (client is null || !client.IsConnected)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    _logger.LogWarning("Victron MQTT disconnected. Reconnecting...");
-                    await RestartConnectionAsync(cancellationToken);
-                    continue;
-                }
+                    var snapshot = GetSnapshot();
+                    if (_client is null || !_client.IsConnected)
+                    {
+                        _logger.LogWarning("Victron MQTT disconnected. Reconnecting...");
+                        break;
+                    }
 
-                var snapshot = GetSnapshot();
-                if (snapshot.IsStale)
-                {
-                    _logger.LogWarning(
-                        "No new MQTT data since {LastUpdateUtc:O}. Restarting connection...",
-                        snapshot.LastMessageUtc);
-                    await RestartConnectionAsync(cancellationToken);
+                    if (snapshot.IsStale)
+                    {
+                        _logger.LogWarning("No fresh Victron MQTT data since {LastUpdateUtc:O}. Restarting MQTT connection...", snapshot.LastMessageUtc);
+                        await RestartConnectionAsync(cancellationToken);
+                        break;
+                    }
+
+                    await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
                 }
             }
             catch (OperationCanceledException)
@@ -129,50 +123,39 @@ public class VictronMqttClient : IAsyncDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Victron MQTT watchdog failed");
+                _logger.LogError(ex, "Victron MQTT loop failed. Retrying...");
+                await CleanupClientAsync();
                 await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
             }
         }
     }
 
-    private async Task RestartConnectionAsync(CancellationToken cancellationToken)
-    {
-        await _connectionLock.WaitAsync(cancellationToken);
-        try
-        {
-            await SafeDisconnectAsync();
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-            await EnsureConnectedInternalAsync(cancellationToken);
-        }
-        finally
-        {
-            _connectionLock.Release();
-        }
-    }
-
     private async Task EnsureConnectedAsync(CancellationToken cancellationToken)
-    {
-        await _connectionLock.WaitAsync(cancellationToken);
-        try
-        {
-            await EnsureConnectedInternalAsync(cancellationToken);
-        }
-        finally
-        {
-            _connectionLock.Release();
-        }
-    }
-
-    private async Task EnsureConnectedInternalAsync(CancellationToken cancellationToken)
     {
         if (_client is { IsConnected: true })
         {
             return;
         }
 
-        var client = _mqttFactory.CreateMqttClient();
-        client.ApplicationMessageReceivedAsync += OnMessageReceivedAsync;
-        client.DisconnectedAsync += e =>
+        await CleanupClientAsync();
+
+        var factory = new MqttClientFactory();
+        _client = factory.CreateMqttClient();
+        _client.ApplicationMessageReceivedAsync += e =>
+        {
+            try
+            {
+                HandleMessage(e);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Victron message processing failed");
+            }
+
+            return Task.CompletedTask;
+        };
+
+        _client.DisconnectedAsync += e =>
         {
             _logger.LogWarning("Victron MQTT disconnected: {Reason}", e.ReasonString);
             return Task.CompletedTask;
@@ -181,53 +164,100 @@ public class VictronMqttClient : IAsyncDisposable
         var mqttOptions = new MqttClientOptionsBuilder()
             .WithTcpServer(_options.Host, _options.Port)
             .WithClientId($"controller-{Guid.NewGuid():N}")
+            .WithCleanSession()
             .Build();
 
-        await client.ConnectAsync(mqttOptions, cancellationToken);
+        await _client.ConnectAsync(mqttOptions, cancellationToken);
 
-        var topics = new[]
+        var subscribeBuilder = factory.CreateSubscribeOptionsBuilder();
+        foreach (var topic in BuildTopicList())
         {
-            ReplacePortal(_options.Topics.GridPower),
-            ReplacePortal(_options.Topics.BatterySoc),
-            ReplacePortal(_options.Topics.BatteryPower),
-            ReplacePortal(_options.Topics.HouseConsumption),
-            ReplacePortal(_options.Topics.PvPower)
-        }
-        .Where(x => !string.IsNullOrWhiteSpace(x))
-        .Distinct()
-        .ToList();
-
-        var subscribeOptions = _mqttFactory.CreateSubscribeOptionsBuilder();
-        foreach (var topic in topics)
-        {
-            subscribeOptions.WithTopicFilter(topic);
+            subscribeBuilder.WithTopicFilter(topic);
         }
 
-        await client.SubscribeAsync(subscribeOptions.Build(), cancellationToken);
-
-        _client = client;
-        await PublishKeepAliveAsync(client, cancellationToken);
+        await _client.SubscribeAsync(subscribeBuilder.Build(), cancellationToken);
         StartKeepAliveLoop(cancellationToken);
-
         _logger.LogInformation("Connected to Victron MQTT {Host}:{Port}", _options.Host, _options.Port);
     }
 
-    private Task OnMessageReceivedAsync(MqttApplicationMessageReceivedEventArgs e)
+    private List<string> BuildTopicList()
+    {
+        return new[]
+        {
+            _options.Topics.GridPower,
+            _options.Topics.BatterySoc,
+            _options.Topics.BatteryPower,
+            _options.Topics.HouseConsumption,
+            _options.Topics.PvPower
+        }
+        .Where(x => !string.IsNullOrWhiteSpace(x))
+        .Select(ResolveTopic)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+    }
+
+    private void StartKeepAliveLoop(CancellationToken cancellationToken)
+    {
+        _keepAliveCts?.Cancel();
+        _keepAliveCts?.Dispose();
+        _keepAliveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var token = _keepAliveCts.Token;
+
+        _keepAliveTask = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    var client = _client;
+                    if (client is { IsConnected: true })
+                    {
+                        var keepAlive = new MqttApplicationMessageBuilder()
+                            .WithTopic($"R/{_options.PortalId}/keepalive")
+                            .WithPayload(string.Empty)
+                            .Build();
+
+                        await client.PublishAsync(keepAlive, token);
+                    }
+
+                    await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, _options.KeepAliveSeconds)), token);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Victron keepalive failed");
+                    await Task.Delay(TimeSpan.FromSeconds(5), token);
+                }
+            }
+        }, token);
+    }
+
+    private async Task RestartConnectionAsync(CancellationToken cancellationToken)
+    {
+        await CleanupClientAsync();
+        await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+        await EnsureConnectedAsync(cancellationToken);
+    }
+
+    private void HandleMessage(MqttApplicationMessageReceivedEventArgs e)
     {
         var topic = e.ApplicationMessage.Topic;
-        var payload = e.ApplicationMessage.Payload.IsEmpty
-            ? string.Empty
-            : Encoding.UTF8.GetString(e.ApplicationMessage.Payload);
+        var payload = !e.ApplicationMessage.Payload.IsEmpty
+            ? Encoding.UTF8.GetString(e.ApplicationMessage.Payload)
+            : string.Empty;
 
-        if (string.IsNullOrWhiteSpace(payload))
+        if (string.IsNullOrWhiteSpace(topic) || string.IsNullOrWhiteSpace(payload))
         {
-            return Task.CompletedTask;
+            return;
         }
 
         var value = TryReadValue(payload);
         if (value is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         lock (_sync)
@@ -255,90 +285,14 @@ public class VictronMqttClient : IAsyncDisposable
 
             _lastMessageUtc = DateTime.UtcNow;
         }
-
-        return Task.CompletedTask;
     }
 
-    private void StartKeepAliveLoop(CancellationToken cancellationToken)
+    private string ResolveTopic(string configuredTopic)
+        => configuredTopic.Replace("{portalId}", _options.PortalId, StringComparison.OrdinalIgnoreCase);
+
+    private bool TopicMatches(string actualTopic, string configuredTopic)
     {
-        _keepAliveCts?.Cancel();
-        _keepAliveCts?.Dispose();
-        _keepAliveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var token = _keepAliveCts.Token;
-
-        _keepAliveTask = Task.Run(async () =>
-        {
-            while (!token.IsCancellationRequested)
-            {
-                try
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, _options.KeepAliveSeconds)), token);
-
-                    var client = _client;
-                    if (client is { IsConnected: true })
-                    {
-                        await PublishKeepAliveAsync(client, token);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Victron keepalive failed");
-                }
-            }
-        }, token);
-    }
-
-    private async Task PublishKeepAliveAsync(IMqttClient client, CancellationToken cancellationToken)
-    {
-        var keepAlive = new MqttApplicationMessageBuilder()
-            .WithTopic($"R/{_options.PortalId}/keepalive")
-            .WithPayload("")
-            .Build();
-
-        await client.PublishAsync(keepAlive, cancellationToken);
-    }
-
-    private async Task SafeDisconnectAsync()
-    {
-        _keepAliveCts?.Cancel();
-        if (_keepAliveTask is not null)
-        {
-            try { await _keepAliveTask; } catch { }
-        }
-        _keepAliveTask = null;
-        _keepAliveCts?.Dispose();
-        _keepAliveCts = null;
-
-        if (_client is not null)
-        {
-            try
-            {
-                if (_client.IsConnected)
-                {
-                    await _client.DisconnectAsync();
-                }
-            }
-            catch { }
-
-            try
-            {
-                _client.Dispose();
-            }
-            catch { }
-
-            _client = null;
-        }
-    }
-
-    private string ReplacePortal(string topic) => topic.Replace("{portalId}", _options.PortalId, StringComparison.OrdinalIgnoreCase);
-
-    private bool TopicMatches(string actualTopic, string configuredPattern)
-    {
-        var pattern = ReplacePortal(configuredPattern);
+        var pattern = ResolveTopic(configuredTopic);
         if (string.IsNullOrWhiteSpace(pattern))
         {
             return false;
@@ -346,7 +300,6 @@ public class VictronMqttClient : IAsyncDisposable
 
         var patternParts = pattern.Split('/');
         var actualParts = actualTopic.Split('/');
-
         if (patternParts.Length != actualParts.Length)
         {
             return false;
@@ -368,11 +321,11 @@ public class VictronMqttClient : IAsyncDisposable
         return true;
     }
 
-    private static double? TryReadValue(string json)
+    private static double? TryReadValue(string payload)
     {
         try
         {
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(payload);
             if (!doc.RootElement.TryGetProperty("value", out var valueElement))
             {
                 return null;
@@ -387,20 +340,72 @@ public class VictronMqttClient : IAsyncDisposable
         }
         catch
         {
-            return null;
+            return double.TryParse(payload, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+        }
+    }
+
+    private async Task CleanupClientAsync()
+    {
+        try
+        {
+            _keepAliveCts?.Cancel();
+        }
+        catch
+        {
+        }
+
+        if (_keepAliveTask is not null)
+        {
+            try
+            {
+                await _keepAliveTask;
+            }
+            catch
+            {
+            }
+        }
+
+        if (_client is not null)
+        {
+            try
+            {
+                if (_client.IsConnected)
+                {
+                    await _client.DisconnectAsync();
+                }
+            }
+            catch
+            {
+            }
+
+             _client.Dispose();
+            _client = null;
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        _watchdogCts?.Cancel();
-        if (_watchdogTask is not null)
+        try
         {
-            try { await _watchdogTask; } catch { }
+            _runCts?.Cancel();
+        }
+        catch
+        {
         }
 
-        await SafeDisconnectAsync();
-        _watchdogCts?.Dispose();
-        _connectionLock.Dispose();
+        if (_backgroundTask is not null)
+        {
+            try
+            {
+                await _backgroundTask;
+            }
+            catch
+            {
+            }
+        }
+
+        await CleanupClientAsync();
+        _runCts?.Dispose();
+        _keepAliveCts?.Dispose();
     }
 }

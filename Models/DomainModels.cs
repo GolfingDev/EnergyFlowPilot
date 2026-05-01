@@ -48,11 +48,37 @@ public class EnergyStateHistoryEntry
     public double PvPowerWatts { get; set; }
 }
 
+public record ForecastSlot(
+    DateTimeOffset StartsAt,
+    decimal Price,
+    double ForecastLoadWatts,
+    double ForecastPvWatts,
+    double NetDemandWatts,
+    double ExcessPvWatts);
+
+public record PlannedAction(
+    DateTimeOffset StartsAt,
+    BatteryAction Action,
+    double TargetPowerWatts,
+    decimal Price,
+    double ForecastSocPercent,
+    double ForecastLoadWatts,
+    double ForecastPvWatts,
+    double ForecastGridWatts,
+    double ReserveTargetPercent,
+    string Reason);
+
 public record TibberChartPoint(
     DateTimeOffset StartsAt,
     decimal Price,
     string Action,
-    double ForecastSocPercent);
+    double ForecastSocPercent,
+    double ForecastConsumptionWatts,
+    double ForecastPvWatts,
+    double ForecastBatteryPowerWatts,
+    double ForecastGridPowerWatts,
+    double ReserveTargetPercent,
+    string Reason);
 
 public record DashboardResponse(
     EnergyState CurrentState,

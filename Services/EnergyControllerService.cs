@@ -27,45 +27,49 @@ public class EnergyControllerService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await _victron.ConnectAsync(stoppingToken);
+        await _victron.StartAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 using var scope = _scopeFactory.CreateScope();
-
                 var decisionEngine = scope.ServiceProvider.GetRequiredService<DecisionEngine>();
                 var decisionHistoryStore = scope.ServiceProvider.GetRequiredService<IDecisionHistoryStore>();
                 var stateHistoryStore = scope.ServiceProvider.GetRequiredService<IEnergyStateHistoryStore>();
 
                 var snapshot = _victron.GetSnapshot();
-
                 if (snapshot.IsStale)
                 {
-                    _logger.LogWarning("Skipping controller cycle because live data is stale. Last update: {LastUpdateUtc}", snapshot.LastMessageUtc);
+                    _logger.LogWarning("Skipping controller cycle because live data is stale. Last update: {LastUpdateUtc:O}", snapshot.LastMessageUtc);
                     await Task.Delay(TimeSpan.FromSeconds(_options.DecisionLoopSeconds), stoppingToken);
                     continue;
                 }
 
                 var prices = await _tibber.GetUpcomingPricesAsync(stoppingToken);
-                var state = snapshot.State;
-
-                await stateHistoryStore.AddAsync(state, stoppingToken);
-
-                if (prices.Count > 0)
+                if (prices.Count == 0)
                 {
-                    var decision = await decisionEngine.BuildDecisionAsync(state, prices, DateTimeOffset.Now, stoppingToken);
-                    await decisionHistoryStore.AddAsync(decision, stoppingToken);
-                    await _victron.ApplyDecisionAsync(decision, stoppingToken);
-
-                    _logger.LogInformation(
-                        "Decision: {Action}, Reason: {Reason}, Grid={GridPower}W, SoC={BatterySoc}%",
-                        decision.Action,
-                        decision.Reason,
-                        state.GridPowerWatts,
-                        state.BatterySocPercent);
+                    _logger.LogWarning("Skipping controller cycle because no Tibber prices are available.");
+                    await Task.Delay(TimeSpan.FromSeconds(_options.DecisionLoopSeconds), stoppingToken);
+                    continue;
                 }
+
+                await stateHistoryStore.AddAsync(snapshot.State, stoppingToken);
+                var decision = await decisionEngine.BuildDecisionAsync(snapshot.State, prices, DateTimeOffset.Now, stoppingToken);
+                await decisionHistoryStore.AddAsync(decision, stoppingToken);
+                await _victron.ApplyDecisionAsync(decision, stoppingToken);
+
+                _logger.LogInformation(
+                    "Decision: {Action}, Target={TargetPower}W, SoC={Soc}%, Grid={Grid}W, Reason={Reason}",
+                    decision.Action,
+                    decision.TargetPowerWatts,
+                    snapshot.State.BatterySocPercent,
+                    snapshot.State.GridPowerWatts,
+                    decision.Reason);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
             }
             catch (Exception ex)
             {

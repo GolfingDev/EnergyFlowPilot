@@ -3,44 +3,37 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tibber Victron Dashboard</title>
+  <title>Tibber Victron Dashboard – AI360 Style Planner</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; background: #111; color: #f3f3f3; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
-    .card { background: #1b1b1b; border-radius: 14px; padding: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
-    .value { font-size: 1.6rem; font-weight: bold; margin-top: 8px; }
-    .legend { display: flex; gap: 16px; margin: 16px 0; flex-wrap: wrap; }
-    .legend span { display: inline-flex; align-items: center; gap: 8px; }
-    .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
-    .grid { display: grid; grid-template-columns: 1fr; gap: 28px; }
-    .panel { background: #1b1b1b; border-radius: 14px; padding: 16px; }
-    .table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    .table th, .table td { padding: 10px; border-bottom: 1px solid #333; text-align: left; vertical-align: top; }
-    canvas { background: #181818; border-radius: 10px; padding: 8px; }
+    body { font-family: Arial, sans-serif; margin: 24px; background: #101214; color: #f3f3f3; }
+    .cards { display:grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
+    .card, .panel { background:#181b20; border-radius:16px; padding:16px; box-shadow: 0 2px 12px rgba(0,0,0,.25); }
+    .value { font-size:1.5rem; font-weight:bold; margin-top:8px; }
+    .muted { color:#aab3bd; font-size:.92rem; }
+    .grid { display:grid; grid-template-columns: 1fr; gap:24px; }
+    .table { width:100%; border-collapse:collapse; margin-top:12px; }
+    .table th, .table td { padding:10px; border-bottom:1px solid #303640; text-align:left; vertical-align:top; }
+    canvas { background:#13161a; border-radius:10px; padding:8px; }
+    .ok { color:#7CFC8A; }
+    .warn { color:#ff7b7b; }
   </style>
 </head>
 <body>
-  <h1>Tibber Victron Dashboard – Forecast mit SoC-Simulation</h1>
+  <h1>Tibber Victron Dashboard – AI360-ähnlicher 15-Minuten-Planer</h1>
 
   <div class="cards">
-    <div class="card"><div>SoC</div><div class="value" id="soc">-</div></div>
-    <div class="card"><div>Netzleistung</div><div class="value" id="grid">-</div></div>
-    <div class="card"><div>PV</div><div class="value" id="pv">-</div></div>
-    <div class="card"><div>Hausverbrauch</div><div class="value" id="house">-</div></div>
-    <div class="card"><div>Datenstatus</div><div class="value" id="dataStatus">-</div></div>
-    <div class="card"><div>Letztes Update</div><div class="value" id="lastUpdate">-</div></div>
+    <div class="card"><div class="muted">SoC</div><div class="value" id="soc">-</div></div>
+    <div class="card"><div class="muted">Netzleistung</div><div class="value" id="grid">-</div></div>
+    <div class="card"><div class="muted">PV</div><div class="value" id="pv">-</div></div>
+    <div class="card"><div class="muted">Hausverbrauch</div><div class="value" id="house">-</div></div>
+    <div class="card"><div class="muted">Datenstatus</div><div class="value" id="dataStatus">-</div></div>
+    <div class="card"><div class="muted">Letztes Update</div><div class="value" id="lastUpdate">-</div></div>
   </div>
 
   <div class="grid">
     <div class="panel">
-      <h2>Tibber Preise und Forecast-Aktion</h2>
-      <div class="legend">
-        <span><i class="dot" style="background:#2ecc71"></i>Lädt</span>
-        <span><i class="dot" style="background:#e74c3c"></i>Entlädt</span>
-        <span><i class="dot" style="background:#95a5a6"></i>Warten</span>
-        <span><i class="dot" style="background:#4fc3f7"></i>Forecast SoC</span>
-      </div>
+      <h2>24h-Plan im 15-Minuten-Raster</h2>
       <canvas id="priceChart" height="120"></canvas>
     </div>
 
@@ -53,7 +46,7 @@
       <h2>Letzte Entscheidungen</h2>
       <table class="table" id="decisionTable">
         <thead>
-          <tr><th>Zeit</th><th>Aktion</th><th>Preis</th><th>Begründung</th></tr>
+          <tr><th>Zeit</th><th>Aktion</th><th>Leistung</th><th>Preis</th><th>Begründung</th></tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -64,47 +57,11 @@
     let priceChart;
     let consumptionChart;
 
-    const nowLinePlugin = {
-      id: 'nowLinePlugin',
-      afterDatasetsDraw(chart) {
-        const { ctx, chartArea, scales } = chart;
-        const xScale = scales.x;
-        if (!chartArea || !xScale) return;
-
-        const tibberPrices = chart.options.plugins.nowLinePluginData?.tibberPrices ?? [];
-        if (!tibberPrices.length) return;
-
-        const now = new Date();
-        const points = tibberPrices.map((p, i) => ({ index: i, time: new Date(p.startsAt) }));
-
-        let targetIndex = -1;
-        for (let i = 0; i < points.length; i++) {
-          const start = points[i].time;
-          const end = i < points.length - 1 ? points[i + 1].time : new Date(start.getTime() + 60 * 60 * 1000);
-          if (now >= start && now < end) {
-            targetIndex = i;
-            break;
-          }
-        }
-
-        if (targetIndex === -1) return;
-
-        const x = xScale.getPixelForValue(targetIndex);
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(x, chartArea.top);
-        ctx.lineTo(x, chartArea.bottom);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#ffffff';
-        ctx.setLineDash([6, 6]);
-        ctx.stroke();
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '12px Arial';
-        ctx.fillText('Jetzt', x + 6, chartArea.top + 14);
-        ctx.restore();
-      }
-    };
+    function formatDate(value) {
+      return new Date(value).toLocaleString('de-DE', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+      });
+    }
 
     function actionColor(action) {
       switch ((action || '').toLowerCase()) {
@@ -114,187 +71,115 @@
       }
     }
 
-    function actionLabel(action) {
-      switch ((action || '').toLowerCase()) {
-        case 'charge': return 'Lädt';
-        case 'discharge': return 'Entlädt';
-        default: return 'Warten';
-      }
-    }
-
-    function formatDate(value) {
-      return new Date(value).toLocaleString('de-DE', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      });
-    }
-
     async function loadDashboard() {
       const response = await fetch('/api/dashboard');
       const data = await response.json();
 
-      document.getElementById('soc').textContent = `${data.currentState.batterySocPercent.toFixed(1)} %`;
-      document.getElementById('grid').textContent = `${data.currentState.gridPowerWatts.toFixed(0)} W`;
-      document.getElementById('pv').textContent = `${data.currentState.pvPowerWatts.toFixed(0)} W`;
-      document.getElementById('house').textContent = `${data.currentState.houseConsumptionWatts.toFixed(0)} W`;
-      const statusEl = document.getElementById('dataStatus');
+      document.getElementById('soc').textContent = `${Number(data.currentState.batterySocPercent).toFixed(1)} %`;
+      document.getElementById('grid').textContent = `${Number(data.currentState.gridPowerWatts).toFixed(0)} W`;
+      document.getElementById('pv').textContent = `${Number(data.currentState.pvPowerWatts).toFixed(0)} W`;
+      document.getElementById('house').textContent = `${Number(data.currentState.houseConsumptionWatts).toFixed(0)} W`;
+
+      const dataStatusEl = document.getElementById('dataStatus');
       const lastUpdateEl = document.getElementById('lastUpdate');
-      statusEl.textContent = data.isStateStale ? 'Veraltet' : 'OK';
-      statusEl.style.color = data.isStateStale ? '#ff6b6b' : '#8bd17c';
-      lastUpdateEl.textContent = data.lastStateUpdateUtc ? formatDate(data.lastStateUpdateUtc) : '-';
+      dataStatusEl.textContent = data.isStateStale ? 'Veraltet' : 'OK';
+      dataStatusEl.className = `value ${data.isStateStale ? 'warn' : 'ok'}`;
+      if (data.lastStateUpdateUtc) {
+        const lastUpdate = new Date(data.lastStateUpdateUtc);
+        const ageSeconds = Math.round((Date.now() - lastUpdate.getTime()) / 1000);
+        lastUpdateEl.textContent = `${lastUpdate.toLocaleTimeString('de-DE')} (${ageSeconds}s alt)`;
+      } else {
+        lastUpdateEl.textContent = '-';
+      }
 
       const labels = data.tibberPrices.map(x => new Date(x.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
       const prices = data.tibberPrices.map(x => Number(x.price));
-      const pointColors = data.tibberPrices.map(x => actionColor(x.action));
-      const forecastSoc = data.tibberPrices.map(x => Number(x.forecastSocPercent));
+      const soc = data.tibberPrices.map(x => Number(x.forecastSocPercent));
+      const reserve = data.tibberPrices.map(x => Number(x.reserveTargetPercent));
+      const barColors = data.tibberPrices.map(x => actionColor(x.action));
 
-      const avgPrice = prices.length ? prices.reduce((sum, value) => sum + value, 0) / prices.length : 0;
-      const avgLine = prices.map(() => avgPrice);
-
-      if (priceChart) {
-        priceChart.destroy();
-      }
-
+      if (priceChart) priceChart.destroy();
       priceChart = new Chart(document.getElementById('priceChart'), {
-        plugins: [nowLinePlugin],
         data: {
           labels,
           datasets: [
-            {
-              type: 'bar',
-              label: 'Preis €/kWh',
-              data: prices,
-              backgroundColor: pointColors,
-              borderColor: pointColors,
-              borderWidth: 1,
-              yAxisID: 'y'
-            },
-            {
-              type: 'line',
-              label: 'Durchschnitt €/kWh',
-              data: avgLine,
-              borderColor: '#f1c40f',
-              backgroundColor: '#f1c40f',
-              borderWidth: 2,
-              pointRadius: 0,
-              tension: 0,
-              fill: false,
-              yAxisID: 'y'
-            },
-            {
-              type: 'line',
-              label: 'Forecast SoC %',
-              data: forecastSoc,
-              borderColor: '#4fc3f7',
-              backgroundColor: '#4fc3f7',
-              borderWidth: 2,
-              pointRadius: 2,
-              tension: 0,
-              fill: false,
-              yAxisID: 'y1'
-            }
+            { type: 'bar', label: 'Preis €/kWh', data: prices, backgroundColor: barColors, borderColor: barColors, yAxisID: 'y' },
+            { type: 'line', label: 'Forecast SoC %', data: soc, borderColor: '#4fc3f7', backgroundColor: '#4fc3f7', pointRadius: 1, tension: 0, yAxisID: 'y1' },
+            { type: 'line', label: 'Reserve %', data: reserve, borderColor: '#f1c40f', backgroundColor: '#f1c40f', pointRadius: 1, borderDash: [6, 4], tension: 0, yAxisID: 'y1' }
           ]
         },
         options: {
           responsive: true,
           plugins: {
-            nowLinePluginData: {
-              tibberPrices: data.tibberPrices
-            },
             tooltip: {
               callbacks: {
                 label: function(ctx) {
-                  if (ctx.dataset.label === 'Forecast SoC %') {
-                    return `Forecast SoC: ${Number(ctx.raw).toFixed(1)} %`;
-                  }
-                  if (ctx.dataset.type === 'line' && ctx.dataset.label === 'Durchschnitt €/kWh') {
-                    return `Durchschnitt: ${Number(ctx.raw).toFixed(3)} €/kWh`;
-                  }
                   const point = data.tibberPrices[ctx.dataIndex];
-                  return `Preis: ${Number(point.price).toFixed(3)} €/kWh | ${actionLabel(point.action)} | SoC: ${Number(point.forecastSocPercent).toFixed(1)} %`;
+                  if (ctx.dataset.label === 'Preis €/kWh') {
+                    return `Preis: ${Number(point.price).toFixed(3)} €/kWh`;
+                  }
+                  if (ctx.dataset.label === 'Forecast SoC %') {
+                    return `SoC: ${Number(point.forecastSocPercent).toFixed(1)} %`;
+                  }
+                  if (ctx.dataset.label === 'Reserve %') {
+                    return `Reserveziel: ${Number(point.reserveTargetPercent).toFixed(1)} %`;
+                  }
+                  return '';
+                },
+                afterBody: function(items) {
+                  const idx = items[0].dataIndex;
+                  const point = data.tibberPrices[idx];
+                  return [
+                    `Aktion: ${point.action}`,
+                    `Load-Forecast: ${Number(point.forecastConsumptionWatts).toFixed(0)} W`,
+                    `PV-Forecast: ${Number(point.forecastPvWatts).toFixed(0)} W`,
+                    `Grid-Forecast: ${Number(point.forecastGridPowerWatts).toFixed(0)} W`,
+                    `Batterie-Forecast: ${Number(point.forecastBatteryPowerWatts).toFixed(0)} W`,
+                    point.reason
+                  ];
                 }
               }
             }
           },
           scales: {
-            y: {
-              type: 'linear',
-              position: 'left',
-              beginAtZero: true
-            },
-            y1: {
-              type: 'linear',
-              position: 'right',
-              min: 0,
-              max: 100,
-              grid: {
-                drawOnChartArea: false
-              }
-            }
+            x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 24 } },
+            y: { beginAtZero: true, position: 'left' },
+            y1: { min: 0, max: 100, position: 'right', grid: { drawOnChartArea: false } }
           }
         }
       });
 
-      const consumptionLabels = data.stateHistory.map(x =>
-        new Date(x.timestampUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      );
-      const consumptionValues = data.stateHistory.map(x => Number(x.houseConsumptionWatts));
-      const gridValues = data.stateHistory.map(x => Number(x.gridPowerWatts));
-
-      if (consumptionChart) {
-        consumptionChart.destroy();
-      }
-
+      if (consumptionChart) consumptionChart.destroy();
+      const historyLabels = data.stateHistory.map(x => new Date(x.timestampUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
       consumptionChart = new Chart(document.getElementById('consumptionChart'), {
         type: 'line',
         data: {
-          labels: consumptionLabels,
+          labels: historyLabels,
           datasets: [
-            {
-              label: 'Hausverbrauch W',
-              data: consumptionValues,
-              borderColor: '#3498db',
-              backgroundColor: '#3498db',
-              pointRadius: 0,
-              tension: 0
-            },
-            {
-              label: 'Netzleistung W',
-              data: gridValues,
-              borderColor: '#9b59b6',
-              backgroundColor: '#9b59b6',
-              pointRadius: 0,
-              tension: 0
-            }
+            { label: 'Hausverbrauch W', data: data.stateHistory.map(x => Number(x.houseConsumptionWatts)), borderColor: '#3498db', backgroundColor: '#3498db', pointRadius: 0, tension: 0 },
+            { label: 'PV W', data: data.stateHistory.map(x => Number(x.pvPowerWatts)), borderColor: '#2ecc71', backgroundColor: '#2ecc71', pointRadius: 0, tension: 0 },
+            { label: 'Netz W', data: data.stateHistory.map(x => Number(x.gridPowerWatts)), borderColor: '#e67e22', backgroundColor: '#e67e22', pointRadius: 0, tension: 0 }
           ]
         },
-        options: {
-          responsive: true
-        }
+        options: { responsive: true }
       });
 
       const tbody = document.querySelector('#decisionTable tbody');
       tbody.innerHTML = '';
-      for (const row of data.decisions) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${formatDate(row.timestampUtc)}</td>
-          <td>${actionLabel(row.action)}</td>
-          <td>${Number(row.currentPrice).toFixed(3)} €/kWh</td>
-          <td>${row.reason}</td>`;
-        tbody.appendChild(tr);
-      }
+      data.decisions.forEach(d => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${formatDate(d.timestampUtc)}</td>
+          <td>${d.action}</td>
+          <td>${Number(d.targetPowerWatts).toFixed(0)} W</td>
+          <td>${Number(d.currentPrice).toFixed(3)} €/kWh</td>
+          <td>${d.reason}</td>`;
+        tbody.appendChild(row);
+      });
     }
 
     loadDashboard();
-    setInterval(loadDashboard, 10000);
-    setInterval(() => {
-      if (priceChart) priceChart.draw();
-    }, 10000);
+    setInterval(loadDashboard, 15000);
   </script>
 </body>
 </html>
