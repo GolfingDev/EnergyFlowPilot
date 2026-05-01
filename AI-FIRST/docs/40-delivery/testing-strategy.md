@@ -63,3 +63,10 @@ Audit metrics must include:
 - cycle count
 - minimum and maximum state of charge
 - net benefit after efficiency loss
+
+Manual audit exports are written to:
+
+- `artifacts/decision-audit/golden-scenario.csv`
+- `artifacts/decision-audit/golden-scenario.json`
+
+The artifact directory is intentionally ignored by Git, because the files are generated review output.

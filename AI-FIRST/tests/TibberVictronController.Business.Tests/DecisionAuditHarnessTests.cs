@@ -7,12 +7,10 @@ namespace TibberVictronController.Business.Tests;
 
 public sealed class DecisionAuditHarnessTests
 {
-    private static readonly DateTimeOffset ScenarioStartsAtUtc = new(2026, 5, 1, 0, 0, 0, TimeSpan.Zero);
-
     [Fact]
     public void GoldenScenarioCreatesReadableAuditForTwentyFourHours()
     {
-        var scenario = CreateScenario(initialStateOfChargePercent: 37m);
+        var scenario = DecisionAuditGoldenScenarioFactory.Create(initialStateOfChargePercent: 37m);
         var harness = new DecisionAuditHarness(new BatteryForecastSimulator(), new BaselineDecisionEngine());
 
         var report = harness.Run(scenario);
@@ -37,7 +35,7 @@ public sealed class DecisionAuditHarnessTests
     [Fact]
     public void InvariantValidatorAcceptsGoldenScenario()
     {
-        var scenario = CreateScenario(initialStateOfChargePercent: 37m);
+        var scenario = DecisionAuditGoldenScenarioFactory.Create(initialStateOfChargePercent: 37m);
         var harness = new DecisionAuditHarness(new BatteryForecastSimulator(), new BaselineDecisionEngine());
 
         var report = harness.Run(scenario);
@@ -49,7 +47,7 @@ public sealed class DecisionAuditHarnessTests
     [Fact]
     public void InvariantValidatorRejectsDischargeAtMinimumStateOfCharge()
     {
-        var scenario = CreateScenario(initialStateOfChargePercent: 10m);
+        var scenario = DecisionAuditGoldenScenarioFactory.Create(initialStateOfChargePercent: 10m);
         var invalidSlot = new DecisionAuditSlot(
             scenario.PriceForecast[0].TimeSlot,
             Action: "Discharge",
@@ -82,7 +80,7 @@ public sealed class DecisionAuditHarnessTests
     [Fact]
     public void MetamorphicUniformPositivePriceOffsetKeepsActionSequenceStable()
     {
-        var baseScenario = CreateScenario(initialStateOfChargePercent: 45m, includeNegativePrices: false);
+        var baseScenario = DecisionAuditGoldenScenarioFactory.Create(initialStateOfChargePercent: 45m, includeNegativePrices: false);
         var offsetScenario = baseScenario with
         {
             PriceForecast = baseScenario.PriceForecast
@@ -102,8 +100,8 @@ public sealed class DecisionAuditHarnessTests
     [Fact]
     public void MetamorphicHigherInitialStateOfChargeDoesNotIncreaseGridChargedEnergy()
     {
-        var lowSocScenario = CreateScenario(initialStateOfChargePercent: 30m);
-        var highSocScenario = CreateScenario(initialStateOfChargePercent: 80m);
+        var lowSocScenario = DecisionAuditGoldenScenarioFactory.Create(initialStateOfChargePercent: 30m);
+        var highSocScenario = DecisionAuditGoldenScenarioFactory.Create(initialStateOfChargePercent: 80m);
         var harness = new DecisionAuditHarness(new BatteryForecastSimulator(), new BaselineDecisionEngine());
 
         var lowSocReport = harness.Run(lowSocScenario);
@@ -115,7 +113,7 @@ public sealed class DecisionAuditHarnessTests
     [Fact]
     public void JsonExportCanBeParsedForExternalReviewTools()
     {
-        var scenario = CreateScenario(initialStateOfChargePercent: 37m);
+        var scenario = DecisionAuditGoldenScenarioFactory.Create(initialStateOfChargePercent: 37m);
         var harness = new DecisionAuditHarness(new BatteryForecastSimulator(), new BaselineDecisionEngine());
         var report = harness.Run(scenario);
 
@@ -123,86 +121,5 @@ public sealed class DecisionAuditHarnessTests
 
         Assert.True(document.RootElement.TryGetProperty("decisionSlots", out var decisionSlots));
         Assert.Equal(96, decisionSlots.GetArrayLength());
-    }
-
-    private static DecisionAuditScenario CreateScenario(
-        decimal initialStateOfChargePercent,
-        bool includeNegativePrices = true)
-    {
-        var timeSlots = CreateTimeSlots(ScenarioStartsAtUtc, slotCount: 96);
-        var prices = timeSlots
-            .Select(timeSlot => new TibberPriceForecastSlot(timeSlot, DeterminePrice(timeSlot.StartsAtUtc, includeNegativePrices), "EUR"))
-            .ToArray();
-        var pvYield = timeSlots
-            .Select(timeSlot => new PvYieldForecastSlot(timeSlot, DeterminePvYieldKwh(timeSlot.StartsAtUtc)))
-            .ToArray();
-        var consumption = timeSlots
-            .Select(timeSlot => new ConsumptionForecastSlot(timeSlot, DetermineConsumptionKwh(timeSlot.StartsAtUtc)))
-            .ToArray();
-
-        return new DecisionAuditScenario(
-            Name: "Golden 24h Mehrfamilienhaus",
-            InitialBatteryState: new BatteryState(initialStateOfChargePercent, ScenarioStartsAtUtc),
-            BatteryConfiguration: new BatteryConfiguration(
-                totalCapacityKwh: 12m,
-                minimumStateOfChargePercent: 10m,
-                maximumChargePowerWatts: 3000,
-                maximumDischargePowerWatts: 3000,
-                roundTripEfficiencyPercent: 90m),
-            PriceForecast: prices,
-            PvForecast: pvYield,
-            ConsumptionForecast: consumption,
-            FeedInCompensationPricePerKwh: 0.08m);
-    }
-
-    private static IReadOnlyList<ForecastTimeSlot> CreateTimeSlots(DateTimeOffset startsAtUtc, int slotCount)
-    {
-        return Enumerable.Range(0, slotCount)
-            .Select(index => new ForecastTimeSlot(
-                startsAtUtc.AddMinutes(index * 15),
-                startsAtUtc.AddMinutes((index + 1) * 15)))
-            .ToArray();
-    }
-
-    private static decimal DeterminePrice(DateTimeOffset slotStartUtc, bool includeNegativePrices)
-    {
-        if (includeNegativePrices && slotStartUtc.Hour is >= 12 and < 15)
-        {
-            return -0.05m;
-        }
-
-        if (slotStartUtc.Hour is >= 18 and < 21)
-        {
-            return 0.48m;
-        }
-
-        if (slotStartUtc.Hour is >= 2 and < 5)
-        {
-            return 0.18m;
-        }
-
-        return 0.30m;
-    }
-
-    private static decimal DeterminePvYieldKwh(DateTimeOffset slotStartUtc)
-    {
-        return slotStartUtc.Hour switch
-        {
-            >= 12 and < 15 => 0.20m,
-            >= 10 and < 17 => 0.35m,
-            >= 8 and < 17 => 0.25m,
-            _ => 0m
-        };
-    }
-
-    private static decimal DetermineConsumptionKwh(DateTimeOffset slotStartUtc)
-    {
-        return slotStartUtc.Hour switch
-        {
-            >= 6 and < 9 => 0.45m,
-            >= 17 and < 21 => 0.55m,
-            >= 0 and < 5 => 0.12m,
-            _ => 0.25m
-        };
     }
 }

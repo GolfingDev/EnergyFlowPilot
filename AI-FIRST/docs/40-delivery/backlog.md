@@ -39,6 +39,7 @@
 35. Add Golden Scenario tests for 24h/96-slot decision review.
 36. Add Decision Audit invariant and metamorphic tests.
 37. Add CSV and JSON audit export for user-readable challenge reports.
+38. Generate local Decision Audit artifacts for manual review.
 
 ## Rule
 
