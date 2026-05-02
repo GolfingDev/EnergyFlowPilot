@@ -1,5 +1,6 @@
 using TibberVictronController.Api.Configuration;
 using TibberVictronController.Api.Forecast;
+using TibberVictronController.Api.Savings;
 using TibberVictronController.Api.Settings;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Dal.Persistence;
@@ -19,6 +20,7 @@ app.MapGet("/health", () => Results.Ok(new
 
 app.MapSettingsEndpoints();
 app.MapForecastEndpoints();
+app.MapSavingsEndpoints();
 
 app.Run();
 

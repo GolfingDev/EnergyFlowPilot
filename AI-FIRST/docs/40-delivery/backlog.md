@@ -42,7 +42,8 @@
 38. Generate local Decision Audit artifacts for manual review.
 39. Add daily battery savings accounting for charge/discharge reporting.
 40. Persist daily battery savings summaries in SQLite.
-41. Add API and frontend views for daily, weekly, monthly, yearly and total battery savings.
+41. Add API for daily, weekly, monthly, yearly and total battery savings.
+42. Add frontend views for daily, weekly, monthly, yearly and total battery savings.
 
 ## Rule
 

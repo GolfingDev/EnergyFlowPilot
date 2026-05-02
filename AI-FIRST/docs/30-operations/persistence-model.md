@@ -97,6 +97,8 @@ The accounting date represents the Europe/Berlin reporting day. The source times
 
 Week, month, year and total reports are calculated by summing daily rows. Weighted average prices are derived from summed energy and cost values.
 
+The first reporting API exposes these views through `GET /api/savings` with `period=day|week|month|year|total`. For bounded periods, the caller must provide `referenceDate=yyyy-MM-dd`.
+
 ## Time Storage
 
 Domain code uses `DateTimeOffset` with UTC timestamps.
