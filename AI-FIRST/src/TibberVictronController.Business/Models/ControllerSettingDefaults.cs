@@ -23,6 +23,7 @@ public static class ControllerSettingDefaults
     public const string GridFeedInCompensationPricePerKwhKey = "gridFeedIn.compensationPricePerKwh";
     public const string PvForecastProviderKey = "pvForecast.provider";
     public const string PvForecastApiEndpointKey = "pvForecast.apiEndpoint";
+    public const string PvForecastApiKeyKey = "pvForecast.apiKey";
     public const string PvForecastLatitudeKey = "pvForecast.latitude";
     public const string PvForecastLongitudeKey = "pvForecast.longitude";
     public const string PvForecastPeakPowerKwpKey = "pvForecast.peakPowerKwp";
@@ -68,6 +69,7 @@ public static class ControllerSettingDefaults
         new(GridFeedInCompensationPricePerKwhKey, "0.08", ControllerSettingSensitivity.Normal),
         new(PvForecastProviderKey, "forecastSolarPublic", ControllerSettingSensitivity.Normal),
         new(PvForecastApiEndpointKey, "https://api.forecast.solar/estimate", ControllerSettingSensitivity.Normal),
+        new(PvForecastApiKeyKey, null, ControllerSettingSensitivity.Sensitive),
         new(PvForecastLatitudeKey, "52.52", ControllerSettingSensitivity.Normal),
         new(PvForecastLongitudeKey, "13.405", ControllerSettingSensitivity.Normal),
         new(PvForecastPeakPowerKwpKey, "10", ControllerSettingSensitivity.Normal),

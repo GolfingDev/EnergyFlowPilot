@@ -50,6 +50,9 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
             ControllerSettingDefaults.PvForecastApiEndpointKey,
             "Der Forecast.Solar API-Endpunkt ist nicht konfiguriert.",
             cancellationToken);
+        var apiKey = await GetOptionalSettingValueAsync(
+            ControllerSettingDefaults.PvForecastApiKeyKey,
+            cancellationToken);
         var latitude = await GetRequiredDecimalSettingAsync(
             ControllerSettingDefaults.PvForecastLatitudeKey,
             "Die PV-Standort-Breitengrad-Einstellung ist nicht konfiguriert.",
@@ -85,14 +88,17 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
             throw new InvalidOperationException("Die PV-Anlagenleistung muss groesser als 0 kWp sein.");
         }
 
-        return new ForecastSolarConfiguration(
-            endpoint,
-            latitude,
-            longitude,
-            declinationDegrees,
-            azimuthDegrees,
-            peakPowerKwp,
-            ResolveTimeZone(timeZoneId));
+        return new ForecastSolarConfiguration
+        {
+            ApiEndpoint = endpoint,
+            ApiKey = apiKey,
+            Latitude = latitude,
+            Longitude = longitude,
+            DeclinationDegrees = declinationDegrees,
+            AzimuthDegrees = azimuthDegrees,
+            PeakPowerKwp = peakPowerKwp,
+            TimeZone = ResolveTimeZone(timeZoneId)
+        };
     }
 
     private async Task<string> GetRequiredSettingValueAsync(
@@ -108,6 +114,17 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
         }
 
         return setting.Value!;
+    }
+
+    private async Task<string?> GetOptionalSettingValueAsync(
+        string settingKey,
+        CancellationToken cancellationToken)
+    {
+        var setting = await controllerSettingStore.GetSettingAsync(settingKey, cancellationToken);
+
+        return setting is null || !setting.IsConfigured
+            ? null
+            : setting.Value;
     }
 
     private async Task<decimal> GetRequiredDecimalSettingAsync(
@@ -128,7 +145,11 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
 
     private static Uri BuildRequestUri(ForecastSolarConfiguration configuration)
     {
-        if (!Uri.TryCreate(configuration.ApiEndpoint.TrimEnd('/') + "/", UriKind.Absolute, out var endpointUri))
+        var endpoint = AddApiKeyToEndpointIfConfigured(
+            configuration.ApiEndpoint.TrimEnd('/'),
+            configuration.ApiKey);
+
+        if (!Uri.TryCreate(endpoint + "/", UriKind.Absolute, out var endpointUri))
         {
             throw new InvalidOperationException("Der Forecast.Solar API-Endpunkt ist keine gueltige absolute URL.");
         }
@@ -138,10 +159,61 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
             FormatDecimal(configuration.Latitude),
             FormatDecimal(configuration.Longitude),
             FormatDecimal(configuration.DeclinationDegrees),
-            FormatDecimal(configuration.AzimuthDegrees),
+            FormatDecimal(NormalizeAzimuthForForecastSolar(configuration.AzimuthDegrees)),
             FormatDecimal(configuration.PeakPowerKwp));
 
         return new Uri(endpointUri, path);
+    }
+
+    private static decimal NormalizeAzimuthForForecastSolar(decimal azimuthDegrees)
+    {
+        var normalizedAzimuth = azimuthDegrees % 360m;
+
+        if (normalizedAzimuth > 180m)
+        {
+            return normalizedAzimuth - 360m;
+        }
+
+        if (normalizedAzimuth < -180m)
+        {
+            return normalizedAzimuth + 360m;
+        }
+
+        return normalizedAzimuth;
+    }
+
+    private static string AddApiKeyToEndpointIfConfigured(string endpoint, string? apiKey)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return endpoint;
+        }
+
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri))
+        {
+            return endpoint;
+        }
+
+        var pathSegments = endpointUri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        if (pathSegments.Length > 0 && string.Equals(pathSegments[0], apiKey, StringComparison.Ordinal))
+        {
+            return endpoint;
+        }
+
+        var estimateIndex = Array.FindIndex(pathSegments, segment =>
+            string.Equals(segment, "estimate", StringComparison.OrdinalIgnoreCase));
+        var escapedApiKey = Uri.EscapeDataString(apiKey);
+        var nextPathSegments = estimateIndex >= 0
+            ? pathSegments.Take(estimateIndex).Append(escapedApiKey).Concat(pathSegments.Skip(estimateIndex))
+            : pathSegments.Prepend(escapedApiKey);
+        var nextPath = "/" + string.Join("/", nextPathSegments);
+        var uriBuilder = new UriBuilder(endpointUri)
+        {
+            Path = nextPath
+        };
+
+        return uriBuilder.Uri.ToString().TrimEnd('/');
     }
 
     private async Task<ForecastSolarResponse> ExecuteRequestAsync(Uri requestUri, CancellationToken cancellationToken)
@@ -299,14 +371,24 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
         }
     }
 
-    private sealed record ForecastSolarConfiguration(
-        string ApiEndpoint,
-        decimal Latitude,
-        decimal Longitude,
-        decimal DeclinationDegrees,
-        decimal AzimuthDegrees,
-        decimal PeakPowerKwp,
-        TimeZoneInfo TimeZone);
+    private sealed class ForecastSolarConfiguration
+    {
+        public string ApiEndpoint { get; init; } = string.Empty;
+
+        public string? ApiKey { get; init; }
+
+        public decimal Latitude { get; init; }
+
+        public decimal Longitude { get; init; }
+
+        public decimal DeclinationDegrees { get; init; }
+
+        public decimal AzimuthDegrees { get; init; }
+
+        public decimal PeakPowerKwp { get; init; }
+
+        public TimeZoneInfo TimeZone { get; init; } = TimeZoneInfo.Utc;
+    }
 
     private sealed record ForecastSolarEnergyPoint(DateTimeOffset TimestampUtc, decimal CumulativeWattHours);
 

@@ -1,4 +1,5 @@
 using TibberVictronController.Business.Models;
+using TibberVictronController.Dal.Victron;
 
 namespace TibberVictronController.Api.Settings;
 
@@ -35,13 +36,16 @@ public static class SettingsDtoMapper
     /// <summary>
     /// Maps a controller status snapshot to the API response shape.
     /// </summary>
-    public static ControllerStatusResponseDto MapStatus(ControllerStatusSnapshot status)
+    public static ControllerStatusResponseDto MapStatus(ControllerStatusSnapshot status, VictronMqttRuntimeStatus victronMqttRuntimeStatus)
     {
         return new ControllerStatusResponseDto(
             status.Status,
             status.KnownSettingsCount,
             status.PersistedSettingsCount,
             status.ConfiguredSensitiveSettingsCount,
-            status.GeneratedAtUtc);
+            status.GeneratedAtUtc,
+            victronMqttRuntimeStatus.ConnectionState,
+            victronMqttRuntimeStatus.LastErrorMessage,
+            victronMqttRuntimeStatus.LastSuccessfulMessageAtUtc);
     }
 }

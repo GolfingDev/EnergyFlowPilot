@@ -28,6 +28,34 @@ public sealed class ForecastSolarPvForecastProviderTests
     }
 
     [Fact]
+    public async Task GetPvYieldForecastAsyncUsesForecastSolarApiKeyWhenConfigured()
+    {
+        var httpHandler = new RecordingHttpMessageHandler(CreateSuccessfulResponse());
+        var httpClient = new HttpClient(httpHandler);
+        var settingsStore = CreateSettingsStore(apiKey: "paid-api-key");
+        var provider = new ForecastSolarPvForecastProvider(httpClient, settingsStore);
+        var startsAtUtc = new DateTimeOffset(2026, 5, 1, 8, 0, 0, TimeSpan.Zero);
+
+        await provider.GetPvYieldForecastAsync(startsAtUtc, startsAtUtc.AddMinutes(15));
+
+        Assert.Equal("/paid-api-key/estimate/52.52/13.405/35/0/10", httpHandler.LastRequest?.RequestUri?.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task GetPvYieldForecastAsyncNormalizesAzimuthToForecastSolarRange()
+    {
+        var httpHandler = new RecordingHttpMessageHandler(CreateSuccessfulResponse());
+        var httpClient = new HttpClient(httpHandler);
+        var settingsStore = CreateSettingsStore(azimuthDegrees: "225");
+        var provider = new ForecastSolarPvForecastProvider(httpClient, settingsStore);
+        var startsAtUtc = new DateTimeOffset(2026, 5, 1, 8, 0, 0, TimeSpan.Zero);
+
+        await provider.GetPvYieldForecastAsync(startsAtUtc, startsAtUtc.AddMinutes(15));
+
+        Assert.Equal("/estimate/52.52/13.405/35/-135/10", httpHandler.LastRequest?.RequestUri?.AbsolutePath);
+    }
+
+    [Fact]
     public async Task GetPvYieldForecastAsyncRejectsMissingRequiredSetting()
     {
         var httpHandler = new RecordingHttpMessageHandler(CreateSuccessfulResponse());
@@ -99,19 +127,32 @@ public sealed class ForecastSolarPvForecastProviderTests
         Assert.Contains("Der Start des PV-Forecast-Zeitraums muss in UTC angegeben sein.", exception.Message);
     }
 
-    private static FakeControllerSettingStore CreateSettingsStore(string latitude = "52.52")
+    private static FakeControllerSettingStore CreateSettingsStore(
+        string latitude = "52.52",
+        string azimuthDegrees = "0",
+        string? apiKey = null)
     {
         var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc).ToList();
 
         ReplaceSetting(settings, ControllerSettingDefaults.PvForecastLatitudeKey, latitude);
+        ReplaceSetting(settings, ControllerSettingDefaults.PvForecastAzimuthDegreesKey, azimuthDegrees);
+
+        if (!string.IsNullOrWhiteSpace(apiKey))
+        {
+            ReplaceSetting(settings, ControllerSettingDefaults.PvForecastApiKeyKey, apiKey, ControllerSettingSensitivity.Sensitive);
+        }
 
         return new FakeControllerSettingStore(settings);
     }
 
-    private static void ReplaceSetting(List<ControllerSetting> settings, string key, string? value)
+    private static void ReplaceSetting(
+        List<ControllerSetting> settings,
+        string key,
+        string? value,
+        ControllerSettingSensitivity sensitivity = ControllerSettingSensitivity.Normal)
     {
         settings.RemoveAll(setting => setting.Key == key);
-        settings.Add(new ControllerSetting(key, value, ControllerSettingSensitivity.Normal, UpdatedAtUtc));
+        settings.Add(new ControllerSetting(key, value, sensitivity, UpdatedAtUtc));
     }
 
     private static string CreateSuccessfulResponse()

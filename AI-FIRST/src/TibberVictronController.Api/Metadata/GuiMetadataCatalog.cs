@@ -37,6 +37,7 @@ public static class GuiMetadataCatalog
             ControllerSettingDefaults.TibberHomeSelectionKey => CreateSetting(definition, "Tibber Home Selection", "Waehlt den zu nutzenden Tibber-Hausdatensatz.", "Tibber", "text", null),
             ControllerSettingDefaults.PvForecastProviderKey => CreateSetting(definition, "PV-Forecast Provider", "Technischer Provider fuer die PV-Ertragsprognose.", "Forecast", "text", null),
             ControllerSettingDefaults.PvForecastApiEndpointKey => CreateSetting(definition, "PV-Forecast Endpoint", "API-Endpunkt des PV-Prognose-Providers.", "Forecast", "text", null),
+            ControllerSettingDefaults.PvForecastApiKeyKey => CreateSetting(definition, "Forecast.Solar API Key", "Optionaler API-Key fuer bezahlte Forecast.Solar Plaene mit laengerem Horizont und hoeherer Aufloesung.", "Forecast", "password", null),
             ControllerSettingDefaults.PvForecastLatitudeKey => CreateSetting(definition, "Breitengrad", "Standort der PV-Anlage.", "Forecast", "number", "deg"),
             ControllerSettingDefaults.PvForecastLongitudeKey => CreateSetting(definition, "Laengengrad", "Standort der PV-Anlage.", "Forecast", "number", "deg"),
             ControllerSettingDefaults.PvForecastPeakPowerKwpKey => CreateSetting(definition, "PV-Peakleistung", "Installierte Modulleistung der PV-Anlage.", "Forecast", "number", "kWp"),

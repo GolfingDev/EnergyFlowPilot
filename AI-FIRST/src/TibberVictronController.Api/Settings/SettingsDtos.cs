@@ -16,6 +16,9 @@ public sealed record ControllerStatusResponseDto(
     int KnownSettingsCount,
     int PersistedSettingsCount,
     int ConfiguredSensitiveSettingsCount,
-    DateTimeOffset GeneratedAtUtc);
+    DateTimeOffset GeneratedAtUtc,
+    string? VictronMqttStatus,
+    string? VictronMqttLastError,
+    DateTimeOffset? VictronMqttLastSuccessfulMessageAtUtc);
 
 public sealed record SettingsErrorDto(string Message);

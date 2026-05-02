@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using TibberVictronController.Api.Settings;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
+using TibberVictronController.Dal.Victron;
 
 namespace TibberVictronController.Api.Tests;
 
@@ -66,8 +67,9 @@ public sealed class SettingsEndpointTests
     public async Task GetStatusAsyncReturnsControllerStatus()
     {
         var service = new FakeControllerSettingsService(Array.Empty<ControllerSetting>());
+        var victronMqttRuntimeStatus = new VictronMqttRuntimeStatus();
 
-        var result = await SettingsEndpoints.GetStatusAsync(service, CancellationToken.None);
+        var result = await SettingsEndpoints.GetStatusAsync(service, victronMqttRuntimeStatus, CancellationToken.None);
 
         var okResult = Assert.IsType<Ok<ControllerStatusResponseDto>>(result);
         Assert.Equal("Healthy", okResult.Value!.Status);
@@ -116,7 +118,7 @@ public sealed class SettingsEndpointTests
                 KnownSettingsCount: ControllerSettingDefaults.GetDefinitions().Count,
                 PersistedSettingsCount: ControllerSettingDefaults.GetDefinitions().Count,
                 ConfiguredSensitiveSettingsCount: 1,
-                UpdatedAtUtc));
+                GeneratedAtUtc: UpdatedAtUtc));
         }
     }
 }

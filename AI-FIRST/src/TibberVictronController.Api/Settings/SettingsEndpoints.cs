@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using TibberVictronController.Business.Abstractions;
+using TibberVictronController.Dal.Victron;
 
 namespace TibberVictronController.Api.Settings;
 
@@ -83,10 +84,12 @@ public static class SettingsEndpoints
     public static async Task<IResult> GetStatusAsync(
         [FromServices]
         IControllerSettingsService settingsService,
+        [FromServices]
+        VictronMqttRuntimeStatus victronMqttRuntimeStatus,
         CancellationToken cancellationToken)
     {
         var status = await settingsService.GetStatusAsync(cancellationToken);
 
-        return TypedResults.Ok(SettingsDtoMapper.MapStatus(status));
+        return TypedResults.Ok(SettingsDtoMapper.MapStatus(status, victronMqttRuntimeStatus));
     }
 }

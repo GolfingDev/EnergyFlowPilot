@@ -62,6 +62,7 @@ public sealed class ControllerSettingDefaultsTests
 
         Assert.Equal("forecastSolarPublic", GetSettingValue(settings, ControllerSettingDefaults.PvForecastProviderKey));
         Assert.Equal("https://api.forecast.solar/estimate", GetSettingValue(settings, ControllerSettingDefaults.PvForecastApiEndpointKey));
+        Assert.Null(GetSettingValue(settings, ControllerSettingDefaults.PvForecastApiKeyKey));
         Assert.Equal("52.52", GetSettingValue(settings, ControllerSettingDefaults.PvForecastLatitudeKey));
         Assert.Equal("13.405", GetSettingValue(settings, ControllerSettingDefaults.PvForecastLongitudeKey));
         Assert.Equal("10", GetSettingValue(settings, ControllerSettingDefaults.PvForecastPeakPowerKwpKey));
