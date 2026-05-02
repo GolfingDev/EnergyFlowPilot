@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTheme } from 'vuetify';
-
+import GeneralOverlay from './components/GeneralOverlay.vue'
 interface NavigationItem {
   title: string;
   subtitle: string;
@@ -13,6 +13,7 @@ const router = useRouter();
 const route = useRoute();
 const theme = useTheme();
 const storedTheme = localStorage.getItem('energyFlowPilotTheme');
+const isLoading = ref(false);
 
 if (storedTheme === 'controllerDark' || storedTheme === 'controllerLight') {
   theme.change(storedTheme);
@@ -50,14 +51,14 @@ function toggleTheme(): void {
   <v-app class="app-shell">
     <v-app-bar class="top-bar" elevation="0">
       <div class="top-bar__brand">
-        <img class="top-bar__logo" src="/Main.png" alt="EnergyFlowPilot" />
+        <img v-on:click="isLoading = true" class="top-bar__logo" src="/Logo.png" alt="EnergyFlowPilot" />
         <div class="top-bar__copy">
           <span class="top-bar__eyebrow">EnergyFlowPilot</span>
           <strong>Smart energy flow control for your home.</strong>
         </div>
       </div>
 
-      <nav class="top-nav" aria-label="Hauptnavigation">
+      <nav style="margin-left: 10 0px;" class="top-nav" aria-label="Hauptnavigation">
         <button v-for="item in navigationItems" :key="item.routeName" class="top-nav__item"
           :class="{ 'top-nav__item--active': activeRouteName === item.routeName }" @click="navigateTo(item.routeName)">
           <span>{{ item.title }}</span>
@@ -74,6 +75,7 @@ function toggleTheme(): void {
     </v-app-bar>
 
     <v-main>
+      <GeneralOverlay v-model="isLoading" image-src="Main.png" width="90vw" max-width="90vw" max-height="90vh" />
       <router-view />
     </v-main>
   </v-app>

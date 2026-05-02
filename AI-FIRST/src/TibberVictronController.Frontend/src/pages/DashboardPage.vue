@@ -5,6 +5,7 @@ import DashboardHeader from '../components/dashboard/DashboardHeader.vue';
 import DashboardMetricGrid from '../components/dashboard/DashboardMetricGrid.vue';
 import DecisionDetailsPanel from '../components/dashboard/DecisionDetailsPanel.vue';
 import EnergySavingsPanel from '../components/dashboard/EnergySavingsPanel.vue';
+import EnergyLoadingOverlay from '../components/EnergyLoadingOverlay.vue'
 import ForecastChartPanel from '../components/dashboard/ForecastChartPanel.vue';
 import type {
   ApiErrorDto,
@@ -18,6 +19,7 @@ import type {
   SavingsPeriodOption
 } from '../components/dashboard/dashboardTypes';
 
+const refreshInSeconds = ref(0);
 const status = ref<ControllerStatusResponseDto | null>(null);
 const decision = ref<CurrentBatteryDecisionResponseDto | null>(null);
 const forecast = ref<BatteryForecastResponseDto | null>(null);
@@ -37,8 +39,8 @@ const savingsPeriodOptions: readonly SavingsPeriodOption[] = [
 
 const forecastLoadError = computed(() => loadErrors.value.find((error) => error.source === 'Forecast') ?? null);
 const savingsCurrency = computed(() => savings.value?.currency || decision.value?.tibberPriceCurrency || 'EUR');
-const autoRefreshLabel = computed(() => autoRefreshIntervalSeconds.value > 0
-  ? `Auto-Refresh: ${autoRefreshIntervalSeconds.value} s`
+const autoRefreshLabel = computed(() => refreshInSeconds.value > 0
+  ? `Auto-Refresh: ${refreshInSeconds.value} s`
   : 'Auto-Refresh: aus');
 const currentConsumptionWatts = computed(() => {
   if (!decision.value) {
@@ -114,9 +116,16 @@ function configureAutoRefresh(): void {
     return;
   }
 
+  refreshInSeconds.value = autoRefreshIntervalSeconds.value;
+
   autoRefreshTimer = window.setInterval(() => {
+
+    refreshInSeconds.value = refreshInSeconds.value - 1;
+    if (refreshInSeconds.value <= 0){
     void loadDashboard();
-  }, autoRefreshIntervalSeconds.value * 1000);
+    refreshInSeconds.value = autoRefreshIntervalSeconds.value;
+  }
+}, 1000);
 }
 
 function clearAutoRefresh(): void {
@@ -211,30 +220,24 @@ onBeforeUnmount(() => {
 
 <template>
   <v-container class="dashboard-page" fluid>
-    <DashboardHeader
-      :status="status"
-      :is-loading="isLoading"
-      :auto-refresh-label="autoRefreshLabel"
-      @refresh="loadDashboard"
-    />
 
-    <div v-if="isLoading" class="loading-panel">
+    <EnergyLoadingOverlay v-model="isLoading" title="Loading forecast"
+      subtitle="Calculating price, PV and battery plan…" :size="200" />
+
+
+    <DashboardHeader :status="status" :is-loading="isLoading" :auto-refresh-label="autoRefreshLabel"
+      @refresh="loadDashboard" />
+
+    <!-- <div v-if="isLoading" class="loading-panel">
       <v-progress-circular indeterminate color="primary" size="24" />
       <span>Dashboard-Daten werden geladen...</span>
-    </div>
+    </div> -->
 
     <DashboardErrorPanels :errors="loadErrors" />
 
-    <DashboardMetricGrid
-      :decision="decision"
-      :forecast="forecast"
-      :savings="savings"
-      :savings-currency="savingsCurrency"
-      :savings-period="savingsPeriod"
-      :savings-period-options="savingsPeriodOptions"
-      :current-consumption-watts="currentConsumptionWatts"
-      @change-savings-period="changeSavingsPeriod"
-    />
+    <DashboardMetricGrid :decision="decision" :forecast="forecast" :savings="savings"
+      :savings-currency="savingsCurrency" :savings-period="savingsPeriod" :savings-period-options="savingsPeriodOptions"
+      :current-consumption-watts="currentConsumptionWatts" @change-savings-period="changeSavingsPeriod" />
 
     <ForecastChartPanel :forecast="forecast" :forecast-load-error="forecastLoadError" />
 

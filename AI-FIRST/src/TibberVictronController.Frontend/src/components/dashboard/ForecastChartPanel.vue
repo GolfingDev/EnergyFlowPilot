@@ -163,22 +163,22 @@ async function renderForecastChart(): Promise<void> {
             maxRotation: 45,
             minRotation: 45,
             maxTicksLimit: 12,
-        callback: function(value) {
-          const label = this.getLabelForValue(value);
+            callback: function (value) {
+              const label = this.getLabelForValue(value);
 
-          // Falls label ein ISO-Datum ist:
-          const date = new Date(label);
-          if (!isNaN(date)) {
-            return date.toLocaleTimeString('de-DE', {
-              hour: '2-digit',
-              minute: '2-digit'
-            });
-          }
+              // Falls label ein ISO-Datum ist:
+              const date = new Date(label);
+              if (!isNaN(date)) {
+                return date.toLocaleTimeString('de-DE', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+              }
 
-          // Falls label schon Text ist, ggf. "2026-05-01T12:15:00" kürzen
-          return String(label).substring(11, 16);
-        }
-            
+              // Falls label schon Text ist, ggf. "2026-05-01T12:15:00" kürzen
+              return String(label).substring(11, 16);
+            }
+
           }
         },
         price: {
