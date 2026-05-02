@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import Chart from 'chart.js/auto';
+import type { ChartConfiguration, ChartTypeRegistry, TooltipItem } from 'chart.js';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 interface ControllerStatusResponseDto {
   status: string;
@@ -79,6 +81,18 @@ interface BatterySavingsResponseDto {
   aggregate: BatterySavingsMetricsDto;
 }
 
+interface ControllerSettingResponseDto {
+  key: string;
+  value: string | null;
+  isSensitive: boolean;
+  isConfigured: boolean;
+  updatedAtUtc: string;
+}
+
+interface ControllerSettingsResponseDto {
+  settings: ControllerSettingResponseDto[];
+}
+
 interface DashboardLoadError {
   source: string;
   message: string;
@@ -102,39 +116,21 @@ const forecast = ref<BatteryForecastResponseDto | null>(null);
 const savings = ref<BatterySavingsResponseDto | null>(null);
 const loadErrors = ref<DashboardLoadError[]>([]);
 const isLoading = ref(false);
-const hoveredForecastEntry = ref<BatteryForecastEntryDto | null>(null);
+const forecastChartCanvas = ref<HTMLCanvasElement | null>(null);
+const autoRefreshIntervalSeconds = ref(60);
+let forecastChart: Chart | null = null;
+let autoRefreshTimer: ReturnType<typeof window.setInterval> | null = null;
 
 const nextForecastEntries = computed(() => forecast.value?.entries.slice(0, 8) ?? []);
 const forecastChartEntries = computed(() => forecast.value?.entries ?? []);
 const forecastLoadError = computed(() => loadErrors.value.find((error) => error.source === 'Forecast') ?? null);
-const chartWidth = 960;
-const chartHeight = 300;
-const chartPlotTop = 24;
-const chartPlotHeight = 220;
-const chartLeftPadding = 58;
-const chartRightPadding = 16;
-const chartPlotWidth = chartWidth - chartLeftPadding - chartRightPadding;
-
-const chartPriceRange = computed(() => {
-  const prices = forecastChartEntries.value.map((entry) => entry.tibberPricePerKwh);
-  const minimumPrice = Math.min(0, ...prices);
-  const maximumPrice = Math.max(0, ...prices);
-  const padding = Math.max(0.01, (maximumPrice - minimumPrice) * 0.1);
-
-  return {
-    minimum: minimumPrice - padding,
-    maximum: maximumPrice + padding
-  };
-});
-
-const chartMaximumInputKwh = computed(() => {
-  const inputValues = forecastChartEntries.value.flatMap((entry) => [
-    entry.expectedPvYieldKwh,
-    entry.expectedConsumptionKwh
-  ]);
-
-  return Math.max(0.01, ...inputValues);
-});
+const savingsPeriod = ref<'day' | 'week' | 'month' | 'year'>('day');
+const savingsPeriodOptions = [
+  { label: 'Tag', value: 'day' },
+  { label: 'Woche', value: 'week' },
+  { label: 'Monat', value: 'month' },
+  { label: 'Jahr', value: 'year' }
+] as const;
 
 const decisionLabel = computed(() => {
   if (!decision.value) {
@@ -149,6 +145,21 @@ const decisionLabel = computed(() => {
 });
 
 const savingsCurrency = computed(() => savings.value?.currency || decision.value?.tibberPriceCurrency || 'EUR');
+const currentConsumptionWatts = computed(() => {
+  if (!decision.value) {
+    return null;
+  }
+
+  return Math.max(0, decision.value.currentGridImportWatts) + Math.max(0, decision.value.currentPvProductionWatts);
+});
+const savingsMetricTitle = computed(() => {
+  const label = savingsPeriodOptions.find((option) => option.value === savingsPeriod.value)?.label ?? 'Tag';
+
+  return `Ersparnis ${label}`;
+});
+const autoRefreshLabel = computed(() => autoRefreshIntervalSeconds.value > 0
+  ? `Auto-Refresh: ${autoRefreshIntervalSeconds.value} s`
+  : 'Auto-Refresh: aus');
 
 const healthItems = computed(() => [
   {
@@ -171,6 +182,10 @@ const healthItems = computed(() => [
 ]);
 
 async function loadDashboard(): Promise<void> {
+  if (isLoading.value) {
+    return;
+  }
+
   isLoading.value = true;
   loadErrors.value = [];
 
@@ -178,6 +193,7 @@ async function loadDashboard(): Promise<void> {
   const savingsUrl = createSavingsUrl();
 
   const results = await Promise.allSettled([
+    fetchJson<ControllerSettingsResponseDto>('/api/settings'),
     fetchJson<ControllerStatusResponseDto>('/api/status'),
     fetchJson<CurrentBatteryDecisionResponseDto>('/api/decision/current'),
     fetchJson<BatteryForecastResponseDto>(forecastUrl),
@@ -185,18 +201,22 @@ async function loadDashboard(): Promise<void> {
   ]);
 
   applyResult(results[0], 'Status', (value) => {
+    applyDashboardSettings(value);
+  });
+
+  applyResult(results[1], 'Status', (value) => {
     status.value = value;
   });
 
-  applyResult(results[1], 'Aktuelle Entscheidung', (value) => {
+  applyResult(results[2], 'Aktuelle Entscheidung', (value) => {
     decision.value = value;
   });
 
-  applyResult(results[2], 'Forecast', (value) => {
+  applyResult(results[3], 'Forecast', (value) => {
     forecast.value = value;
   });
 
-  applyResult(results[3], 'Ersparnis', (value) => {
+  applyResult(results[4], 'Ersparnis', (value) => {
     savings.value = value;
   });
 
@@ -216,6 +236,36 @@ function applyResult<TValue>(
     source,
     ...createLoadError(result.reason)
   });
+}
+
+function applyDashboardSettings(settingsResponse: ControllerSettingsResponseDto): void {
+  const refreshSetting = settingsResponse.settings.find(setting =>
+    setting.key === 'dashboard.autoRefreshIntervalSeconds');
+  const parsedIntervalSeconds = Number(refreshSetting?.value ?? '60');
+
+  autoRefreshIntervalSeconds.value = Number.isFinite(parsedIntervalSeconds)
+    ? Math.max(0, Math.round(parsedIntervalSeconds))
+    : 60;
+  configureAutoRefresh();
+}
+
+function configureAutoRefresh(): void {
+  clearAutoRefresh();
+
+  if (autoRefreshIntervalSeconds.value <= 0) {
+    return;
+  }
+
+  autoRefreshTimer = window.setInterval(() => {
+    void loadDashboard();
+  }, autoRefreshIntervalSeconds.value * 1000);
+}
+
+function clearAutoRefresh(): void {
+  if (autoRefreshTimer !== null) {
+    window.clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
 }
 
 async function fetchJson<TResponse>(url: string): Promise<TResponse> {
@@ -271,12 +321,25 @@ function createForecastUrl(): string {
 
 function createSavingsUrl(): string {
   const parameters = new URLSearchParams({
-    period: 'day',
+    period: savingsPeriod.value,
     referenceDate: new Date().toISOString().slice(0, 10),
     currency: 'EUR'
   });
 
   return `/api/savings?${parameters.toString()}`;
+}
+
+async function changeSavingsPeriod(period: 'day' | 'week' | 'month' | 'year'): Promise<void> {
+  savingsPeriod.value = period;
+
+  try {
+    savings.value = await fetchJson<BatterySavingsResponseDto>(createSavingsUrl());
+  } catch (error) {
+    loadErrors.value.push({
+      source: 'Ersparnis',
+      ...createLoadError(error)
+    });
+  }
 }
 
 function translateDecisionState(value: string): string {
@@ -340,61 +403,6 @@ function getStatusColor(value: string | null | undefined): string {
   return 'warning';
 }
 
-function getBarWidth(): number {
-  return forecastChartEntries.value.length > 0
-    ? chartPlotWidth / forecastChartEntries.value.length
-    : chartPlotWidth;
-}
-
-function getBarX(index: number): number {
-  return chartLeftPadding + index * getBarWidth();
-}
-
-function getBarCenterX(index: number): number {
-  return getBarX(index) + getBarWidth() / 2;
-}
-
-function getPriceY(price: number): number {
-  const range = chartPriceRange.value;
-  const priceShare = (price - range.minimum) / (range.maximum - range.minimum);
-
-  return chartPlotTop + chartPlotHeight - priceShare * chartPlotHeight;
-}
-
-function getPriceBarY(price: number): number {
-  return Math.min(getPriceY(price), getPriceY(0));
-}
-
-function getPriceBarHeight(price: number): number {
-  return Math.max(1, Math.abs(getPriceY(price) - getPriceY(0)));
-}
-
-function getSocY(stateOfChargePercent: number): number {
-  return chartPlotTop + chartPlotHeight - (Math.max(0, Math.min(100, stateOfChargePercent)) / 100) * chartPlotHeight;
-}
-
-function getInputY(inputKwh: number): number {
-  return chartPlotTop + chartPlotHeight - (inputKwh / chartMaximumInputKwh.value) * chartPlotHeight;
-}
-
-function createSocPoints(): string {
-  return forecastChartEntries.value
-    .map((entry, index) => `${getBarCenterX(index)},${getSocY(entry.stateOfChargeAfterPercent)}`)
-    .join(' ');
-}
-
-function createPvPoints(): string {
-  return forecastChartEntries.value
-    .map((entry, index) => `${getBarCenterX(index)},${getInputY(entry.expectedPvYieldKwh)}`)
-    .join(' ');
-}
-
-function createConsumptionPoints(): string {
-  return forecastChartEntries.value
-    .map((entry, index) => `${getBarCenterX(index)},${getInputY(entry.expectedConsumptionKwh)}`)
-    .join(' ');
-}
-
 function getForecastBarColor(entry: BatteryForecastEntryDto): string {
   if (entry.decisionState === 'Charge' && entry.chargeSource === 'Pv') {
     return '#2f7d4f';
@@ -411,34 +419,206 @@ function getForecastBarColor(entry: BatteryForecastEntryDto): string {
   return '#94a3b8';
 }
 
-function createForecastTooltip(entry: BatteryForecastEntryDto): string {
-  const reasons = entry.reasons.length > 0
-    ? entry.reasons.map((reason) => `${reason.ruleName}: ${reason.message}`).join('\n')
-    : 'Keine Begründung vorhanden';
+async function renderForecastChart(): Promise<void> {
+  await nextTick();
 
-  return [
-    `${formatDateTime(entry.startsAtUtc)} - ${formatDateTime(entry.endsAtUtc)}`,
-    `Preis: ${formatPrice(entry.tibberPricePerKwh, entry.tibberPriceCurrency)}`,
-    `Entscheidung: ${translateDecisionState(entry.decisionState)}${entry.chargeSource ? ` (${entry.chargeSource})` : ''}`,
-    `Zielleistung: ${formatPower(entry.targetPowerWatts)}`,
-    `Erwartete PV: ${formatNumber(entry.expectedPvYieldKwh, 3)} kWh`,
-    `Erwarteter Verbrauch: ${formatNumber(entry.expectedConsumptionKwh, 3)} kWh`,
-    `SoC vorher: ${formatPercent(entry.stateOfChargeBeforePercent)}`,
-    `SoC nachher: ${formatPercent(entry.stateOfChargeAfterPercent)}`,
-    `Begründung:\n${reasons}`
-  ].join('\n');
+  if (forecastChartEntries.value.length === 0 || forecastChartCanvas.value === null) {
+    destroyForecastChart();
+    return;
+  }
+
+  destroyForecastChart();
+
+  const entries = forecastChartEntries.value;
+  const configuration: ChartConfiguration = {
+    type: 'bar',
+    data: {
+      labels: entries.map((entry) => formatDateTime(entry.startsAtUtc)),
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Tibber Preis',
+          data: entries.map((entry) => entry.tibberPricePerKwh),
+          yAxisID: 'price',
+          backgroundColor: entries.map((entry) => getForecastBarColor(entry)),
+          borderColor: entries.map((entry) => getForecastBarColor(entry)),
+          borderRadius: 4,
+          borderWidth: 1,
+          order: 4
+        },
+        {
+          type: 'line',
+          label: 'SoC',
+          data: entries.map((entry) => entry.stateOfChargeAfterPercent),
+          yAxisID: 'soc',
+          borderColor: '#102033',
+          backgroundColor: '#102033',
+          borderWidth: 3,
+          pointBackgroundColor: '#ffffff',
+          pointBorderColor: '#102033',
+          pointBorderWidth: 2,
+          pointRadius: 2.5,
+          tension: 0.32,
+          order: 1
+        },
+        {
+          type: 'line',
+          label: 'PV',
+          data: entries.map((entry) => entry.expectedPvYieldKwh),
+          yAxisID: 'energy',
+          borderColor: '#16834a',
+          backgroundColor: '#16834a',
+          borderDash: [8, 5],
+          borderWidth: 2.5,
+          pointRadius: 2,
+          tension: 0.32,
+          order: 2
+        },
+        {
+          type: 'line',
+          label: 'Verbrauch',
+          data: entries.map((entry) => entry.expectedConsumptionKwh),
+          yAxisID: 'energy',
+          borderColor: '#9a5b13',
+          backgroundColor: '#9a5b13',
+          borderDash: [2, 6],
+          borderWidth: 2.5,
+          pointRadius: 2,
+          pointStyle: 'rectRounded',
+          tension: 0.32,
+          order: 3
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        intersect: false,
+        mode: 'index'
+      },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: {
+            boxHeight: 8,
+            boxWidth: 18,
+            color: '#475569',
+            usePointStyle: true
+          }
+        },
+        tooltip: {
+          callbacks: {
+            title: (items: TooltipItem<keyof ChartTypeRegistry>[]) => {
+              const entry = entries[items[0]?.dataIndex ?? 0];
+              return `${formatDateTime(entry.startsAtUtc)} - ${formatDateTime(entry.endsAtUtc)}`;
+            },
+            label: (item: TooltipItem<keyof ChartTypeRegistry>) => formatForecastChartTooltipLine(item, entries),
+            afterBody: (items: TooltipItem<keyof ChartTypeRegistry>[]) => {
+              const entry = entries[items[0]?.dataIndex ?? 0];
+              const action = translateDecisionState(entry.decisionState);
+              const source = entry.chargeSource ? ` (${entry.chargeSource})` : '';
+              const reason = entry.reasons[0]?.message ?? 'Keine Begruendung vorhanden.';
+
+              return [
+                `Entscheidung: ${action}${source}`,
+                `Zielleistung: ${formatPower(entry.targetPowerWatts)}`,
+                `Grund: ${reason}`
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: {
+            display: false
+          },
+          ticks: {
+            autoSkip: true,
+            color: '#64748b',
+            maxRotation: 0,
+            maxTicksLimit: 12
+          }
+        },
+        price: {
+          position: 'left',
+          grid: {
+            color: '#e8eef4'
+          },
+          title: {
+            display: true,
+            text: 'Preis EUR/kWh',
+            color: '#64748b'
+          },
+          ticks: {
+            color: '#64748b'
+          }
+        },
+        soc: {
+          position: 'right',
+          min: 0,
+          max: 100,
+          grid: {
+            drawOnChartArea: false
+          },
+          title: {
+            display: true,
+            text: 'SoC %',
+            color: '#64748b'
+          },
+          ticks: {
+            color: '#64748b'
+          }
+        },
+        energy: {
+          display: false,
+          min: 0,
+          position: 'right'
+        }
+      }
+    }
+  };
+
+  forecastChart = new Chart(forecastChartCanvas.value, configuration);
 }
 
-function showForecastEntry(entry: BatteryForecastEntryDto): void {
-  hoveredForecastEntry.value = entry;
+function formatForecastChartTooltipLine(
+  item: TooltipItem<keyof ChartTypeRegistry>,
+  entries: BatteryForecastEntryDto[]): string {
+  const entry = entries[item.dataIndex];
+
+  switch (item.dataset.label) {
+    case 'Tibber Preis':
+      return `Preis: ${formatPrice(entry.tibberPricePerKwh, entry.tibberPriceCurrency)}`;
+    case 'SoC':
+      return `SoC: ${formatPercent(entry.stateOfChargeAfterPercent)}`;
+    case 'PV':
+      return `PV: ${formatNumber(entry.expectedPvYieldKwh, 3)} kWh`;
+    case 'Verbrauch':
+      return `Verbrauch: ${formatNumber(entry.expectedConsumptionKwh, 3)} kWh`;
+    default:
+      return `${item.dataset.label}: ${formatNumber(Number(item.raw), 2)}`;
+  }
 }
 
-function clearForecastEntry(): void {
-  hoveredForecastEntry.value = null;
+function destroyForecastChart(): void {
+  forecastChart?.destroy();
+  forecastChart = null;
 }
 
 onMounted(() => {
   void loadDashboard();
+});
+
+watch(forecastChartEntries, () => {
+  void renderForecastChart();
+}, { deep: true });
+
+onBeforeUnmount(() => {
+  clearAutoRefresh();
+  destroyForecastChart();
 });
 </script>
 
@@ -470,6 +650,7 @@ onMounted(() => {
         <v-btn variant="outlined" :loading="isLoading" @click="loadDashboard">
           Aktualisieren
         </v-btn>
+        <span class="dashboard-header__refresh">{{ autoRefreshLabel }}</span>
       </div>
     </header>
 
@@ -519,9 +700,23 @@ onMounted(() => {
       </article>
 
       <article class="metric-card">
-        <span>Ersparnis heute</span>
+        <div class="metric-card__header">
+          <span>{{ savingsMetricTitle }}</span>
+          <div class="metric-card__toggle" aria-label="Ersparnis-Zeitraum">
+            <button
+              v-for="period in savingsPeriodOptions"
+              :key="period.value"
+              :class="{ 'metric-card__toggle-button--active': savingsPeriod === period.value }"
+              type="button"
+              @click="changeSavingsPeriod(period.value)"
+            >
+              {{ period.label }}
+            </button>
+          </div>
+        </div>
         <strong>{{ savings ? formatCurrency(savings.aggregate.netSavings, savingsCurrency) : 'Nicht verfügbar' }}</strong>
-        <p>Netto-Ersparnis nach gespeicherten Tageswerten.</p>
+        <p>Netto-Ersparnis im gewählten Zeitraum.</p>
+        <p>Aktueller Verbrauch: <b>{{ formatPower(currentConsumptionWatts) }}</b></p>
       </article>
     </section>
 
@@ -533,179 +728,11 @@ onMounted(() => {
             </div>
           </div>
 
-          <div v-if="forecastChartEntries.length" class="forecast-chart" @mouseleave="clearForecastEntry">
-            <svg
-              :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
-              role="img"
-              aria-label="Forecast-Chart mit Tibber-Preisen, Batterieentscheidungen, PV, Verbrauch und erwartetem SoC"
-            >
-              <defs>
-                <linearGradient id="forecast-plot-background" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stop-color="#f8fafc" />
-                  <stop offset="100%" stop-color="#ffffff" />
-                </linearGradient>
-              </defs>
-
-              <rect
-                :x="chartLeftPadding"
-                :y="chartPlotTop"
-                :width="chartPlotWidth"
-                :height="chartPlotHeight"
-                rx="8"
-                class="chart-plot-background"
-              />
-
-              <line
-                v-for="tick in [0, 25, 50, 75, 100]"
-                :key="`soc-tick-${tick}`"
-                :x1="chartLeftPadding"
-                :x2="chartLeftPadding + chartPlotWidth"
-                :y1="getSocY(tick)"
-                :y2="getSocY(tick)"
-                class="chart-grid-line"
-              />
-              <text
-                v-for="tick in [0, 50, 100]"
-                :key="`soc-label-${tick}`"
-                x="8"
-                :y="getSocY(tick) + 4"
-                class="chart-axis-label"
-              >
-                {{ tick }} %
-              </text>
-
-              <line
-                :x1="chartLeftPadding"
-                :x2="chartLeftPadding + chartPlotWidth"
-                :y1="getPriceY(0)"
-                :y2="getPriceY(0)"
-                class="chart-zero-line"
-              />
-
-              <rect
-                v-for="(entry, index) in forecastChartEntries"
-                :key="`${entry.startsAtUtc}-price`"
-                :x="getBarX(index)"
-                :y="getPriceBarY(entry.tibberPricePerKwh)"
-                :width="Math.max(2, getBarWidth() - 2)"
-                :height="getPriceBarHeight(entry.tibberPricePerKwh)"
-                :fill="getForecastBarColor(entry)"
-                class="price-bar"
-                rx="2"
-              >
-                <title>{{ createForecastTooltip(entry) }}</title>
-              </rect>
-
-              <line :x1="chartLeftPadding" :x2="chartLeftPadding + chartPlotWidth" :y1="chartPlotTop" :y2="chartPlotTop" class="chart-section-line" />
-              <line :x1="chartLeftPadding" :x2="chartLeftPadding + chartPlotWidth" :y1="chartPlotTop + chartPlotHeight" :y2="chartPlotTop + chartPlotHeight" class="chart-section-line" />
-              <polyline :points="createSocPoints()" class="soc-line" />
-              <polyline :points="createPvPoints()" class="pv-line" />
-              <polyline :points="createConsumptionPoints()" class="consumption-line" />
-
-              <circle
-                v-for="(entry, index) in forecastChartEntries"
-                :key="`${entry.startsAtUtc}-soc`"
-                :cx="getBarCenterX(index)"
-                :cy="getSocY(entry.stateOfChargeAfterPercent)"
-                r="3"
-                class="soc-point"
-                @focus="showForecastEntry(entry)"
-                @mouseenter="showForecastEntry(entry)"
-              >
-                <title>{{ createForecastTooltip(entry) }}</title>
-              </circle>
-
-              <circle
-                v-for="(entry, index) in forecastChartEntries"
-                :key="`${entry.startsAtUtc}-pv`"
-                :cx="getBarCenterX(index)"
-                :cy="getInputY(entry.expectedPvYieldKwh)"
-                r="2.5"
-                class="pv-point"
-                @focus="showForecastEntry(entry)"
-                @mouseenter="showForecastEntry(entry)"
-              >
-                <title>{{ createForecastTooltip(entry) }}</title>
-              </circle>
-
-              <rect
-                v-for="(entry, index) in forecastChartEntries"
-                :key="`${entry.startsAtUtc}-consumption`"
-                :x="getBarCenterX(index) - 2.5"
-                :y="getInputY(entry.expectedConsumptionKwh) - 2.5"
-                width="5"
-                height="5"
-                rx="1"
-                class="consumption-point"
-                @focus="showForecastEntry(entry)"
-                @mouseenter="showForecastEntry(entry)"
-              >
-                <title>{{ createForecastTooltip(entry) }}</title>
-              </rect>
-
-              <rect
-                v-for="(entry, index) in forecastChartEntries"
-                :key="`${entry.startsAtUtc}-hover`"
-                :x="getBarX(index)"
-                :y="chartPlotTop"
-                :width="Math.max(2, getBarWidth() - 1)"
-                :height="chartPlotHeight"
-                class="chart-hover-zone"
-                tabindex="0"
-                @blur="clearForecastEntry"
-                @focus="showForecastEntry(entry)"
-                @mouseenter="showForecastEntry(entry)"
-              >
-                <title>{{ createForecastTooltip(entry) }}</title>
-              </rect>
-            </svg>
-
-            <div v-if="hoveredForecastEntry" class="chart-tooltip-card">
-              <strong>{{ formatDateTime(hoveredForecastEntry.startsAtUtc) }}</strong>
-              <div>
-                <span>Preis</span>
-                <b>{{ formatPrice(hoveredForecastEntry.tibberPricePerKwh, hoveredForecastEntry.tibberPriceCurrency) }}</b>
-              </div>
-              <div>
-                <span>Entscheidung</span>
-                <b>{{ translateDecisionState(hoveredForecastEntry.decisionState) }}</b>
-              </div>
-              <div>
-                <span>SoC</span>
-                <b>{{ formatPercent(hoveredForecastEntry.stateOfChargeAfterPercent) }}</b>
-              </div>
-              <div>
-                <span>PV</span>
-                <b>{{ formatNumber(hoveredForecastEntry.expectedPvYieldKwh, 3) }} kWh</b>
-              </div>
-              <div>
-                <span>Verbrauch</span>
-                <b>{{ formatNumber(hoveredForecastEntry.expectedConsumptionKwh, 3) }} kWh</b>
-              </div>
-            </div>
-
-            <div class="chart-legend">
-              <span><i class="legend-price-charge-grid" />Laden aus Netz</span>
-              <span><i class="legend-price-charge-pv" />Laden aus PV</span>
-              <span><i class="legend-price-discharge" />Entladen</span>
-              <span><i class="legend-price-idle" />Idle</span>
-              <span><i class="legend-soc" />SoC</span>
-              <span><i class="legend-pv" />PV</span>
-              <span><i class="legend-consumption" />Verbrauch</span>
-            </div>
+          <div v-if="forecastChartEntries.length" class="forecast-chart">
+            <canvas ref="forecastChartCanvas" aria-label="Forecast-Chart mit Tibber-Preisen, Batterieentscheidungen, PV, Verbrauch und erwartetem SoC"></canvas>
           </div>
-
           <div v-else class="forecast-chart forecast-chart--empty">
-            <svg
-              :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
-              role="img"
-              aria-label="Leerer Forecast-Chart ohne geladene Forecast-Daten"
-            >
-              <rect :x="chartLeftPadding" :y="chartPlotTop" :width="chartPlotWidth" :height="chartPlotHeight" rx="8" class="empty-price-area" />
-              <line :x1="chartLeftPadding" :x2="chartLeftPadding + chartPlotWidth" y1="174" y2="174" class="chart-zero-line" />
-              <line :x1="chartLeftPadding" :x2="chartLeftPadding + chartPlotWidth" :y1="chartPlotTop" :y2="chartPlotTop" class="chart-section-line" />
-              <line :x1="chartLeftPadding" :x2="chartLeftPadding + chartPlotWidth" :y1="chartPlotTop + chartPlotHeight" :y2="chartPlotTop + chartPlotHeight" class="chart-section-line" />
-            </svg>
+            <div class="forecast-empty-frame" aria-hidden="true"></div>
 
             <div class="forecast-chart__empty">
               <strong>Forecast-Chart noch ohne Daten</strong>

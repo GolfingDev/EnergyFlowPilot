@@ -44,6 +44,18 @@ public sealed class ControllerSettingDefaultsTests
     }
 
     [Fact]
+    public void CreateDefaultSettingsContainsDashboardAutoRefreshDefault()
+    {
+        var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);
+
+        var dashboardRefreshSetting = settings.Single(setting =>
+            setting.Key == ControllerSettingDefaults.DashboardAutoRefreshIntervalSecondsKey);
+
+        Assert.Equal("60", dashboardRefreshSetting.Value);
+        Assert.Equal(ControllerSettingSensitivity.Normal, dashboardRefreshSetting.Sensitivity);
+    }
+
+    [Fact]
     public void CreateDefaultSettingsContainsGridFeedInCompensationDefault()
     {
         var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);

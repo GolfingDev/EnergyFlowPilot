@@ -32,6 +32,7 @@ public static class GuiMetadataCatalog
             ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey => CreateSetting(definition, "Einspeiseverguetung", "Verguetung je eingespeister Kilowattstunde. Dient auch fuer PV-Puffer-Entscheidungen.", "Economy", "number", "EUR/kWh"),
             ControllerSettingDefaults.ForecastHorizonHoursKey => CreateSetting(definition, "Forecast-Horizont", "Zeitraum, fuer den der Forecast im Voraus berechnet wird.", "Forecast", "number", "h"),
             ControllerSettingDefaults.DecisionLogRetentionDaysKey => CreateSetting(definition, "Log-Aufbewahrung", "Anzahl Tage, fuer die Direktentscheidungen gespeichert bleiben.", "Observability", "number", "days"),
+            ControllerSettingDefaults.DashboardAutoRefreshIntervalSecondsKey => CreateSetting(definition, "Dashboard-Aktualisierung", "Intervall fuer die automatische Dashboard-Aktualisierung.", "Observability", "number", "s"),
             ControllerSettingDefaults.TibberAccessTokenKey => CreateSetting(definition, "Tibber Access Token", "Zugangsdaten fuer die Tibber API.", "Tibber", "password", null),
             ControllerSettingDefaults.TibberApiEndpointKey => CreateSetting(definition, "Tibber API Endpoint", "GraphQL-Endpunkt der Tibber API.", "Tibber", "text", null),
             ControllerSettingDefaults.TibberHomeSelectionKey => CreateSetting(definition, "Tibber Home Selection", "Waehlt den zu nutzenden Tibber-Hausdatensatz.", "Tibber", "text", null),

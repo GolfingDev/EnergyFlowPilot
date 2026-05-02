@@ -65,7 +65,9 @@ public static class ControllerServiceCollectionExtensions
         });
         services.AddScoped<ICurrentBatteryDecisionService, CurrentBatteryDecisionService>();
         services.AddHttpClient<ITibberPriceForecastProvider, TibberPriceForecastProvider>();
-        services.AddHttpClient<IWeatherForecastProvider, ForecastSolarPvForecastProvider>();
+        services.AddSingleton<ForecastSolarPvForecastCache>();
+        services.AddHttpClient<ForecastSolarPvForecastProvider>();
+        services.AddScoped<IWeatherForecastProvider, CachedWeatherForecastProvider>();
         services.AddHostedService<VictronMqttTelemetryBackgroundService>();
 
         return services;

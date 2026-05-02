@@ -19,6 +19,7 @@ public static class ControllerSettingDefaults
     public const string ConsumptionForecastAverageDailyConsumptionKwhKey = "consumptionForecast.averageDailyConsumptionKwh";
     public const string ConsumptionForecastTimeZoneKey = "consumptionForecast.timeZone";
     public const string DecisionLogRetentionDaysKey = "decisionLog.retentionDays";
+    public const string DashboardAutoRefreshIntervalSecondsKey = "dashboard.autoRefreshIntervalSeconds";
     public const string ForecastHorizonHoursKey = "forecast.horizonHours";
     public const string GridFeedInCompensationPricePerKwhKey = "gridFeedIn.compensationPricePerKwh";
     public const string PvForecastProviderKey = "pvForecast.provider";
@@ -65,6 +66,7 @@ public static class ControllerSettingDefaults
         new(ConsumptionForecastAverageDailyConsumptionKwhKey, "24", ControllerSettingSensitivity.Normal),
         new(ConsumptionForecastTimeZoneKey, "Europe/Berlin", ControllerSettingSensitivity.Normal),
         new(DecisionLogRetentionDaysKey, "90", ControllerSettingSensitivity.Normal),
+        new(DashboardAutoRefreshIntervalSecondsKey, "60", ControllerSettingSensitivity.Normal),
         new(ForecastHorizonHoursKey, "24", ControllerSettingSensitivity.Normal),
         new(GridFeedInCompensationPricePerKwhKey, "0.08", ControllerSettingSensitivity.Normal),
         new(PvForecastProviderKey, "forecastSolarPublic", ControllerSettingSensitivity.Normal),

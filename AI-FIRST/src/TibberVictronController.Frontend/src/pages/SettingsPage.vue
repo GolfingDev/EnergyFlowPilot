@@ -106,6 +106,7 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'consumptionForecast.timeZone', section: 'consumption', subgroup: 'Lastprofil', category: 'normal' },
   { key: 'victron.dryRun', section: 'decision', subgroup: 'Betriebsmodus', category: 'critical', helpText: 'Simulationsmodus: Entscheidungen werden berechnet, aber Hardware wird nicht aktiv gesteuert.' },
   { key: 'decisionLog.retentionDays', section: 'decision', subgroup: 'Nachvollziehbarkeit', category: 'normal' },
+  { key: 'dashboard.autoRefreshIntervalSeconds', section: 'system', subgroup: 'Dashboard', category: 'normal', helpText: 'Intervall fuer die automatische Aktualisierung der Dashboard-Daten. 0 deaktiviert die Automatik.' },
   { key: 'victron.host', section: 'system', subgroup: 'Victron MQTT', category: 'critical' },
   { key: 'victron.port', section: 'system', subgroup: 'Victron MQTT', category: 'important' },
   { key: 'victron.portalId', section: 'system', subgroup: 'Victron MQTT', category: 'important' },

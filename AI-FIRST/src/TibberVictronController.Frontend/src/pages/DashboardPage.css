@@ -31,6 +31,11 @@
   line-height: 1.5;
 }
 
+.dashboard-header__refresh {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
 .dashboard-header__status {
   display: flex;
   flex-direction: column;
@@ -119,6 +124,43 @@
   margin-bottom: 8px;
 }
 
+.metric-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.metric-card__header span {
+  margin-bottom: 0;
+}
+
+.metric-card__toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #dbe3ea;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.metric-card__toggle button {
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 3px 6px;
+}
+
+.metric-card__toggle-button--active {
+  background: #ffffff !important;
+  color: #172026 !important;
+  box-shadow: 0 1px 3px rgba(23, 32, 38, 0.12);
+}
+
 .metric-card strong {
   display: block;
   color: #172026;
@@ -130,6 +172,10 @@
   margin: 6px 0 0;
   font-size: 0.82rem;
   line-height: 1.4;
+}
+
+.metric-card p b {
+  color: #172026;
 }
 
 .dashboard-layout {
@@ -201,28 +247,24 @@
   position: relative;
   padding: 16px 18px 8px;
   border-bottom: 1px solid #edf1f5;
+  height: 360px;
 }
 
-.forecast-chart svg {
+.forecast-chart canvas {
   display: block;
   width: 100%;
-  min-height: 300px;
-}
-
-.chart-plot-background {
-  fill: url("#forecast-plot-background");
-  stroke: #e2e8f0;
-  stroke-width: 1;
+  height: 100%;
 }
 
 .forecast-chart--empty svg {
   opacity: 0.82;
 }
 
-.empty-price-area {
-  fill: #f8fafc;
-  stroke: #edf1f5;
-  stroke-width: 1;
+.forecast-empty-frame {
+  height: 300px;
+  border: 1px solid #edf1f5;
+  border-radius: 8px;
+  background: #f8fafc;
 }
 
 .forecast-chart__empty {
