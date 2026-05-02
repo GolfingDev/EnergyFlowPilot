@@ -102,6 +102,7 @@ const forecast = ref<BatteryForecastResponseDto | null>(null);
 const savings = ref<BatterySavingsResponseDto | null>(null);
 const loadErrors = ref<DashboardLoadError[]>([]);
 const isLoading = ref(false);
+const hoveredForecastEntry = ref<BatteryForecastEntryDto | null>(null);
 
 const nextForecastEntries = computed(() => forecast.value?.entries.slice(0, 8) ?? []);
 const forecastChartEntries = computed(() => forecast.value?.entries ?? []);
@@ -428,6 +429,14 @@ function createForecastTooltip(entry: BatteryForecastEntryDto): string {
   ].join('\n');
 }
 
+function showForecastEntry(entry: BatteryForecastEntryDto): void {
+  hoveredForecastEntry.value = entry;
+}
+
+function clearForecastEntry(): void {
+  hoveredForecastEntry.value = null;
+}
+
 onMounted(() => {
   void loadDashboard();
 });
@@ -524,7 +533,7 @@ onMounted(() => {
             </div>
           </div>
 
-          <div v-if="forecastChartEntries.length" class="forecast-chart">
+          <div v-if="forecastChartEntries.length" class="forecast-chart" @mouseleave="clearForecastEntry">
             <svg
               :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
               role="img"
@@ -600,9 +609,39 @@ onMounted(() => {
                 :cy="getSocY(entry.stateOfChargeAfterPercent)"
                 r="3"
                 class="soc-point"
+                @focus="showForecastEntry(entry)"
+                @mouseenter="showForecastEntry(entry)"
               >
                 <title>{{ createForecastTooltip(entry) }}</title>
               </circle>
+
+              <circle
+                v-for="(entry, index) in forecastChartEntries"
+                :key="`${entry.startsAtUtc}-pv`"
+                :cx="getBarCenterX(index)"
+                :cy="getInputY(entry.expectedPvYieldKwh)"
+                r="2.5"
+                class="pv-point"
+                @focus="showForecastEntry(entry)"
+                @mouseenter="showForecastEntry(entry)"
+              >
+                <title>{{ createForecastTooltip(entry) }}</title>
+              </circle>
+
+              <rect
+                v-for="(entry, index) in forecastChartEntries"
+                :key="`${entry.startsAtUtc}-consumption`"
+                :x="getBarCenterX(index) - 2.5"
+                :y="getInputY(entry.expectedConsumptionKwh) - 2.5"
+                width="5"
+                height="5"
+                rx="1"
+                class="consumption-point"
+                @focus="showForecastEntry(entry)"
+                @mouseenter="showForecastEntry(entry)"
+              >
+                <title>{{ createForecastTooltip(entry) }}</title>
+              </rect>
 
               <rect
                 v-for="(entry, index) in forecastChartEntries"
@@ -612,10 +651,38 @@ onMounted(() => {
                 :width="Math.max(2, getBarWidth() - 1)"
                 :height="chartPlotHeight"
                 class="chart-hover-zone"
+                tabindex="0"
+                @blur="clearForecastEntry"
+                @focus="showForecastEntry(entry)"
+                @mouseenter="showForecastEntry(entry)"
               >
                 <title>{{ createForecastTooltip(entry) }}</title>
               </rect>
             </svg>
+
+            <div v-if="hoveredForecastEntry" class="chart-tooltip-card">
+              <strong>{{ formatDateTime(hoveredForecastEntry.startsAtUtc) }}</strong>
+              <div>
+                <span>Preis</span>
+                <b>{{ formatPrice(hoveredForecastEntry.tibberPricePerKwh, hoveredForecastEntry.tibberPriceCurrency) }}</b>
+              </div>
+              <div>
+                <span>Entscheidung</span>
+                <b>{{ translateDecisionState(hoveredForecastEntry.decisionState) }}</b>
+              </div>
+              <div>
+                <span>SoC</span>
+                <b>{{ formatPercent(hoveredForecastEntry.stateOfChargeAfterPercent) }}</b>
+              </div>
+              <div>
+                <span>PV</span>
+                <b>{{ formatNumber(hoveredForecastEntry.expectedPvYieldKwh, 3) }} kWh</b>
+              </div>
+              <div>
+                <span>Verbrauch</span>
+                <b>{{ formatNumber(hoveredForecastEntry.expectedConsumptionKwh, 3) }} kWh</b>
+              </div>
+            </div>
 
             <div class="chart-legend">
               <span><i class="legend-price-charge-grid" />Laden aus Netz</span>
