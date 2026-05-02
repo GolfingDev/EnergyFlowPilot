@@ -110,6 +110,9 @@ const chartWidth = 960;
 const chartHeight = 300;
 const chartPlotTop = 24;
 const chartPlotHeight = 220;
+const chartLeftPadding = 58;
+const chartRightPadding = 16;
+const chartPlotWidth = chartWidth - chartLeftPadding - chartRightPadding;
 
 const chartPriceRange = computed(() => {
   const prices = forecastChartEntries.value.map((entry) => entry.tibberPricePerKwh);
@@ -338,12 +341,12 @@ function getStatusColor(value: string | null | undefined): string {
 
 function getBarWidth(): number {
   return forecastChartEntries.value.length > 0
-    ? chartWidth / forecastChartEntries.value.length
-    : chartWidth;
+    ? chartPlotWidth / forecastChartEntries.value.length
+    : chartPlotWidth;
 }
 
 function getBarX(index: number): number {
-  return index * getBarWidth();
+  return chartLeftPadding + index * getBarWidth();
 }
 
 function getBarCenterX(index: number): number {
@@ -527,9 +530,44 @@ onMounted(() => {
               role="img"
               aria-label="Forecast-Chart mit Tibber-Preisen, Batterieentscheidungen, PV, Verbrauch und erwartetem SoC"
             >
+              <defs>
+                <linearGradient id="forecast-plot-background" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stop-color="#f8fafc" />
+                  <stop offset="100%" stop-color="#ffffff" />
+                </linearGradient>
+              </defs>
+
+              <rect
+                :x="chartLeftPadding"
+                :y="chartPlotTop"
+                :width="chartPlotWidth"
+                :height="chartPlotHeight"
+                rx="8"
+                class="chart-plot-background"
+              />
+
               <line
-                x1="0"
-                :x2="chartWidth"
+                v-for="tick in [0, 25, 50, 75, 100]"
+                :key="`soc-tick-${tick}`"
+                :x1="chartLeftPadding"
+                :x2="chartLeftPadding + chartPlotWidth"
+                :y1="getSocY(tick)"
+                :y2="getSocY(tick)"
+                class="chart-grid-line"
+              />
+              <text
+                v-for="tick in [0, 50, 100]"
+                :key="`soc-label-${tick}`"
+                x="8"
+                :y="getSocY(tick) + 4"
+                class="chart-axis-label"
+              >
+                {{ tick }} %
+              </text>
+
+              <line
+                :x1="chartLeftPadding"
+                :x2="chartLeftPadding + chartPlotWidth"
                 :y1="getPriceY(0)"
                 :y2="getPriceY(0)"
                 class="chart-zero-line"
@@ -540,16 +578,17 @@ onMounted(() => {
                 :key="`${entry.startsAtUtc}-price`"
                 :x="getBarX(index)"
                 :y="getPriceBarY(entry.tibberPricePerKwh)"
-                :width="Math.max(2, getBarWidth() - 1)"
+                :width="Math.max(2, getBarWidth() - 2)"
                 :height="getPriceBarHeight(entry.tibberPricePerKwh)"
                 :fill="getForecastBarColor(entry)"
                 class="price-bar"
+                rx="2"
               >
                 <title>{{ createForecastTooltip(entry) }}</title>
               </rect>
 
-              <line x1="0" :x2="chartWidth" :y1="chartPlotTop" :y2="chartPlotTop" class="chart-section-line" />
-              <line x1="0" :x2="chartWidth" :y1="chartPlotTop + chartPlotHeight" :y2="chartPlotTop + chartPlotHeight" class="chart-section-line" />
+              <line :x1="chartLeftPadding" :x2="chartLeftPadding + chartPlotWidth" :y1="chartPlotTop" :y2="chartPlotTop" class="chart-section-line" />
+              <line :x1="chartLeftPadding" :x2="chartLeftPadding + chartPlotWidth" :y1="chartPlotTop + chartPlotHeight" :y2="chartPlotTop + chartPlotHeight" class="chart-section-line" />
               <polyline :points="createSocPoints()" class="soc-line" />
               <polyline :points="createPvPoints()" class="pv-line" />
               <polyline :points="createConsumptionPoints()" class="consumption-line" />
@@ -559,11 +598,23 @@ onMounted(() => {
                 :key="`${entry.startsAtUtc}-soc`"
                 :cx="getBarCenterX(index)"
                 :cy="getSocY(entry.stateOfChargeAfterPercent)"
-                r="2"
+                r="3"
                 class="soc-point"
               >
                 <title>{{ createForecastTooltip(entry) }}</title>
               </circle>
+
+              <rect
+                v-for="(entry, index) in forecastChartEntries"
+                :key="`${entry.startsAtUtc}-hover`"
+                :x="getBarX(index)"
+                :y="chartPlotTop"
+                :width="Math.max(2, getBarWidth() - 1)"
+                :height="chartPlotHeight"
+                class="chart-hover-zone"
+              >
+                <title>{{ createForecastTooltip(entry) }}</title>
+              </rect>
             </svg>
 
             <div class="chart-legend">
@@ -583,10 +634,10 @@ onMounted(() => {
               role="img"
               aria-label="Leerer Forecast-Chart ohne geladene Forecast-Daten"
             >
-              <line x1="0" :x2="chartWidth" y1="174" y2="174" class="chart-zero-line" />
-              <line x1="0" :x2="chartWidth" :y1="chartPlotTop" :y2="chartPlotTop" class="chart-section-line" />
-              <line x1="0" :x2="chartWidth" :y1="chartPlotTop + chartPlotHeight" :y2="chartPlotTop + chartPlotHeight" class="chart-section-line" />
-              <rect x="0" :y="chartPlotTop" :width="chartWidth" :height="chartPlotHeight" class="empty-price-area" />
+              <rect :x="chartLeftPadding" :y="chartPlotTop" :width="chartPlotWidth" :height="chartPlotHeight" rx="8" class="empty-price-area" />
+              <line :x1="chartLeftPadding" :x2="chartLeftPadding + chartPlotWidth" y1="174" y2="174" class="chart-zero-line" />
+              <line :x1="chartLeftPadding" :x2="chartLeftPadding + chartPlotWidth" :y1="chartPlotTop" :y2="chartPlotTop" class="chart-section-line" />
+              <line :x1="chartLeftPadding" :x2="chartLeftPadding + chartPlotWidth" :y1="chartPlotTop + chartPlotHeight" :y2="chartPlotTop + chartPlotHeight" class="chart-section-line" />
             </svg>
 
             <div class="forecast-chart__empty">

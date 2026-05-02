@@ -199,7 +199,7 @@
 
 .forecast-chart {
   position: relative;
-  padding: 18px 20px 6px;
+  padding: 16px 18px 8px;
   border-bottom: 1px solid #edf1f5;
 }
 
@@ -207,6 +207,12 @@
   display: block;
   width: 100%;
   min-height: 300px;
+}
+
+.chart-plot-background {
+  fill: url("#forecast-plot-background");
+  stroke: #e2e8f0;
+  stroke-width: 1;
 }
 
 .forecast-chart--empty svg {
@@ -244,14 +250,16 @@
 }
 
 .price-bar {
-  opacity: 0.88;
+  opacity: 0.78;
+  transition:
+    opacity 0.16s ease,
+    filter 0.16s ease;
 }
 
 .price-bar:hover,
 .soc-point:hover {
   opacity: 1;
-  stroke: #172026;
-  stroke-width: 1.5;
+  filter: drop-shadow(0 3px 5px rgba(23, 32, 38, 0.16));
 }
 
 .chart-zero-line,
@@ -260,37 +268,62 @@
   stroke-width: 1;
 }
 
+.chart-grid-line {
+  stroke: #e8eef4;
+  stroke-width: 1;
+}
+
+.chart-axis-label {
+  fill: #64748b;
+  font-size: 0.72rem;
+}
+
 .soc-line {
   fill: none;
   stroke: #172026;
-  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
 }
 
 .pv-line {
   fill: none;
   stroke: #2f7d4f;
-  stroke-dasharray: 6 5;
-  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.4;
 }
 
 .consumption-line {
   fill: none;
   stroke: #44546a;
-  stroke-dasharray: 2 4;
-  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
 }
 
 .soc-point {
-  fill: #172026;
+  fill: #ffffff;
+  stroke: #172026;
+  stroke-width: 2;
+}
+
+.chart-hover-zone {
+  fill: transparent;
+  cursor: crosshair;
+}
+
+.chart-hover-zone:hover {
+  fill: rgba(31, 111, 120, 0.05);
 }
 
 .chart-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 18px;
-  margin-top: 12px;
+  gap: 8px 14px;
+  margin-top: 10px;
   color: #64748b;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
 }
 
 .chart-legend span {
@@ -300,8 +333,8 @@
 }
 
 .chart-legend i {
-  width: 18px;
-  height: 4px;
+  width: 16px;
+  height: 5px;
   border-radius: 999px;
 }
 
@@ -322,15 +355,16 @@
 }
 
 .legend-soc {
-  background: #172026;
+  background: #ffffff;
+  border: 2px solid #172026;
 }
 
 .legend-pv {
-  border: 1px dashed #2f7d4f;
+  background: #2f7d4f;
 }
 
 .legend-consumption {
-  border: 1px dotted #44546a;
+  background: #44546a;
 }
 
 .reason-list,
