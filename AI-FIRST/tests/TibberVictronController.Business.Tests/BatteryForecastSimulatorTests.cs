@@ -311,7 +311,39 @@ public sealed class BatteryForecastSimulatorTests
         Assert.Equal(BatteryDecisionState.Charge, entry.Decision.Instruction.DecisionState);
         Assert.Equal(960, entry.Decision.TargetPowerWatts);
         Assert.Equal(90m, entry.StateOfChargeAfterPercent);
+        Assert.Contains(entry.Reasons, reason => reason.RuleName == BatteryForecastRuleIds.PlanningMaximumGridChargeLimit);
         Assert.Contains(entry.Reasons, reason => reason.Message.Contains("Planungs-Maximum"));
+    }
+
+    [Fact]
+    public void SimulatePreventsGridChargingWithConcreteRuleIdWhenPlanningMaximumIsReached()
+    {
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(90m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(new BatteryConfigurationValues
+        {
+            TotalCapacityKwh = 12m,
+            MaximumChargePowerWatts = 3000,
+            RoundTripEfficiencyPercent = 100m,
+            PlanningMaximumStateOfChargePercent = 90m
+        });
+        var priceForecast = CreatePriceForecast(0.10m, 0.30m, 0.50m);
+        var pvForecast = CreatePvForecast(0m, 0m, 0m);
+        var consumptionForecast = CreateConsumptionForecast(0m, 0m, 0m);
+
+        var result = simulator.Simulate(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            batteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh: 0.08m);
+
+        var entry = result.Entries[0];
+        Assert.Equal(BatteryDecisionState.Idle, entry.Decision.Instruction.DecisionState);
+        Assert.Equal(0, entry.Decision.TargetPowerWatts);
+        Assert.Equal(90m, entry.StateOfChargeAfterPercent);
+        Assert.Contains(entry.Reasons, reason => reason.RuleName == BatteryForecastRuleIds.PlanningMaximumSocHeadroom);
     }
 
     [Fact]

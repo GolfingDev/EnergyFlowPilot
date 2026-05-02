@@ -1,5 +1,7 @@
 using TibberVictronController.Api.Configuration;
+using TibberVictronController.Api.Decision;
 using TibberVictronController.Api.Forecast;
+using TibberVictronController.Api.Metadata;
 using TibberVictronController.Api.Savings;
 using TibberVictronController.Api.Settings;
 using TibberVictronController.Business.Abstractions;
@@ -20,7 +22,9 @@ app.MapGet("/health", () => Results.Ok(new
 
 app.MapSettingsEndpoints();
 app.MapForecastEndpoints();
+app.MapCurrentDecisionEndpoints();
 app.MapSavingsEndpoints();
+app.MapGuiMetadataEndpoints();
 
 app.Run();
 

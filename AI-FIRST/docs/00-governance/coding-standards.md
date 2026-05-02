@@ -12,6 +12,8 @@
 - Write out `Battery Decision Engine` or `Decision Engine` in project documentation, XML comments and code comments.
 - Source code, variable names, type names and method names may be written in English.
 - Error messages intended for logs, exceptions, API responses or UI display must be written in clear, understandable German.
+- When adding or updating NuGet packages, use the latest stable compatible version by default.
+- Use an older package version only when there is a concrete compatibility reason, and document that reason close to the package reference or in the related documentation.
 
 ## Business Logic
 

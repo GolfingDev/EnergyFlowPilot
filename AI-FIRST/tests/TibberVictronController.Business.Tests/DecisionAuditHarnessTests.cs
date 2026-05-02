@@ -172,6 +172,7 @@ public sealed class DecisionAuditHarnessTests
         {
             BatteryForecastRuleIds.NegativePriceGridCharge,
             BatteryForecastRuleIds.PlannedGridCharge,
+            BatteryForecastRuleIds.PlanningMaximumGridChargeLimit,
             BatteryForecastRuleIds.PvSurplusCharge,
             BatteryForecastRuleIds.DischargeBeforeNegativePriceWindow,
             BatteryForecastRuleIds.ExpensivePriceDischarge

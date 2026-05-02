@@ -14,6 +14,8 @@ public static class ControllerSettingDefaults
     public const string BatteryPlanningMinimumStateOfChargePercentKey = "battery.planningMinimumStateOfChargePercent";
     public const string BatteryPlanningMaximumStateOfChargePercentKey = "battery.planningMaximumStateOfChargePercent";
     public const string BatteryTemporaryStateOfChargePercentKey = "battery.temporaryStateOfChargePercent";
+    public const string TelemetryTemporaryGridImportWattsKey = "telemetry.temporaryGridImportWatts";
+    public const string TelemetryTemporaryPvProductionWattsKey = "telemetry.temporaryPvProductionWatts";
     public const string ConsumptionForecastAverageDailyConsumptionKwhKey = "consumptionForecast.averageDailyConsumptionKwh";
     public const string ConsumptionForecastTimeZoneKey = "consumptionForecast.timeZone";
     public const string DecisionLogRetentionDaysKey = "decisionLog.retentionDays";
@@ -34,6 +36,17 @@ public static class ControllerSettingDefaults
     public const string MqttPortKey = "mqtt.port";
     public const string MqttUsernameKey = "mqtt.username";
     public const string MqttPasswordKey = "mqtt.password";
+    public const string VictronHostKey = "victron.host";
+    public const string VictronPortKey = "victron.port";
+    public const string VictronPortalIdKey = "victron.portalId";
+    public const string VictronKeepAliveSecondsKey = "victron.keepAliveSeconds";
+    public const string VictronStaleAfterSecondsKey = "victron.staleAfterSeconds";
+    public const string VictronDryRunKey = "victron.dryRun";
+    public const string VictronTopicGridPowerKey = "victron.topics.gridPower";
+    public const string VictronTopicBatterySocKey = "victron.topics.batterySoc";
+    public const string VictronTopicBatteryPowerKey = "victron.topics.batteryPower";
+    public const string VictronTopicHouseConsumptionKey = "victron.topics.houseConsumption";
+    public const string VictronWriteTopicChargeDischargeSetpointKey = "victron.writeTopics.chargeDischargeSetpoint";
 
     private static readonly ControllerSettingDefinition[] Definitions =
     {
@@ -46,6 +59,8 @@ public static class ControllerSettingDefaults
         new(BatteryPlanningMinimumStateOfChargePercentKey, "15", ControllerSettingSensitivity.Normal),
         new(BatteryPlanningMaximumStateOfChargePercentKey, "95", ControllerSettingSensitivity.Normal),
         new(BatteryTemporaryStateOfChargePercentKey, "55", ControllerSettingSensitivity.Normal),
+        new(TelemetryTemporaryGridImportWattsKey, "0", ControllerSettingSensitivity.Normal),
+        new(TelemetryTemporaryPvProductionWattsKey, "0", ControllerSettingSensitivity.Normal),
         new(ConsumptionForecastAverageDailyConsumptionKwhKey, "24", ControllerSettingSensitivity.Normal),
         new(ConsumptionForecastTimeZoneKey, "Europe/Berlin", ControllerSettingSensitivity.Normal),
         new(DecisionLogRetentionDaysKey, "90", ControllerSettingSensitivity.Normal),
@@ -65,7 +80,18 @@ public static class ControllerSettingDefaults
         new(MqttHostKey, "localhost", ControllerSettingSensitivity.Normal),
         new(MqttPortKey, "1883", ControllerSettingSensitivity.Normal),
         new(MqttUsernameKey, null, ControllerSettingSensitivity.Sensitive),
-        new(MqttPasswordKey, null, ControllerSettingSensitivity.Sensitive)
+        new(MqttPasswordKey, null, ControllerSettingSensitivity.Sensitive),
+        new(VictronHostKey, "192.168.69.92", ControllerSettingSensitivity.Normal),
+        new(VictronPortKey, "1883", ControllerSettingSensitivity.Normal),
+        new(VictronPortalIdKey, "portal-id", ControllerSettingSensitivity.Normal),
+        new(VictronKeepAliveSecondsKey, "15", ControllerSettingSensitivity.Normal),
+        new(VictronStaleAfterSecondsKey, "30", ControllerSettingSensitivity.Normal),
+        new(VictronDryRunKey, "true", ControllerSettingSensitivity.Normal),
+        new(VictronTopicGridPowerKey, "N/{portalId}/grid/30/Ac/Power", ControllerSettingSensitivity.Normal),
+        new(VictronTopicBatterySocKey, "N/{portalId}/battery/512/Soc", ControllerSettingSensitivity.Normal),
+        new(VictronTopicBatteryPowerKey, "N/{portalId}/battery/512/Dc/0/Power", ControllerSettingSensitivity.Normal),
+        new(VictronTopicHouseConsumptionKey, "N/{portalId}/system/0/Ac/Consumption/L1/Power", ControllerSettingSensitivity.Normal),
+        new(VictronWriteTopicChargeDischargeSetpointKey, "settings/0/Settings/CGwacs/AcPowerSetPoint", ControllerSettingSensitivity.Normal)
     };
 
     /// <summary>

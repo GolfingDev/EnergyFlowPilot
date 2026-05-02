@@ -114,6 +114,10 @@ The direct decision should contain:
 
 Only the direct decision path may lead to command execution, and command execution must happen outside the Battery Decision Engine through a hardware abstraction.
 
+MQTT-based Victron telemetry must always be consumed as live data. It must not be served from a long-lived application cache for direct decisions, because battery state, grid import and house consumption change too quickly.
+
+Tibber price forecasts and weather or PV forecasts may be cached because they change much more slowly. A cache duration of several hours is acceptable for normal operation, and a once-per-day refresh may already be sufficient when the provider data quality and update cadence support it.
+
 Before every direct control decision, the controller must read and validate the latest live inputs again. Forecast values may guide planning, but they must not be used as a silent replacement for current telemetry when a real hardware command could be issued.
 
 The live pre-check must include at least:

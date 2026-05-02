@@ -362,7 +362,9 @@ public sealed class BatteryForecastSimulator
             FeedInCompensationPricePerKwh = input.FeedInCompensationPricePerKwh
         };
         var availableCapacityKwh = CalculateAvailableGridChargeStoredCapacityKwh(gridChargeLimit);
+        var physicalCapacityKwh = input.BatteryConfiguration.TotalCapacityKwh - input.BatteryEnergyBeforeKwh;
         var chargeInputEnergyKwh = CalculateChargeInputEnergyKwh(input.MaximumChargeInputEnergyKwh, input.MaximumChargeInputEnergyKwh, availableCapacityKwh, input.SingleDirectionEfficiency);
+        var unrestrictedChargeInputEnergyKwh = CalculateChargeInputEnergyKwh(input.MaximumChargeInputEnergyKwh, input.MaximumChargeInputEnergyKwh, physicalCapacityKwh, input.SingleDirectionEfficiency);
 
         if (chargeInputEnergyKwh <= 0m)
         {
@@ -380,9 +382,13 @@ public sealed class BatteryForecastSimulator
 
         var storedEnergyKwh = chargeInputEnergyKwh * input.SingleDirectionEfficiency;
         var targetPowerWatts = CalculatePowerWatts(chargeInputEnergyKwh, input.PriceSlot.TimeSlot);
-        var planningMaximumReason = gridChargeLimit.IsPlanningMaximumApplied
+        var isLimitedByPlanningMaximum = chargeInputEnergyKwh < unrestrictedChargeInputEnergyKwh;
+        var planningMaximumReason = isLimitedByPlanningMaximum
             ? " Das Planungs-Maximum laesst einen PV-Prognosepuffer frei."
             : string.Empty;
+        var ruleId = isLimitedByPlanningMaximum
+            ? BatteryForecastRuleIds.PlanningMaximumGridChargeLimit
+            : input.RuleId;
 
         return CreateSimulatedSlot(
             input.PriceSlot,
@@ -394,7 +400,7 @@ public sealed class BatteryForecastSimulator
             input.BatteryConfiguration,
             new BatteryDecisionInstruction(BatteryDecisionState.Charge, BatteryChargeSource.Grid),
             targetPowerWatts,
-            input.RuleId,
+            ruleId,
             $"{input.ReasonMessage}{planningMaximumReason} Es werden {chargeInputEnergyKwh:0.0000} kWh bezogen und nach Wirkungsgrad {storedEnergyKwh:0.0000} kWh gespeichert.");
     }
 

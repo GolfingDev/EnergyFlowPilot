@@ -32,3 +32,6 @@ Planned deployment components:
 - Startup failures should be explicit.
 - Health information should be visible through API endpoints.
 - Background workers should log degraded states.
+- Worker processes, cron jobs or scheduled control loops should catch unexpected production exceptions and send a clearly formatted failure email with enough context to identify the failing component, time and error cause quickly.
+- Victron MQTT telemetry should be read as a live stream and not as a stale cache layer.
+- Tibber and weather forecast fetches may use coarse caching, for example several hours or even one daily refresh where the provider update cadence allows it.

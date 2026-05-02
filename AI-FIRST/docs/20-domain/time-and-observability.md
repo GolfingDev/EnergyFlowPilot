@@ -7,6 +7,8 @@
 - Scheduling logic uses UTC.
 - Display and frontend-facing values may be converted to `Europe/Berlin`.
 - Time access must be abstracted for testability.
+- MQTT or Victron live telemetry is realtime input and must not be treated as a long-lived cache.
+- Tibber and weather or PV forecast data may be cached for hours because their update frequency is much lower than live telemetry.
 
 ## Logging Rules
 
