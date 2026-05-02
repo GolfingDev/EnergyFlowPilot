@@ -51,14 +51,22 @@ public sealed class DatabaseBatteryConfigurationProvider : IBatteryConfiguration
             "Die Ziel-Endreserve ist nicht konfiguriert.",
             "Die Ziel-Endreserve muss als Dezimalzahl konfiguriert sein.",
             cancellationToken);
+        var planningMinimumStateOfChargePercent = await GetRequiredDecimalSettingAsync(
+            ControllerSettingDefaults.BatteryPlanningMinimumStateOfChargePercentKey,
+            "Die Planungsreserve ist nicht konfiguriert.",
+            "Die Planungsreserve muss als Dezimalzahl konfiguriert sein.",
+            cancellationToken);
 
-        return new BatteryConfiguration(
-            totalCapacityKwh,
-            minimumStateOfChargePercent,
-            maximumChargePowerWatts,
-            maximumDischargePowerWatts,
-            roundTripEfficiencyPercent,
-            targetEndStateOfChargePercent);
+        return new BatteryConfiguration(new BatteryConfigurationValues
+        {
+            TotalCapacityKwh = totalCapacityKwh,
+            MinimumStateOfChargePercent = minimumStateOfChargePercent,
+            MaximumChargePowerWatts = maximumChargePowerWatts,
+            MaximumDischargePowerWatts = maximumDischargePowerWatts,
+            RoundTripEfficiencyPercent = roundTripEfficiencyPercent,
+            TargetEndStateOfChargePercent = targetEndStateOfChargePercent,
+            PlanningMinimumStateOfChargePercent = planningMinimumStateOfChargePercent
+        });
     }
 
     private async Task<decimal> GetRequiredDecimalSettingAsync(

@@ -53,6 +53,7 @@ public static class DecisionAuditMetricsCalculator
             CycleCount: Math.Round(Math.Min(chargedEnergyKwh, dischargedEnergyKwh) / scenario.BatteryConfiguration.TotalCapacityKwh, 4, MidpointRounding.AwayFromZero),
             MinimumStateOfChargePercent: decisionSlots.Min(slot => slot.ExpectedSocPercent),
             MaximumStateOfChargePercent: decisionSlots.Max(slot => slot.ExpectedSocPercent),
+            FinalStateOfChargePercent: decisionSlots.OrderBy(slot => slot.TimeSlot.StartsAtUtc).Last().ExpectedSocPercent,
             EfficiencyLossKwh: Math.Round(efficiencyLossKwh, 4, MidpointRounding.AwayFromZero),
             EfficiencyLossCost: Math.Round(efficiencyLossCost, 4, MidpointRounding.AwayFromZero),
             NetBenefitAfterEfficiencyLoss: Math.Round(netBenefitAfterEfficiencyLoss, 4, MidpointRounding.AwayFromZero));

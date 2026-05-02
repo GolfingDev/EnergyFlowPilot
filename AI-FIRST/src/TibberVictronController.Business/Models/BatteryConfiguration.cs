@@ -15,7 +15,34 @@ public sealed record BatteryConfiguration
         int maximumDischargePowerWatts = 3000,
         decimal roundTripEfficiencyPercent = 90m,
         decimal? targetEndStateOfChargePercent = null)
+        : this(new BatteryConfigurationValues
+        {
+            TotalCapacityKwh = totalCapacityKwh,
+            MinimumStateOfChargePercent = minimumStateOfChargePercent,
+            MaximumChargePowerWatts = maximumChargePowerWatts,
+            MaximumDischargePowerWatts = maximumDischargePowerWatts,
+            RoundTripEfficiencyPercent = roundTripEfficiencyPercent,
+            TargetEndStateOfChargePercent = targetEndStateOfChargePercent
+        })
     {
+    }
+
+    /// <summary>
+    /// Validates assignment-based persisted battery settings before the Decision Engine can use them.
+    /// </summary>
+    public BatteryConfiguration(BatteryConfigurationValues values)
+    {
+        if (values is null)
+        {
+            throw new ArgumentNullException(nameof(values), "Die Batteriekonfiguration darf nicht null sein.");
+        }
+
+        var totalCapacityKwh = values.TotalCapacityKwh;
+        var minimumStateOfChargePercent = values.MinimumStateOfChargePercent;
+        var maximumChargePowerWatts = values.MaximumChargePowerWatts;
+        var maximumDischargePowerWatts = values.MaximumDischargePowerWatts;
+        var roundTripEfficiencyPercent = values.RoundTripEfficiencyPercent;
+
         if (totalCapacityKwh <= 0m)
         {
             throw new ArgumentOutOfRangeException(nameof(totalCapacityKwh), "Die Batteriekapazitaet muss groesser als 0 kWh sein.");
@@ -41,11 +68,17 @@ public sealed record BatteryConfiguration
             throw new ArgumentOutOfRangeException(nameof(roundTripEfficiencyPercent), "Der Batterie-Wirkungsgrad muss groesser als 0 und hoechstens 100 Prozent sein.");
         }
 
-        var configuredTargetEndStateOfChargePercent = targetEndStateOfChargePercent ?? minimumStateOfChargePercent;
+        var configuredTargetEndStateOfChargePercent = values.TargetEndStateOfChargePercent ?? minimumStateOfChargePercent;
+        var configuredPlanningMinimumStateOfChargePercent = values.PlanningMinimumStateOfChargePercent ?? minimumStateOfChargePercent;
 
         if (configuredTargetEndStateOfChargePercent < minimumStateOfChargePercent || configuredTargetEndStateOfChargePercent > 100m)
         {
-            throw new ArgumentOutOfRangeException(nameof(targetEndStateOfChargePercent), "Die Ziel-Endreserve muss zwischen minimalem Akkuladestand und 100 Prozent liegen.");
+            throw new ArgumentOutOfRangeException(nameof(values.TargetEndStateOfChargePercent), "Die Ziel-Endreserve muss zwischen minimalem Akkuladestand und 100 Prozent liegen.");
+        }
+
+        if (configuredPlanningMinimumStateOfChargePercent < minimumStateOfChargePercent || configuredPlanningMinimumStateOfChargePercent > configuredTargetEndStateOfChargePercent)
+        {
+            throw new ArgumentOutOfRangeException(nameof(values.PlanningMinimumStateOfChargePercent), "Die Planungsreserve muss zwischen minimalem Akkuladestand und Ziel-Endreserve liegen.");
         }
 
         TotalCapacityKwh = totalCapacityKwh;
@@ -54,6 +87,7 @@ public sealed record BatteryConfiguration
         MaximumDischargePowerWatts = maximumDischargePowerWatts;
         RoundTripEfficiencyPercent = roundTripEfficiencyPercent;
         TargetEndStateOfChargePercent = configuredTargetEndStateOfChargePercent;
+        PlanningMinimumStateOfChargePercent = configuredPlanningMinimumStateOfChargePercent;
     }
 
     /// <summary>
@@ -85,4 +119,9 @@ public sealed record BatteryConfiguration
     /// Gets the configured reserve that should remain explainable at the end of the planning horizon.
     /// </summary>
     public decimal TargetEndStateOfChargePercent { get; }
+
+    /// <summary>
+    /// Gets the softer planning boundary used before the absolute battery protection limit is reached.
+    /// </summary>
+    public decimal PlanningMinimumStateOfChargePercent { get; }
 }

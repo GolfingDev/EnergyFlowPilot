@@ -11,6 +11,7 @@ public static class ControllerSettingDefaults
     public const string BatteryMaximumDischargePowerWattsKey = "battery.maximumDischargePowerWatts";
     public const string BatteryRoundTripEfficiencyPercentKey = "battery.roundTripEfficiencyPercent";
     public const string BatteryTargetEndStateOfChargePercentKey = "battery.targetEndStateOfChargePercent";
+    public const string BatteryPlanningMinimumStateOfChargePercentKey = "battery.planningMinimumStateOfChargePercent";
     public const string BatteryTemporaryStateOfChargePercentKey = "battery.temporaryStateOfChargePercent";
     public const string ConsumptionForecastAverageDailyConsumptionKwhKey = "consumptionForecast.averageDailyConsumptionKwh";
     public const string ConsumptionForecastTimeZoneKey = "consumptionForecast.timeZone";
@@ -41,6 +42,7 @@ public static class ControllerSettingDefaults
         new(BatteryMaximumDischargePowerWattsKey, "3000", ControllerSettingSensitivity.Normal),
         new(BatteryRoundTripEfficiencyPercentKey, "90", ControllerSettingSensitivity.Normal),
         new(BatteryTargetEndStateOfChargePercentKey, "25", ControllerSettingSensitivity.Normal),
+        new(BatteryPlanningMinimumStateOfChargePercentKey, "15", ControllerSettingSensitivity.Normal),
         new(BatteryTemporaryStateOfChargePercentKey, "55", ControllerSettingSensitivity.Normal),
         new(ConsumptionForecastAverageDailyConsumptionKwhKey, "24", ControllerSettingSensitivity.Normal),
         new(ConsumptionForecastTimeZoneKey, "Europe/Berlin", ControllerSettingSensitivity.Normal),

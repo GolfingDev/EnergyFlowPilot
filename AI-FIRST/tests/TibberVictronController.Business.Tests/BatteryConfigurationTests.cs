@@ -26,6 +26,13 @@ public sealed class BatteryConfigurationTests
             () => new BatteryConfiguration(10m, minimumStateOfChargePercent: 10m, maximumChargePowerWatts: 3000, maximumDischargePowerWatts: 3000, roundTripEfficiencyPercent: 0m));
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new BatteryConfiguration(10m, minimumStateOfChargePercent: 20m, targetEndStateOfChargePercent: 10m));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new BatteryConfiguration(new BatteryConfigurationValues
+            {
+                TotalCapacityKwh = 10m,
+                MinimumStateOfChargePercent = 20m,
+                PlanningMinimumStateOfChargePercent = 10m
+            }));
     }
 
     [Theory]
@@ -41,13 +48,16 @@ public sealed class BatteryConfigurationTests
     [Fact]
     public void ConstructorAcceptsConfiguredBatteryLimits()
     {
-        var configuration = new BatteryConfiguration(
-            10.5m,
-            minimumStateOfChargePercent: 12m,
-            maximumChargePowerWatts: 2500,
-            maximumDischargePowerWatts: 3200,
-            roundTripEfficiencyPercent: 92m,
-            targetEndStateOfChargePercent: 30m);
+        var configuration = new BatteryConfiguration(new BatteryConfigurationValues
+        {
+            TotalCapacityKwh = 10.5m,
+            MinimumStateOfChargePercent = 12m,
+            MaximumChargePowerWatts = 2500,
+            MaximumDischargePowerWatts = 3200,
+            RoundTripEfficiencyPercent = 92m,
+            TargetEndStateOfChargePercent = 30m,
+            PlanningMinimumStateOfChargePercent = 18m
+        });
 
         Assert.Equal(10.5m, configuration.TotalCapacityKwh);
         Assert.Equal(12m, configuration.MinimumStateOfChargePercent);
@@ -55,5 +65,18 @@ public sealed class BatteryConfigurationTests
         Assert.Equal(3200, configuration.MaximumDischargePowerWatts);
         Assert.Equal(92m, configuration.RoundTripEfficiencyPercent);
         Assert.Equal(30m, configuration.TargetEndStateOfChargePercent);
+        Assert.Equal(18m, configuration.PlanningMinimumStateOfChargePercent);
+    }
+
+    [Fact]
+    public void ConstructorUsesMinimumStateOfChargeAsPlanningFallback()
+    {
+        var configuration = new BatteryConfiguration(new BatteryConfigurationValues
+        {
+            TotalCapacityKwh = 10m,
+            MinimumStateOfChargePercent = 12m
+        });
+
+        Assert.Equal(12m, configuration.PlanningMinimumStateOfChargePercent);
     }
 }

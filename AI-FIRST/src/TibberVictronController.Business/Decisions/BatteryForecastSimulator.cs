@@ -181,7 +181,7 @@ public sealed class BatteryForecastSimulator
         decimal singleDirectionEfficiency,
         bool isPlannedGridChargeSlot)
     {
-        var minimumBatteryEnergyKwh = CalculateMinimumBatteryEnergyKwh(batteryConfiguration);
+        var planningMinimumBatteryEnergyKwh = CalculatePlanningMinimumBatteryEnergyKwh(batteryConfiguration);
         var targetEndBatteryEnergyKwh = CalculateTargetEndBatteryEnergyKwh(batteryConfiguration);
         var hasFutureNegativePriceWindow = HasFutureNegativePriceWindow(priceForecast, priceSlot.TimeSlot.StartsAtUtc);
 
@@ -190,7 +190,7 @@ public sealed class BatteryForecastSimulator
             priceForecast,
             expectedGridImportBeforeBatteryKwh,
             batteryEnergyBeforeKwh,
-            minimumBatteryEnergyKwh,
+            planningMinimumBatteryEnergyKwh,
             maximumDischargeOutputEnergyKwh,
             singleDirectionEfficiency))
         {
@@ -202,7 +202,7 @@ public sealed class BatteryForecastSimulator
                 batteryEnergyBeforeKwh,
                 batteryConfiguration,
                 expectedGridImportBeforeBatteryKwh,
-                minimumBatteryEnergyKwh,
+                planningMinimumBatteryEnergyKwh,
                 maximumDischargeOutputEnergyKwh,
                 singleDirectionEfficiency,
                 BatteryForecastRuleIds.DischargeBeforeNegativePriceWindow,
@@ -273,7 +273,7 @@ public sealed class BatteryForecastSimulator
         if (expectedGridImportBeforeBatteryKwh > 0m &&
             priceSlot.TotalPricePerKwh >= MinimumEconomicDischargePricePerKwh &&
             hasFutureNegativePriceWindow &&
-            batteryEnergyBeforeKwh <= minimumBatteryEnergyKwh)
+            batteryEnergyBeforeKwh <= planningMinimumBatteryEnergyKwh)
         {
             return CreateIdleSlot(
                 priceSlot,
@@ -284,7 +284,7 @@ public sealed class BatteryForecastSimulator
                 batteryEnergyBeforeKwh,
                 batteryConfiguration,
                 BatteryForecastRuleIds.MinimumSocReserve,
-                "Akku wird nicht weiter entladen, weil der konfigurierte minimale Akkuladestand erreicht ist.");
+                "Akku wird nicht weiter entladen, weil die konfigurierte Planungsreserve erreicht ist.");
         }
 
         if (expectedGridImportBeforeBatteryKwh > 0m &&
@@ -620,9 +620,9 @@ public sealed class BatteryForecastSimulator
         return (int)Math.Round(energyKwh / (decimal)timeSlot.Duration.TotalHours * 1000m, MidpointRounding.AwayFromZero);
     }
 
-    private static decimal CalculateMinimumBatteryEnergyKwh(BatteryConfiguration batteryConfiguration)
+    private static decimal CalculatePlanningMinimumBatteryEnergyKwh(BatteryConfiguration batteryConfiguration)
     {
-        return batteryConfiguration.TotalCapacityKwh * batteryConfiguration.MinimumStateOfChargePercent / 100m;
+        return batteryConfiguration.TotalCapacityKwh * batteryConfiguration.PlanningMinimumStateOfChargePercent / 100m;
     }
 
     private static decimal CalculateTargetEndBatteryEnergyKwh(BatteryConfiguration batteryConfiguration)

@@ -200,6 +200,8 @@ The current or forecasted battery state of charge must influence the price strat
 - a negative Tibber price overrides normal state-of-charge restrictiveness, except when the battery is already full
 - the total usable battery capacity in kWh must come from persisted controller configuration
 - the configurable target end state of charge defines an explainable reserve for the end of the planning horizon
+- the optional planning minimum state of charge is a softer forecast boundary above the absolute battery protection limit
+- if no planning minimum state of charge is configured, the absolute minimum state of charge is used as fallback
 - the maximum charge power must come from persisted controller configuration and limits how quickly cheap or negative price windows can fill the battery
 - the maximum discharge power must come from persisted controller configuration and limits how quickly expensive price windows can offset grid consumption
 - discharge planning must never exceed current or forecasted grid import, because battery feed-in into the grid is forbidden
@@ -208,6 +210,8 @@ The current or forecasted battery state of charge must influence the price strat
 - before a future negative Tibber price window, the Battery Decision Engine may discharge energy above minimum state of charge to avoid normal or expensive grid import and create charging headroom
 - if a negative Tibber price slot is reached and the battery still has capacity, the Battery Decision Engine must charge from the grid unless a later negative slot is strictly cheaper
 - if configured target end reserve prevents further discharge, the Decision Engine must use an explicit reserve rule and reason
+- Golden Scenario audits must report final state of charge and verify it remains at or above target end state of charge
+- Golden Scenario audits should use a planning reserve above the hard minimum so the forecast does not optimize exactly to the hardware protection boundary
 - a low battery state of charge makes charging easier, so neutral Tibber prices may still lead to charging
 - a high battery state of charge makes grid charging more restrictive, so only the cheapest Tibber prices should lead to charging
 - every state-of-charge override must be included in the structured reasons

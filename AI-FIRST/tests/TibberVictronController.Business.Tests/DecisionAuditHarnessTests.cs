@@ -43,6 +43,10 @@ public sealed class DecisionAuditHarnessTests
         Assert.Contains(report.DecisionSlots, slot =>
             slot.TimeSlot.StartsAtUtc.Hour >= 21 &&
             slot.RuleId == BatteryForecastRuleIds.EndSocReserve);
+        Assert.True(report.Metrics.FinalStateOfChargePercent >= scenario.BatteryConfiguration.TargetEndStateOfChargePercent);
+        Assert.All(report.DecisionSlots, slot =>
+            Assert.True(slot.ExpectedSocPercent >= scenario.BatteryConfiguration.PlanningMinimumStateOfChargePercent));
+        Assert.All(report.DecisionSlots, AssertCandidateRuleIdIsSpecific);
         Assert.Contains("startsAtUtc", DecisionAuditExporter.ExportCsv(report));
         Assert.Contains("\"metrics\"", DecisionAuditExporter.ExportJson(report));
     }
@@ -148,5 +152,39 @@ public sealed class DecisionAuditHarnessTests
 
         Assert.DoesNotContain("Laden aus dem Netz senkt", slot.Reason, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("laedt deshalb aus dem Netz", slot.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void AssertCandidateRuleIdIsSpecific(DecisionAuditSlot slot)
+    {
+        var acceptedIdleRuleIds = new[]
+        {
+            BatteryForecastRuleIds.WaitForNegativePriceWindow,
+            BatteryForecastRuleIds.EndSocReserve,
+            BatteryForecastRuleIds.MinimumSocReserve,
+            BatteryForecastRuleIds.NeutralIdle,
+            BatteryForecastRuleIds.BatteryFullIdle,
+            BatteryForecastRuleIds.BatteryFullPvSurplus,
+            BatteryForecastRuleIds.PreserveHeadroomForNegativePrice
+        };
+        var acceptedActionRuleIds = new[]
+        {
+            BatteryForecastRuleIds.NegativePriceGridCharge,
+            BatteryForecastRuleIds.PlannedGridCharge,
+            BatteryForecastRuleIds.PvSurplusCharge,
+            BatteryForecastRuleIds.DischargeBeforeNegativePriceWindow,
+            BatteryForecastRuleIds.ExpensivePriceDischarge
+        };
+
+        Assert.False(string.IsNullOrWhiteSpace(slot.RuleId));
+        Assert.NotEqual("ForecastSimulation", slot.RuleId);
+
+        if (slot.Action == "Idle")
+        {
+            Assert.Contains(slot.RuleId, acceptedIdleRuleIds);
+        }
+        else
+        {
+            Assert.Contains(slot.RuleId, acceptedActionRuleIds);
+        }
     }
 }

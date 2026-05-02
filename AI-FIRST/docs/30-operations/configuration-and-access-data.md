@@ -20,6 +20,8 @@ Runtime settings include values such as:
 
 - total battery capacity in kWh
 - minimum battery state of charge
+- planning minimum battery state of charge
+- target end battery state of charge
 - maximum charge power
 - maximum discharge power
 - efficiency assumptions

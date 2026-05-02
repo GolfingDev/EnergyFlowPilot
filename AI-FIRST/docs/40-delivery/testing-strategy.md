@@ -64,6 +64,9 @@ Golden scenario assertions must verify more than aggregate metrics:
 - battery energy is used before future negative-price windows when consumption and state of charge allow it
 - round-trip efficiency visibly changes state-of-charge progression
 - configured end reserve is explicit in rule id and reason
+- final state of charge is reported and remains at or above configured target end state of charge
+- candidate rule ids are specific and never use the old generic `ForecastSimulation` id
+- expected state of charge does not fall below configured planning minimum state of charge when that reserve is set
 
 Audit metrics must include:
 

@@ -46,13 +46,16 @@ public static class DecisionAuditGoldenScenarioFactory
         return new DecisionAuditScenario(
             Name: "Golden 24h Mehrfamilienhaus",
             InitialBatteryState: new BatteryState(initialStateOfChargePercent, startsAtUtc),
-            BatteryConfiguration: new BatteryConfiguration(
-                totalCapacityKwh: 12m,
-                minimumStateOfChargePercent: 10m,
-                maximumChargePowerWatts: 3000,
-                maximumDischargePowerWatts: 3000,
-                roundTripEfficiencyPercent: 90m,
-                targetEndStateOfChargePercent: 25m),
+            BatteryConfiguration: new BatteryConfiguration(new BatteryConfigurationValues
+            {
+                TotalCapacityKwh = 12m,
+                MinimumStateOfChargePercent = 10m,
+                MaximumChargePowerWatts = 3000,
+                MaximumDischargePowerWatts = 3000,
+                RoundTripEfficiencyPercent = 90m,
+                TargetEndStateOfChargePercent = 25m,
+                PlanningMinimumStateOfChargePercent = 15m
+            }),
             PriceForecast: prices,
             PvForecast: pvYield,
             ConsumptionForecast: consumption,

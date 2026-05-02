@@ -31,6 +31,7 @@ public sealed class BatterySettingsProviderTests : IDisposable
         await settingsStore.SaveSettingAsync(CreateNormalSetting(ControllerSettingDefaults.BatteryMaximumDischargePowerWattsKey, "2500"));
         await settingsStore.SaveSettingAsync(CreateNormalSetting(ControllerSettingDefaults.BatteryRoundTripEfficiencyPercentKey, "92.5"));
         await settingsStore.SaveSettingAsync(CreateNormalSetting(ControllerSettingDefaults.BatteryTargetEndStateOfChargePercentKey, "25"));
+        await settingsStore.SaveSettingAsync(CreateNormalSetting(ControllerSettingDefaults.BatteryPlanningMinimumStateOfChargePercentKey, "18"));
         var provider = new DatabaseBatteryConfigurationProvider(settingsStore);
 
         var configuration = await provider.GetBatteryConfigurationAsync();
@@ -41,6 +42,7 @@ public sealed class BatterySettingsProviderTests : IDisposable
         Assert.Equal(2500, configuration.MaximumDischargePowerWatts);
         Assert.Equal(92.5m, configuration.RoundTripEfficiencyPercent);
         Assert.Equal(25m, configuration.TargetEndStateOfChargePercent);
+        Assert.Equal(18m, configuration.PlanningMinimumStateOfChargePercent);
     }
 
     [Fact]

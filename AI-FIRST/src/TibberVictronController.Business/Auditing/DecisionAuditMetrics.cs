@@ -15,6 +15,7 @@ public sealed record DecisionAuditMetrics(
     decimal CycleCount,
     decimal MinimumStateOfChargePercent,
     decimal MaximumStateOfChargePercent,
+    decimal FinalStateOfChargePercent,
     decimal EfficiencyLossKwh,
     decimal EfficiencyLossCost,
     decimal NetBenefitAfterEfficiencyLoss)
@@ -31,6 +32,7 @@ public sealed record DecisionAuditMetrics(
         CycleCount: 0m,
         MinimumStateOfChargePercent: 0m,
         MaximumStateOfChargePercent: 0m,
+        FinalStateOfChargePercent: 0m,
         EfficiencyLossKwh: 0m,
         EfficiencyLossCost: 0m,
         NetBenefitAfterEfficiencyLoss: 0m);
