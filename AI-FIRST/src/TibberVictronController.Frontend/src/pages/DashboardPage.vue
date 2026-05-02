@@ -108,10 +108,8 @@ const forecastChartEntries = computed(() => forecast.value?.entries ?? []);
 const forecastLoadError = computed(() => loadErrors.value.find((error) => error.source === 'Forecast') ?? null);
 const chartWidth = 960;
 const chartHeight = 300;
-const priceChartTop = 24;
-const priceChartHeight = 150;
-const inputChartTop = 210;
-const inputChartHeight = 60;
+const chartPlotTop = 24;
+const chartPlotHeight = 220;
 
 const chartPriceRange = computed(() => {
   const prices = forecastChartEntries.value.map((entry) => entry.tibberPricePerKwh);
@@ -356,7 +354,7 @@ function getPriceY(price: number): number {
   const range = chartPriceRange.value;
   const priceShare = (price - range.minimum) / (range.maximum - range.minimum);
 
-  return priceChartTop + priceChartHeight - priceShare * priceChartHeight;
+  return chartPlotTop + chartPlotHeight - priceShare * chartPlotHeight;
 }
 
 function getPriceBarY(price: number): number {
@@ -368,11 +366,11 @@ function getPriceBarHeight(price: number): number {
 }
 
 function getSocY(stateOfChargePercent: number): number {
-  return inputChartTop + inputChartHeight - (Math.max(0, Math.min(100, stateOfChargePercent)) / 100) * inputChartHeight;
+  return chartPlotTop + chartPlotHeight - (Math.max(0, Math.min(100, stateOfChargePercent)) / 100) * chartPlotHeight;
 }
 
 function getInputY(inputKwh: number): number {
-  return inputChartTop + inputChartHeight - (inputKwh / chartMaximumInputKwh.value) * inputChartHeight;
+  return chartPlotTop + chartPlotHeight - (inputKwh / chartMaximumInputKwh.value) * chartPlotHeight;
 }
 
 function createSocPoints(): string {
@@ -515,6 +513,99 @@ onMounted(() => {
       </article>
     </section>
 
+    <section class="panel">
+          <div class="panel__header">
+            <div>
+              <h2>Forecast</h2>
+              <p>Tibber-Preise als Hauptchart, eingefärbt nach geplanter Batterieentscheidung.</p>
+            </div>
+          </div>
+
+          <div v-if="forecastChartEntries.length" class="forecast-chart">
+            <svg
+              :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
+              role="img"
+              aria-label="Forecast-Chart mit Tibber-Preisen, Batterieentscheidungen, PV, Verbrauch und erwartetem SoC"
+            >
+              <line
+                x1="0"
+                :x2="chartWidth"
+                :y1="getPriceY(0)"
+                :y2="getPriceY(0)"
+                class="chart-zero-line"
+              />
+
+              <rect
+                v-for="(entry, index) in forecastChartEntries"
+                :key="`${entry.startsAtUtc}-price`"
+                :x="getBarX(index)"
+                :y="getPriceBarY(entry.tibberPricePerKwh)"
+                :width="Math.max(2, getBarWidth() - 1)"
+                :height="getPriceBarHeight(entry.tibberPricePerKwh)"
+                :fill="getForecastBarColor(entry)"
+                class="price-bar"
+              >
+                <title>{{ createForecastTooltip(entry) }}</title>
+              </rect>
+
+              <line x1="0" :x2="chartWidth" :y1="chartPlotTop" :y2="chartPlotTop" class="chart-section-line" />
+              <line x1="0" :x2="chartWidth" :y1="chartPlotTop + chartPlotHeight" :y2="chartPlotTop + chartPlotHeight" class="chart-section-line" />
+              <polyline :points="createSocPoints()" class="soc-line" />
+              <polyline :points="createPvPoints()" class="pv-line" />
+              <polyline :points="createConsumptionPoints()" class="consumption-line" />
+
+              <circle
+                v-for="(entry, index) in forecastChartEntries"
+                :key="`${entry.startsAtUtc}-soc`"
+                :cx="getBarCenterX(index)"
+                :cy="getSocY(entry.stateOfChargeAfterPercent)"
+                r="2"
+                class="soc-point"
+              >
+                <title>{{ createForecastTooltip(entry) }}</title>
+              </circle>
+            </svg>
+
+            <div class="chart-legend">
+              <span><i class="legend-price-charge-grid" />Laden aus Netz</span>
+              <span><i class="legend-price-charge-pv" />Laden aus PV</span>
+              <span><i class="legend-price-discharge" />Entladen</span>
+              <span><i class="legend-price-idle" />Idle</span>
+              <span><i class="legend-soc" />SoC</span>
+              <span><i class="legend-pv" />PV</span>
+              <span><i class="legend-consumption" />Verbrauch</span>
+            </div>
+          </div>
+
+          <div v-else class="forecast-chart forecast-chart--empty">
+            <svg
+              :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
+              role="img"
+              aria-label="Leerer Forecast-Chart ohne geladene Forecast-Daten"
+            >
+              <line x1="0" :x2="chartWidth" y1="174" y2="174" class="chart-zero-line" />
+              <line x1="0" :x2="chartWidth" :y1="chartPlotTop" :y2="chartPlotTop" class="chart-section-line" />
+              <line x1="0" :x2="chartWidth" :y1="chartPlotTop + chartPlotHeight" :y2="chartPlotTop + chartPlotHeight" class="chart-section-line" />
+              <rect x="0" :y="chartPlotTop" :width="chartWidth" :height="chartPlotHeight" class="empty-price-area" />
+            </svg>
+
+            <div class="forecast-chart__empty">
+              <strong>Forecast-Chart noch ohne Daten</strong>
+              <span v-if="forecastLoadError">{{ forecastLoadError.message }}</span>
+              <span v-else>Der Forecast wurde noch nicht geladen oder enthält keine Slots.</span>
+            </div>
+          </div>
+
+          <div v-if="nextForecastEntries.length" class="forecast-list">
+            <div v-for="entry in nextForecastEntries" :key="entry.startsAtUtc" class="forecast-row">
+              <span>{{ formatDateTime(entry.startsAtUtc) }}</span>
+              <strong>{{ translateDecisionState(entry.decisionState) }}</strong>
+              <span>{{ formatPercent(entry.stateOfChargeAfterPercent) }}</span>
+              <span>{{ formatPrice(entry.tibberPricePerKwh, entry.tibberPriceCurrency) }}</span>
+            </div>
+          </div>
+        </section>
+        
     <div class="dashboard-layout">
       <main class="dashboard-main">
         <section class="panel decision-panel">
@@ -551,97 +642,7 @@ onMounted(() => {
           <p v-else class="empty-state">Noch keine aktuelle Entscheidung verfügbar.</p>
         </section>
 
-        <section class="panel">
-          <div class="panel__header">
-            <div>
-              <h2>Forecast</h2>
-              <p>Tibber-Preise als Hauptchart, eingefärbt nach geplanter Batterieentscheidung.</p>
-            </div>
-          </div>
-
-          <div v-if="forecastChartEntries.length" class="forecast-chart">
-            <svg
-              :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
-              role="img"
-              aria-label="Forecast-Chart mit Tibber-Preisen, Batterieentscheidungen, PV, Verbrauch und erwartetem SoC"
-            >
-              <line
-                x1="0"
-                :x2="chartWidth"
-                :y1="getPriceY(0)"
-                :y2="getPriceY(0)"
-                class="chart-zero-line"
-              />
-
-              <rect
-                v-for="(entry, index) in forecastChartEntries"
-                :key="`${entry.startsAtUtc}-price`"
-                :x="getBarX(index)"
-                :y="getPriceBarY(entry.tibberPricePerKwh)"
-                :width="Math.max(2, getBarWidth() - 1)"
-                :height="getPriceBarHeight(entry.tibberPricePerKwh)"
-                :fill="getForecastBarColor(entry)"
-                class="price-bar"
-              >
-                <title>{{ createForecastTooltip(entry) }}</title>
-              </rect>
-
-              <line x1="0" :x2="chartWidth" :y1="inputChartTop" :y2="inputChartTop" class="chart-section-line" />
-              <polyline :points="createSocPoints()" class="soc-line" />
-              <polyline :points="createPvPoints()" class="pv-line" />
-              <polyline :points="createConsumptionPoints()" class="consumption-line" />
-
-              <circle
-                v-for="(entry, index) in forecastChartEntries"
-                :key="`${entry.startsAtUtc}-soc`"
-                :cx="getBarCenterX(index)"
-                :cy="getSocY(entry.stateOfChargeAfterPercent)"
-                r="2"
-                class="soc-point"
-              >
-                <title>{{ createForecastTooltip(entry) }}</title>
-              </circle>
-            </svg>
-
-            <div class="chart-legend">
-              <span><i class="legend-price-charge-grid" />Laden aus Netz</span>
-              <span><i class="legend-price-charge-pv" />Laden aus PV</span>
-              <span><i class="legend-price-discharge" />Entladen</span>
-              <span><i class="legend-price-idle" />Idle</span>
-              <span><i class="legend-soc" />SoC</span>
-              <span><i class="legend-pv" />PV</span>
-              <span><i class="legend-consumption" />Verbrauch</span>
-            </div>
-          </div>
-
-          <div v-else class="forecast-chart forecast-chart--empty">
-            <svg
-              :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
-              role="img"
-              aria-label="Leerer Forecast-Chart ohne geladene Forecast-Daten"
-            >
-              <line x1="0" :x2="chartWidth" y1="174" y2="174" class="chart-zero-line" />
-              <line x1="0" :x2="chartWidth" :y1="inputChartTop" :y2="inputChartTop" class="chart-section-line" />
-              <rect x="0" y="24" :width="chartWidth" height="150" class="empty-price-area" />
-              <rect x="0" :y="inputChartTop" :width="chartWidth" :height="inputChartHeight" class="empty-input-area" />
-            </svg>
-
-            <div class="forecast-chart__empty">
-              <strong>Forecast-Chart noch ohne Daten</strong>
-              <span v-if="forecastLoadError">{{ forecastLoadError.message }}</span>
-              <span v-else>Der Forecast wurde noch nicht geladen oder enthält keine Slots.</span>
-            </div>
-          </div>
-
-          <div v-if="nextForecastEntries.length" class="forecast-list">
-            <div v-for="entry in nextForecastEntries" :key="entry.startsAtUtc" class="forecast-row">
-              <span>{{ formatDateTime(entry.startsAtUtc) }}</span>
-              <strong>{{ translateDecisionState(entry.decisionState) }}</strong>
-              <span>{{ formatPercent(entry.stateOfChargeAfterPercent) }}</span>
-              <span>{{ formatPrice(entry.tibberPricePerKwh, entry.tibberPriceCurrency) }}</span>
-            </div>
-          </div>
-        </section>
+        
       </main>
 
       <aside class="dashboard-side">

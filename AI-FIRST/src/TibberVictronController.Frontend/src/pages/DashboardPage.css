@@ -213,8 +213,7 @@
   opacity: 0.82;
 }
 
-.empty-price-area,
-.empty-input-area {
+.empty-price-area {
   fill: #f8fafc;
   stroke: #edf1f5;
   stroke-width: 1;
