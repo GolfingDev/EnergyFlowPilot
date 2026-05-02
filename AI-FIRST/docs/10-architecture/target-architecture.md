@@ -24,6 +24,7 @@ Build a production-oriented ASP.NET Core .NET 10 application for a Tibber/Victro
 - Keep business logic out of controllers and endpoints.
 - Use DTOs for every exchange with the frontend.
 - Keep hardware access behind interfaces.
+- Validate live telemetry through interfaces before every real control decision.
 - Use interfaces at architectural boundaries, especially for hardware, external APIs, persistence, time and test seams.
 - Keep external-service failures explicit and logged.
 - Store decision inputs and reasons so every battery decision remains explainable.

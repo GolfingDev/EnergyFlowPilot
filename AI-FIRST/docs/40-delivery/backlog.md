@@ -44,6 +44,7 @@
 40. Persist daily battery savings summaries in SQLite.
 41. Add API for daily, weekly, monthly, yearly and total battery savings.
 42. Add frontend views for daily, weekly, monthly, yearly and total battery savings.
+43. Add live telemetry pre-check for every real control decision, including current SOC, current consumption/grid import, PV production, Tibber price freshness and explicit idle logging when inputs are missing or stale.
 
 ## Rule
 

@@ -114,6 +114,20 @@ The direct decision should contain:
 
 Only the direct decision path may lead to command execution, and command execution must happen outside the Battery Decision Engine through a hardware abstraction.
 
+Before every direct control decision, the controller must read and validate the latest live inputs again. Forecast values may guide planning, but they must not be used as a silent replacement for current telemetry when a real hardware command could be issued.
+
+The live pre-check must include at least:
+
+- current battery state of charge from Victron telemetry
+- current house consumption or grid import at the grid connection point
+- current grid export, represented as negative grid import if applicable
+- current PV production where available
+- current battery charge and discharge limits from configuration
+- latest valid Tibber price slot for the current UTC time
+- freshness timestamps for all live telemetry values
+
+If required live inputs are missing, stale, inconsistent or outside plausible physical limits, the direct decision must be `Idle`, must not issue a command intent and must log a structured reason that names the invalid input.
+
 Every direct decision must be logged with its input summary, result, target power, relevant time window and structured reasons. Decision log retention must be configurable through persisted settings and frontend-editable later.
 
 Grid feed-in from the battery is forbidden under all circumstances. For `Discharge`, the target power must be limited by the currently measured grid import at the grid connection point. If current grid import is `0` watts or negative, the direct decision must not discharge and must explain that discharging would risk grid feed-in.
