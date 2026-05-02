@@ -54,7 +54,8 @@ public static class DecisionAuditGoldenScenarioFactory
                 MaximumDischargePowerWatts = 3000,
                 RoundTripEfficiencyPercent = 90m,
                 TargetEndStateOfChargePercent = 25m,
-                PlanningMinimumStateOfChargePercent = 15m
+                PlanningMinimumStateOfChargePercent = 15m,
+                PlanningMaximumStateOfChargePercent = 95m
             }),
             PriceForecast: prices,
             PvForecast: pvYield,

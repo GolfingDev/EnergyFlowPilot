@@ -17,6 +17,7 @@ public sealed class DecisionAuditHarnessTests
 
         Assert.Equal(96, report.DecisionSlots.Count);
         Assert.Equal(96, report.BaselineDecisionSlots.Count);
+        Assert.Equal(95m, report.Scenario.BatteryConfiguration.PlanningMaximumStateOfChargePercent);
         Assert.All(report.DecisionSlots, slot =>
         {
             Assert.False(string.IsNullOrWhiteSpace(slot.Action));
