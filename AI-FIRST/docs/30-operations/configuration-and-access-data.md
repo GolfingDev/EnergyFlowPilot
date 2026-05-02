@@ -21,6 +21,7 @@ Runtime settings include values such as:
 - total battery capacity in kWh
 - minimum battery state of charge
 - planning minimum battery state of charge
+- planning maximum battery state of charge for PV forecast headroom during grid charging
 - target end battery state of charge
 - maximum charge power
 - maximum discharge power

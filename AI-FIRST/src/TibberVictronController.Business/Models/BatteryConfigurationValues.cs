@@ -18,4 +18,6 @@ public sealed class BatteryConfigurationValues
     public decimal? TargetEndStateOfChargePercent { get; init; }
 
     public decimal? PlanningMinimumStateOfChargePercent { get; init; }
+
+    public decimal? PlanningMaximumStateOfChargePercent { get; init; }
 }

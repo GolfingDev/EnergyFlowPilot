@@ -202,6 +202,10 @@ The current or forecasted battery state of charge must influence the price strat
 - the configurable target end state of charge defines an explainable reserve for the end of the planning horizon
 - the optional planning minimum state of charge is a softer forecast boundary above the absolute battery protection limit
 - if no planning minimum state of charge is configured, the absolute minimum state of charge is used as fallback
+- the optional planning maximum state of charge preserves headroom for possible PV forecast errors during grid charging
+- if no planning maximum state of charge is configured, the physical full battery limit is used as fallback
+- grid charging may exceed the planning maximum only when the Tibber price is below the configured feed-in compensation, because charging is then more valuable than preserving PV headroom
+- PV surplus charging is not capped by the planning maximum and may still fill the battery up to the physical maximum
 - the maximum charge power must come from persisted controller configuration and limits how quickly cheap or negative price windows can fill the battery
 - the maximum discharge power must come from persisted controller configuration and limits how quickly expensive price windows can offset grid consumption
 - discharge planning must never exceed current or forecasted grid import, because battery feed-in into the grid is forbidden

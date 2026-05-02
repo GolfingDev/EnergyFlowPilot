@@ -70,6 +70,7 @@ public sealed record BatteryConfiguration
 
         var configuredTargetEndStateOfChargePercent = values.TargetEndStateOfChargePercent ?? minimumStateOfChargePercent;
         var configuredPlanningMinimumStateOfChargePercent = values.PlanningMinimumStateOfChargePercent ?? minimumStateOfChargePercent;
+        var configuredPlanningMaximumStateOfChargePercent = values.PlanningMaximumStateOfChargePercent ?? 100m;
 
         if (configuredTargetEndStateOfChargePercent < minimumStateOfChargePercent || configuredTargetEndStateOfChargePercent > 100m)
         {
@@ -81,6 +82,11 @@ public sealed record BatteryConfiguration
             throw new ArgumentOutOfRangeException(nameof(values.PlanningMinimumStateOfChargePercent), "Die Planungsreserve muss zwischen minimalem Akkuladestand und Ziel-Endreserve liegen.");
         }
 
+        if (configuredPlanningMaximumStateOfChargePercent < configuredTargetEndStateOfChargePercent || configuredPlanningMaximumStateOfChargePercent > 100m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(values.PlanningMaximumStateOfChargePercent), "Das Planungs-Maximum muss zwischen Ziel-Endreserve und 100 Prozent liegen.");
+        }
+
         TotalCapacityKwh = totalCapacityKwh;
         MinimumStateOfChargePercent = minimumStateOfChargePercent;
         MaximumChargePowerWatts = maximumChargePowerWatts;
@@ -88,6 +94,7 @@ public sealed record BatteryConfiguration
         RoundTripEfficiencyPercent = roundTripEfficiencyPercent;
         TargetEndStateOfChargePercent = configuredTargetEndStateOfChargePercent;
         PlanningMinimumStateOfChargePercent = configuredPlanningMinimumStateOfChargePercent;
+        PlanningMaximumStateOfChargePercent = configuredPlanningMaximumStateOfChargePercent;
     }
 
     /// <summary>
@@ -124,4 +131,9 @@ public sealed record BatteryConfiguration
     /// Gets the softer planning boundary used before the absolute battery protection limit is reached.
     /// </summary>
     public decimal PlanningMinimumStateOfChargePercent { get; }
+
+    /// <summary>
+    /// Gets the softer grid-charging boundary used to preserve headroom for possible PV forecast errors.
+    /// </summary>
+    public decimal PlanningMaximumStateOfChargePercent { get; }
 }

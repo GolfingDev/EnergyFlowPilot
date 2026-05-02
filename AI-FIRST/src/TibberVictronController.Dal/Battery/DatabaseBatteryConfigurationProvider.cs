@@ -56,6 +56,11 @@ public sealed class DatabaseBatteryConfigurationProvider : IBatteryConfiguration
             "Die Planungsreserve ist nicht konfiguriert.",
             "Die Planungsreserve muss als Dezimalzahl konfiguriert sein.",
             cancellationToken);
+        var planningMaximumStateOfChargePercent = await GetRequiredDecimalSettingAsync(
+            ControllerSettingDefaults.BatteryPlanningMaximumStateOfChargePercentKey,
+            "Das Planungs-Maximum ist nicht konfiguriert.",
+            "Das Planungs-Maximum muss als Dezimalzahl konfiguriert sein.",
+            cancellationToken);
 
         return new BatteryConfiguration(new BatteryConfigurationValues
         {
@@ -65,7 +70,8 @@ public sealed class DatabaseBatteryConfigurationProvider : IBatteryConfiguration
             MaximumDischargePowerWatts = maximumDischargePowerWatts,
             RoundTripEfficiencyPercent = roundTripEfficiencyPercent,
             TargetEndStateOfChargePercent = targetEndStateOfChargePercent,
-            PlanningMinimumStateOfChargePercent = planningMinimumStateOfChargePercent
+            PlanningMinimumStateOfChargePercent = planningMinimumStateOfChargePercent,
+            PlanningMaximumStateOfChargePercent = planningMaximumStateOfChargePercent
         });
     }
 

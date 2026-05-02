@@ -164,7 +164,8 @@ public sealed class DecisionAuditHarnessTests
             BatteryForecastRuleIds.NeutralIdle,
             BatteryForecastRuleIds.BatteryFullIdle,
             BatteryForecastRuleIds.BatteryFullPvSurplus,
-            BatteryForecastRuleIds.PreserveHeadroomForNegativePrice
+            BatteryForecastRuleIds.PreserveHeadroomForNegativePrice,
+            BatteryForecastRuleIds.PlanningMaximumSocHeadroom
         };
         var acceptedActionRuleIds = new[]
         {
