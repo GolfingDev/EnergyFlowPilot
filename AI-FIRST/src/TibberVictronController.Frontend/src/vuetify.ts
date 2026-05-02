@@ -21,6 +21,18 @@ export const vuetify = createVuetify({
           warning: '#b7791f',
           error: '#b42318'
         }
+      },
+      controllerDark: {
+        dark: true,
+        colors: {
+          background: '#101214',
+          surface: '#181b20',
+          primary: '#4fc3f7',
+          secondary: '#aab3bd',
+          success: '#7cfc8a',
+          warning: '#f1c40f',
+          error: '#ff7b7b'
+        }
       }
     }
   }

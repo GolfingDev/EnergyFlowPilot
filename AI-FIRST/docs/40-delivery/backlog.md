@@ -48,6 +48,7 @@
 44. Add a worker-process exception handler that sends a clearly formatted and unambiguous failure email for production runtime errors in scheduled jobs or realtime control loops.
 45. Add address-based geocoding for PV forecast settings so latitude and longitude can be derived from a user-entered installation address.
 46. Add multi-plane PV forecast configuration so one installation can contain multiple PV surfaces with separate azimuth, declination and kWp values.
+47. Add UI text translation storage for v2, including a persistence concept for database-backed multilingual labels and help texts.
 
 ## Rule
 

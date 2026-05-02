@@ -544,7 +544,12 @@ onMounted(() => {
       </div>
 
       <div class="settings-header__meta">
-        <v-chip :color="hasUnsavedChanges ? 'warning' : 'success'" size="small" variant="flat">
+        <v-chip
+          class="settings-header__state-chip"
+          :class="hasUnsavedChanges ? 'settings-header__state-chip--dirty' : 'settings-header__state-chip--saved'"
+          size="small"
+          variant="flat"
+        >
           {{ hasUnsavedChanges ? 'Ungespeichert' : 'Gespeichert' }}
         </v-chip>
         <span>Änderungen werden beim nächsten Entscheidungszyklus aktiv. Verbindungswerte können einen Reconnect erfordern.</span>
