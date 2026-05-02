@@ -11,59 +11,42 @@ namespace TibberVictronController.Api.Configuration;
 /// </summary>
 public sealed class VictronMqttTelemetryBackgroundService : BackgroundService
 {
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
+
     private readonly IServiceProvider serviceProvider;
     private readonly ILogger<VictronMqttTelemetryBackgroundService> logger;
+    private readonly VictronMqttRuntimeStatus runtimeStatus;
     private IMqttClient? mqttClient;
 
     public VictronMqttTelemetryBackgroundService(
         IServiceProvider serviceProvider,
-        ILogger<VictronMqttTelemetryBackgroundService> logger)
+        ILogger<VictronMqttTelemetryBackgroundService> logger,
+        VictronMqttRuntimeStatus runtimeStatus)
     {
         this.serviceProvider = serviceProvider;
         this.logger = logger;
+        this.runtimeStatus = runtimeStatus;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var scope = serviceProvider.CreateScope();
-        var settingsProvider = scope.ServiceProvider.GetRequiredService<DatabaseVictronMqttSettingsProvider>();
-        var snapshotStore = scope.ServiceProvider.GetRequiredService<VictronTelemetrySnapshotStore>();
-        var settings = await settingsProvider.GetSettingsAsync(stoppingToken);
-        var topics = VictronMqttTopicFactory.Create(settings);
-
-        mqttClient = new MqttClientFactory().CreateMqttClient();
-        mqttClient.ApplicationMessageReceivedAsync += eventArguments =>
-        {
-            HandleMessage(eventArguments, topics, snapshotStore);
-            return Task.CompletedTask;
-        };
-
-        var options = new MqttClientOptionsBuilder()
-            .WithTcpServer(settings.Host, settings.Port)
-            .WithKeepAlivePeriod(TimeSpan.FromSeconds(settings.KeepAliveSeconds))
-            .WithClientId($"tibber-victron-controller-{settings.PortalId}")
-            .Build();
-
-        await mqttClient.ConnectAsync(options, stoppingToken);
-
-        var topicFilters = topics.ReadTopics
-            .Select(topic => new MqttTopicFilterBuilder()
-                .WithTopic(topic)
-                .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtMostOnce)
-                .Build())
-            .ToList();
-        var subscribeOptions = new MqttClientSubscribeOptions
-        {
-            TopicFilters = topicFilters
-        };
-
-        await mqttClient.SubscribeAsync(subscribeOptions, stoppingToken);
-
-        logger.LogInformation("Victron MQTT verbunden. PortalId={PortalId}, Topics={TopicCount}", settings.PortalId, topicFilters.Count);
-
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            try
+            {
+                runtimeStatus.MarkStarting();
+                await RunClientLoopAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception exception)
+            {
+                runtimeStatus.MarkFailed($"Victron MQTT konnte nicht initialisiert werden: {exception.Message}");
+                logger.LogError(exception, "Victron MQTT konnte nicht initialisiert oder betrieben werden.");
+                await Task.Delay(RetryDelay, stoppingToken);
+            }
         }
     }
 
@@ -86,11 +69,12 @@ public sealed class VictronMqttTelemetryBackgroundService : BackgroundService
 
         if (!VictronMqttPayloadParser.TryParseDecimal(payload, out var value))
         {
-            logger.LogWarning($"Victron MQTT Payload konnte nicht geparst werden. Topic={Topic}", eventArguments.ApplicationMessage.Topic);
+            logger.LogWarning("Victron MQTT Payload konnte nicht geparst werden. Topic={Topic}", eventArguments.ApplicationMessage.Topic);
             return;
         }
 
         var measuredAtUtc = DateTimeOffset.UtcNow;
+        runtimeStatus.MarkMessageReceived(measuredAtUtc);
 
         if (string.Equals(eventArguments.ApplicationMessage.Topic, topics.GridPowerTopic, StringComparison.Ordinal))
         {
@@ -113,6 +97,49 @@ public sealed class VictronMqttTelemetryBackgroundService : BackgroundService
         if (string.Equals(eventArguments.ApplicationMessage.Topic, topics.HouseConsumptionTopic, StringComparison.Ordinal))
         {
             snapshotStore.UpdateHouseConsumption(value, measuredAtUtc);
+        }
+    }
+
+    private async Task RunClientLoopAsync(CancellationToken stoppingToken)
+    {
+        using var scope = serviceProvider.CreateScope();
+        var settingsProvider = scope.ServiceProvider.GetRequiredService<DatabaseVictronMqttSettingsProvider>();
+        var snapshotStore = scope.ServiceProvider.GetRequiredService<VictronTelemetrySnapshotStore>();
+        var settings = await settingsProvider.GetSettingsAsync(stoppingToken);
+        var topics = VictronMqttTopicFactory.Create(settings);
+
+        mqttClient = new MqttClientFactory().CreateMqttClient();
+        mqttClient.ApplicationMessageReceivedAsync += eventArguments =>
+        {
+            HandleMessage(eventArguments, topics, snapshotStore);
+            return Task.CompletedTask;
+        };
+
+        var options = new MqttClientOptionsBuilder()
+            .WithTcpServer(settings.Host, settings.Port)
+            .WithKeepAlivePeriod(TimeSpan.FromSeconds(settings.KeepAliveSeconds))
+            .WithClientId($"tibber-victron-controller-{settings.PortalId}")
+            .Build();
+        var topicFilters = topics.ReadTopics
+            .Select(topic => new MqttTopicFilterBuilder()
+                .WithTopic(topic)
+                .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtMostOnce)
+                .Build())
+            .ToList();
+        var subscribeOptions = new MqttClientSubscribeOptions
+        {
+            TopicFilters = topicFilters
+        };
+
+        await mqttClient.ConnectAsync(options, stoppingToken);
+        runtimeStatus.MarkConnected();
+        await mqttClient.SubscribeAsync(subscribeOptions, stoppingToken);
+
+        logger.LogInformation("Victron MQTT verbunden. PortalId={PortalId}, Topics={TopicCount}", settings.PortalId, topicFilters.Count);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
         }
     }
 }

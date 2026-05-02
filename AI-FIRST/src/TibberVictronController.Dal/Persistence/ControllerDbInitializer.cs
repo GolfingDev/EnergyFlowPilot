@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
+using System.Globalization;
 using TibberVictronController.Business.Models;
 using TibberVictronController.Dal.Entities;
 
@@ -21,7 +24,78 @@ public sealed class ControllerDbInitializer
         }
 
         await dbContext.Database.EnsureCreatedAsync(cancellationToken);
+        await EnsureMissingTablesAsync(cancellationToken);
         await SeedMissingDefaultSettingsAsync(initializedAtUtc, cancellationToken);
+    }
+
+    private async Task EnsureMissingTablesAsync(CancellationToken cancellationToken)
+    {
+        var databaseCreator = dbContext.GetService<IRelationalDatabaseCreator>();
+        var createScript = dbContext.Database.GenerateCreateScript();
+
+        foreach (var tableName in new[] { "BatterySavingsDailySummaries" })
+        {
+            if (await databaseCreator.HasTablesAsync(cancellationToken) &&
+                await TableExistsAsync(tableName, cancellationToken))
+            {
+                continue;
+            }
+
+            var tableScript = ExtractCreateTableScript(createScript, tableName);
+
+            if (!string.IsNullOrWhiteSpace(tableScript))
+            {
+                await dbContext.Database.ExecuteSqlRawAsync(tableScript, cancellationToken);
+            }
+        }
+    }
+
+    private async Task<bool> TableExistsAsync(string tableName, CancellationToken cancellationToken)
+    {
+        var connection = dbContext.Database.GetDbConnection();
+        var closeConnectionAfterQuery = connection.State != System.Data.ConnectionState.Open;
+
+        if (closeConnectionAfterQuery)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = $tableName";
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "$tableName";
+            parameter.Value = tableName;
+            command.Parameters.Add(parameter);
+
+            var result = await command.ExecuteScalarAsync(cancellationToken);
+
+            return Convert.ToInt32(result, CultureInfo.InvariantCulture) > 0;
+        }
+        finally
+        {
+            if (closeConnectionAfterQuery)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    private static string ExtractCreateTableScript(string createScript, string tableName)
+    {
+        var tableMarker = $"CREATE TABLE \"{tableName}\"";
+        var tableStartIndex = createScript.IndexOf(tableMarker, StringComparison.OrdinalIgnoreCase);
+
+        if (tableStartIndex < 0)
+        {
+            return string.Empty;
+        }
+
+        var nextTableIndex = createScript.IndexOf("CREATE TABLE", tableStartIndex + tableMarker.Length, StringComparison.OrdinalIgnoreCase);
+        var scriptEndIndex = nextTableIndex < 0 ? createScript.Length : nextTableIndex;
+
+        return createScript[tableStartIndex..scriptEndIndex];
     }
 
     private async Task SeedMissingDefaultSettingsAsync(
