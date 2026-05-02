@@ -56,6 +56,24 @@ public sealed class ForecastSolarPvForecastProviderTests
     }
 
     [Fact]
+    public async Task GetPvYieldForecastAsyncMapsMissingForecastSolarIntervalsToZeroYield()
+    {
+        var httpHandler = new RecordingHttpMessageHandler(CreateSuccessfulResponse());
+        var httpClient = new HttpClient(httpHandler);
+        var settingsStore = CreateSettingsStore();
+        var provider = new ForecastSolarPvForecastProvider(httpClient, settingsStore);
+        var startsAtUtc = new DateTimeOffset(2026, 5, 1, 7, 0, 0, TimeSpan.Zero);
+        var endsAtUtc = startsAtUtc.AddHours(5);
+
+        var pvSlots = await provider.GetPvYieldForecastAsync(startsAtUtc, endsAtUtc);
+
+        Assert.Equal(20, pvSlots.Count);
+        Assert.Equal(0m, pvSlots[0].ExpectedPvYieldKwh);
+        Assert.All(pvSlots.Skip(4).Take(4), pvSlot => Assert.Equal(0.125m, pvSlot.ExpectedPvYieldKwh));
+        Assert.All(pvSlots.Skip(8), pvSlot => Assert.Equal(0m, pvSlot.ExpectedPvYieldKwh));
+    }
+
+    [Fact]
     public async Task GetPvYieldForecastAsyncRejectsMissingRequiredSetting()
     {
         var httpHandler = new RecordingHttpMessageHandler(CreateSuccessfulResponse());

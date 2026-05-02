@@ -272,13 +272,9 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
                 interval.StartsAtUtc <= slotStartUtc &&
                 slotEndUtc <= interval.EndsAtUtc);
 
-            if (matchingInterval is null)
-            {
-                throw new ForecastSolarApiException("Forecast.Solar hat keine PV-Ertragsdaten fuer den angeforderten Zeitraum geliefert.");
-            }
-
-            var slotShare = (decimal)(slotEndUtc - slotStartUtc).TotalHours / (decimal)(matchingInterval.EndsAtUtc - matchingInterval.StartsAtUtc).TotalHours;
-            var expectedPvYieldKwh = matchingInterval.EnergyKwh * slotShare;
+            var expectedPvYieldKwh = matchingInterval is null
+                ? 0m
+                : CalculateSlotYieldKwh(slotStartUtc, slotEndUtc, matchingInterval);
 
             forecastSlots.Add(new PvYieldForecastSlot(
                 new ForecastTimeSlot(slotStartUtc, slotEndUtc),
@@ -286,6 +282,16 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
         }
 
         return forecastSlots;
+    }
+
+    private static decimal CalculateSlotYieldKwh(
+        DateTimeOffset slotStartUtc,
+        DateTimeOffset slotEndUtc,
+        ForecastSolarEnergyInterval matchingInterval)
+    {
+        var slotShare = (decimal)(slotEndUtc - slotStartUtc).TotalHours / (decimal)(matchingInterval.EndsAtUtc - matchingInterval.StartsAtUtc).TotalHours;
+
+        return matchingInterval.EnergyKwh * slotShare;
     }
 
     private static IReadOnlyList<ForecastSolarEnergyInterval> CreateEnergyIntervals(
