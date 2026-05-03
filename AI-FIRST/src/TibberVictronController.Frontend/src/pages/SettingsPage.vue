@@ -56,7 +56,7 @@ interface UiError {
   details: string;
 }
 
-type SectionKey = 'battery' | 'price' | 'forecast' | 'consumption' | 'decision' | 'system';
+type SectionKey = 'battery' | 'price' | 'forecast' | 'consumption' | 'decision' | 'system' | 'operations';
 type FieldCategory = 'normal' | 'important' | 'critical';
 
 interface SectionDefinition {
@@ -80,7 +80,8 @@ const sectionDefinitions: SectionDefinition[] = [
   { key: 'forecast', title: 'PV / Prognose', description: 'Standort, PV-Leistung und Prognoseanbieter für die Planung.' },
   { key: 'consumption', title: 'Verbrauch', description: 'Annahmen für den Last- und Verbrauchsforecast.' },
   { key: 'decision', title: 'Entscheidungslogik', description: 'Verhalten der Entscheidungslogik, sofern Einstellungen vorhanden sind.' },
-  { key: 'system', title: 'Victron Connection', description: 'MQTT, Laufzeitverhalten, Aktualisierungsintervalle und Benachrichtigungen.' }
+  { key: 'system', title: 'Victron Connection', description: 'MQTT-Verbindung, Topics und technische Victron-Anbindung.' },
+  { key: 'operations', title: 'Betrieb & Benachrichtigungen', description: 'Worker-Intervalle, Dashboard-Aktualisierung, Protokollierung und Fehlermails.' }
 ];
 
 const fieldDefinitions: FieldDefinition[] = [
@@ -106,18 +107,18 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'consumptionForecast.averageDailyConsumptionKwh', section: 'consumption', subgroup: 'Lastprofil', category: 'important' },
   { key: 'consumptionForecast.timeZone', section: 'consumption', subgroup: 'Lastprofil', category: 'normal' },
   { key: 'victron.dryRun', section: 'decision', subgroup: 'Betriebsmodus', category: 'critical', helpText: 'Simulationsmodus: Entscheidungen werden berechnet, aber Hardware wird nicht aktiv gesteuert.' },
-  { key: 'decisionLog.retentionDays', section: 'system', subgroup: 'Betrieb', category: 'normal', helpText: 'Wie lange Entscheidungsprotokolle gespeichert bleiben.' },
-  { key: 'decisionWorker.intervalSeconds', section: 'system', subgroup: 'Betrieb', category: 'important', helpText: 'Intervall für den automatischen Entscheidungs-Worker im Hintergrund.' },
-  { key: 'dashboard.autoRefreshIntervalSeconds', section: 'system', subgroup: 'Betrieb', category: 'normal', helpText: 'Intervall für die automatische Aktualisierung der Dashboard-Daten. 0 deaktiviert die Automatik.' },
-  { key: 'notifications.workerFailureEmail.enabled', section: 'system', subgroup: 'Benachrichtigungen', category: 'important', helpText: 'Versendet bei Worker-Fehlern automatisch eine E-Mail an den Betreiber.' },
-  { key: 'notifications.workerFailureEmail.smtpHost', section: 'system', subgroup: 'Benachrichtigungen', category: 'important' },
-  { key: 'notifications.workerFailureEmail.smtpPort', section: 'system', subgroup: 'Benachrichtigungen', category: 'normal' },
-  { key: 'notifications.workerFailureEmail.smtpUsername', section: 'system', subgroup: 'Benachrichtigungen', category: 'normal' },
-  { key: 'notifications.workerFailureEmail.smtpPassword', section: 'system', subgroup: 'Benachrichtigungen', category: 'critical', helpText: 'Geheimer SMTP-Zugang für den Versand von Fehlermails.' },
-  { key: 'notifications.workerFailureEmail.fromAddress', section: 'system', subgroup: 'Benachrichtigungen', category: 'important' },
-  { key: 'notifications.workerFailureEmail.toAddress', section: 'system', subgroup: 'Benachrichtigungen', category: 'important' },
-  { key: 'notifications.workerFailureEmail.enableSsl', section: 'system', subgroup: 'Benachrichtigungen', category: 'important' },
-  { key: 'notifications.workerFailureEmail.subjectPrefix', section: 'system', subgroup: 'Benachrichtigungen', category: 'normal' },
+  { key: 'decisionLog.retentionDays', section: 'operations', subgroup: 'Betrieb', category: 'normal', helpText: 'Wie lange Entscheidungsprotokolle gespeichert bleiben.' },
+  { key: 'decisionWorker.intervalSeconds', section: 'operations', subgroup: 'Betrieb', category: 'important', helpText: 'Intervall für den automatischen Entscheidungs-Worker im Hintergrund.' },
+  { key: 'dashboard.autoRefreshIntervalSeconds', section: 'operations', subgroup: 'Betrieb', category: 'normal', helpText: 'Intervall für die automatische Aktualisierung der Dashboard-Daten. 0 deaktiviert die Automatik.' },
+  { key: 'notifications.workerFailureEmail.enabled', section: 'operations', subgroup: 'Benachrichtigungen', category: 'important', helpText: 'Versendet bei Worker-Fehlern automatisch eine E-Mail an den Betreiber.' },
+  { key: 'notifications.workerFailureEmail.smtpHost', section: 'operations', subgroup: 'Benachrichtigungen', category: 'important' },
+  { key: 'notifications.workerFailureEmail.smtpPort', section: 'operations', subgroup: 'Benachrichtigungen', category: 'normal' },
+  { key: 'notifications.workerFailureEmail.smtpUsername', section: 'operations', subgroup: 'Benachrichtigungen', category: 'normal' },
+  { key: 'notifications.workerFailureEmail.smtpPassword', section: 'operations', subgroup: 'Benachrichtigungen', category: 'critical', helpText: 'Geheimer SMTP-Zugang für den Versand von Fehlermails.' },
+  { key: 'notifications.workerFailureEmail.fromAddress', section: 'operations', subgroup: 'Benachrichtigungen', category: 'important' },
+  { key: 'notifications.workerFailureEmail.toAddress', section: 'operations', subgroup: 'Benachrichtigungen', category: 'important' },
+  { key: 'notifications.workerFailureEmail.enableSsl', section: 'operations', subgroup: 'Benachrichtigungen', category: 'important' },
+  { key: 'notifications.workerFailureEmail.subjectPrefix', section: 'operations', subgroup: 'Benachrichtigungen', category: 'normal' },
   { key: 'victron.host', section: 'system', subgroup: 'Victron MQTT', category: 'critical' },
   { key: 'victron.port', section: 'system', subgroup: 'Victron MQTT', category: 'important' },
   { key: 'victron.portalId', section: 'system', subgroup: 'Victron MQTT', category: 'important' },
@@ -446,6 +447,21 @@ function getFieldDescription(field: FieldDefinition): string {
   return field.helpText ?? metadataByKey.value.get(field.key)?.description ?? '';
 }
 
+function getGroupDescription(groupTitle: string): string {
+  switch (groupTitle) {
+    case 'Betrieb':
+      return 'Zentrale Intervalle für Worker, Dashboard und Protokollierung.';
+    case 'Benachrichtigungen':
+      return 'SMTP- und Empfängereinstellungen für automatische Fehlermeldungen.';
+    default:
+      return '';
+  }
+}
+
+function isEmphasizedGroup(groupTitle: string): boolean {
+  return groupTitle === 'Betrieb' || groupTitle === 'Benachrichtigungen';
+}
+
 function getSettingOrFallback(key: string): ControllerSettingResponseDto {
   const setting = settingByKey.value.get(key);
   const metadataEntry = metadataByKey.value.get(key);
@@ -664,8 +680,12 @@ watch(() => route.query.section, () => {
             <p>Planungsgrenzen nutzt der Forecast. Harte Grenzen gelten als Sicherheitsrahmen.</p>
           </div>
 
-          <div v-for="group in activeSubgroups" :key="group.title" class="setting-group">
+          <div v-for="group in activeSubgroups" :key="group.title" class="setting-group"
+            :class="{ 'setting-group--emphasized': isEmphasizedGroup(group.title) }">
             <h3>{{ group.title }}</h3>
+            <p v-if="getGroupDescription(group.title)" class="setting-group__description">
+              {{ getGroupDescription(group.title) }}
+            </p>
 
             <div class="setting-rows">
               <div
@@ -760,3 +780,4 @@ watch(() => route.query.section, () => {
 </template>
 
 <style scoped src="./SettingsPage.css"></style>
+

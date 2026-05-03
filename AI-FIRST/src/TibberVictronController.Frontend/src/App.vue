@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useTheme } from 'vuetify';
 import GeneralOverlay from './components/GeneralOverlay.vue'
 
-type SettingsSectionKey = 'battery' | 'price' | 'forecast' | 'consumption' | 'decision' | 'system';
+type SettingsSectionKey = 'battery' | 'price' | 'forecast' | 'consumption' | 'decision' | 'system' | 'operations';
 
 interface SettingsMenuGroup {
   title: string;
@@ -47,7 +47,7 @@ const settingsMenuGroups: SettingsMenuGroup[] = [
     items: [
       { label: 'Decision Engine', section: 'decision' },
       { label: 'Victron Connection', section: 'system' },
-      { label: 'Benachrichtigungen', section: 'system' }
+      { label: 'Betrieb & Benachrichtigungen', section: 'operations' }
     ]
   }
 ];
