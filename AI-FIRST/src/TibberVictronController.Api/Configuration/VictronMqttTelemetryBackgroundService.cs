@@ -1,4 +1,3 @@
-using System.Text;
 using MQTTnet;
 using MQTTnet.Protocol;
 using TibberVictronController.Dal.Victron;
@@ -64,8 +63,7 @@ public sealed class VictronMqttTelemetryBackgroundService : BackgroundService
         VictronMqttTopics topics,
         VictronTelemetrySnapshotStore snapshotStore)
     {
-        var payloadBytes = eventArguments.ApplicationMessage.Payload ?? Array.Empty<byte>();
-        var payload = Encoding.UTF8.GetString(payloadBytes);
+        var payload = eventArguments.ApplicationMessage.ConvertPayloadToString();
 
         if (!VictronMqttPayloadParser.TryParseDecimal(payload, out var value))
         {

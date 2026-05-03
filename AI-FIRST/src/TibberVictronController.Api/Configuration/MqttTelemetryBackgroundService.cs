@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using MQTTnet;
 using MQTTnet.Protocol;
@@ -71,8 +70,7 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         MqttTelemetryTopics topics,
         MqttTelemetrySnapshotStore snapshotStore)
     {
-        var payloadBytes = eventArguments.ApplicationMessage.Payload;
-        var payload = Encoding.UTF8.GetString(payloadBytes);
+        var payload = eventArguments.ApplicationMessage.ConvertPayloadToString();
 
         if (!Dal.Victron.VictronMqttPayloadParser.TryParseDecimal(payload, out var value))
         {
