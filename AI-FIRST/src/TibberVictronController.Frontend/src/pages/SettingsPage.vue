@@ -80,7 +80,7 @@ const sectionDefinitions: SectionDefinition[] = [
   { key: 'forecast', title: 'PV / Prognose', description: 'Standort, PV-Leistung und Prognoseanbieter für die Planung.' },
   { key: 'consumption', title: 'Verbrauch', description: 'Annahmen für den Last- und Verbrauchsforecast.' },
   { key: 'decision', title: 'Entscheidungslogik', description: 'Verhalten der Entscheidungslogik, sofern Einstellungen vorhanden sind.' },
-  { key: 'system', title: 'Victron Connection', description: 'MQTT, Laufzeitverhalten und sicherheitsrelevante Verbindungswerte.' }
+  { key: 'system', title: 'Victron Connection', description: 'MQTT, Laufzeitverhalten, Aktualisierungsintervalle und Benachrichtigungen.' }
 ];
 
 const fieldDefinitions: FieldDefinition[] = [
@@ -106,9 +106,9 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'consumptionForecast.averageDailyConsumptionKwh', section: 'consumption', subgroup: 'Lastprofil', category: 'important' },
   { key: 'consumptionForecast.timeZone', section: 'consumption', subgroup: 'Lastprofil', category: 'normal' },
   { key: 'victron.dryRun', section: 'decision', subgroup: 'Betriebsmodus', category: 'critical', helpText: 'Simulationsmodus: Entscheidungen werden berechnet, aber Hardware wird nicht aktiv gesteuert.' },
-  { key: 'decisionLog.retentionDays', section: 'decision', subgroup: 'Nachvollziehbarkeit', category: 'normal' },
-  { key: 'decisionWorker.intervalSeconds', section: 'decision', subgroup: 'Worker-Zyklus', category: 'important', helpText: 'Intervall für den automatischen Entscheidungs-Worker im Hintergrund.' },
-  { key: 'dashboard.autoRefreshIntervalSeconds', section: 'system', subgroup: 'Dashboard', category: 'normal', helpText: 'Intervall fuer die automatische Aktualisierung der Dashboard-Daten. 0 deaktiviert die Automatik.' },
+  { key: 'decisionLog.retentionDays', section: 'system', subgroup: 'Betrieb', category: 'normal', helpText: 'Wie lange Entscheidungsprotokolle gespeichert bleiben.' },
+  { key: 'decisionWorker.intervalSeconds', section: 'system', subgroup: 'Betrieb', category: 'important', helpText: 'Intervall für den automatischen Entscheidungs-Worker im Hintergrund.' },
+  { key: 'dashboard.autoRefreshIntervalSeconds', section: 'system', subgroup: 'Betrieb', category: 'normal', helpText: 'Intervall für die automatische Aktualisierung der Dashboard-Daten. 0 deaktiviert die Automatik.' },
   { key: 'notifications.workerFailureEmail.enabled', section: 'system', subgroup: 'Benachrichtigungen', category: 'important', helpText: 'Versendet bei Worker-Fehlern automatisch eine E-Mail an den Betreiber.' },
   { key: 'notifications.workerFailureEmail.smtpHost', section: 'system', subgroup: 'Benachrichtigungen', category: 'important' },
   { key: 'notifications.workerFailureEmail.smtpPort', section: 'system', subgroup: 'Benachrichtigungen', category: 'normal' },
