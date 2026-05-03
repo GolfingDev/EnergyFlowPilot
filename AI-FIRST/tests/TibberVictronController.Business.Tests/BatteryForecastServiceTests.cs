@@ -103,6 +103,41 @@ public sealed class BatteryForecastServiceTests
         Assert.Contains("Der Forecast-Start muss in UTC angegeben sein.", exception.Message);
     }
 
+    [Fact]
+    public async Task CalculateForecastAsyncLimitsForecastToAvailableTibberPrices()
+    {
+        var settingsStore = await CreateSettingsStoreAsync(feedInCompensationPricePerKwh: "0.08");
+        var service = new BatteryForecastService(
+            new StaticTibberPriceForecastProvider(CreatePriceForecast(0.20m, 0.21m)),
+            new StaticWeatherForecastProvider(CreatePvForecast(0.10m, 0.10m)),
+            new StaticHistoricalConsumptionProvider(CreateConsumptionForecast(0.20m, 0.20m)),
+            new FakeBatteryStateProvider(new BatteryState(55m, ForecastStartsAtUtc)),
+            new FakeBatteryConfigurationProvider(new BatteryConfiguration(10m)),
+            settingsStore);
+
+        var result = await service.CalculateForecastAsync(ForecastStartsAtUtc, ForecastStartsAtUtc.AddHours(24));
+
+        Assert.Equal(2, result.Entries.Count);
+        Assert.Equal(ForecastStartsAtUtc.AddMinutes(30), result.Entries[^1].TimeSlot.EndsAtUtc);
+    }
+
+    [Fact]
+    public async Task CalculateForecastAsyncReturnsEmptyForecastWhenNoTibberPricesAreAvailable()
+    {
+        var settingsStore = await CreateSettingsStoreAsync(feedInCompensationPricePerKwh: "0.08");
+        var service = new BatteryForecastService(
+            new StaticTibberPriceForecastProvider(Array.Empty<TibberPriceForecastSlot>()),
+            new ThrowingWeatherForecastProvider(),
+            new ThrowingHistoricalConsumptionProvider(),
+            new FakeBatteryStateProvider(new BatteryState(55m, ForecastStartsAtUtc)),
+            new FakeBatteryConfigurationProvider(new BatteryConfiguration(10m)),
+            settingsStore);
+
+        var result = await service.CalculateForecastAsync(ForecastStartsAtUtc, ForecastStartsAtUtc.AddHours(24));
+
+        Assert.Empty(result.Entries);
+    }
+
     private static async Task<FakeControllerSettingStore> CreateSettingsStoreAsync(string feedInCompensationPricePerKwh)
     {
         var settingsStore = new FakeControllerSettingStore();
@@ -202,6 +237,30 @@ public sealed class BatteryForecastServiceTests
             cancellationToken.ThrowIfCancellationRequested();
 
             return Task.FromResult(consumptionForecast);
+        }
+    }
+
+    private sealed class ThrowingWeatherForecastProvider : IWeatherForecastProvider
+    {
+        public Task<IReadOnlyList<PvYieldForecastSlot>> GetPvYieldForecastAsync(
+            DateTimeOffset startsAtUtc,
+            DateTimeOffset endsAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("Darf ohne Tibber-Preise nicht aufgerufen werden.");
+        }
+    }
+
+    private sealed class ThrowingHistoricalConsumptionProvider : IHistoricalConsumptionProvider
+    {
+        public Task<IReadOnlyList<ConsumptionForecastSlot>> GetConsumptionForecastAsync(
+            DateTimeOffset startsAtUtc,
+            DateTimeOffset endsAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("Darf ohne Tibber-Preise nicht aufgerufen werden.");
         }
     }
 }

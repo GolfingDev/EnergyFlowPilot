@@ -84,6 +84,8 @@ public static class GuiMetadataCatalog
             CreateRule(BatteryForecastRuleIds.WaitForNegativePriceWindow, "Auf besseres Preisfenster warten", "Es wird nicht geladen, weil spaeter ein besseres Preisfenster erwartet wird.", "Forecast"),
             CreateRule(BatteryForecastRuleIds.BatteryFullIdle, "Akku voll", "Der Akku ist voll und kann nicht weiter geladen werden.", "Forecast"),
             CreateRule(BatteryForecastRuleIds.NeutralIdle, "Keine wirtschaftliche Aktion", "Der Slot loest keine bessere Batterieaktion aus.", "Forecast"),
+            CreateRule(CurrentBatteryDecisionRuleIds.MissingBatteryState, "Live-SoC fehlt", "Es liegt noch kein verwendbarer Live-Akkuladestand fuer eine sichere Direktentscheidung vor.", "Realtime"),
+            CreateRule(CurrentBatteryDecisionRuleIds.MissingSiteTelemetry, "Live-Telemetrie fehlt", "Netzbezug, Hausverbrauch oder PV-Ableitung fehlen fuer eine sichere Direktentscheidung.", "Realtime"),
             CreateRule(CurrentBatteryDecisionRuleIds.StaleBatteryState, "Live-SoC veraltet", "Die aktuelle SoC-Messung ist zu alt fuer eine sichere Direktentscheidung.", "Realtime"),
             CreateRule(CurrentBatteryDecisionRuleIds.StaleSiteTelemetry, "Live-Telemetrie veraltet", "Netz- oder PV-Daten sind zu alt fuer eine sichere Direktentscheidung.", "Realtime"),
             CreateRule(CurrentBatteryDecisionRuleIds.InvalidSiteTelemetry, "Unplausible Live-Telemetrie", "Die eingehenden Leistungswerte passen nicht zu plausiblen Live-Daten.", "Realtime"),

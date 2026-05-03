@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using TibberVictronController.Business.Abstractions;
+using TibberVictronController.Dal.Weather;
 
 namespace TibberVictronController.Api.Forecast;
 
@@ -46,9 +47,21 @@ public static class ForecastEndpoints
         }
 
         var endsAtUtc = startsAtUtc.AddHours(hours);
-        var forecastResult = await forecastService.CalculateForecastAsync(startsAtUtc, endsAtUtc, cancellationToken);
-        var forecastDto = BatteryForecastDtoMapper.Map(forecastResult);
 
-        return TypedResults.Ok(forecastDto);
+        try
+        {
+            var forecastResult = await forecastService.CalculateForecastAsync(startsAtUtc, endsAtUtc, cancellationToken);
+            var forecastDto = BatteryForecastDtoMapper.Map(forecastResult);
+
+            return TypedResults.Ok(forecastDto);
+        }
+        catch (ForecastSolarApiException exception)
+        {
+            return TypedResults.BadRequest(new ForecastErrorDto(exception.Message));
+        }
+        catch (InvalidOperationException exception)
+        {
+            return TypedResults.BadRequest(new ForecastErrorDto(exception.Message));
+        }
     }
 }

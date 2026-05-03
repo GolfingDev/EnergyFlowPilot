@@ -29,14 +29,63 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
     public async Task<CurrentBatteryDecisionResult> CalculateCurrentDecisionAsync(CancellationToken cancellationToken = default)
     {
         var decidedAtUtc = dependencies.UtcClock.UtcNow;
-        var batteryState = await dependencies.BatteryStateProvider.GetCurrentBatteryStateAsync(cancellationToken);
         var batteryConfiguration = await dependencies.BatteryConfigurationProvider.GetBatteryConfigurationAsync(cancellationToken);
-        var siteTelemetry = await dependencies.CurrentSiteTelemetryProvider.GetCurrentSiteTelemetryAsync(cancellationToken);
+        var batteryStateResult = await TryGetBatteryStateAsync(decidedAtUtc, cancellationToken);
+        var siteTelemetryResult = await TryGetSiteTelemetryAsync(decidedAtUtc, cancellationToken);
+
+        if (!batteryStateResult.IsSuccess)
+        {
+            return await SaveIdleDecisionAsync(
+                decidedAtUtc,
+                decidedAtUtc.AddMinutes(15),
+                batteryStateResult.BatteryState,
+                siteTelemetryResult.SiteTelemetry,
+                tibberPricePerKwh: null,
+                tibberPriceCurrency: null,
+                batteryStateResult.Reason!,
+                cancellationToken);
+        }
+
+        if (!siteTelemetryResult.IsSuccess)
+        {
+            return await SaveIdleDecisionAsync(
+                decidedAtUtc,
+                decidedAtUtc.AddMinutes(15),
+                batteryStateResult.BatteryState,
+                siteTelemetryResult.SiteTelemetry,
+                tibberPricePerKwh: null,
+                tibberPriceCurrency: null,
+                siteTelemetryResult.Reason!,
+                cancellationToken);
+        }
+
+        var batteryState = batteryStateResult.BatteryState;
+        var siteTelemetry = siteTelemetryResult.SiteTelemetry;
         var feedInCompensationPricePerKwh = await GetFeedInCompensationPricePerKwhAsync(cancellationToken);
-        var priceForecast = await dependencies.TibberPriceForecastProvider.GetPriceForecastAsync(
-            decidedAtUtc,
-            decidedAtUtc.Add(DecisionLookahead),
-            cancellationToken);
+        IReadOnlyList<TibberPriceForecastSlot> priceForecast;
+
+        try
+        {
+            priceForecast = await dependencies.TibberPriceForecastProvider.GetPriceForecastAsync(
+                decidedAtUtc,
+                decidedAtUtc.Add(DecisionLookahead),
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            return await SaveIdleDecisionAsync(
+                decidedAtUtc,
+                decidedAtUtc.AddMinutes(15),
+                batteryState,
+                siteTelemetry,
+                tibberPricePerKwh: null,
+                tibberPriceCurrency: null,
+                new BatteryDecisionReason(
+                    CurrentBatteryDecisionRuleIds.MissingCurrentPrice,
+                    $"Die aktuellen Tibber-Preise konnten nicht geladen werden ({exception.Message}). Die Decision Engine bleibt deshalb im Idle-Zustand."),
+                cancellationToken);
+        }
+
         var currentPriceSlot = priceForecast.SingleOrDefault(priceSlot =>
             priceSlot.TimeSlot.StartsAtUtc <= decidedAtUtc &&
             decidedAtUtc < priceSlot.TimeSlot.EndsAtUtc);
@@ -148,6 +197,56 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 priceRuleResult.Reasons,
                 cancellationToken)
         };
+    }
+
+    private async Task<LiveBatteryStateReadResult> TryGetBatteryStateAsync(
+        DateTimeOffset decidedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return new LiveBatteryStateReadResult
+            {
+                BatteryState = await dependencies.BatteryStateProvider.GetCurrentBatteryStateAsync(cancellationToken),
+                IsSuccess = true
+            };
+        }
+        catch (InvalidOperationException exception)
+        {
+            return new LiveBatteryStateReadResult
+            {
+                BatteryState = CreateFallbackBatteryState(decidedAtUtc),
+                IsSuccess = false,
+                Reason = new BatteryDecisionReason(
+                    CurrentBatteryDecisionRuleIds.MissingBatteryState,
+                    $"Es liegt noch kein verwendbarer Live-Akkuladestand vor ({exception.Message}). Die Decision Engine bleibt deshalb im Idle-Zustand.")
+            };
+        }
+    }
+
+    private async Task<LiveSiteTelemetryReadResult> TryGetSiteTelemetryAsync(
+        DateTimeOffset decidedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return new LiveSiteTelemetryReadResult
+            {
+                SiteTelemetry = await dependencies.CurrentSiteTelemetryProvider.GetCurrentSiteTelemetryAsync(cancellationToken),
+                IsSuccess = true
+            };
+        }
+        catch (InvalidOperationException exception)
+        {
+            return new LiveSiteTelemetryReadResult
+            {
+                SiteTelemetry = CreateFallbackSiteTelemetry(decidedAtUtc),
+                IsSuccess = false,
+                Reason = new BatteryDecisionReason(
+                    CurrentBatteryDecisionRuleIds.MissingSiteTelemetry,
+                    $"Es liegen noch keine vollstaendigen Live-Telemetriedaten fuer Netzbezug, Hausverbrauch oder PV vor ({exception.Message}). Die Decision Engine bleibt deshalb im Idle-Zustand.")
+            };
+        }
     }
 
     private async Task<CurrentBatteryDecisionResult> CreateExportAbsorptionDecisionAsync(
@@ -444,5 +543,33 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         }
 
         return (int)Math.Round(energyKwh / (decimal)duration.TotalHours * 1000m, MidpointRounding.AwayFromZero);
+    }
+
+    private static BatteryState CreateFallbackBatteryState(DateTimeOffset decidedAtUtc)
+    {
+        return new BatteryState(0m, decidedAtUtc);
+    }
+
+    private static CurrentSiteTelemetry CreateFallbackSiteTelemetry(DateTimeOffset decidedAtUtc)
+    {
+        return new CurrentSiteTelemetry(0, 0, decidedAtUtc);
+    }
+
+    private sealed class LiveBatteryStateReadResult
+    {
+        public required BatteryState BatteryState { get; init; }
+
+        public required bool IsSuccess { get; init; }
+
+        public BatteryDecisionReason? Reason { get; init; }
+    }
+
+    private sealed class LiveSiteTelemetryReadResult
+    {
+        public required CurrentSiteTelemetry SiteTelemetry { get; init; }
+
+        public required bool IsSuccess { get; init; }
+
+        public BatteryDecisionReason? Reason { get; init; }
     }
 }

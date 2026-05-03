@@ -34,15 +34,15 @@ const navigationItems: NavigationItem[] = [
 
 const activeRouteName = computed(() => String(route.name ?? ''));
 const isDarkTheme = computed(() => theme.global.name.value === 'controllerDark');
-
+  const nextTheme = ref(isDarkTheme.value ? 'controllerLight' : 'controllerDark');
 function navigateTo(routeName: string): void {
   void router.push({ name: routeName });
 }
 
 function toggleTheme(): void {
-  const nextTheme = isDarkTheme.value ? 'controllerLight' : 'controllerDark';
-  theme.global.name.value = nextTheme;
-  localStorage.setItem('energyFlowPilotTheme', nextTheme);
+ // const nextTheme = isDarkTheme.value ? 'controllerLight' : 'controllerDark';
+  theme.change(nextTheme.value);
+  localStorage.setItem('energyFlowPilotTheme', nextTheme.value);
   window.dispatchEvent(new CustomEvent('energyflowpilot-theme-changed'));
 }
 </script>
@@ -58,7 +58,7 @@ function toggleTheme(): void {
         </div>
       </div>
 
-      <nav style="margin-left: 10 0px;" class="top-nav" aria-label="Hauptnavigation">
+      <nav class="top-nav" aria-label="Hauptnavigation">
         <button v-for="item in navigationItems" :key="item.routeName" class="top-nav__item"
           :class="{ 'top-nav__item--active': activeRouteName === item.routeName }" @click="navigateTo(item.routeName)">
           <span>{{ item.title }}</span>
@@ -68,8 +68,8 @@ function toggleTheme(): void {
 
       <v-spacer />
 
-      <v-switch class="theme-toggle" prepend-icon="mdi-white-balance-sunny" append-icon="mdi-weather-night"
-        false-value="Helles Design" true-value="Dunkles Design" @click="toggleTheme"></v-switch>
+      <v-switch v-model="nextTheme" class="theme-toggle" prepend-icon="mdi-white-balance-sunny" append-icon="mdi-weather-night"
+        false-value="controllerDark" true-value="controllerLight" @click="toggleTheme"></v-switch>
       <!-- {{ isDarkTheme ? 'Helles Design' : 'Dunkles Design' }} -->
 
     </v-app-bar>

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using TibberVictronController.Api.Forecast;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
+using TibberVictronController.Dal.Weather;
 
 namespace TibberVictronController.Api.Tests;
 
@@ -58,6 +59,38 @@ public sealed class ForecastEndpointTests
         Assert.Contains("zwischen 1 und 72", badRequest.Value!.Message);
     }
 
+    [Fact]
+    public async Task GetForecastAsyncReturnsBadRequestWhenForecastSolarFails()
+    {
+        var forecastService = new ThrowingBatteryForecastService(
+            new ForecastSolarApiException("Forecast.Solar hat den Request mit HTTP 429 beantwortet."));
+
+        var result = await ForecastEndpoints.GetForecastAsync(
+            StartsAtUtc,
+            hours: 24,
+            forecastService,
+            CancellationToken.None);
+
+        var badRequest = Assert.IsType<BadRequest<ForecastErrorDto>>(result);
+        Assert.Contains("Forecast.Solar", badRequest.Value!.Message);
+    }
+
+    [Fact]
+    public async Task GetForecastAsyncReturnsBadRequestWhenForecastConfigurationIsInvalid()
+    {
+        var forecastService = new ThrowingBatteryForecastService(
+            new InvalidOperationException("Die Einspeiseverguetung ist nicht konfiguriert."));
+
+        var result = await ForecastEndpoints.GetForecastAsync(
+            StartsAtUtc,
+            hours: 24,
+            forecastService,
+            CancellationToken.None);
+
+        var badRequest = Assert.IsType<BadRequest<ForecastErrorDto>>(result);
+        Assert.Contains("nicht konfiguriert", badRequest.Value!.Message);
+    }
+
     private static BatteryForecastResult CreateForecastResult()
     {
         var timeSlot = new ForecastTimeSlot(StartsAtUtc, StartsAtUtc.AddMinutes(15));
@@ -99,6 +132,25 @@ public sealed class ForecastEndpointTests
             cancellationToken.ThrowIfCancellationRequested();
 
             return Task.FromResult(forecastResult);
+        }
+    }
+
+    private sealed class ThrowingBatteryForecastService : IBatteryForecastService
+    {
+        private readonly Exception exception;
+
+        public ThrowingBatteryForecastService(Exception exception)
+        {
+            this.exception = exception;
+        }
+
+        public Task<BatteryForecastResult> CalculateForecastAsync(
+            DateTimeOffset startsAtUtc,
+            DateTimeOffset endsAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw exception;
         }
     }
 }

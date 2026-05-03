@@ -30,6 +30,66 @@ public sealed class CurrentBatteryDecisionServiceTests
     }
 
     [Fact]
+    public async Task CalculateCurrentDecisionAsyncReturnsIdleWhenBatteryStateIsMissing()
+    {
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new ThrowingBatteryStateProvider("Es liegt noch kein Live-Akkuladestand aus Victron MQTT vor."),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(500, 1200, NowUtc)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.30m, 0.35m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Idle, result.Decision.Instruction.DecisionState);
+        Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.MissingBatteryState);
+    }
+
+    [Fact]
+    public async Task CalculateCurrentDecisionAsyncReturnsIdleWhenSiteTelemetryIsMissing()
+    {
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(55m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m)),
+            CurrentSiteTelemetryProvider = new ThrowingCurrentSiteTelemetryProvider("Es liegt noch kein Live-Hausverbrauch aus Victron MQTT vor."),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.30m, 0.35m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Idle, result.Decision.Instruction.DecisionState);
+        Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.MissingSiteTelemetry);
+    }
+
+    [Fact]
+    public async Task CalculateCurrentDecisionAsyncReturnsIdleWhenPriceLookupFails()
+    {
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(55m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(500, 0, NowUtc)),
+            TibberPriceForecastProvider = new ThrowingTibberPriceForecastProvider("Tibber API ist derzeit nicht erreichbar."),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Idle, result.Decision.Instruction.DecisionState);
+        Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.MissingCurrentPrice);
+    }
+
+    [Fact]
     public async Task CalculateCurrentDecisionAsyncDischargesOnlyUpToCurrentGridImport()
     {
         var service = CreateService(new CurrentBatteryDecisionServiceDependencies
@@ -115,6 +175,22 @@ public sealed class CurrentBatteryDecisionServiceTests
         }
     }
 
+    private sealed class ThrowingCurrentSiteTelemetryProvider : ICurrentSiteTelemetryProvider
+    {
+        private readonly string message;
+
+        public ThrowingCurrentSiteTelemetryProvider(string message)
+        {
+            this.message = message;
+        }
+
+        public Task<CurrentSiteTelemetry> GetCurrentSiteTelemetryAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException(message);
+        }
+    }
+
     private sealed class FakeDecisionLogRepository : IDecisionLogRepository
     {
         public List<DecisionLogEntry> SavedEntries { get; } = new();
@@ -165,6 +241,41 @@ public sealed class CurrentBatteryDecisionServiceTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(priceForecast);
+        }
+    }
+
+    private sealed class ThrowingTibberPriceForecastProvider : ITibberPriceForecastProvider
+    {
+        private readonly string message;
+
+        public ThrowingTibberPriceForecastProvider(string message)
+        {
+            this.message = message;
+        }
+
+        public Task<IReadOnlyList<TibberPriceForecastSlot>> GetPriceForecastAsync(
+            DateTimeOffset startsAtUtc,
+            DateTimeOffset endsAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException(message);
+        }
+    }
+
+    private sealed class ThrowingBatteryStateProvider : IBatteryStateProvider
+    {
+        private readonly string message;
+
+        public ThrowingBatteryStateProvider(string message)
+        {
+            this.message = message;
+        }
+
+        public Task<BatteryState> GetCurrentBatteryStateAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException(message);
         }
     }
 }

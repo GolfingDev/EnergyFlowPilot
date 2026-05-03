@@ -31,7 +31,6 @@ public sealed class ControllerDbInitializer
     private async Task EnsureMissingTablesAsync(CancellationToken cancellationToken)
     {
         var databaseCreator = dbContext.GetService<IRelationalDatabaseCreator>();
-        var createScript = dbContext.Database.GenerateCreateScript();
 
         foreach (var tableName in new[] { "BatterySavingsDailySummaries" })
         {
@@ -41,7 +40,7 @@ public sealed class ControllerDbInitializer
                 continue;
             }
 
-            var tableScript = ExtractCreateTableScript(createScript, tableName);
+            var tableScript = CreateTableScript(tableName);
 
             if (!string.IsNullOrWhiteSpace(tableScript))
             {
@@ -82,20 +81,29 @@ public sealed class ControllerDbInitializer
         }
     }
 
-    private static string ExtractCreateTableScript(string createScript, string tableName)
+    private static string CreateTableScript(string tableName)
     {
-        var tableMarker = $"CREATE TABLE \"{tableName}\"";
-        var tableStartIndex = createScript.IndexOf(tableMarker, StringComparison.OrdinalIgnoreCase);
-
-        if (tableStartIndex < 0)
+        if (!string.Equals(tableName, "BatterySavingsDailySummaries", StringComparison.OrdinalIgnoreCase))
         {
             return string.Empty;
         }
 
-        var nextTableIndex = createScript.IndexOf("CREATE TABLE", tableStartIndex + tableMarker.Length, StringComparison.OrdinalIgnoreCase);
-        var scriptEndIndex = nextTableIndex < 0 ? createScript.Length : nextTableIndex;
-
-        return createScript[tableStartIndex..scriptEndIndex];
+        return """
+CREATE TABLE IF NOT EXISTS "BatterySavingsDailySummaries" (
+    "AccountingDate" TEXT NOT NULL,
+    "Currency" TEXT NOT NULL,
+    "GridChargedEnergyKwh" TEXT NOT NULL,
+    "GridChargeCost" TEXT NOT NULL,
+    "PvChargedEnergyKwh" TEXT NOT NULL,
+    "PvOpportunityCost" TEXT NOT NULL,
+    "DischargedEnergyKwh" TEXT NOT NULL,
+    "DischargeAvoidedCost" TEXT NOT NULL,
+    "NetSavings" TEXT NOT NULL,
+    "UpdatedAtUtc" INTEGER NOT NULL,
+    CONSTRAINT "PK_BatterySavingsDailySummaries" PRIMARY KEY ("AccountingDate", "Currency")
+);
+CREATE INDEX IF NOT EXISTS "IX_BatterySavingsDailySummaries_AccountingDate" ON "BatterySavingsDailySummaries" ("AccountingDate");
+""";
     }
 
     private async Task SeedMissingDefaultSettingsAsync(

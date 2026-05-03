@@ -5,6 +5,8 @@ namespace TibberVictronController.Business.Decisions;
 /// </summary>
 public static class CurrentBatteryDecisionRuleIds
 {
+    public const string MissingBatteryState = "MISSING_BATTERY_STATE";
+    public const string MissingSiteTelemetry = "MISSING_SITE_TELEMETRY";
     public const string StaleBatteryState = "STALE_BATTERY_STATE";
     public const string StaleSiteTelemetry = "STALE_SITE_TELEMETRY";
     public const string InvalidSiteTelemetry = "INVALID_SITE_TELEMETRY";

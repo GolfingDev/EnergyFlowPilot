@@ -70,15 +70,31 @@ public sealed class BatteryForecastService : IBatteryForecastService
     {
         ValidateUtcRange(startsAtUtc, endsAtUtc);
 
-        var feedInCompensationPricePerKwh = await GetFeedInCompensationPricePerKwhAsync(cancellationToken);
         var priceForecast = await tibberPriceForecastProvider.GetPriceForecastAsync(startsAtUtc, endsAtUtc, cancellationToken);
-        var pvForecast = await weatherForecastProvider.GetPvYieldForecastAsync(startsAtUtc, endsAtUtc, cancellationToken);
-        var consumptionForecast = await historicalConsumptionProvider.GetConsumptionForecastAsync(startsAtUtc, endsAtUtc, cancellationToken);
         var batteryState = await batteryStateProvider.GetCurrentBatteryStateAsync(cancellationToken);
         var batteryConfiguration = await batteryConfigurationProvider.GetBatteryConfigurationAsync(cancellationToken);
+        var relevantPriceForecast = priceForecast
+            .Where(priceSlot =>
+                priceSlot.TimeSlot.StartsAtUtc >= startsAtUtc &&
+                priceSlot.TimeSlot.EndsAtUtc <= endsAtUtc)
+            .OrderBy(priceSlot => priceSlot.TimeSlot.StartsAtUtc)
+            .ToArray();
+
+        if (relevantPriceForecast.Length == 0)
+        {
+            return new BatteryForecastResult(
+                batteryState,
+                batteryConfiguration,
+                Array.Empty<BatteryForecastEntry>());
+        }
+
+        var effectiveEndsAtUtc = relevantPriceForecast[^1].TimeSlot.EndsAtUtc;
+        var feedInCompensationPricePerKwh = await GetFeedInCompensationPricePerKwhAsync(cancellationToken);
+        var pvForecast = await weatherForecastProvider.GetPvYieldForecastAsync(startsAtUtc, effectiveEndsAtUtc, cancellationToken);
+        var consumptionForecast = await historicalConsumptionProvider.GetConsumptionForecastAsync(startsAtUtc, effectiveEndsAtUtc, cancellationToken);
 
         return batteryForecastSimulator.Simulate(
-            priceForecast,
+            relevantPriceForecast,
             pvForecast,
             consumptionForecast,
             batteryState,
