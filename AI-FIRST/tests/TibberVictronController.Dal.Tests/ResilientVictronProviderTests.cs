@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
 using TibberVictronController.Dal.Battery;
+using TibberVictronController.Dal.Mqtt;
 using TibberVictronController.Dal.Persistence;
 using TibberVictronController.Dal.Repositories;
 using TibberVictronController.Dal.Victron;
@@ -29,7 +30,7 @@ public sealed class ResilientVictronProviderTests : IDisposable
         await settingsStore.SaveSettingAsync(CreateNormalSetting(ControllerSettingDefaults.BatteryTemporaryStateOfChargePercentKey, "41.5"));
         var runtimeStatus = new VictronMqttRuntimeStatus();
         var provider = new ResilientBatteryStateProvider(
-            new VictronBatteryStateProvider(new VictronTelemetrySnapshotStore()),
+            new MqttBatteryStateProvider(new MqttTelemetrySnapshotStore()),
             new ConfiguredBatteryStateProvider(settingsStore, new FixedUtcClock(MeasuredAtUtc)),
             runtimeStatus);
 
@@ -49,7 +50,7 @@ public sealed class ResilientVictronProviderTests : IDisposable
         await settingsStore.SaveSettingAsync(CreateNormalSetting(ControllerSettingDefaults.TelemetryTemporaryPvProductionWattsKey, "250"));
         var runtimeStatus = new VictronMqttRuntimeStatus();
         var provider = new ResilientCurrentSiteTelemetryProvider(
-            new VictronCurrentSiteTelemetryProvider(new VictronTelemetrySnapshotStore()),
+            new MqttCurrentSiteTelemetryProvider(new MqttTelemetrySnapshotStore()),
             new ConfiguredCurrentSiteTelemetryProvider(settingsStore, new FixedUtcClock(MeasuredAtUtc)),
             runtimeStatus);
 

@@ -4,6 +4,7 @@ using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Services;
 using TibberVictronController.Dal.Battery;
 using TibberVictronController.Dal.Consumption;
+using TibberVictronController.Dal.Mqtt;
 using TibberVictronController.Dal.Persistence;
 using TibberVictronController.Dal.Repositories;
 using TibberVictronController.Dal.Tibber;
@@ -37,19 +38,19 @@ public static class ControllerServiceCollectionExtensions
         services.AddDbContext<ControllerDbContext>(options => options.UseSqlite(connectionString));
         services.AddScoped<ControllerDbInitializer>();
         services.AddScoped<IControllerSettingStore, EfControllerSettingStore>();
-        services.AddScoped<DatabaseVictronMqttSettingsProvider>();
+        services.AddScoped<DatabaseMqttDeviceSettingsProvider>();
         services.AddSingleton<VictronMqttRuntimeStatus>();
         services.AddScoped<IDecisionLogRepository, EfDecisionLogRepository>();
         services.AddScoped<IBatterySavingsRepository, EfBatterySavingsRepository>();
         services.AddScoped<IOperationalEventRepository, EfOperationalEventRepository>();
         services.AddScoped<IWorkerFailureNotifier, WorkerFailureEmailNotifier>();
-        services.AddSingleton<VictronTelemetrySnapshotStore>();
+        services.AddSingleton<MqttTelemetrySnapshotStore>();
         services.AddScoped<IControllerSettingsService, ControllerSettingsService>();
         services.AddScoped<IBatteryConfigurationProvider, DatabaseBatteryConfigurationProvider>();
         services.AddScoped<ConfiguredBatteryStateProvider>();
         services.AddScoped<ConfiguredCurrentSiteTelemetryProvider>();
-        services.AddScoped<VictronBatteryStateProvider>();
-        services.AddScoped<VictronCurrentSiteTelemetryProvider>();
+        services.AddScoped<MqttBatteryStateProvider>();
+        services.AddScoped<MqttCurrentSiteTelemetryProvider>();
         services.AddScoped<IBatteryStateProvider, ResilientBatteryStateProvider>();
         services.AddScoped<ICurrentSiteTelemetryProvider, ResilientCurrentSiteTelemetryProvider>();
         services.AddScoped<IHistoricalConsumptionProvider, AverageDailyConsumptionForecastProvider>();
@@ -70,7 +71,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddHttpClient<ForecastSolarPvForecastProvider>();
         services.AddScoped<IWeatherForecastProvider, CachedWeatherForecastProvider>();
         services.AddHostedService<DecisionExecutionBackgroundService>();
-        services.AddHostedService<VictronMqttTelemetryBackgroundService>();
+        services.AddHostedService<MqttTelemetryBackgroundService>();
 
         return services;
     }
