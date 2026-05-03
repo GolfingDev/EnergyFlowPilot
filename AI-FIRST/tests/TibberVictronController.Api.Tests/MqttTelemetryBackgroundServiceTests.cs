@@ -57,4 +57,22 @@ public sealed class MqttTelemetryBackgroundServiceTests
         Assert.Equal(measuredAtUtc, batteryState.MeasuredAtUtc);
         Assert.Equal(measuredAtUtc, telemetry.MeasuredAtUtc);
     }
+
+    [Fact]
+    public async Task MqttCurrentSiteTelemetryProviderUsesGridPowerWhenHouseConsumptionIsZero()
+    {
+        var measuredAtUtc = new DateTimeOffset(2026, 5, 3, 12, 10, 0, TimeSpan.Zero);
+        var snapshotStore = new MqttTelemetrySnapshotStore();
+
+        snapshotStore.UpdateGridPower(-1793m, measuredAtUtc);
+        snapshotStore.UpdateHouseConsumption(0m, measuredAtUtc);
+
+        var siteTelemetryProvider = new MqttCurrentSiteTelemetryProvider(snapshotStore);
+
+        var telemetry = await siteTelemetryProvider.GetCurrentSiteTelemetryAsync();
+
+        Assert.Equal(-1793, telemetry.CurrentGridImportWatts);
+        Assert.Equal(1793, telemetry.CurrentPvProductionWatts);
+        Assert.Equal(measuredAtUtc, telemetry.MeasuredAtUtc);
+    }
 }

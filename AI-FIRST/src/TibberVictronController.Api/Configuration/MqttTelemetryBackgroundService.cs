@@ -90,7 +90,8 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
 
         if (shouldPersistConsumptionSample)
         {
-            await PersistLiveConsumptionSampleAsync(value, measuredAtUtc);
+            var persistedHouseConsumptionWatts = GetPersistedHouseConsumptionWatts(snapshotStore, value);
+            await PersistLiveConsumptionSampleAsync(persistedHouseConsumptionWatts, measuredAtUtc);
         }
     }
 
@@ -210,6 +211,18 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
 
         await liveConsumptionRepository.SaveSampleAsync(
             new LiveConsumptionSample(houseConsumptionWatts, measuredAtUtc));
+    }
+
+    private static decimal GetPersistedHouseConsumptionWatts(MqttTelemetrySnapshotStore snapshotStore, decimal houseConsumptionWatts)
+    {
+        if (houseConsumptionWatts != 0m)
+        {
+            return houseConsumptionWatts;
+        }
+
+        var snapshot = snapshotStore.GetSnapshot();
+
+        return snapshot.GridPowerWatts ?? 0m;
     }
 
     private async Task DisconnectClientAsync(CancellationToken cancellationToken)
