@@ -22,4 +22,24 @@ public static class CurrentDecisionDtoMapper
                 .Select(reason => new CurrentBatteryDecisionReasonDto(reason.RuleName, reason.Message))
                 .ToArray());
     }
+
+    public static DecisionLogEntryResponseDto Map(DecisionLogEntry logEntry)
+    {
+        return new DecisionLogEntryResponseDto(
+            logEntry.Id,
+            logEntry.Decision.Instruction.DecisionState.ToString(),
+            logEntry.Decision.Instruction.ChargeSource?.ToString(),
+            logEntry.Decision.TargetPowerWatts,
+            logEntry.DecidedAtUtc,
+            logEntry.ValidFromUtc,
+            logEntry.ValidToUtc,
+            logEntry.StateOfChargePercent,
+            logEntry.TibberPricePerKwh,
+            logEntry.TibberPriceCurrency,
+            logEntry.GridImportWatts,
+            logEntry.GridExportWatts,
+            logEntry.Reasons
+                .Select(reason => new CurrentBatteryDecisionReasonDto(reason.RuleName, reason.Message))
+                .ToArray());
+    }
 }

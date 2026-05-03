@@ -14,6 +14,22 @@ export interface CurrentBatteryDecisionReasonDto {
   message: string;
 }
 
+export interface DecisionLogEntryResponseDto {
+  id: string;
+  decisionState: string;
+  chargeSource: string | null;
+  targetPowerWatts: number;
+  decidedAtUtc: string;
+  validFromUtc: string;
+  validToUtc: string;
+  stateOfChargePercent: number | null;
+  tibberPricePerKwh: number | null;
+  tibberPriceCurrency: string | null;
+  gridImportWatts: number | null;
+  gridExportWatts: number | null;
+  reasons: CurrentBatteryDecisionReasonDto[];
+}
+
 export interface CurrentBatteryDecisionResponseDto {
   decisionState: string;
   chargeSource: string | null;

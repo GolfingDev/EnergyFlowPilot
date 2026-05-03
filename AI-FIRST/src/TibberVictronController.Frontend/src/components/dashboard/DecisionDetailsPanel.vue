@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { CurrentBatteryDecisionResponseDto } from './dashboardTypes';
-import { formatDateTime, formatPower, getDecisionLabel } from './dashboardFormatters';
+import type { CurrentBatteryDecisionResponseDto, DecisionLogEntryResponseDto } from './dashboardTypes';
+import { formatDateTime, formatPercent, formatPower, formatPrice, getDecisionLabel } from './dashboardFormatters';
 
 const props = defineProps<{
   decision: CurrentBatteryDecisionResponseDto | null;
+  decisionLogEntries: DecisionLogEntryResponseDto[];
 }>();
 
 const decisionLabel = computed(() => props.decision
   ? getDecisionLabel(props.decision.decisionState, props.decision.chargeSource)
   : 'Nicht verfuegbar');
+
+function getLogDecisionLabel(entry: DecisionLogEntryResponseDto): string {
+  return getDecisionLabel(entry.decisionState, entry.chargeSource);
+}
 </script>
 
 <template>
@@ -42,6 +47,41 @@ const decisionLabel = computed(() => props.decision
         <strong>{{ reason.ruleId }}</strong>
         <span>{{ reason.message }}</span>
       </div>
+    </div>
+
+    <div v-if="decisionLogEntries.length" class="decision-log">
+      <div class="decision-log__header">
+        <h3>Letzte Entscheidungen</h3>
+        <span>{{ decisionLogEntries.length }} Einträge</span>
+      </div>
+
+      <v-expansion-panels variant="accordion">
+        <v-expansion-panel
+          v-for="entry in decisionLogEntries"
+          :key="entry.id"
+          :title="`${formatDateTime(entry.decidedAtUtc)} · ${getLogDecisionLabel(entry)}`"
+          :text="entry.reasons[0]?.message ?? 'Keine Begründung vorhanden.'"
+        >
+          <template #text>
+            <div class="decision-log-entry">
+              <div class="decision-log-entry__summary">
+                <span>SoC: <b>{{ formatPercent(entry.stateOfChargePercent) }}</b></span>
+                <span>Leistung: <b>{{ formatPower(entry.targetPowerWatts) }}</b></span>
+                <span>Preis: <b>{{ formatPrice(entry.tibberPricePerKwh, entry.tibberPriceCurrency) }}</b></span>
+                <span>Netzbezug: <b>{{ formatPower(entry.gridImportWatts) }}</b></span>
+                <span>Netzexport: <b>{{ formatPower(entry.gridExportWatts) }}</b></span>
+              </div>
+
+              <div class="reason-list decision-log-entry__reasons">
+                <div v-for="reason in entry.reasons" :key="`${entry.id}-${reason.ruleId}-${reason.message}`" class="reason-row">
+                  <strong>{{ reason.ruleId }}</strong>
+                  <span>{{ reason.message }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
+        </v-expansion-panel>
+      </v-expansion-panels>
     </div>
 
     <p v-else class="empty-state">Noch keine aktuelle Entscheidung verfuegbar.</p>

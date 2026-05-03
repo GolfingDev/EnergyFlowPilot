@@ -15,6 +15,12 @@ public static class CurrentDecisionEndpoints
             .WithName("GetCurrentBatteryDecision")
             .WithTags("Decision");
 
+        endpoints.MapGet(
+            "/api/decision/logs",
+            GetDecisionLogsAsync)
+            .WithName("GetCurrentBatteryDecisionLogs")
+            .WithTags("Decision");
+
         return endpoints;
     }
 
@@ -25,5 +31,16 @@ public static class CurrentDecisionEndpoints
         var decisionResult = await currentBatteryDecisionService.CalculateCurrentDecisionAsync(cancellationToken);
 
         return TypedResults.Ok(CurrentDecisionDtoMapper.Map(decisionResult));
+    }
+
+    public static async Task<IResult> GetDecisionLogsAsync(
+        IDecisionLogRepository decisionLogRepository,
+        int? maxCount,
+        CancellationToken cancellationToken)
+    {
+        var effectiveMaxCount = Math.Clamp(maxCount ?? 20, 1, 100);
+        var logEntries = await decisionLogRepository.GetRecentDecisionsAsync(effectiveMaxCount, cancellationToken);
+
+        return TypedResults.Ok(logEntries.Select(CurrentDecisionDtoMapper.Map).ToArray());
     }
 }

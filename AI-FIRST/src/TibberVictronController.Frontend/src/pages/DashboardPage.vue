@@ -14,6 +14,7 @@ import type {
   ControllerSettingsResponseDto,
   ControllerStatusResponseDto,
   CurrentBatteryDecisionResponseDto,
+  DecisionLogEntryResponseDto,
   DashboardLoadError,
   SavingsPeriod,
   SavingsPeriodOption
@@ -22,6 +23,7 @@ import type {
 const refreshInSeconds = ref(0);
 const status = ref<ControllerStatusResponseDto | null>(null);
 const decision = ref<CurrentBatteryDecisionResponseDto | null>(null);
+const decisionLogEntries = ref<DecisionLogEntryResponseDto[]>([]);
 const forecast = ref<BatteryForecastResponseDto | null>(null);
 const savings = ref<BatterySavingsResponseDto | null>(null);
 const loadErrors = ref<DashboardLoadError[]>([]);
@@ -62,6 +64,7 @@ async function loadDashboard(): Promise<void> {
     fetchJson<ControllerSettingsResponseDto>('/api/settings'),
     fetchJson<ControllerStatusResponseDto>('/api/status'),
     fetchJson<CurrentBatteryDecisionResponseDto>('/api/decision/current'),
+    fetchJson<DecisionLogEntryResponseDto[]>('/api/decision/logs?maxCount=20'),
     fetchJson<BatteryForecastResponseDto>(createForecastUrl()),
     fetchJson<BatterySavingsResponseDto>(createSavingsUrl())
   ]);
@@ -73,10 +76,13 @@ async function loadDashboard(): Promise<void> {
   applyResult(results[2], 'Aktuelle Entscheidung', (value) => {
     decision.value = value;
   });
-  applyResult(results[3], 'Forecast', (value) => {
+  applyResult(results[3], 'Entscheidungslog', (value) => {
+    decisionLogEntries.value = value;
+  });
+  applyResult(results[4], 'Forecast', (value) => {
     forecast.value = value;
   });
-  applyResult(results[4], 'Ersparnis', (value) => {
+  applyResult(results[5], 'Ersparnis', (value) => {
     savings.value = value;
   });
 
@@ -243,7 +249,7 @@ onBeforeUnmount(() => {
 
     <div class="dashboard-layout">
       <main class="dashboard-main">
-        <DecisionDetailsPanel :decision="decision" />
+        <DecisionDetailsPanel :decision="decision" :decision-log-entries="decisionLogEntries" />
       </main>
 
       <aside class="dashboard-side">
