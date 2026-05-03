@@ -38,8 +38,8 @@ const savingsMetricTitle = computed(() => {
   <section class="metric-grid">
     <article class="metric-card">
       <span>Akku-SoC</span>
-      <strong>{{ formatPercent(decision?.stateOfChargePercent ?? forecast?.initialStateOfChargePercent) }}</strong>
-      <p>Aktueller oder zuletzt berechneter Startwert.</p>
+      <strong>{{ formatPercent(decision?.stateOfChargePercent) }}</strong>
+      <p>Live-SoC aus MQTT. Ohne gültige Live-Daten wird kein Ersatzwert angezeigt.</p>
     </article>
 
     <article class="metric-card">
