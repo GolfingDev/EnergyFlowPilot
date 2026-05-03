@@ -30,8 +30,16 @@ public sealed class ResilientCurrentSiteTelemetryProvider : ICurrentSiteTelemetr
         {
             return await mqttCurrentSiteTelemetryProvider.GetCurrentSiteTelemetryAsync(cancellationToken);
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException exception)
         {
+            if (string.Equals(runtimeStatus.ConnectionState, "Connected", StringComparison.Ordinal))
+            {
+                runtimeStatus.MarkFailed("MQTT ist verbunden, aber die Live-Telemetrie ist unvollstaendig oder ungueltig.");
+                throw new InvalidOperationException(
+                    "MQTT ist verbunden, liefert aber noch keine vollstaendige Live-Telemetrie.",
+                    exception);
+            }
+
             runtimeStatus.MarkFailed("MQTT liefert aktuell keine verwendbare Live-Telemetrie. Es werden konfigurierte Ersatzwerte verwendet.");
             return await configuredCurrentSiteTelemetryProvider.GetCurrentSiteTelemetryAsync(cancellationToken);
         }

@@ -62,6 +62,39 @@ public sealed class ResilientVictronProviderTests : IDisposable
         Assert.NotNull(runtimeStatus.LastErrorMessage);
     }
 
+    [Fact]
+    public async Task ResilientBatteryStateProviderDoesNotFallbackWhileMqttIsConnected()
+    {
+        await using var dbContext = CreateDbContext();
+        var settingsStore = await CreateInitializedSettingStoreAsync(dbContext);
+        await settingsStore.SaveSettingAsync(CreateNormalSetting(ControllerSettingDefaults.BatteryTemporaryStateOfChargePercentKey, "41.5"));
+        var runtimeStatus = new VictronMqttRuntimeStatus();
+        runtimeStatus.MarkConnected();
+        var provider = new ResilientBatteryStateProvider(
+            new MqttBatteryStateProvider(new MqttTelemetrySnapshotStore()),
+            new ConfiguredBatteryStateProvider(settingsStore, new FixedUtcClock(MeasuredAtUtc)),
+            runtimeStatus);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetCurrentBatteryStateAsync());
+    }
+
+    [Fact]
+    public async Task ResilientCurrentSiteTelemetryProviderDoesNotFallbackWhileMqttIsConnected()
+    {
+        await using var dbContext = CreateDbContext();
+        var settingsStore = await CreateInitializedSettingStoreAsync(dbContext);
+        await settingsStore.SaveSettingAsync(CreateNormalSetting(ControllerSettingDefaults.TelemetryTemporaryGridImportWattsKey, "800"));
+        await settingsStore.SaveSettingAsync(CreateNormalSetting(ControllerSettingDefaults.TelemetryTemporaryPvProductionWattsKey, "250"));
+        var runtimeStatus = new VictronMqttRuntimeStatus();
+        runtimeStatus.MarkConnected();
+        var provider = new ResilientCurrentSiteTelemetryProvider(
+            new MqttCurrentSiteTelemetryProvider(new MqttTelemetrySnapshotStore()),
+            new ConfiguredCurrentSiteTelemetryProvider(settingsStore, new FixedUtcClock(MeasuredAtUtc)),
+            runtimeStatus);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetCurrentSiteTelemetryAsync());
+    }
+
     public void Dispose()
     {
         sqliteConnection.Dispose();

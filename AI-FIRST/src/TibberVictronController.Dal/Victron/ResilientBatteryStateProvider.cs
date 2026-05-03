@@ -30,8 +30,16 @@ public sealed class ResilientBatteryStateProvider : IBatteryStateProvider
         {
             return await mqttBatteryStateProvider.GetCurrentBatteryStateAsync(cancellationToken);
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException exception)
         {
+            if (string.Equals(runtimeStatus.ConnectionState, "Connected", StringComparison.Ordinal))
+            {
+                runtimeStatus.MarkFailed("MQTT ist verbunden, aber der Live-SoC ist unvollstaendig oder ungueltig.");
+                throw new InvalidOperationException(
+                    "MQTT ist verbunden, liefert aber noch keinen verwendbaren Live-SoC.",
+                    exception);
+            }
+
             runtimeStatus.MarkFailed("MQTT liefert aktuell keinen verwendbaren Live-SoC. Es wird auf den letzten konfigurierten SoC zurueckgegriffen.");
             return await configuredBatteryStateProvider.GetCurrentBatteryStateAsync(cancellationToken);
         }
