@@ -30,7 +30,10 @@ public sealed class DecisionExecutionBackgroundServiceTests
             settingsStore,
             new RecordingOperationalEventRepository(),
             new RecordingWorkerFailureNotifier());
-        var backgroundService = new DecisionExecutionBackgroundService(serviceProvider, NullLogger<DecisionExecutionBackgroundService>.Instance);
+        var backgroundService = new DecisionExecutionBackgroundService(
+            serviceProvider,
+            NullLogger<DecisionExecutionBackgroundService>.Instance,
+            new DecisionWorkerRuntimeStatus());
 
         var delay = await backgroundService.ExecuteSingleCycleAsync(CancellationToken.None);
 
@@ -53,7 +56,10 @@ public sealed class DecisionExecutionBackgroundServiceTests
             settingsStore,
             new RecordingOperationalEventRepository(),
             new RecordingWorkerFailureNotifier());
-        var backgroundService = new DecisionExecutionBackgroundService(serviceProvider, NullLogger<DecisionExecutionBackgroundService>.Instance);
+        var backgroundService = new DecisionExecutionBackgroundService(
+            serviceProvider,
+            NullLogger<DecisionExecutionBackgroundService>.Instance,
+            new DecisionWorkerRuntimeStatus());
 
         var delay = await backgroundService.ExecuteSingleCycleAsync(CancellationToken.None);
 
@@ -69,7 +75,10 @@ public sealed class DecisionExecutionBackgroundServiceTests
             new InMemoryControllerSettingStore(),
             new RecordingOperationalEventRepository(),
             new RecordingWorkerFailureNotifier());
-        var backgroundService = new DecisionExecutionBackgroundService(serviceProvider, NullLogger<DecisionExecutionBackgroundService>.Instance);
+        var backgroundService = new DecisionExecutionBackgroundService(
+            serviceProvider,
+            NullLogger<DecisionExecutionBackgroundService>.Instance,
+            new DecisionWorkerRuntimeStatus());
         var operationalEventRepository = serviceProvider.GetRequiredService<IOperationalEventRepository>() as RecordingOperationalEventRepository;
         var notifier = serviceProvider.GetRequiredService<IWorkerFailureNotifier>() as RecordingWorkerFailureNotifier;
 
