@@ -71,7 +71,7 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         MqttTelemetryTopics topics,
         MqttTelemetrySnapshotStore snapshotStore)
     {
-        var payloadBytes = eventArguments.ApplicationMessage.Payload ?? Array.Empty<byte>();
+        var payloadBytes = eventArguments.ApplicationMessage.Payload;
         var payload = Encoding.UTF8.GetString(payloadBytes);
 
         if (!Dal.Victron.VictronMqttPayloadParser.TryParseDecimal(payload, out var value))
@@ -96,7 +96,7 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         }
     }
 
-    internal static bool ApplyTelemetryValue(
+    public static bool ApplyTelemetryValue(
         string topic,
         decimal value,
         DateTimeOffset measuredAtUtc,
