@@ -2,6 +2,7 @@ using TibberVictronController.Api.Configuration;
 using TibberVictronController.Api.Decision;
 using TibberVictronController.Api.Diagnostics;
 using TibberVictronController.Api.Forecast;
+using TibberVictronController.Api.Health;
 using TibberVictronController.Api.Metadata;
 using TibberVictronController.Api.Savings;
 using TibberVictronController.Api.Settings;
@@ -17,12 +18,7 @@ app.UseFileExceptionLogging();
 
 await InitializeDatabaseAsync(app);
 
-app.MapGet("/health", () => Results.Ok(new
-{
-    Status = "Healthy",
-    Service = "Tibber Victron Controller"
-}));
-
+app.MapHealthEndpoints();
 app.MapSettingsEndpoints();
 app.MapForecastEndpoints();
 app.MapCurrentDecisionEndpoints();

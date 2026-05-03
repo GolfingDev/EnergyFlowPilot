@@ -15,17 +15,22 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
 
     private readonly IServiceProvider serviceProvider;
     private readonly ILogger<DecisionExecutionBackgroundService> logger;
+    private readonly DecisionWorkerRuntimeStatus runtimeStatus;
 
     public DecisionExecutionBackgroundService(
         IServiceProvider serviceProvider,
-        ILogger<DecisionExecutionBackgroundService> logger)
+        ILogger<DecisionExecutionBackgroundService> logger,
+        DecisionWorkerRuntimeStatus runtimeStatus)
     {
         this.serviceProvider = serviceProvider;
         this.logger = logger;
+        this.runtimeStatus = runtimeStatus;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        runtimeStatus.MarkStarting();
+
         while (!stoppingToken.IsCancellationRequested)
         {
             var delay = TimeSpan.FromSeconds(DefaultIntervalSeconds);
@@ -45,6 +50,8 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
 
             await Task.Delay(delay, stoppingToken);
         }
+
+        runtimeStatus.MarkStopped();
     }
 
     public async Task<TimeSpan> ExecuteSingleCycleAsync(CancellationToken cancellationToken)
@@ -65,13 +72,19 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
             decisionResult.Decision.Instruction.DecisionState,
             decisionResult.Decision.TargetPowerWatts);
 
+        runtimeStatus.MarkSuccessful(utcClock.UtcNow);
+
         return interval;
     }
 
     public async Task HandleCycleFailureAsync(Exception exception, CancellationToken cancellationToken)
     {
+        using var scope = serviceProvider.CreateScope();
+        var utcClock = scope.ServiceProvider.GetRequiredService<IUtcClock>();
+
+        runtimeStatus.MarkFailed(exception.Message, utcClock.UtcNow);
         logger.LogError(exception, "Der Decision-Worker ist im Zyklus fehlgeschlagen.");
-        await TrySaveFailureEventAsync(exception, cancellationToken);
+        await TrySaveFailureEventAsync(exception, utcClock.UtcNow, cancellationToken);
         await TrySendFailureNotificationAsync(exception, cancellationToken);
     }
 
@@ -117,16 +130,15 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
         return bool.TryParse(setting.Value, out var isDryRun) ? isDryRun : true;
     }
 
-    private async Task TrySaveFailureEventAsync(Exception exception, CancellationToken cancellationToken)
+    private async Task TrySaveFailureEventAsync(Exception exception, DateTimeOffset failedAtUtc, CancellationToken cancellationToken)
     {
         try
         {
             using var scope = serviceProvider.CreateScope();
-            var utcClock = scope.ServiceProvider.GetRequiredService<IUtcClock>();
             var operationalEventRepository = scope.ServiceProvider.GetRequiredService<IOperationalEventRepository>();
             var operationalEvent = new OperationalEvent(
                 Guid.NewGuid(),
-                utcClock.UtcNow,
+                failedAtUtc,
                 category: "DecisionWorker",
                 severity: "Error",
                 message: "Der Decision-Worker ist fehlgeschlagen.",

@@ -51,6 +51,14 @@ public sealed class VictronMqttRuntimeStatus
         }
     }
 
+    public void MarkStopped()
+    {
+        lock (syncRoot)
+        {
+            connectionState = "Stopped";
+        }
+    }
+
     public void MarkConnected()
     {
         lock (syncRoot)

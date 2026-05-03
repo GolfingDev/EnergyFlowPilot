@@ -40,6 +40,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IControllerSettingStore, EfControllerSettingStore>();
         services.AddScoped<DatabaseMqttDeviceSettingsProvider>();
         services.AddSingleton<VictronMqttRuntimeStatus>();
+        services.AddSingleton<DecisionWorkerRuntimeStatus>();
         services.AddScoped<IDecisionLogRepository, EfDecisionLogRepository>();
         services.AddScoped<IBatterySavingsRepository, EfBatterySavingsRepository>();
         services.AddScoped<IOperationalEventRepository, EfOperationalEventRepository>();

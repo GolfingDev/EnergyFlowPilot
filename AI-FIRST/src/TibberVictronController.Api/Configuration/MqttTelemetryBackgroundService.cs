@@ -50,16 +50,19 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
                 logger.LogError(exception, "MQTT-Geräteanbindung konnte nicht initialisiert oder betrieben werden.");
                 await Task.Delay(RetryDelay, stoppingToken);
             }
+            finally
+            {
+                await DisconnectClientAsync(CancellationToken.None);
+            }
         }
+
+        runtimeStatus.MarkStopped();
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (mqttClient is not null && mqttClient.IsConnected)
-        {
-            await mqttClient.DisconnectAsync(new MqttClientDisconnectOptions(), cancellationToken);
-        }
-
+        runtimeStatus.MarkStopped();
+        await DisconnectClientAsync(cancellationToken);
         await base.StopAsync(cancellationToken);
     }
 
@@ -117,6 +120,18 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         {
             await HandleMessageAsync(eventArguments, topics, snapshotStore);
         };
+        mqttClient.DisconnectedAsync += eventArguments =>
+        {
+            if (!stoppingToken.IsCancellationRequested)
+            {
+                runtimeStatus.MarkFailed("MQTT-Verbindung wurde unterbrochen und wird neu aufgebaut.");
+                logger.LogWarning(
+                    eventArguments.Exception,
+                    "MQTT-Verbindung wurde unterbrochen. Ein neuer Verbindungsaufbau wird vorbereitet.");
+            }
+
+            return Task.CompletedTask;
+        };
 
         var options = new MqttClientOptionsBuilder()
             .WithTcpServer(settings.Host, settings.Port)
@@ -142,6 +157,11 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            if (mqttClient is null || !mqttClient.IsConnected)
+            {
+                throw new InvalidOperationException("MQTT-Verbindung wurde unterbrochen und wird neu aufgebaut.");
+            }
+
             await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
         }
     }
@@ -170,5 +190,21 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
 
         await liveConsumptionRepository.SaveSampleAsync(
             new LiveConsumptionSample(houseConsumptionWatts, measuredAtUtc));
+    }
+
+    private async Task DisconnectClientAsync(CancellationToken cancellationToken)
+    {
+        if (mqttClient is null)
+        {
+            return;
+        }
+
+        if (mqttClient.IsConnected)
+        {
+            await mqttClient.DisconnectAsync(new MqttClientDisconnectOptions(), cancellationToken);
+        }
+
+        mqttClient.Dispose();
+        mqttClient = null;
     }
 }
