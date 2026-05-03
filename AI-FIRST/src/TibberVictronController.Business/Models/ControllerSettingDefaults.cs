@@ -19,6 +19,16 @@ public static class ControllerSettingDefaults
     public const string ConsumptionForecastAverageDailyConsumptionKwhKey = "consumptionForecast.averageDailyConsumptionKwh";
     public const string ConsumptionForecastTimeZoneKey = "consumptionForecast.timeZone";
     public const string DecisionLogRetentionDaysKey = "decisionLog.retentionDays";
+    public const string DecisionWorkerIntervalSecondsKey = "decisionWorker.intervalSeconds";
+    public const string WorkerFailureEmailEnabledKey = "notifications.workerFailureEmail.enabled";
+    public const string WorkerFailureEmailSmtpHostKey = "notifications.workerFailureEmail.smtpHost";
+    public const string WorkerFailureEmailSmtpPortKey = "notifications.workerFailureEmail.smtpPort";
+    public const string WorkerFailureEmailSmtpUsernameKey = "notifications.workerFailureEmail.smtpUsername";
+    public const string WorkerFailureEmailSmtpPasswordKey = "notifications.workerFailureEmail.smtpPassword";
+    public const string WorkerFailureEmailFromAddressKey = "notifications.workerFailureEmail.fromAddress";
+    public const string WorkerFailureEmailToAddressKey = "notifications.workerFailureEmail.toAddress";
+    public const string WorkerFailureEmailEnableSslKey = "notifications.workerFailureEmail.enableSsl";
+    public const string WorkerFailureEmailSubjectPrefixKey = "notifications.workerFailureEmail.subjectPrefix";
     public const string DashboardAutoRefreshIntervalSecondsKey = "dashboard.autoRefreshIntervalSeconds";
     public const string ForecastHorizonHoursKey = "forecast.horizonHours";
     public const string GridFeedInCompensationPricePerKwhKey = "gridFeedIn.compensationPricePerKwh";
@@ -66,6 +76,16 @@ public static class ControllerSettingDefaults
         new(ConsumptionForecastAverageDailyConsumptionKwhKey, "24", ControllerSettingSensitivity.Normal),
         new(ConsumptionForecastTimeZoneKey, "Europe/Berlin", ControllerSettingSensitivity.Normal),
         new(DecisionLogRetentionDaysKey, "90", ControllerSettingSensitivity.Normal),
+        new(DecisionWorkerIntervalSecondsKey, "60", ControllerSettingSensitivity.Normal),
+        new(WorkerFailureEmailEnabledKey, "false", ControllerSettingSensitivity.Normal),
+        new(WorkerFailureEmailSmtpHostKey, "localhost", ControllerSettingSensitivity.Normal),
+        new(WorkerFailureEmailSmtpPortKey, "25", ControllerSettingSensitivity.Normal),
+        new(WorkerFailureEmailSmtpUsernameKey, null, ControllerSettingSensitivity.Sensitive),
+        new(WorkerFailureEmailSmtpPasswordKey, null, ControllerSettingSensitivity.Sensitive),
+        new(WorkerFailureEmailFromAddressKey, "controller@localhost", ControllerSettingSensitivity.Normal),
+        new(WorkerFailureEmailToAddressKey, "operator@localhost", ControllerSettingSensitivity.Normal),
+        new(WorkerFailureEmailEnableSslKey, "false", ControllerSettingSensitivity.Normal),
+        new(WorkerFailureEmailSubjectPrefixKey, "EnergyFlowPilot", ControllerSettingSensitivity.Normal),
         new(DashboardAutoRefreshIntervalSecondsKey, "60", ControllerSettingSensitivity.Normal),
         new(ForecastHorizonHoursKey, "24", ControllerSettingSensitivity.Normal),
         new(GridFeedInCompensationPricePerKwhKey, "0.08", ControllerSettingSensitivity.Normal),

@@ -42,6 +42,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IDecisionLogRepository, EfDecisionLogRepository>();
         services.AddScoped<IBatterySavingsRepository, EfBatterySavingsRepository>();
         services.AddScoped<IOperationalEventRepository, EfOperationalEventRepository>();
+        services.AddScoped<IWorkerFailureNotifier, WorkerFailureEmailNotifier>();
         services.AddSingleton<VictronTelemetrySnapshotStore>();
         services.AddScoped<IControllerSettingsService, ControllerSettingsService>();
         services.AddScoped<IBatteryConfigurationProvider, DatabaseBatteryConfigurationProvider>();
@@ -68,6 +69,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddSingleton<ForecastSolarPvForecastCache>();
         services.AddHttpClient<ForecastSolarPvForecastProvider>();
         services.AddScoped<IWeatherForecastProvider, CachedWeatherForecastProvider>();
+        services.AddHostedService<DecisionExecutionBackgroundService>();
         services.AddHostedService<VictronMqttTelemetryBackgroundService>();
 
         return services;
