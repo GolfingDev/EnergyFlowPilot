@@ -14,6 +14,7 @@ namespace TibberVictronController.Api.Configuration;
 public sealed class MqttTelemetryBackgroundService : BackgroundService
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan MinimumKeepAliveInterval = TimeSpan.FromSeconds(5);
 
     private readonly IServiceProvider serviceProvider;
     private readonly ILogger<MqttTelemetryBackgroundService> logger;
@@ -135,6 +136,10 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         var snapshotStore = scope.ServiceProvider.GetRequiredService<MqttTelemetrySnapshotStore>();
         var settings = await settingsProvider.GetSettingsAsync(stoppingToken);
         var topics = CreateTopics(settings);
+        var keepAliveInterval = TimeSpan.FromSeconds(Math.Max(5, settings.KeepAliveSeconds));
+        var staleAfter = TimeSpan.FromSeconds(Math.Max(5, settings.StaleAfterSeconds));
+        var keepAliveTopic = $"R/{settings.DeviceId}/keepalive";
+        var nextKeepAliveAtUtc = DateTimeOffset.UtcNow;
 
         mqttClient = new MqttClientFactory().CreateMqttClient();
         mqttClient.ApplicationMessageReceivedAsync += async eventArguments =>
@@ -183,7 +188,20 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
                 throw new InvalidOperationException("MQTT-Verbindung wurde unterbrochen und wird neu aufgebaut.");
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            var utcNow = DateTimeOffset.UtcNow;
+            if (utcNow >= nextKeepAliveAtUtc)
+            {
+                await PublishKeepAliveAsync(keepAliveTopic, stoppingToken);
+                nextKeepAliveAtUtc = utcNow.Add(keepAliveInterval);
+            }
+
+            if (IsTelemetryStale(utcNow, staleAfter))
+            {
+                runtimeStatus.MarkFailed("MQTT liefert keine frischen Telemetriedaten mehr. Die Verbindung wird neu aufgebaut.");
+                throw new InvalidOperationException("MQTT liefert keine frischen Telemetriedaten mehr. Die Verbindung wird neu aufgebaut.");
+            }
+
+            await Task.Delay(MinimumKeepAliveInterval, stoppingToken);
         }
     }
 
@@ -202,6 +220,33 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
     private static string ResolveTopic(string topicTemplate, string deviceId)
     {
         return topicTemplate.Replace("{portalId}", deviceId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsTelemetryStale(DateTimeOffset utcNow, TimeSpan staleAfter)
+    {
+        var lastSuccessfulMessageAtUtc = runtimeStatus.LastSuccessfulMessageAtUtc;
+
+        if (lastSuccessfulMessageAtUtc is null)
+        {
+            return false;
+        }
+
+        return utcNow - lastSuccessfulMessageAtUtc.Value > staleAfter;
+    }
+
+    private async Task PublishKeepAliveAsync(string keepAliveTopic, CancellationToken cancellationToken)
+    {
+        if (mqttClient is null || !mqttClient.IsConnected)
+        {
+            return;
+        }
+
+        var message = new MqttApplicationMessageBuilder()
+            .WithTopic(keepAliveTopic)
+            .WithPayload(string.Empty)
+            .Build();
+
+        await mqttClient.PublishAsync(message, cancellationToken);
     }
 
     private async Task PersistLiveConsumptionSampleAsync(decimal houseConsumptionWatts, DateTimeOffset measuredAtUtc)
