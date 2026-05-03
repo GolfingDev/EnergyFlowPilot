@@ -71,7 +71,8 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         MqttTelemetryTopics topics,
         MqttTelemetrySnapshotStore snapshotStore)
     {
-        var payload = Encoding.UTF8.GetString(eventArguments.ApplicationMessage.Payload.ToArray());
+        var payloadBytes = eventArguments.ApplicationMessage.Payload ?? Array.Empty<byte>();
+        var payload = Encoding.UTF8.GetString(payloadBytes);
 
         if (!Dal.Victron.VictronMqttPayloadParser.TryParseDecimal(payload, out var value))
         {
