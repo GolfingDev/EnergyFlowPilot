@@ -82,29 +82,50 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         var measuredAtUtc = DateTimeOffset.UtcNow;
         runtimeStatus.MarkMessageReceived(measuredAtUtc);
 
-        if (string.Equals(eventArguments.ApplicationMessage.Topic, topics.GridPowerTopic, StringComparison.Ordinal))
-        {
-            snapshotStore.UpdateGridPower(value, measuredAtUtc);
-            return;
-        }
+        var shouldPersistConsumptionSample = ApplyTelemetryValue(
+            eventArguments.ApplicationMessage.Topic,
+            value,
+            measuredAtUtc,
+            topics,
+            snapshotStore);
 
-        if (string.Equals(eventArguments.ApplicationMessage.Topic, topics.BatterySocTopic, StringComparison.Ordinal))
+        if (shouldPersistConsumptionSample)
         {
-            snapshotStore.UpdateBatterySoc(value, measuredAtUtc);
-            return;
-        }
-
-        if (string.Equals(eventArguments.ApplicationMessage.Topic, topics.BatteryPowerTopic, StringComparison.Ordinal))
-        {
-            snapshotStore.UpdateBatteryPower(value, measuredAtUtc);
-            return;
-        }
-
-        if (string.Equals(eventArguments.ApplicationMessage.Topic, topics.HouseConsumptionTopic, StringComparison.Ordinal))
-        {
-            snapshotStore.UpdateHouseConsumption(value, measuredAtUtc);
             await PersistLiveConsumptionSampleAsync(value, measuredAtUtc);
         }
+    }
+
+    internal static bool ApplyTelemetryValue(
+        string topic,
+        decimal value,
+        DateTimeOffset measuredAtUtc,
+        MqttTelemetryTopics topics,
+        MqttTelemetrySnapshotStore snapshotStore)
+    {
+        var shouldPersistConsumptionSample = false;
+
+        if (string.Equals(topic, topics.GridPowerTopic, StringComparison.Ordinal))
+        {
+            snapshotStore.UpdateGridPower(value, measuredAtUtc);
+        }
+
+        if (string.Equals(topic, topics.BatterySocTopic, StringComparison.Ordinal))
+        {
+            snapshotStore.UpdateBatterySoc(value, measuredAtUtc);
+        }
+
+        if (string.Equals(topic, topics.BatteryPowerTopic, StringComparison.Ordinal))
+        {
+            snapshotStore.UpdateBatteryPower(value, measuredAtUtc);
+        }
+
+        if (string.Equals(topic, topics.HouseConsumptionTopic, StringComparison.Ordinal))
+        {
+            snapshotStore.UpdateHouseConsumption(value, measuredAtUtc);
+            shouldPersistConsumptionSample = true;
+        }
+
+        return shouldPersistConsumptionSample;
     }
 
     private async Task RunClientLoopAsync(CancellationToken stoppingToken)
