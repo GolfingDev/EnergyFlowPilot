@@ -29,12 +29,15 @@ public sealed class ControllerDbContext : DbContext
 
     public DbSet<BatterySavingsDailySummaryEntity> BatterySavingsDailySummaries => Set<BatterySavingsDailySummaryEntity>();
 
+    public DbSet<LiveConsumptionSampleEntity> LiveConsumptionSamples => Set<LiveConsumptionSampleEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureControllerSettings(modelBuilder);
         ConfigureDecisionLogs(modelBuilder);
         ConfigureOperationalEvents(modelBuilder);
         ConfigureBatterySavings(modelBuilder);
+        ConfigureLiveConsumptionSamples(modelBuilder);
     }
 
     private static void ConfigureControllerSettings(ModelBuilder modelBuilder)
@@ -114,6 +117,19 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(summary => summary.UpdatedAtUtc)
                 .HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
             entity.HasIndex(summary => summary.AccountingDate);
+        });
+    }
+
+    private static void ConfigureLiveConsumptionSamples(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<LiveConsumptionSampleEntity>(entity =>
+        {
+            entity.ToTable("LiveConsumptionSamples");
+            entity.HasKey(sample => sample.Id);
+            entity.Property(sample => sample.MeasuredAtUtc)
+                .HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(sample => sample.HouseConsumptionWatts);
+            entity.HasIndex(sample => sample.MeasuredAtUtc);
         });
     }
 }

@@ -1,6 +1,9 @@
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
 using MQTTnet;
 using MQTTnet.Protocol;
+using TibberVictronController.Business.Abstractions;
+using TibberVictronController.Business.Models;
 using TibberVictronController.Dal.Mqtt;
 using TibberVictronController.Dal.Victron;
 
@@ -60,7 +63,7 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         await base.StopAsync(cancellationToken);
     }
 
-    private void HandleMessage(
+    private async Task HandleMessageAsync(
         MqttApplicationMessageReceivedEventArgs eventArguments,
         MqttTelemetryTopics topics,
         MqttTelemetrySnapshotStore snapshotStore)
@@ -97,6 +100,7 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         if (string.Equals(eventArguments.ApplicationMessage.Topic, topics.HouseConsumptionTopic, StringComparison.Ordinal))
         {
             snapshotStore.UpdateHouseConsumption(value, measuredAtUtc);
+            await PersistLiveConsumptionSampleAsync(value, measuredAtUtc);
         }
     }
 
@@ -109,10 +113,9 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         var topics = CreateTopics(settings);
 
         mqttClient = new MqttClientFactory().CreateMqttClient();
-        mqttClient.ApplicationMessageReceivedAsync += eventArguments =>
+        mqttClient.ApplicationMessageReceivedAsync += async eventArguments =>
         {
-            HandleMessage(eventArguments, topics, snapshotStore);
-            return Task.CompletedTask;
+            await HandleMessageAsync(eventArguments, topics, snapshotStore);
         };
 
         var options = new MqttClientOptionsBuilder()
@@ -158,5 +161,14 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
     private static string ResolveTopic(string topicTemplate, string deviceId)
     {
         return topicTemplate.Replace("{portalId}", deviceId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task PersistLiveConsumptionSampleAsync(decimal houseConsumptionWatts, DateTimeOffset measuredAtUtc)
+    {
+        await using var scope = serviceProvider.CreateAsyncScope();
+        var liveConsumptionRepository = scope.ServiceProvider.GetRequiredService<ILiveConsumptionRepository>();
+
+        await liveConsumptionRepository.SaveSampleAsync(
+            new LiveConsumptionSample(houseConsumptionWatts, measuredAtUtc));
     }
 }

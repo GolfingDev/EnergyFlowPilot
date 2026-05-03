@@ -43,6 +43,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IDecisionLogRepository, EfDecisionLogRepository>();
         services.AddScoped<IBatterySavingsRepository, EfBatterySavingsRepository>();
         services.AddScoped<IOperationalEventRepository, EfOperationalEventRepository>();
+        services.AddScoped<ILiveConsumptionRepository, EfLiveConsumptionRepository>();
         services.AddScoped<IWorkerFailureNotifier, WorkerFailureEmailNotifier>();
         services.AddSingleton<MqttTelemetrySnapshotStore>();
         services.AddScoped<IControllerSettingsService, ControllerSettingsService>();
