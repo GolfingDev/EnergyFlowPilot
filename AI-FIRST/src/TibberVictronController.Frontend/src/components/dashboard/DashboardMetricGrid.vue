@@ -72,6 +72,7 @@ const savingsMetricTitle = computed(() => {
       <strong>{{ savings ? formatCurrency(savings.aggregate.netSavings, savingsCurrency) : 'Nicht verfuegbar' }}</strong>
       <p>Netto-Ersparnis im gewaehlten Zeitraum.</p>
       <p>Aktueller Verbrauch: <b>{{ formatPower(currentConsumptionWatts) }}</b></p>
+      <p>Netzleistung: <b>{{ formatPower(decision?.currentGridImportWatts) }}</b></p>
     </article>
   </section>
 </template>
