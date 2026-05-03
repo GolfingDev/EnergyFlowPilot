@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
 interface ControllerStatusResponseDto {
   status: string;
@@ -106,7 +107,17 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'consumptionForecast.timeZone', section: 'consumption', subgroup: 'Lastprofil', category: 'normal' },
   { key: 'victron.dryRun', section: 'decision', subgroup: 'Betriebsmodus', category: 'critical', helpText: 'Simulationsmodus: Entscheidungen werden berechnet, aber Hardware wird nicht aktiv gesteuert.' },
   { key: 'decisionLog.retentionDays', section: 'decision', subgroup: 'Nachvollziehbarkeit', category: 'normal' },
+  { key: 'decisionWorker.intervalSeconds', section: 'decision', subgroup: 'Worker-Zyklus', category: 'important', helpText: 'Intervall für den automatischen Entscheidungs-Worker im Hintergrund.' },
   { key: 'dashboard.autoRefreshIntervalSeconds', section: 'system', subgroup: 'Dashboard', category: 'normal', helpText: 'Intervall fuer die automatische Aktualisierung der Dashboard-Daten. 0 deaktiviert die Automatik.' },
+  { key: 'notifications.workerFailureEmail.enabled', section: 'system', subgroup: 'Benachrichtigungen', category: 'important', helpText: 'Versendet bei Worker-Fehlern automatisch eine E-Mail an den Betreiber.' },
+  { key: 'notifications.workerFailureEmail.smtpHost', section: 'system', subgroup: 'Benachrichtigungen', category: 'important' },
+  { key: 'notifications.workerFailureEmail.smtpPort', section: 'system', subgroup: 'Benachrichtigungen', category: 'normal' },
+  { key: 'notifications.workerFailureEmail.smtpUsername', section: 'system', subgroup: 'Benachrichtigungen', category: 'normal' },
+  { key: 'notifications.workerFailureEmail.smtpPassword', section: 'system', subgroup: 'Benachrichtigungen', category: 'critical', helpText: 'Geheimer SMTP-Zugang für den Versand von Fehlermails.' },
+  { key: 'notifications.workerFailureEmail.fromAddress', section: 'system', subgroup: 'Benachrichtigungen', category: 'important' },
+  { key: 'notifications.workerFailureEmail.toAddress', section: 'system', subgroup: 'Benachrichtigungen', category: 'important' },
+  { key: 'notifications.workerFailureEmail.enableSsl', section: 'system', subgroup: 'Benachrichtigungen', category: 'important' },
+  { key: 'notifications.workerFailureEmail.subjectPrefix', section: 'system', subgroup: 'Benachrichtigungen', category: 'normal' },
   { key: 'victron.host', section: 'system', subgroup: 'Victron MQTT', category: 'critical' },
   { key: 'victron.port', section: 'system', subgroup: 'Victron MQTT', category: 'important' },
   { key: 'victron.portalId', section: 'system', subgroup: 'Victron MQTT', category: 'important' },
@@ -137,6 +148,7 @@ const fallbackMetadata: SettingMetadataDto[] = [
   }
 ];
 
+const route = useRoute();
 const activeSectionKey = ref<SectionKey>('battery');
 const settings = ref<ControllerSettingResponseDto[]>([]);
 const metadata = ref<GuiMetadataResponseDto | null>(null);
@@ -261,7 +273,7 @@ async function loadPageData(): Promise<void> {
     metadata.value = metadataResponse;
     status.value = statusResponse;
     initializeDrafts();
-    ensureActiveSection();
+    applySectionFromRoute();
     saveSuccess.value = false;
   } catch (error) {
     pageError.value = createUiError(error, 'Die Einstellungen konnten nicht geladen werden.');
@@ -313,6 +325,22 @@ function resetChanges(): void {
 
 function setActiveSection(sectionKey: SectionKey): void {
   activeSectionKey.value = sectionKey;
+}
+
+function applySectionFromRoute(): void {
+  const routeSection = typeof route.query.section === 'string'
+    ? route.query.section
+    : null;
+  const matchingSection = routeSection === null
+    ? null
+    : sections.value.find((section) => section.key === routeSection);
+
+  if (matchingSection) {
+    activeSectionKey.value = matchingSection.key;
+    return;
+  }
+
+  ensureActiveSection();
 }
 
 function setBooleanDraft(key: string, value: boolean | null): void {
@@ -531,6 +559,10 @@ function clampPercent(value: number): number {
 
 onMounted(() => {
   void loadPageData();
+});
+
+watch(() => route.query.section, () => {
+  applySectionFromRoute();
 });
 </script>
 
