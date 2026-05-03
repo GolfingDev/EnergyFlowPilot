@@ -141,7 +141,7 @@ async function renderForecastChart(): Promise<void> {
               const entry = entries[items[0]?.dataIndex ?? 0];
               const action = translateDecisionState(entry.decisionState);
               const source = entry.chargeSource ? ` (${entry.chargeSource})` : '';
-              const reason = entry.reasons[0]?.message ?? 'Keine Begruendung vorhanden.';
+              const reason = formatShortReason(entry);
 
               return [
                 `Entscheidung: ${action}${source}`,
@@ -247,6 +247,26 @@ function formatForecastChartTooltipLine(
     default:
       return `${item.dataset.label}: ${formatNumber(Number(item.raw), 2)}`;
   }
+}
+
+function formatShortReason(entry: BatteryForecastEntryDto): string {
+  const primaryReason = entry.reasons[0];
+
+  if (!primaryReason) {
+    return 'Keine Begründung vorhanden.';
+  }
+
+  const compactMessage = primaryReason.message
+    .split('.')
+    .map((part) => part.trim())
+    .find((part) => part.length > 0) ?? primaryReason.message.trim();
+  const shortenedMessage = compactMessage.length > 90
+    ? `${compactMessage.slice(0, 87).trimEnd()}...`
+    : compactMessage;
+
+  return primaryReason.ruleName
+    ? `${primaryReason.ruleName}: ${shortenedMessage}`
+    : shortenedMessage;
 }
 
 function destroyForecastChart(): void {
