@@ -74,6 +74,11 @@
   line-height: 1.4;
 }
 
+.metric-card__message--error {
+  color: #f0c24f;
+  font-weight: 600;
+}
+
 .metric-card p b {
   color: var(--efp-text);
 }
