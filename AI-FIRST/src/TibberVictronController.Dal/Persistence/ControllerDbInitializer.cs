@@ -32,7 +32,7 @@ public sealed class ControllerDbInitializer
     {
         var databaseCreator = dbContext.GetService<IRelationalDatabaseCreator>();
 
-        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples" })
+        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles" })
         {
             if (await databaseCreator.HasTablesAsync(cancellationToken) &&
                 await TableExistsAsync(tableName, cancellationToken))
@@ -87,7 +87,22 @@ public sealed class ControllerDbInitializer
         {
             if (!string.Equals(tableName, "LiveConsumptionSamples", StringComparison.OrdinalIgnoreCase))
             {
-                return string.Empty;
+                if (!string.Equals(tableName, "ConsumptionDayProfiles", StringComparison.OrdinalIgnoreCase))
+                {
+                    return string.Empty;
+                }
+
+                return """
+CREATE TABLE IF NOT EXISTS "ConsumptionDayProfiles" (
+    "DayOfWeek" INTEGER NOT NULL,
+    "SlotIndex" INTEGER NOT NULL,
+    "AverageConsumptionWatts" REAL NOT NULL,
+    "SampleCount" INTEGER NOT NULL,
+    "UpdatedAtUtc" INTEGER NOT NULL,
+    CONSTRAINT "PK_ConsumptionDayProfiles" PRIMARY KEY ("DayOfWeek", "SlotIndex")
+);
+CREATE INDEX IF NOT EXISTS "IX_ConsumptionDayProfiles_UpdatedAtUtc" ON "ConsumptionDayProfiles" ("UpdatedAtUtc");
+""";
             }
 
             return """

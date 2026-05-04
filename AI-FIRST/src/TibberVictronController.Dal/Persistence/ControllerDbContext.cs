@@ -31,6 +31,8 @@ public sealed class ControllerDbContext : DbContext
 
     public DbSet<LiveConsumptionSampleEntity> LiveConsumptionSamples => Set<LiveConsumptionSampleEntity>();
 
+    public DbSet<ConsumptionDayProfileEntity> ConsumptionDayProfiles => Set<ConsumptionDayProfileEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureControllerSettings(modelBuilder);
@@ -38,6 +40,7 @@ public sealed class ControllerDbContext : DbContext
         ConfigureOperationalEvents(modelBuilder);
         ConfigureBatterySavings(modelBuilder);
         ConfigureLiveConsumptionSamples(modelBuilder);
+        ConfigureConsumptionDayProfiles(modelBuilder);
     }
 
     private static void ConfigureControllerSettings(ModelBuilder modelBuilder)
@@ -130,6 +133,18 @@ public sealed class ControllerDbContext : DbContext
                 .HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
             entity.Property(sample => sample.HouseConsumptionWatts);
             entity.HasIndex(sample => sample.MeasuredAtUtc);
+        });
+    }
+
+    private static void ConfigureConsumptionDayProfiles(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ConsumptionDayProfileEntity>(entity =>
+        {
+            entity.ToTable("ConsumptionDayProfiles");
+            entity.HasKey(profile => new { profile.DayOfWeek, profile.SlotIndex });
+            entity.Property(profile => profile.UpdatedAtUtc)
+                .HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.HasIndex(profile => profile.UpdatedAtUtc);
         });
     }
 }
