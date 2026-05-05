@@ -164,11 +164,14 @@ async function renderForecastChart(): Promise<void> {
             minRotation: 45,
             maxTicksLimit: 12,
             callback: function (value) {
-              const label = this.getLabelForValue(value);
+              const labelIndex = typeof value === 'number' ? value : Number(value);
+              const label = Number.isFinite(labelIndex)
+                ? this.getLabelForValue(labelIndex)
+                : String(value);
 
               // Falls label ein ISO-Datum ist:
               const date = new Date(label);
-              if (!isNaN(date)) {
+              if (!Number.isNaN(date.getTime())) {
                 return date.toLocaleTimeString('de-DE', {
                   hour: '2-digit',
                   minute: '2-digit'
