@@ -63,5 +63,9 @@ public static class ForecastEndpoints
         {
             return TypedResults.BadRequest(new ForecastErrorDto(exception.Message));
         }
+        catch (ArgumentException exception)
+        {
+            return TypedResults.BadRequest(new ForecastErrorDto(exception.Message));
+        }
     }
 }

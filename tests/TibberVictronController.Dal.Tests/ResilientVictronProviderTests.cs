@@ -1,8 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
-using TibberVictronController.Dal.Battery;
 using TibberVictronController.Dal.Mqtt;
 using TibberVictronController.Dal.Persistence;
 using TibberVictronController.Dal.Repositories;
@@ -23,7 +21,7 @@ public sealed class ResilientVictronProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task ResilientBatteryStateProviderFallsBackToConfiguredState()
+    public async Task ResilientBatteryStateProviderRejectsMissingLiveState()
     {
         await using var dbContext = CreateDbContext();
         var settingsStore = await CreateInitializedSettingStoreAsync(dbContext);
@@ -31,18 +29,18 @@ public sealed class ResilientVictronProviderTests : IDisposable
         var runtimeStatus = new VictronMqttRuntimeStatus();
         var provider = new ResilientBatteryStateProvider(
             new MqttBatteryStateProvider(new MqttTelemetrySnapshotStore()),
-            new ConfiguredBatteryStateProvider(settingsStore, new FixedUtcClock(MeasuredAtUtc)),
             runtimeStatus);
 
-        var batteryState = await provider.GetCurrentBatteryStateAsync();
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => provider.GetCurrentBatteryStateAsync());
 
-        Assert.Equal(41.5m, batteryState.StateOfChargePercent);
+        Assert.Contains("kein Ersatzwert", exception.Message);
         Assert.Equal("Failed", runtimeStatus.ConnectionState);
         Assert.NotNull(runtimeStatus.LastErrorMessage);
     }
 
     [Fact]
-    public async Task ResilientCurrentSiteTelemetryProviderFallsBackToConfiguredTelemetry()
+    public async Task ResilientCurrentSiteTelemetryProviderRejectsMissingLiveTelemetry()
     {
         await using var dbContext = CreateDbContext();
         var settingsStore = await CreateInitializedSettingStoreAsync(dbContext);
@@ -51,13 +49,12 @@ public sealed class ResilientVictronProviderTests : IDisposable
         var runtimeStatus = new VictronMqttRuntimeStatus();
         var provider = new ResilientCurrentSiteTelemetryProvider(
             new MqttCurrentSiteTelemetryProvider(new MqttTelemetrySnapshotStore()),
-            new ConfiguredCurrentSiteTelemetryProvider(settingsStore, new FixedUtcClock(MeasuredAtUtc)),
             runtimeStatus);
 
-        var telemetry = await provider.GetCurrentSiteTelemetryAsync();
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => provider.GetCurrentSiteTelemetryAsync());
 
-        Assert.Equal(800, telemetry.CurrentGridImportWatts);
-        Assert.Equal(250, telemetry.CurrentPvProductionWatts);
+        Assert.Contains("keine Ersatzwerte", exception.Message);
         Assert.Equal("Failed", runtimeStatus.ConnectionState);
         Assert.NotNull(runtimeStatus.LastErrorMessage);
     }
@@ -72,7 +69,6 @@ public sealed class ResilientVictronProviderTests : IDisposable
         runtimeStatus.MarkConnected();
         var provider = new ResilientBatteryStateProvider(
             new MqttBatteryStateProvider(new MqttTelemetrySnapshotStore()),
-            new ConfiguredBatteryStateProvider(settingsStore, new FixedUtcClock(MeasuredAtUtc)),
             runtimeStatus);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetCurrentBatteryStateAsync());
@@ -89,7 +85,6 @@ public sealed class ResilientVictronProviderTests : IDisposable
         runtimeStatus.MarkConnected();
         var provider = new ResilientCurrentSiteTelemetryProvider(
             new MqttCurrentSiteTelemetryProvider(new MqttTelemetrySnapshotStore()),
-            new ConfiguredCurrentSiteTelemetryProvider(settingsStore, new FixedUtcClock(MeasuredAtUtc)),
             runtimeStatus);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetCurrentSiteTelemetryAsync());
@@ -119,15 +114,5 @@ public sealed class ResilientVictronProviderTests : IDisposable
     private static ControllerSetting CreateNormalSetting(string key, string value)
     {
         return new ControllerSetting(key, value, ControllerSettingSensitivity.Normal, SeededAtUtc.AddMinutes(5));
-    }
-
-    private sealed class FixedUtcClock : IUtcClock
-    {
-        public FixedUtcClock(DateTimeOffset utcNow)
-        {
-            UtcNow = utcNow;
-        }
-
-        public DateTimeOffset UtcNow { get; }
     }
 }

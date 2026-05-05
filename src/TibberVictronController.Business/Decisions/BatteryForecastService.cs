@@ -88,10 +88,11 @@ public sealed class BatteryForecastService : IBatteryForecastService
                 Array.Empty<BatteryForecastEntry>());
         }
 
+        var effectiveStartsAtUtc = relevantPriceForecast[0].TimeSlot.StartsAtUtc;
         var effectiveEndsAtUtc = relevantPriceForecast[^1].TimeSlot.EndsAtUtc;
         var feedInCompensationPricePerKwh = await GetFeedInCompensationPricePerKwhAsync(cancellationToken);
-        var pvForecast = await weatherForecastProvider.GetPvYieldForecastAsync(startsAtUtc, effectiveEndsAtUtc, cancellationToken);
-        var consumptionForecast = await historicalConsumptionProvider.GetConsumptionForecastAsync(startsAtUtc, effectiveEndsAtUtc, cancellationToken);
+        var pvForecast = await weatherForecastProvider.GetPvYieldForecastAsync(effectiveStartsAtUtc, effectiveEndsAtUtc, cancellationToken);
+        var consumptionForecast = await historicalConsumptionProvider.GetConsumptionForecastAsync(effectiveStartsAtUtc, effectiveEndsAtUtc, cancellationToken);
 
         return batteryForecastSimulator.Simulate(
             relevantPriceForecast,

@@ -16,6 +16,14 @@ public sealed class MqttTelemetrySnapshotStore
         }
     }
 
+    public void Clear()
+    {
+        lock (syncRoot)
+        {
+            snapshot = new MqttTelemetrySnapshot();
+        }
+    }
+
     public void UpdateGridPower(decimal value, DateTimeOffset measuredAtUtc)
     {
         lock (syncRoot)

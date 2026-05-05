@@ -8,6 +8,7 @@ public sealed class VictronMqttRuntimeStatus
     private readonly Lock syncRoot = new();
     private string connectionState = "NotStarted";
     private string? lastErrorMessage;
+    private DateTimeOffset? connectedAtUtc;
     private DateTimeOffset? lastSuccessfulMessageAtUtc;
 
     public string ConnectionState
@@ -43,6 +44,17 @@ public sealed class VictronMqttRuntimeStatus
         }
     }
 
+    public DateTimeOffset? ConnectedAtUtc
+    {
+        get
+        {
+            lock (syncRoot)
+            {
+                return connectedAtUtc;
+            }
+        }
+    }
+
     public void MarkStarting()
     {
         lock (syncRoot)
@@ -64,6 +76,7 @@ public sealed class VictronMqttRuntimeStatus
         lock (syncRoot)
         {
             connectionState = "Connected";
+            connectedAtUtc = DateTimeOffset.UtcNow;
             lastErrorMessage = null;
         }
     }

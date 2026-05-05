@@ -6,21 +6,18 @@ using TibberVictronController.Dal.Mqtt;
 namespace TibberVictronController.Dal.Victron;
 
 /// <summary>
-/// Uses live MQTT SoC when available and falls back to the configured backup value when MQTT is unavailable.
+/// Uses live MQTT SoC and fails loudly when no usable live value is available.
 /// </summary>
 public sealed class ResilientBatteryStateProvider : IBatteryStateProvider
 {
     private readonly MqttBatteryStateProvider mqttBatteryStateProvider;
-    private readonly ConfiguredBatteryStateProvider configuredBatteryStateProvider;
     private readonly VictronMqttRuntimeStatus runtimeStatus;
 
     public ResilientBatteryStateProvider(
         MqttBatteryStateProvider mqttBatteryStateProvider,
-        ConfiguredBatteryStateProvider configuredBatteryStateProvider,
         VictronMqttRuntimeStatus runtimeStatus)
     {
         this.mqttBatteryStateProvider = mqttBatteryStateProvider;
-        this.configuredBatteryStateProvider = configuredBatteryStateProvider;
         this.runtimeStatus = runtimeStatus;
     }
 
@@ -32,16 +29,10 @@ public sealed class ResilientBatteryStateProvider : IBatteryStateProvider
         }
         catch (InvalidOperationException exception)
         {
-            if (string.Equals(runtimeStatus.ConnectionState, "Connected", StringComparison.Ordinal))
-            {
-                runtimeStatus.MarkFailed("MQTT ist verbunden, aber der Live-SoC ist unvollstaendig oder ungueltig.");
-                throw new InvalidOperationException(
-                    "MQTT ist verbunden, liefert aber noch keinen verwendbaren Live-SoC.",
-                    exception);
-            }
-
-            runtimeStatus.MarkFailed("MQTT liefert aktuell keinen verwendbaren Live-SoC. Es wird auf den letzten konfigurierten SoC zurueckgegriffen.");
-            return await configuredBatteryStateProvider.GetCurrentBatteryStateAsync(cancellationToken);
+            runtimeStatus.MarkFailed("MQTT liefert aktuell keinen verwendbaren Live-SoC. Es wird kein Ersatzwert verwendet.");
+            throw new InvalidOperationException(
+                "MQTT liefert aktuell keinen verwendbaren Live-SoC. Es wird kein Ersatzwert verwendet.",
+                exception);
         }
     }
 }

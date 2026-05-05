@@ -75,15 +75,23 @@ async function loadDashboard(): Promise<void> {
   });
   applyResult(results[2], 'Aktuelle Entscheidung', (value) => {
     decision.value = value;
+  }, () => {
+    decision.value = null;
   });
   applyResult(results[3], 'Entscheidungslog', (value) => {
     decisionLogEntries.value = value;
+  }, () => {
+    decisionLogEntries.value = [];
   });
   applyResult(results[4], 'Forecast', (value) => {
     forecast.value = value;
+  }, () => {
+    forecast.value = null;
   });
   applyResult(results[5], 'Ersparnis', (value) => {
     savings.value = value;
+  }, () => {
+    savings.value = null;
   });
 
   isLoading.value = false;
@@ -92,12 +100,14 @@ async function loadDashboard(): Promise<void> {
 function applyResult<TValue>(
   result: PromiseSettledResult<TValue>,
   source: string,
-  assignValue: (value: TValue) => void): void {
+  assignValue: (value: TValue) => void,
+  clearValue?: () => void): void {
   if (result.status === 'fulfilled') {
     assignValue(result.value);
     return;
   }
 
+  clearValue?.();
   loadErrors.value.push({
     source,
     ...createLoadError(result.reason)

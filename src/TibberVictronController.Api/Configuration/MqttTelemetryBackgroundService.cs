@@ -141,6 +141,7 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         var keepAliveTopic = $"R/{settings.DeviceId}/keepalive";
         var nextKeepAliveAtUtc = DateTimeOffset.UtcNow;
 
+        snapshotStore.Clear();
         mqttClient = new MqttClientFactory().CreateMqttClient();
         mqttClient.ApplicationMessageReceivedAsync += async eventArguments =>
         {
@@ -195,6 +196,13 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
                 nextKeepAliveAtUtc = utcNow.Add(keepAliveInterval);
             }
 
+            var currentSettings = await settingsProvider.GetSettingsAsync(stoppingToken);
+            if (!SettingsMatch(settings, currentSettings))
+            {
+                runtimeStatus.MarkFailed("MQTT-Konfiguration wurde geaendert. Die Verbindung wird mit den neuen Einstellungen neu aufgebaut.");
+                throw new InvalidOperationException("MQTT-Konfiguration wurde geaendert. Die Verbindung wird mit den neuen Einstellungen neu aufgebaut.");
+            }
+
             if (IsTelemetryStale(utcNow, staleAfter))
             {
                 runtimeStatus.MarkFailed("MQTT liefert keine frischen Telemetriedaten mehr. Die Verbindung wird neu aufgebaut.");
@@ -217,6 +225,21 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         };
     }
 
+    private static bool SettingsMatch(MqttDeviceSettings left, MqttDeviceSettings right)
+    {
+        return string.Equals(left.Host, right.Host, StringComparison.Ordinal) &&
+            left.Port == right.Port &&
+            string.Equals(left.DeviceId, right.DeviceId, StringComparison.Ordinal) &&
+            left.KeepAliveSeconds == right.KeepAliveSeconds &&
+            left.StaleAfterSeconds == right.StaleAfterSeconds &&
+            left.DryRun == right.DryRun &&
+            string.Equals(left.GridPowerTopicTemplate, right.GridPowerTopicTemplate, StringComparison.Ordinal) &&
+            string.Equals(left.BatterySocTopicTemplate, right.BatterySocTopicTemplate, StringComparison.Ordinal) &&
+            string.Equals(left.BatteryPowerTopicTemplate, right.BatteryPowerTopicTemplate, StringComparison.Ordinal) &&
+            string.Equals(left.HouseConsumptionTopicTemplate, right.HouseConsumptionTopicTemplate, StringComparison.Ordinal) &&
+            string.Equals(left.ChargeDischargeSetpointTopic, right.ChargeDischargeSetpointTopic, StringComparison.Ordinal);
+    }
+
     private static string ResolveTopic(string topicTemplate, string deviceId)
     {
         return topicTemplate.Replace("{portalId}", deviceId, StringComparison.OrdinalIgnoreCase);
@@ -228,7 +251,9 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
 
         if (lastSuccessfulMessageAtUtc is null)
         {
-            return false;
+            var connectedAtUtc = runtimeStatus.ConnectedAtUtc;
+
+            return connectedAtUtc is not null && utcNow - connectedAtUtc.Value > staleAfter;
         }
 
         return utcNow - lastSuccessfulMessageAtUtc.Value > staleAfter;
