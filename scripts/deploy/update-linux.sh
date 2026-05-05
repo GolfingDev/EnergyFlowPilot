@@ -13,6 +13,7 @@ set -euo pipefail
 #
 # Optional environment overrides:
 #   APP_NAME=energyflowpilot
+#   SERVICE_NAME=energyflowpilot-api.service
 #   PUBLISH_RUNTIME=linux-arm64
 #   BACKEND_PORT=5094
 #   GIT_BRANCH=develop
@@ -20,7 +21,7 @@ set -euo pipefail
 APP_NAME="${APP_NAME:-energyflowpilot}"
 SERVICE_USER="${APP_NAME}"
 SERVICE_GROUP="${APP_NAME}"
-SERVICE_NAME="${APP_NAME}-api.service"
+SERVICE_NAME="${SERVICE_NAME:-${APP_NAME}-api.service}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -51,6 +52,18 @@ require_command() {
   if ! command -v "${command_name}" >/dev/null 2>&1; then
     echo "Benoetigter Befehl fehlt: ${command_name}" >&2
     exit 1
+  fi
+}
+
+print_matching_services() {
+  local matches
+  matches="$(systemctl list-unit-files --type=service --no-legend 2>/dev/null \
+    | awk '{ print $1 }' \
+    | grep -Ei 'energy|flow|pilot|tibber|victron' || true)"
+
+  if [[ -n "${matches}" ]]; then
+    echo "Gefundene aehnliche Services:" >&2
+    echo "${matches}" >&2
   fi
 }
 
@@ -91,7 +104,10 @@ validate_environment() {
 
   if ! systemctl list-unit-files | grep -q "^${SERVICE_NAME}"; then
     echo "systemd-Service fehlt: ${SERVICE_NAME}" >&2
-    echo "Bitte zuerst setup-raspberry.sh ausfuehren." >&2
+    print_matching_services
+    echo "Falls der Service anders heisst, starte mit SERVICE_NAME=<name>.service." >&2
+    echo "Falls APP_NAME abweicht, starte mit APP_NAME=<name>." >&2
+    echo "Wenn noch kein Service existiert, bitte zuerst setup-raspberry.sh ausfuehren." >&2
     exit 1
   fi
 }
