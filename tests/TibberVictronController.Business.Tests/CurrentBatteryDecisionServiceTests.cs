@@ -109,6 +109,71 @@ public sealed class CurrentBatteryDecisionServiceTests
         Assert.Equal(1200, result.Decision.TargetPowerWatts);
     }
 
+    [Theory]
+    [InlineData(-30)]
+    [InlineData(0)]
+    [InlineData(30)]
+    public async Task CalculateCurrentDecisionAsyncIgnoresGridPowerInsideDeadband(int currentGridImportWatts)
+    {
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(60m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m, maximumChargePowerWatts: 3000, maximumDischargePowerWatts: 3000, roundTripEfficiencyPercent: 100m)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(currentGridImportWatts, 1200, NowUtc)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.48m, 0.18m, 0.15m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Idle, result.Decision.Instruction.DecisionState);
+        Assert.Equal(0, result.SiteTelemetry.CurrentGridImportWatts);
+        Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.GridPowerDeadband);
+    }
+
+    [Fact]
+    public async Task CalculateCurrentDecisionAsyncDischargesAboveGridPowerDeadband()
+    {
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(60m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m, maximumDischargePowerWatts: 3000, roundTripEfficiencyPercent: 100m)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(31, 0, NowUtc)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.48m, 0.18m, 0.15m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Discharge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(31, result.Decision.TargetPowerWatts);
+    }
+
+    [Fact]
+    public async Task CalculateCurrentDecisionAsyncChargesFromPvAboveGridPowerDeadband()
+    {
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(40m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m, maximumChargePowerWatts: 3000)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(-31, 1200, NowUtc)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.30m, 0.18m, 0.15m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Charge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(BatteryChargeSource.PV, result.Decision.Instruction.ChargeSource);
+        Assert.Equal(31, result.Decision.TargetPowerWatts);
+    }
+
     [Fact]
     public async Task CalculateCurrentDecisionAsyncChargesFromPvWhenCurrentGridImportIsNegative()
     {
@@ -142,6 +207,11 @@ public sealed class CurrentBatteryDecisionServiceTests
         settingsStore.SaveSettingAsync(new ControllerSetting(
             ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey,
             "0.08",
+            ControllerSettingSensitivity.Normal,
+            NowUtc)).GetAwaiter().GetResult();
+        settingsStore.SaveSettingAsync(new ControllerSetting(
+            ControllerSettingDefaults.TelemetryGridPowerDeadbandWattsKey,
+            "30",
             ControllerSettingSensitivity.Normal,
             NowUtc)).GetAwaiter().GetResult();
 

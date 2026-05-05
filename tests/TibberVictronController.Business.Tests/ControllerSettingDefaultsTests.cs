@@ -97,6 +97,14 @@ public sealed class ControllerSettingDefaultsTests
     }
 
     [Fact]
+    public void CreateDefaultSettingsContainsGridPowerDeadbandDefault()
+    {
+        var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);
+
+        Assert.Equal("30", GetSettingValue(settings, ControllerSettingDefaults.TelemetryGridPowerDeadbandWattsKey));
+    }
+
+    [Fact]
     public void CreateDefaultSettingsKeepsSensitiveAccessDataUnconfigured()
     {
         var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);

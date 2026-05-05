@@ -11,6 +11,7 @@ public static class CurrentBatteryDecisionRuleIds
     public const string StaleSiteTelemetry = "STALE_SITE_TELEMETRY";
     public const string InvalidSiteTelemetry = "INVALID_SITE_TELEMETRY";
     public const string MissingCurrentPrice = "MISSING_CURRENT_PRICE";
+    public const string GridPowerDeadband = "GRID_POWER_DEADBAND";
     public const string AbsorbGridExport = "ABSORB_GRID_EXPORT";
     public const string NoGridImportForDischarge = "NO_GRID_IMPORT_FOR_DISCHARGE";
     public const string BatteryFull = "BATTERY_FULL";

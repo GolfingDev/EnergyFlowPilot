@@ -62,6 +62,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         var batteryState = batteryStateResult.BatteryState;
         var siteTelemetry = siteTelemetryResult.SiteTelemetry;
         var feedInCompensationPricePerKwh = await GetFeedInCompensationPricePerKwhAsync(cancellationToken);
+        var gridPowerDeadbandWatts = await GetGridPowerDeadbandWattsAsync(cancellationToken);
         IReadOnlyList<TibberPriceForecastSlot> priceForecast;
 
         try
@@ -147,6 +148,21 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 new BatteryDecisionReason(
                     CurrentBatteryDecisionRuleIds.MissingCurrentPrice,
                     "Fuer den aktuellen Zeitpunkt liegt kein gueltiger Tibber-Preis vor. Die Decision Engine bleibt deshalb im Idle-Zustand."),
+                cancellationToken);
+        }
+
+        if (Math.Abs(siteTelemetry.CurrentGridImportWatts) <= gridPowerDeadbandWatts)
+        {
+            return await SaveIdleDecisionAsync(
+                decidedAtUtc,
+                currentPriceSlot.TimeSlot.EndsAtUtc,
+                batteryState,
+                new CurrentSiteTelemetry(0, siteTelemetry.CurrentPvProductionWatts, siteTelemetry.MeasuredAtUtc),
+                currentPriceSlot.TotalPricePerKwh,
+                currentPriceSlot.Currency,
+                new BatteryDecisionReason(
+                    CurrentBatteryDecisionRuleIds.GridPowerDeadband,
+                    $"Die aktuelle Netzleistung von {siteTelemetry.CurrentGridImportWatts} Watt liegt innerhalb des konfigurierten Puffers von +/- {gridPowerDeadbandWatts} Watt. Die Decision Engine ignoriert diese kleine Abweichung und bleibt im Idle-Zustand."),
                 cancellationToken);
         }
 
@@ -528,6 +544,30 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         }
 
         return feedInCompensationPricePerKwh;
+    }
+
+    private async Task<int> GetGridPowerDeadbandWattsAsync(CancellationToken cancellationToken)
+    {
+        var setting = await dependencies.ControllerSettingStore.GetSettingAsync(
+            ControllerSettingDefaults.TelemetryGridPowerDeadbandWattsKey,
+            cancellationToken);
+
+        if (setting is null || !setting.IsConfigured)
+        {
+            throw new InvalidOperationException("Der Netzleistungs-Puffer ist nicht konfiguriert.");
+        }
+
+        if (!int.TryParse(setting.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var deadbandWatts))
+        {
+            throw new InvalidOperationException("Der Netzleistungs-Puffer muss als ganze Watt-Zahl konfiguriert sein.");
+        }
+
+        if (deadbandWatts < 0)
+        {
+            throw new InvalidOperationException("Der Netzleistungs-Puffer darf nicht negativ sein.");
+        }
+
+        return deadbandWatts;
     }
 
     private static decimal CalculateSingleDirectionEfficiency(BatteryConfiguration batteryConfiguration)
