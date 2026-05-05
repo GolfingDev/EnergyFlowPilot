@@ -67,6 +67,12 @@ print_matching_services() {
   fi
 }
 
+service_unit_exists() {
+  systemctl list-unit-files --type=service --no-legend 2>/dev/null \
+    | awk '{ print $1 }' \
+    | grep -Fxq "${SERVICE_NAME}"
+}
+
 validate_environment() {
   require_command git
   require_command dotnet
@@ -102,7 +108,7 @@ validate_environment() {
     exit 1
   fi
 
-  if ! systemctl list-unit-files | grep -q "^${SERVICE_NAME}"; then
+  if ! service_unit_exists; then
     echo "systemd-Service fehlt: ${SERVICE_NAME}" >&2
     print_matching_services
     echo "Falls der Service anders heisst, starte mit SERVICE_NAME=<name>.service." >&2
