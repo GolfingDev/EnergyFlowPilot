@@ -106,6 +106,29 @@ public sealed class BatteryForecastSimulatorTests
     }
 
     [Fact]
+    public void SimulateUsesForecastAverageInsteadOfFixedDischargePrice()
+    {
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(80m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(10m, maximumDischargePowerWatts: 3000, roundTripEfficiencyPercent: 100m);
+        var priceForecast = CreatePriceForecast(0.26m, 0.20m, 0.18m);
+        var pvForecast = CreatePvForecast(0m, 0m, 0m);
+        var consumptionForecast = CreateConsumptionForecast(0.50m, 0m, 0m);
+
+        var result = simulator.Simulate(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            batteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh: 0.08m);
+
+        var aboveAverageEntry = result.Entries[0];
+        Assert.Equal(BatteryDecisionState.Discharge, aboveAverageEntry.Decision.Instruction.DecisionState);
+        Assert.Contains(aboveAverageEntry.Reasons, reason => reason.Message.Contains("Forecast-Durchschnitt"));
+    }
+
+    [Fact]
     public void SimulateDoesNotDischargeBelowConfiguredMinimumStateOfCharge()
     {
         var simulator = new BatteryForecastSimulator();

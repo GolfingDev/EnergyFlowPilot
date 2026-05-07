@@ -8,7 +8,6 @@ namespace TibberVictronController.Business.Decisions;
 public sealed class BatteryForecastSimulator
 {
     private const decimal FullBatterySocPercent = 100m;
-    private const decimal MinimumEconomicDischargePricePerKwh = 0.30m;
 
     private readonly BatteryChargeWindowPlanner chargeWindowPlanner = new();
     private readonly TibberPriceDecisionRule tibberPriceDecisionRule = new();
@@ -34,6 +33,7 @@ public sealed class BatteryForecastSimulator
         var consumptionSlotsByTime = consumptionForecast.ToDictionary(consumptionSlot => consumptionSlot.TimeSlot);
         var entries = new List<BatteryForecastEntry>();
         var currentBatteryEnergyKwh = batteryConfiguration.TotalCapacityKwh * initialBatteryState.StateOfChargePercent / 100m;
+        var averagePricePerKwh = priceForecast.Average(priceSlot => priceSlot.TotalPricePerKwh);
 
         foreach (var priceSlot in priceForecast.OrderBy(priceSlot => priceSlot.TimeSlot.StartsAtUtc))
         {
@@ -49,6 +49,7 @@ public sealed class BatteryForecastSimulator
                 batteryConfiguration,
                 plannedGridChargeSlots.Contains(priceSlot.TimeSlot),
                 priceForecast,
+                averagePricePerKwh,
                 feedInCompensationPricePerKwh);
 
             currentBatteryEnergyKwh = simulatedSlot.BatteryEnergyAfterKwh;
@@ -67,6 +68,7 @@ public sealed class BatteryForecastSimulator
         BatteryConfiguration batteryConfiguration,
         bool isPlannedGridChargeSlot,
         IReadOnlyList<TibberPriceForecastSlot> priceForecast,
+        decimal averagePricePerKwh,
         decimal feedInCompensationPricePerKwh)
     {
         var expectedGridImportBeforeBatteryKwh = consumptionSlot.ExpectedConsumptionKwh - pvSlot.ExpectedPvYieldKwh;
@@ -103,6 +105,7 @@ public sealed class BatteryForecastSimulator
             maximumDischargeOutputEnergyKwh,
             singleDirectionEfficiency,
             isPlannedGridChargeSlot,
+            averagePricePerKwh,
             feedInCompensationPricePerKwh);
     }
 
@@ -181,6 +184,7 @@ public sealed class BatteryForecastSimulator
         decimal maximumDischargeOutputEnergyKwh,
         decimal singleDirectionEfficiency,
         bool isPlannedGridChargeSlot,
+        decimal averagePricePerKwh,
         decimal feedInCompensationPricePerKwh)
     {
         var planningMinimumBatteryEnergyKwh = CalculatePlanningMinimumBatteryEnergyKwh(batteryConfiguration);
@@ -194,7 +198,8 @@ public sealed class BatteryForecastSimulator
             batteryEnergyBeforeKwh,
             planningMinimumBatteryEnergyKwh,
             maximumDischargeOutputEnergyKwh,
-            singleDirectionEfficiency))
+            singleDirectionEfficiency,
+            averagePricePerKwh))
         {
             return CreateDischargeSlot(
                 priceSlot,
@@ -258,7 +263,7 @@ public sealed class BatteryForecastSimulator
                 "Der Tibber-Preis ist negativ, aber ein noch guenstigerer geplanter Ladeslot bleibt frei. Die Decision Engine wartet auf das bessere Ladefenster.");
         }
 
-        if (ShouldDischargeAtCurrentPrice(priceSlot, expectedGridImportBeforeBatteryKwh, batteryEnergyBeforeKwh, targetEndBatteryEnergyKwh))
+        if (ShouldDischargeAtCurrentPrice(priceSlot, expectedGridImportBeforeBatteryKwh, batteryEnergyBeforeKwh, targetEndBatteryEnergyKwh, averagePricePerKwh))
         {
             return CreateDischargeSlot(
                 priceSlot,
@@ -272,11 +277,11 @@ public sealed class BatteryForecastSimulator
                 maximumDischargeOutputEnergyKwh,
                 singleDirectionEfficiency,
                 BatteryForecastRuleIds.ExpensivePriceDischarge,
-                "Der aktuelle Tibber-Preis ist hoch genug, um erwarteten Netzbezug aus dem Akku zu decken. Die konfigurierte Endreserve bleibt erhalten.");
+                $"Der aktuelle Tibber-Preis liegt mit {priceSlot.TotalPricePerKwh:0.0000} EUR/kWh mindestens auf dem Forecast-Durchschnitt von {averagePricePerKwh:0.0000} EUR/kWh. Die Decision Engine deckt erwarteten Netzbezug aus dem Akku; die konfigurierte Endreserve bleibt erhalten.");
         }
 
         if (expectedGridImportBeforeBatteryKwh > 0m &&
-            priceSlot.TotalPricePerKwh >= MinimumEconomicDischargePricePerKwh &&
+            priceSlot.TotalPricePerKwh >= averagePricePerKwh &&
             hasFutureNegativePriceWindow &&
             batteryEnergyBeforeKwh <= planningMinimumBatteryEnergyKwh)
         {
@@ -293,7 +298,7 @@ public sealed class BatteryForecastSimulator
         }
 
         if (expectedGridImportBeforeBatteryKwh > 0m &&
-            priceSlot.TotalPricePerKwh >= MinimumEconomicDischargePricePerKwh &&
+            priceSlot.TotalPricePerKwh >= averagePricePerKwh &&
             !hasFutureNegativePriceWindow &&
             batteryEnergyBeforeKwh <= targetEndBatteryEnergyKwh)
         {
@@ -445,9 +450,10 @@ public sealed class BatteryForecastSimulator
         decimal batteryEnergyBeforeKwh,
         decimal minimumBatteryEnergyKwh,
         decimal maximumDischargeOutputEnergyKwh,
-        decimal singleDirectionEfficiency)
+        decimal singleDirectionEfficiency,
+        decimal averagePricePerKwh)
     {
-        if (priceSlot.TotalPricePerKwh < MinimumEconomicDischargePricePerKwh ||
+        if (priceSlot.TotalPricePerKwh < averagePricePerKwh ||
             expectedGridImportBeforeBatteryKwh <= 0m ||
             batteryEnergyBeforeKwh <= minimumBatteryEnergyKwh)
         {
@@ -474,9 +480,10 @@ public sealed class BatteryForecastSimulator
         TibberPriceForecastSlot priceSlot,
         decimal expectedGridImportBeforeBatteryKwh,
         decimal batteryEnergyBeforeKwh,
-        decimal reserveBatteryEnergyKwh)
+        decimal reserveBatteryEnergyKwh,
+        decimal averagePricePerKwh)
     {
-        return priceSlot.TotalPricePerKwh >= MinimumEconomicDischargePricePerKwh &&
+        return priceSlot.TotalPricePerKwh >= averagePricePerKwh &&
             expectedGridImportBeforeBatteryKwh > 0m &&
             batteryEnergyBeforeKwh > reserveBatteryEnergyKwh;
     }
