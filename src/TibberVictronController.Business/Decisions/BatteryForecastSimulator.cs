@@ -49,6 +49,8 @@ public sealed class BatteryForecastSimulator
                 batteryConfiguration,
                 plannedGridChargeSlots.Contains(priceSlot.TimeSlot),
                 priceForecast,
+                pvForecast,
+                consumptionForecast,
                 averagePricePerKwh,
                 feedInCompensationPricePerKwh);
 
@@ -68,6 +70,8 @@ public sealed class BatteryForecastSimulator
         BatteryConfiguration batteryConfiguration,
         bool isPlannedGridChargeSlot,
         IReadOnlyList<TibberPriceForecastSlot> priceForecast,
+        IReadOnlyList<PvYieldForecastSlot> pvForecast,
+        IReadOnlyList<ConsumptionForecastSlot> consumptionForecast,
         decimal averagePricePerKwh,
         decimal feedInCompensationPricePerKwh)
     {
@@ -100,6 +104,8 @@ public sealed class BatteryForecastSimulator
             batteryEnergyBeforeKwh,
             batteryConfiguration,
             priceForecast,
+            pvForecast,
+            consumptionForecast,
             expectedGridImportBeforeBatteryKwh,
             maximumChargeInputEnergyKwh,
             maximumDischargeOutputEnergyKwh,
@@ -179,6 +185,8 @@ public sealed class BatteryForecastSimulator
         decimal batteryEnergyBeforeKwh,
         BatteryConfiguration batteryConfiguration,
         IReadOnlyList<TibberPriceForecastSlot> priceForecast,
+        IReadOnlyList<PvYieldForecastSlot> pvForecast,
+        IReadOnlyList<ConsumptionForecastSlot> consumptionForecast,
         decimal expectedGridImportBeforeBatteryKwh,
         decimal maximumChargeInputEnergyKwh,
         decimal maximumDischargeOutputEnergyKwh,
@@ -261,6 +269,36 @@ public sealed class BatteryForecastSimulator
                 batteryConfiguration,
                 BatteryForecastRuleIds.WaitForNegativePriceWindow,
                 "Der Tibber-Preis ist negativ, aber ein noch guenstigerer geplanter Ladeslot bleibt frei. Die Decision Engine wartet auf das bessere Ladefenster.");
+        }
+
+        if (ShouldDischargeForFuturePvHeadroom(
+            priceSlot,
+            pvForecast,
+            consumptionForecast,
+            expectedGridImportBeforeBatteryKwh,
+            batteryEnergyBeforeKwh,
+            batteryConfiguration,
+            planningMinimumBatteryEnergyKwh,
+            maximumDischargeOutputEnergyKwh,
+            singleDirectionEfficiency,
+            feedInCompensationPricePerKwh))
+        {
+            var futurePvSurplusInputKwh = CalculateFuturePvSurplusInputKwh(pvForecast, consumptionForecast, priceSlot.TimeSlot.StartsAtUtc);
+            var currentHeadroomInputKwh = CalculateAvailablePvInputHeadroomKwh(batteryConfiguration, batteryEnergyBeforeKwh, singleDirectionEfficiency);
+
+            return CreateDischargeSlot(
+                priceSlot,
+                pvSlot,
+                consumptionSlot,
+                stateOfChargeBeforePercent,
+                batteryEnergyBeforeKwh,
+                batteryConfiguration,
+                expectedGridImportBeforeBatteryKwh,
+                planningMinimumBatteryEnergyKwh,
+                maximumDischargeOutputEnergyKwh,
+                singleDirectionEfficiency,
+                BatteryForecastRuleIds.DischargeForFuturePvHeadroom,
+                $"Es werden spaeter {futurePvSurplusInputKwh:0.0000} kWh PV-Ueberschuss erwartet, aber aktuell sind nur {currentHeadroomInputKwh:0.0000} kWh Ladepuffer frei. Weil der aktuelle Preis mit {priceSlot.TotalPricePerKwh:0.0000} EUR/kWh nicht unter der Einspeiseverguetung von {feedInCompensationPricePerKwh:0.0000} EUR/kWh liegt, deckt die Decision Engine jetzigen Netzbezug aus dem Akku und schafft PV-Puffer.");
         }
 
         if (ShouldDischargeAtCurrentPrice(priceSlot, expectedGridImportBeforeBatteryKwh, batteryEnergyBeforeKwh, targetEndBatteryEnergyKwh, averagePricePerKwh))
@@ -486,6 +524,59 @@ public sealed class BatteryForecastSimulator
         return priceSlot.TotalPricePerKwh >= averagePricePerKwh &&
             expectedGridImportBeforeBatteryKwh > 0m &&
             batteryEnergyBeforeKwh > reserveBatteryEnergyKwh;
+    }
+
+    private static bool ShouldDischargeForFuturePvHeadroom(
+        TibberPriceForecastSlot priceSlot,
+        IReadOnlyList<PvYieldForecastSlot> pvForecast,
+        IReadOnlyList<ConsumptionForecastSlot> consumptionForecast,
+        decimal expectedGridImportBeforeBatteryKwh,
+        decimal batteryEnergyBeforeKwh,
+        BatteryConfiguration batteryConfiguration,
+        decimal planningMinimumBatteryEnergyKwh,
+        decimal maximumDischargeOutputEnergyKwh,
+        decimal singleDirectionEfficiency,
+        decimal feedInCompensationPricePerKwh)
+    {
+        if (priceSlot.TotalPricePerKwh < feedInCompensationPricePerKwh ||
+            expectedGridImportBeforeBatteryKwh <= 0m ||
+            batteryEnergyBeforeKwh <= planningMinimumBatteryEnergyKwh ||
+            maximumDischargeOutputEnergyKwh <= 0m)
+        {
+            return false;
+        }
+
+        var futurePvSurplusInputKwh = CalculateFuturePvSurplusInputKwh(pvForecast, consumptionForecast, priceSlot.TimeSlot.StartsAtUtc);
+        var currentHeadroomInputKwh = CalculateAvailablePvInputHeadroomKwh(batteryConfiguration, batteryEnergyBeforeKwh, singleDirectionEfficiency);
+
+        return futurePvSurplusInputKwh > currentHeadroomInputKwh;
+    }
+
+    private static decimal CalculateFuturePvSurplusInputKwh(
+        IReadOnlyList<PvYieldForecastSlot> pvForecast,
+        IReadOnlyList<ConsumptionForecastSlot> consumptionForecast,
+        DateTimeOffset currentSlotStartsAtUtc)
+    {
+        var consumptionByTimeSlot = consumptionForecast.ToDictionary(consumptionSlot => consumptionSlot.TimeSlot);
+
+        return pvForecast
+            .Where(pvSlot => pvSlot.TimeSlot.StartsAtUtc > currentSlotStartsAtUtc)
+            .Sum(pvSlot =>
+            {
+                var consumptionSlot = consumptionByTimeSlot[pvSlot.TimeSlot];
+
+                return Math.Max(0m, pvSlot.ExpectedPvYieldKwh - consumptionSlot.ExpectedConsumptionKwh);
+            });
+    }
+
+    private static decimal CalculateAvailablePvInputHeadroomKwh(
+        BatteryConfiguration batteryConfiguration,
+        decimal batteryEnergyBeforeKwh,
+        decimal singleDirectionEfficiency)
+    {
+        var availableStoredCapacityKwh = batteryConfiguration.TotalCapacityKwh - batteryEnergyBeforeKwh;
+
+        return Math.Max(0m, availableStoredCapacityKwh / singleDirectionEfficiency);
     }
 
     private static SimulatedSlot CreateIdleSlot(

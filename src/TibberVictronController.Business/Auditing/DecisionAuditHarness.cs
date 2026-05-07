@@ -123,6 +123,9 @@ public sealed class DecisionAuditHarness
             BatteryForecastRuleIds.PlanningMaximumSocHeadroom => new DecisionAlternative(
                 "ChargeFromGrid",
                 "Das Planungs-Maximum haelt Kapazitaet fuer moegliche PV-Prognoseabweichungen frei."),
+            BatteryForecastRuleIds.DischargeForFuturePvHeadroom => new DecisionAlternative(
+                "Idle",
+                "Erwarteter PV-Ueberschuss wuerde ohne zusaetzlichen Ladepuffer eher eingespeist."),
             _ => new DecisionAlternative(
                 MapAction(baselineInstruction),
                 null)
@@ -141,6 +144,7 @@ public sealed class DecisionAuditHarness
             BatteryForecastRuleIds.PlanningMaximumGridChargeLimit => new[] { "PLANNING_MAX_SOC_PROTECTED", "EFFICIENCY_APPLIED" },
             BatteryForecastRuleIds.NegativePriceGridCharge or BatteryForecastRuleIds.PlannedGridCharge or BatteryForecastRuleIds.PvSurplusCharge => new[] { "EFFICIENCY_APPLIED" },
             BatteryForecastRuleIds.DischargeBeforeNegativePriceWindow => new[] { "NEGATIVE_PRICE_ANTICIPATED", "EFFICIENCY_APPLIED" },
+            BatteryForecastRuleIds.DischargeForFuturePvHeadroom => new[] { "PV_HEADROOM_NEEDED", "EFFICIENCY_APPLIED" },
             BatteryForecastRuleIds.ExpensivePriceDischarge => new[] { "END_SOC_RESERVE_PROTECTED", "EFFICIENCY_APPLIED" },
             _ => Array.Empty<string>()
         };

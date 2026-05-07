@@ -11,6 +11,7 @@ public static class BatteryForecastRuleIds
     public const string NegativePriceGridCharge = "NEGATIVE_PRICE_GRID_CHARGE";
     public const string PlannedGridCharge = "PLANNED_GRID_CHARGE";
     public const string DischargeBeforeNegativePriceWindow = "DISCHARGE_BEFORE_NEGATIVE_PRICE_WINDOW";
+    public const string DischargeForFuturePvHeadroom = "DISCHARGE_FOR_FUTURE_PV_HEADROOM";
     public const string ExpensivePriceDischarge = "EXPENSIVE_PRICE_DISCHARGE";
     public const string MinimumSocReserve = "MIN_SOC_RESERVE";
     public const string EndSocReserve = "END_SOC_RESERVE";

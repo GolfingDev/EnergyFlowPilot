@@ -87,6 +87,7 @@ public static class GuiMetadataCatalog
             CreateRule(BatteryForecastRuleIds.NegativePriceGridCharge, "Negativpreis laden", "Bei negativem Tibber-Preis wird aus dem Netz geladen.", "Forecast"),
             CreateRule(BatteryForecastRuleIds.PlannedGridCharge, "Geplanter Netz-Ladeslot", "Der Slot gehoert zu den guenstigsten geplanten Netz-Ladefenstern.", "Forecast"),
             CreateRule(BatteryForecastRuleIds.DischargeBeforeNegativePriceWindow, "Vor Negativpreisfenster entladen", "Vor einem spaeteren sehr guenstigen Ladefenster wird Akkuenergie genutzt, um Platz zu schaffen.", "Forecast"),
+            CreateRule(BatteryForecastRuleIds.DischargeForFuturePvHeadroom, "Entladen fuer PV-Puffer", "Vor erwartetem PV-Ueberschuss wird Last aus dem Akku gedeckt, wenn Netzstrom teurer als die Einspeiseverguetung ist.", "Forecast"),
             CreateRule(BatteryForecastRuleIds.ExpensivePriceDischarge, "Teuren Preis entladen", "Bei hohem Preis wird Last aus dem Akku gedeckt.", "Forecast"),
             CreateRule(BatteryForecastRuleIds.MinimumSocReserve, "Mindestreserve schuetzen", "Weitere Entladung wuerde die Planungs- oder Mindestreserve verletzen.", "Forecast"),
             CreateRule(BatteryForecastRuleIds.EndSocReserve, "Endreserve schuetzen", "Weitere Entladung wuerde die konfigurierte Endreserve verletzen.", "Forecast"),

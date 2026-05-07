@@ -129,6 +129,69 @@ public sealed class BatteryForecastSimulatorTests
     }
 
     [Fact]
+    public void SimulateDischargesBelowAverageWhenFuturePvSurplusNeedsHeadroom()
+    {
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(95m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(new BatteryConfigurationValues
+        {
+            TotalCapacityKwh = 10m,
+            MinimumStateOfChargePercent = 10m,
+            MaximumDischargePowerWatts = 3000,
+            RoundTripEfficiencyPercent = 100m,
+            TargetEndStateOfChargePercent = 25m,
+            PlanningMinimumStateOfChargePercent = 10m
+        });
+        var priceForecast = CreatePriceForecast(0.12m, 0.40m, 0.40m);
+        var pvForecast = CreatePvForecast(0m, 1.50m, 1.50m);
+        var consumptionForecast = CreateConsumptionForecast(0.50m, 0m, 0m);
+
+        var result = simulator.Simulate(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            batteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh: 0.09m);
+
+        var entry = result.Entries[0];
+        Assert.Equal(BatteryDecisionState.Discharge, entry.Decision.Instruction.DecisionState);
+        Assert.Contains(entry.Reasons, reason => reason.RuleName == BatteryForecastRuleIds.DischargeForFuturePvHeadroom);
+        Assert.Contains(entry.Reasons, reason => reason.Message.Contains("PV-Puffer"));
+    }
+
+    [Fact]
+    public void SimulateDoesNotDischargeForFuturePvHeadroomBelowFeedInCompensation()
+    {
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(95m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(new BatteryConfigurationValues
+        {
+            TotalCapacityKwh = 10m,
+            MinimumStateOfChargePercent = 10m,
+            MaximumDischargePowerWatts = 3000,
+            RoundTripEfficiencyPercent = 100m,
+            TargetEndStateOfChargePercent = 25m,
+            PlanningMinimumStateOfChargePercent = 10m
+        });
+        var priceForecast = CreatePriceForecast(0.07m, 0.06m, 0.40m);
+        var pvForecast = CreatePvForecast(0m, 1.50m, 1.50m);
+        var consumptionForecast = CreateConsumptionForecast(0.50m, 0m, 0m);
+
+        var result = simulator.Simulate(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            batteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh: 0.09m);
+
+        var entry = result.Entries[0];
+        Assert.NotEqual(BatteryForecastRuleIds.DischargeForFuturePvHeadroom, entry.Reasons[0].RuleName);
+        Assert.NotEqual(BatteryDecisionState.Discharge, entry.Decision.Instruction.DecisionState);
+    }
+
+    [Fact]
     public void SimulateDoesNotDischargeBelowConfiguredMinimumStateOfCharge()
     {
         var simulator = new BatteryForecastSimulator();

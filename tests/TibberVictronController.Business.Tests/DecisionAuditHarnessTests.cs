@@ -175,6 +175,7 @@ public sealed class DecisionAuditHarnessTests
             BatteryForecastRuleIds.PlanningMaximumGridChargeLimit,
             BatteryForecastRuleIds.PvSurplusCharge,
             BatteryForecastRuleIds.DischargeBeforeNegativePriceWindow,
+            BatteryForecastRuleIds.DischargeForFuturePvHeadroom,
             BatteryForecastRuleIds.ExpensivePriceDischarge
         };
 
