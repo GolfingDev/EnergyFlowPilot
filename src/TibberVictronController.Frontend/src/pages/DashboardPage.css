@@ -16,6 +16,32 @@
   color: var(--efp-secondary);
 }
 
+.dashboard-view-switch {
+  display: inline-flex;
+  gap: 3px;
+  margin-bottom: 14px;
+  padding: 3px;
+  border: 1px solid var(--efp-border);
+  border-radius: 8px;
+  background: var(--efp-surface-muted);
+}
+
+.dashboard-view-switch button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--efp-muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 7px 12px;
+}
+
+.dashboard-view-switch__button--active {
+  background: var(--efp-surface) !important;
+  color: var(--efp-text) !important;
+  box-shadow: 0 1px 4px rgba(23, 32, 38, 0.12);
+}
+
 .dashboard-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;

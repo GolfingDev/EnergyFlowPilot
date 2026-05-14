@@ -7,6 +7,7 @@ import DecisionDetailsPanel from '../components/dashboard/DecisionDetailsPanel.v
 import EnergySavingsPanel from '../components/dashboard/EnergySavingsPanel.vue';
 import EnergyLoadingOverlay from '../components/EnergyLoadingOverlay.vue'
 import ForecastChartPanel from '../components/dashboard/ForecastChartPanel.vue';
+import LiveEnergyFlowPanel from '../components/dashboard/LiveEnergyFlowPanel.vue';
 import type {
   ApiErrorDto,
   BatteryForecastResponseDto,
@@ -20,6 +21,8 @@ import type {
   SavingsPeriodOption
 } from '../components/dashboard/dashboardTypes';
 
+type DashboardViewMode = 'visual' | 'metrics';
+
 const refreshInSeconds = ref(0);
 const status = ref<ControllerStatusResponseDto | null>(null);
 const decision = ref<CurrentBatteryDecisionResponseDto | null>(null);
@@ -30,6 +33,11 @@ const loadErrors = ref<DashboardLoadError[]>([]);
 const isLoading = ref(false);
 const autoRefreshIntervalSeconds = ref(60);
 const savingsPeriod = ref<SavingsPeriod>('day');
+const storedDashboardViewMode = localStorage.getItem('energyFlowPilotDashboardViewMode');
+const dashboardViewMode = ref<DashboardViewMode>(
+  storedDashboardViewMode === 'metrics' || storedDashboardViewMode === 'visual'
+    ? storedDashboardViewMode
+    : 'visual');
 let autoRefreshTimer: ReturnType<typeof window.setInterval> | null = null;
 
 const savingsPeriodOptions: readonly SavingsPeriodOption[] = [
@@ -49,8 +57,13 @@ const currentConsumptionWatts = computed(() => {
     return null;
   }
 
-  return Math.max(0, decision.value.currentGridImportWatts) + Math.max(0, decision.value.currentPvProductionWatts);
+  return Math.max(0, decision.value.currentGridImportWatts);
 });
+
+function changeDashboardViewMode(mode: DashboardViewMode): void {
+  dashboardViewMode.value = mode;
+  localStorage.setItem('energyFlowPilotDashboardViewMode', mode);
+}
 
 async function loadDashboard(): Promise<void> {
   if (isLoading.value) {
@@ -251,9 +264,40 @@ onBeforeUnmount(() => {
 
     <DashboardErrorPanels :errors="loadErrors" />
 
-    <DashboardMetricGrid :decision="decision" :forecast="forecast" :savings="savings"
-      :savings-currency="savingsCurrency" :savings-period="savingsPeriod" :savings-period-options="savingsPeriodOptions"
-      :current-consumption-watts="currentConsumptionWatts" @change-savings-period="changeSavingsPeriod" />
+    <div class="dashboard-view-switch" aria-label="Dashboard-Ansicht">
+      <button
+        type="button"
+        :class="{ 'dashboard-view-switch__button--active': dashboardViewMode === 'visual' }"
+        @click="changeDashboardViewMode('visual')"
+      >
+        Bildansicht
+      </button>
+      <button
+        type="button"
+        :class="{ 'dashboard-view-switch__button--active': dashboardViewMode === 'metrics' }"
+        @click="changeDashboardViewMode('metrics')"
+      >
+        Kennzahlen
+      </button>
+    </div>
+
+    <LiveEnergyFlowPanel
+      v-if="dashboardViewMode === 'visual'"
+      :decision="decision"
+      :current-consumption-watts="currentConsumptionWatts"
+    />
+
+    <DashboardMetricGrid
+      v-else
+      :decision="decision"
+      :forecast="forecast"
+      :savings="savings"
+      :savings-currency="savingsCurrency"
+      :savings-period="savingsPeriod"
+      :savings-period-options="savingsPeriodOptions"
+      :current-consumption-watts="currentConsumptionWatts"
+      @change-savings-period="changeSavingsPeriod"
+    />
 
     <ForecastChartPanel :forecast="forecast" :forecast-load-error="forecastLoadError" />
 

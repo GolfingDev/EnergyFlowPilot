@@ -36,10 +36,6 @@ function getLogDecisionLabel(entry: DecisionLogEntryResponseDto): string {
         <span>Netzbezug</span>
         <strong>{{ formatPower(decision.currentGridImportWatts) }}</strong>
       </div>
-      <div>
-        <span>PV-Leistung</span>
-        <strong>{{ formatPower(decision.currentPvProductionWatts) }}</strong>
-      </div>
     </div>
 
     <div v-if="decision?.reasons.length" class="reason-list">

@@ -280,6 +280,7 @@
 
 .theme-toggle {
   flex: 0 0 auto;
+  color: var(--efp-text);
 }
 
 @media (max-width: 960px) {
@@ -352,7 +353,6 @@
   }
 
   .theme-toggle {
-    transform: scale(0.94);
-    transform-origin: right center;
+    align-self: center;
   }
 }

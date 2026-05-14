@@ -54,7 +54,6 @@ const settingsMenuGroups: SettingsMenuGroup[] = [
 
 const activeRouteName = computed(() => String(route.name ?? ''));
 const isDarkTheme = computed(() => theme.global.name.value === 'controllerDark');
-const nextTheme = ref(isDarkTheme.value ? 'controllerLight' : 'controllerDark');
 
 function navigateTo(routeName: string): void {
   void router.push({ name: routeName });
@@ -69,8 +68,9 @@ function openSettingsSection(section: SettingsSectionKey): void {
 }
 
 function toggleTheme(): void {
-  theme.change(nextTheme.value);
-  localStorage.setItem('energyFlowPilotTheme', nextTheme.value);
+  const nextTheme = isDarkTheme.value ? 'controllerLight' : 'controllerDark';
+  theme.change(nextTheme);
+  localStorage.setItem('energyFlowPilotTheme', nextTheme);
   window.dispatchEvent(new CustomEvent('energyflowpilot-theme-changed'));
 }
 
@@ -137,9 +137,13 @@ function openSettingsPage(): void {
         </div>
 
         <div class="top-bar__actions">
-          <v-switch v-model="nextTheme" class="theme-toggle" prepend-icon="mdi-white-balance-sunny"
-            append-icon="mdi-weather-night" false-value="controllerDark" true-value="controllerLight"
-            hide-details density="compact" @click="toggleTheme"></v-switch>
+          <v-btn
+            class="theme-toggle"
+            :icon="isDarkTheme ? 'mdi-weather-sunny' : 'mdi-weather-night'"
+            :aria-label="isDarkTheme ? 'Helles Design aktivieren' : 'Dunkles Design aktivieren'"
+            variant="text"
+            @click="toggleTheme"
+          />
         </div>
       </div>
     </v-app-bar>

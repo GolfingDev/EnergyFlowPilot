@@ -1,0 +1,309 @@
+.live-flow {
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--efp-border) 74%, #05d9ff 26%);
+  border-radius: 8px;
+  background: var(--efp-surface);
+  box-shadow: var(--efp-shadow);
+}
+
+.live-flow__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.live-flow__eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--efp-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.live-flow h2 {
+  margin: 0;
+  color: var(--efp-text);
+  font-size: 1.12rem;
+  line-height: 1.2;
+}
+
+.live-flow__state {
+  display: grid;
+  justify-items: end;
+  min-width: 132px;
+  padding: 8px 10px;
+  border: 1px solid var(--efp-border);
+  border-radius: 8px;
+  background: var(--efp-surface-muted);
+}
+
+.live-flow__state span {
+  color: var(--efp-muted);
+  font-size: 0.75rem;
+}
+
+.live-flow__state strong {
+  color: var(--efp-success);
+  font-size: 0.98rem;
+}
+
+.live-flow__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.live-flow__stage {
+  position: relative;
+  width: 100%;
+  max-width: 980px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--efp-border) 64%, #12d9f0 36%);
+  border-radius: 8px;
+  background: #06101f;
+  isolation: isolate;
+}
+
+:global(.v-theme--controllerLight) .live-flow__stage {
+  background: #edf7fb;
+}
+
+.live-flow__scene,
+.live-flow__overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.live-flow__scene {
+  z-index: 0;
+  object-fit: cover;
+  opacity: 0.9;
+}
+
+.live-flow__stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    radial-gradient(circle at 54% 63%, rgba(0, 224, 255, 0.06), transparent 25%),
+    linear-gradient(180deg, rgba(2, 8, 18, 0.05), rgba(2, 8, 18, 0.26));
+  pointer-events: none;
+}
+
+:global(.v-theme--controllerLight) .live-flow__stage::after {
+  background:
+    radial-gradient(circle at 54% 63%, rgba(14, 165, 183, 0.04), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.2));
+}
+
+.live-flow__overlay {
+  z-index: 2;
+}
+
+.live-flow__path {
+  fill: none;
+  opacity: 0;
+  stroke-linecap: round;
+  stroke-width: var(--flow-width);
+  vector-effect: non-scaling-stroke;
+}
+
+.live-flow__path--cyan {
+  stroke: #19dfff;
+}
+
+.live-flow__path--green {
+  stroke: #2ee889;
+}
+
+.live-flow__path--active {
+  opacity: 0.74;
+  stroke-dasharray: 8 22;
+  animation: live-flow-pulse 4.4s linear infinite;
+  filter:
+    drop-shadow(0 0 3px currentColor)
+    drop-shadow(0 0 8px currentColor);
+}
+
+.live-flow__path--idle {
+  stroke-width: 0;
+}
+
+.live-flow__node {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  width: 88px;
+  min-height: 68px;
+  padding: 7px;
+  border: 1px solid rgba(25, 223, 255, 0.34);
+  border-radius: 8px;
+  background: rgba(2, 14, 30, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 22px rgba(0, 224, 255, 0.14);
+  color: #f2fdff;
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+:global(.v-theme--controllerLight) .live-flow__node {
+  border-color: rgba(14, 165, 183, 0.34);
+  background: rgba(255, 255, 255, 0.8);
+  color: #172026;
+  box-shadow: 0 10px 24px rgba(40, 92, 112, 0.12);
+}
+
+.live-flow__node .v-icon {
+  color: #18d8ee;
+}
+
+.live-flow__node span {
+  margin-top: 2px;
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  font-size: 0.68rem;
+}
+
+.live-flow__node strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: currentColor;
+  font-size: 0.78rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-flow__node--pv {
+  left: 43%;
+  top: 33%;
+}
+
+.live-flow__node--battery {
+  left: 15%;
+  top: 68%;
+}
+
+.live-flow__node--home {
+  left: 54%;
+  top: 67%;
+}
+
+.live-flow__node--grid {
+  left: 84%;
+  top: 58%;
+}
+
+.live-flow__details {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  align-content: start;
+}
+
+.live-flow__metric,
+.live-flow__routes {
+  padding: 10px 11px;
+  border: 1px solid var(--efp-border);
+  border-radius: 8px;
+  background: var(--efp-surface-muted);
+}
+
+.live-flow__metric span,
+.live-flow__routes span,
+.live-flow__routes p {
+  color: var(--efp-muted);
+}
+
+.live-flow__metric span,
+.live-flow__routes span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+}
+
+.live-flow__metric strong {
+  color: var(--efp-text);
+  font-size: 0.96rem;
+}
+
+.live-flow__routes p {
+  margin: 5px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.live-flow__routes b {
+  color: var(--efp-text);
+}
+
+@keyframes live-flow-pulse {
+  from {
+    stroke-dashoffset: 100;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (max-width: 1100px) {
+  .live-flow__body {
+    grid-template-columns: 1fr;
+  }
+
+  .live-flow__stage {
+    max-width: none;
+  }
+
+  .live-flow__details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .live-flow__routes {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .live-flow {
+    padding: 14px;
+  }
+
+  .live-flow__header {
+    flex-direction: column;
+  }
+
+  .live-flow__state {
+    justify-items: start;
+    width: 100%;
+  }
+
+  .live-flow__details {
+    grid-template-columns: 1fr;
+  }
+
+  .live-flow__routes {
+    grid-column: auto;
+  }
+
+  .live-flow__node {
+    width: 76px;
+    min-height: 60px;
+  }
+
+  .live-flow__node strong {
+    font-size: 0.7rem;
+  }
+}
