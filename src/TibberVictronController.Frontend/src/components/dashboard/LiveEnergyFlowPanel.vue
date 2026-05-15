@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { useTheme } from 'vuetify';
 import type { CurrentBatteryDecisionResponseDto } from './dashboardTypes';
-import { formatPercent, getDecisionLabel } from './dashboardFormatters';
+import { formatPercent, formatPower, getDecisionLabel } from './dashboardFormatters';
 
 const props = defineProps<{
   decision: CurrentBatteryDecisionResponseDto | null;
@@ -89,17 +89,6 @@ const flows = computed<FlowDefinition[]>(() => {
 
 const activeFlows = computed(() => flows.value.filter((flow) => flow.valueWatts > 0));
 
-function formatKilowatts(valueWatts: number | null | undefined): string {
-  if (typeof valueWatts !== 'number') {
-    return 'Nicht verfuegbar';
-  }
-
-  return `${new Intl.NumberFormat('de-DE', {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1
-  }).format(valueWatts / 1000)} kW`;
-}
-
 function getFlowWidth(valueWatts: number): number {
   return valueWatts > 0
     ? Math.min(10, Math.max(3, valueWatts / 420))
@@ -142,44 +131,44 @@ function getFlowWidth(valueWatts: number): number {
         <div v-if="hasPvTelemetry" class="live-flow__node live-flow__node--pv">
           <v-icon icon="mdi-solar-power-variant" size="22" />
           <span>PV</span>
-          <strong>{{ formatKilowatts(decision?.currentPvProductionWatts) }}</strong>
+          <strong>{{ formatPower(decision?.currentPvProductionWatts) }}</strong>
         </div>
 
         <div class="live-flow__node live-flow__node--battery">
           <v-icon icon="mdi-battery-charging-medium" size="22" />
           <span>Akku</span>
-          <strong>{{ formatKilowatts(targetPowerWatts) }}</strong>
+          <strong>{{ formatPower(targetPowerWatts) }}</strong>
         </div>
 
         <div class="live-flow__node live-flow__node--home">
           <v-icon icon="mdi-home-lightning-bolt-outline" size="23" />
           <span>Haus</span>
-          <strong>{{ formatKilowatts(currentConsumptionWatts) }}</strong>
+          <strong>{{ formatPower(currentConsumptionWatts) }}</strong>
         </div>
 
         <div class="live-flow__node live-flow__node--grid">
           <v-icon icon="mdi-transmission-tower" size="23" />
           <span>Netz</span>
-          <strong>{{ formatKilowatts(decision?.currentGridImportWatts) }}</strong>
+          <strong>{{ formatPower(decision?.currentGridImportWatts) }}</strong>
         </div>
       </div>
 
       <aside class="live-flow__details">
         <div v-if="hasPvTelemetry" class="live-flow__metric">
           <span>PV-Produktion</span>
-          <strong>{{ formatKilowatts(decision?.currentPvProductionWatts) }}</strong>
+          <strong>{{ formatPower(decision?.currentPvProductionWatts) }}</strong>
         </div>
         <div class="live-flow__metric">
           <span>Hausverbrauch</span>
-          <strong>{{ formatKilowatts(currentConsumptionWatts) }}</strong>
+          <strong>{{ formatPower(currentConsumptionWatts) }}</strong>
         </div>
         <div class="live-flow__metric">
           <span>Netzbezug</span>
-          <strong>{{ formatKilowatts(decision?.currentGridImportWatts) }}</strong>
+          <strong>{{ formatPower(decision?.currentGridImportWatts) }}</strong>
         </div>
         <div class="live-flow__metric">
           <span>Akku-Leistung</span>
-          <strong>{{ formatKilowatts(targetPowerWatts) }}</strong>
+          <strong>{{ formatPower(targetPowerWatts) }}</strong>
         </div>
 
         <div class="live-flow__routes">
@@ -187,7 +176,7 @@ function getFlowWidth(valueWatts: number): number {
           <p v-if="activeFlows.length === 0">Keine aktive Leistungsrichtung erkannt.</p>
           <p v-for="flow in activeFlows" :key="flow.key">
             <b>{{ flow.label }}</b>
-            {{ formatKilowatts(flow.valueWatts) }}
+            {{ formatPower(flow.valueWatts) }}
           </p>
         </div>
       </aside>

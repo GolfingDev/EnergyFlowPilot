@@ -30,7 +30,15 @@ export function formatCurrency(value: number, currency: string): string {
 }
 
 export function formatPower(value: number | null | undefined): string {
-  return typeof value === 'number' ? `${formatNumber(value, 0)} W` : 'Nicht verfuegbar';
+  if (typeof value !== 'number') {
+    return 'Nicht verfuegbar';
+  }
+
+  if (Math.abs(value) < 1000) {
+    return `${formatNumber(value, 0)} W`;
+  }
+
+  return `${formatNumber(value / 1000, 1)} kW`;
 }
 
 export function formatPrice(value: number | null | undefined, currency: string | null | undefined): string {
