@@ -44,6 +44,10 @@ interface GuiMetadataResponseDto {
   settings: SettingMetadataDto[];
 }
 
+interface HagerEnergyAuthorizationUrlResponseDto {
+  authorizationUrl: string;
+}
+
 interface SettingsErrorDto {
   message: string;
   exceptionMessage?: string;
@@ -74,13 +78,18 @@ interface FieldDefinition {
   inputMode?: 'default' | 'timezone';
 }
 
+interface SelectOption {
+  title: string;
+  value: string;
+}
+
 const sectionDefinitions: SectionDefinition[] = [
   { key: 'battery', title: 'Batterie', description: 'Kapazität, harte Grenzen, Planungsprofil und Wirkungsgrad.' },
   { key: 'price', title: 'Tibber', description: 'Zugangsdaten und Preisparameter für dynamische Strompreise.' },
   { key: 'forecast', title: 'PV / Prognose', description: 'Standort, PV-Leistung und Prognoseanbieter für die Planung.' },
   { key: 'consumption', title: 'Verbrauch', description: 'Annahmen für den Last- und Verbrauchsforecast.' },
   { key: 'decision', title: 'Entscheidungslogik', description: 'Verhalten der Entscheidungslogik, sofern Einstellungen vorhanden sind.' },
-  { key: 'system', title: 'Victron Connection', description: 'MQTT-Verbindung, Topics und technische Victron-Anbindung.' },
+  { key: 'system', title: 'Energy Device', description: 'Live-Datenquelle, Hager Energy API und technische Victron-Anbindung.' },
   { key: 'operations', title: 'Betrieb & Benachrichtigungen', description: 'Worker-Intervalle, Dashboard-Aktualisierung, Protokollierung und Fehlermails.' }
 ];
 
@@ -107,6 +116,9 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'consumptionForecast.averageDailyConsumptionKwh', section: 'consumption', subgroup: 'Lastprofil', category: 'important' },
   { key: 'consumptionForecast.timeZone', section: 'consumption', subgroup: 'Lastprofil', category: 'normal' },
   { key: 'victron.dryRun', section: 'decision', subgroup: 'Betriebsmodus', category: 'critical', helpText: 'Simulationsmodus: Entscheidungen werden berechnet, aber Hardware wird nicht aktiv gesteuert.' },
+  { key: 'telemetry.sources.gridImportWatts', section: 'system', subgroup: 'Live-Datenquellen', category: 'critical', helpText: 'Quelle fuer Netzbezug und Netzeinspeisung. Fuer die Steuerung typischerweise MQTT.' },
+  { key: 'telemetry.sources.pvProductionWatts', section: 'system', subgroup: 'Live-Datenquellen', category: 'important', helpText: 'Quelle fuer die PV-Leistung. Fuer E3/DC typischerweise Hager API.' },
+  { key: 'telemetry.sources.batterySocPercent', section: 'system', subgroup: 'Live-Datenquellen', category: 'critical', helpText: 'Quelle fuer den Akkuladestand. Fuer die Steuerung typischerweise MQTT.' },
   { key: 'decisionLog.retentionDays', section: 'operations', subgroup: 'Betrieb', category: 'normal', helpText: 'Wie lange Entscheidungsprotokolle gespeichert bleiben.' },
   { key: 'decisionWorker.intervalSeconds', section: 'operations', subgroup: 'Betrieb', category: 'important', helpText: 'Intervall für den automatischen Entscheidungs-Worker im Hintergrund.' },
   { key: 'dashboard.autoRefreshIntervalSeconds', section: 'operations', subgroup: 'Betrieb', category: 'normal', helpText: 'Intervall für die automatische Aktualisierung der Dashboard-Daten. 0 deaktiviert die Automatik.' },
@@ -119,6 +131,13 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'notifications.workerFailureEmail.toAddress', section: 'operations', subgroup: 'Benachrichtigungen', category: 'important' },
   { key: 'notifications.workerFailureEmail.enableSsl', section: 'operations', subgroup: 'Benachrichtigungen', category: 'important' },
   { key: 'notifications.workerFailureEmail.subjectPrefix', section: 'operations', subgroup: 'Benachrichtigungen', category: 'normal' },
+  { key: 'hagerEnergy.apiBaseUrl', section: 'system', subgroup: 'Hager Energy API', category: 'important' },
+  { key: 'hagerEnergy.authorizationEndpoint', section: 'system', subgroup: 'Hager Energy OAuth', category: 'important', helpText: 'Discovery-URL aus der Hager-Doku. Die Login- und Token-URL werden daraus automatisch gelesen.' },
+  { key: 'hagerEnergy.redirectUri', section: 'system', subgroup: 'Hager Energy OAuth', category: 'important', helpText: 'Muss exakt als Redirect URI in der Hager-App registriert sein.' },
+  { key: 'hagerEnergy.apiKey', section: 'system', subgroup: 'Hager Energy API', category: 'critical', helpText: 'Optionaler api_key Header gemaess Hager-Energy-OpenAPI, falls fuer deinen Client ausgegeben.' },
+  { key: 'hagerEnergy.clientId', section: 'system', subgroup: 'Hager Energy API', category: 'critical' },
+  { key: 'hagerEnergy.clientSecret', section: 'system', subgroup: 'Hager Energy API', category: 'critical', helpText: 'Leer lassen, wenn dein OAuth-Client ohne Secret arbeitet.' },
+  { key: 'hagerEnergy.installationId', section: 'system', subgroup: 'Hager Energy API', category: 'critical' },
   { key: 'victron.host', section: 'system', subgroup: 'Victron MQTT', category: 'critical' },
   { key: 'victron.port', section: 'system', subgroup: 'Victron MQTT', category: 'important' },
   { key: 'victron.portalId', section: 'system', subgroup: 'Victron MQTT', category: 'important' },
@@ -131,10 +150,14 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'victron.writeTopics.chargeDischargeSetpoint', section: 'system', subgroup: 'MQTT-Themen', category: 'critical' }
 ];
 
-const requiredKeys = new Set(['tibber.accessToken', 'battery.totalCapacityKwh', 'victron.host']);
+const requiredKeys = new Set(['tibber.accessToken', 'battery.totalCapacityKwh']);
 const timezoneOptions = [
   'Europe/Berlin',
   'UTC'
+];
+const telemetrySourceOptions: SelectOption[] = [
+  { title: 'MQTT', value: 'victronMqtt' },
+  { title: 'Hager API', value: 'hagerEnergyApi' }
 ];
 const fallbackMetadata: SettingMetadataDto[] = [
   {
@@ -158,6 +181,7 @@ const draftValues = ref<Record<string, string>>({});
 const initialValues = ref<Record<string, string>>({});
 const isLoading = ref(false);
 const isSaving = ref(false);
+const isStartingHagerEnergyAuthorization = ref(false);
 const saveSuccess = ref(false);
 const pageError = ref<UiError | null>(null);
 
@@ -224,6 +248,32 @@ const warningMessages = computed(() => {
   return warnings;
 });
 
+const hagerEnergyAuthMessage = computed(() => {
+  const value = typeof route.query.hagerEnergyAuth === 'string'
+    ? route.query.hagerEnergyAuth
+    : null;
+
+  if (value === null) {
+    return null;
+  }
+
+  if (value.startsWith('success=')) {
+    return {
+      type: 'success' as const,
+      text: 'Hager Energy wurde autorisiert. Die Tokens wurden gespeichert.'
+    };
+  }
+
+  if (value.startsWith('error=')) {
+    return {
+      type: 'error' as const,
+      text: `Hager Energy Autorisierung fehlgeschlagen: ${decodeURIComponent(value.slice('error='.length))}`
+    };
+  }
+
+  return null;
+});
+
 const canSave = computed(() => hasUnsavedChanges.value && validationErrors.value.length === 0 && !isSaving.value);
 
 const summaryItems = computed(() => {
@@ -240,6 +290,8 @@ const summaryItems = computed(() => {
     { label: 'Nutzbare Planungskapazität', value: usableCapacity !== null ? `${formatDecimal(usableCapacity, 2)} kWh` : 'Nicht verfügbar' },
     { label: 'Ziel-SoC am Ende', value: targetEnd !== null ? formatPercentValue(targetEnd) : 'Nicht verfügbar' },
     { label: 'Simulationsmodus', value: getDraftValue('victron.dryRun') === 'true' ? 'Aktiv' : 'Inaktiv' },
+    { label: 'Netzquelle', value: formatTelemetrySource(getDraftValue('telemetry.sources.gridImportWatts') || 'victronMqtt') },
+    { label: 'PV-Quelle', value: formatTelemetrySource(getDraftValue('telemetry.sources.pvProductionWatts') || 'victronMqtt') },
     { label: 'Tibber Token', value: isSettingConfigured('tibber.accessToken') ? 'Konfiguriert' : 'Fehlt' },
     { label: 'Victron MQTT', value: status.value?.victronMqttStatus ?? 'Unbekannt' }
   ];
@@ -316,6 +368,20 @@ async function saveSettings(): Promise<void> {
     pageError.value = createUiError(error, 'Die Einstellungen konnten nicht gespeichert werden.');
   } finally {
     isSaving.value = false;
+  }
+}
+
+async function startHagerEnergyAuthorization(): Promise<void> {
+  isStartingHagerEnergyAuthorization.value = true;
+  pageError.value = null;
+
+  try {
+    const response = await fetchJson<HagerEnergyAuthorizationUrlResponseDto>('/api/hager-energy/oauth/authorize-url');
+    window.location.assign(response.authorizationUrl);
+  } catch (error) {
+    pageError.value = createUiError(error, 'Die Hager-Energy-Autorisierung konnte nicht gestartet werden.');
+  } finally {
+    isStartingHagerEnergyAuthorization.value = false;
   }
 }
 
@@ -435,6 +501,10 @@ function shouldRenderNumber(field: FieldDefinition): boolean {
   return metadataByKey.value.get(field.key)?.inputKind === 'number';
 }
 
+function shouldRenderTelemetrySourceSelect(field: FieldDefinition): boolean {
+  return field.key.startsWith('telemetry.sources.');
+}
+
 function shouldRenderSensitive(field: FieldDefinition): boolean {
   return metadataByKey.value.get(field.key)?.isSensitive === true;
 }
@@ -456,6 +526,10 @@ function getGroupDescription(groupTitle: string): string {
     default:
       return '';
   }
+}
+
+function formatTelemetrySource(value: string): string {
+  return telemetrySourceOptions.find((option) => option.value === value)?.title ?? value;
 }
 
 function isEmphasizedGroup(groupTitle: string): boolean {
@@ -628,6 +702,10 @@ watch(() => route.query.section, () => {
       Einstellungen wurden gespeichert.
     </v-alert>
 
+    <v-alert v-if="hagerEnergyAuthMessage" class="mb-4" :type="hagerEnergyAuthMessage.type" variant="tonal">
+      {{ hagerEnergyAuthMessage.text }}
+    </v-alert>
+
     <v-alert v-if="validationErrors.length > 0" class="mb-4" type="error" variant="tonal">
       <strong>Bitte pruefen</strong>
       <ul class="message-list">
@@ -687,6 +765,19 @@ watch(() => route.query.section, () => {
               {{ getGroupDescription(group.title) }}
             </p>
 
+            <div v-if="group.title === 'Hager Energy OAuth'" class="setting-group__actions">
+              <v-btn
+                color="primary"
+                prepend-icon="mdi-login"
+                :loading="isStartingHagerEnergyAuthorization"
+                :disabled="isStartingHagerEnergyAuthorization || hasUnsavedChanges"
+                @click="startHagerEnergyAuthorization"
+              >
+                Mit Hager Energy verbinden
+              </v-btn>
+              <span>Vorher Client-ID, Discovery-URL und Redirect URI speichern.</span>
+            </div>
+
             <div class="setting-rows">
               <div
                 v-for="field in group.fields"
@@ -715,6 +806,19 @@ watch(() => route.query.section, () => {
                     inset
                     :label="getDraftValue(field.key) === 'true' ? 'Aktiv' : 'Inaktiv'"
                     @update:model-value="setBooleanDraft(field.key, $event)"
+                  />
+
+                  <v-select
+                    v-else-if="shouldRenderTelemetrySourceSelect(field)"
+                    :id="field.key"
+                    v-model="draftValues[field.key]"
+                    :items="telemetrySourceOptions"
+                    item-title="title"
+                    item-value="value"
+                    :error-messages="getFieldErrors(field.key)"
+                    density="comfortable"
+                    hide-details="auto"
+                    variant="outlined"
                   />
 
                   <v-select

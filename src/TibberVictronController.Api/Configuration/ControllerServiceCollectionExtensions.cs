@@ -4,6 +4,7 @@ using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Services;
 using TibberVictronController.Dal.Battery;
 using TibberVictronController.Dal.Consumption;
+using TibberVictronController.Dal.HagerEnergy;
 using TibberVictronController.Dal.Mqtt;
 using TibberVictronController.Dal.Persistence;
 using TibberVictronController.Dal.Repositories;
@@ -39,6 +40,8 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<ControllerDbInitializer>();
         services.AddScoped<IControllerSettingStore, EfControllerSettingStore>();
         services.AddScoped<DatabaseMqttDeviceSettingsProvider>();
+        services.AddScoped<DatabaseHagerEnergySettingsProvider>();
+        services.AddScoped<TelemetrySourceSelector>();
         services.AddSingleton<VictronMqttRuntimeStatus>();
         services.AddSingleton<DecisionWorkerRuntimeStatus>();
         services.AddScoped<IDecisionLogRepository, EfDecisionLogRepository>();
@@ -53,8 +56,13 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<ConfiguredCurrentSiteTelemetryProvider>();
         services.AddScoped<MqttBatteryStateProvider>();
         services.AddScoped<MqttCurrentSiteTelemetryProvider>();
-        services.AddScoped<IBatteryStateProvider, ResilientBatteryStateProvider>();
-        services.AddScoped<ICurrentSiteTelemetryProvider, ResilientCurrentSiteTelemetryProvider>();
+        services.AddScoped<ResilientBatteryStateProvider>();
+        services.AddScoped<ResilientCurrentSiteTelemetryProvider>();
+        services.AddHttpClient<HagerEnergyApiClient>();
+        services.AddScoped<HagerEnergyBatteryStateProvider>();
+        services.AddScoped<HagerEnergyCurrentSiteTelemetryProvider>();
+        services.AddScoped<IBatteryStateProvider, SelectedBatteryStateProvider>();
+        services.AddScoped<ICurrentSiteTelemetryProvider, SelectedCurrentSiteTelemetryProvider>();
         services.AddScoped<IHistoricalConsumptionProvider, AverageDailyConsumptionForecastProvider>();
         services.AddScoped<IBatteryForecastService, BatteryForecastService>();
         services.AddScoped(serviceProvider => new CurrentBatteryDecisionServiceDependencies

@@ -105,6 +105,25 @@ public sealed class ControllerSettingDefaultsTests
     }
 
     [Fact]
+    public void CreateDefaultSettingsContainsHagerEnergyApiDefaults()
+    {
+        var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);
+
+        Assert.Equal("victronMqtt", GetSettingValue(settings, ControllerSettingDefaults.TelemetryGridImportSourceKey));
+        Assert.Equal("victronMqtt", GetSettingValue(settings, ControllerSettingDefaults.TelemetryPvProductionSourceKey));
+        Assert.Equal("victronMqtt", GetSettingValue(settings, ControllerSettingDefaults.TelemetryBatterySocSourceKey));
+        Assert.Equal("https://api.hagerenergy.com", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyApiBaseUrlKey));
+        Assert.Equal("https://auth.hagerenergy.com/realms/customer/.well-known/uma2-configuration", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyAuthorizationEndpointKey));
+        Assert.Equal("read:storage", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyScopeKey));
+        Assert.Equal("data.gridPower", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyGridImportJsonPathKey));
+        Assert.Equal("data.pvProduction", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyPvProductionJsonPathKey));
+        Assert.Equal("data.batteryStateOfCharge", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyBatterySocJsonPathKey));
+        Assert.Null(GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyApiKeyKey));
+        Assert.Null(GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyRefreshTokenKey));
+        Assert.Null(GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyInstallationIdKey));
+    }
+
+    [Fact]
     public void CreateDefaultSettingsKeepsSensitiveAccessDataUnconfigured()
     {
         var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);

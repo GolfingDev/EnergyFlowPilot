@@ -17,6 +17,9 @@ public static class ControllerSettingDefaults
     public const string TelemetryTemporaryGridImportWattsKey = "telemetry.temporaryGridImportWatts";
     public const string TelemetryTemporaryPvProductionWattsKey = "telemetry.temporaryPvProductionWatts";
     public const string TelemetryGridPowerDeadbandWattsKey = "telemetry.gridPowerDeadbandWatts";
+    public const string TelemetryGridImportSourceKey = "telemetry.sources.gridImportWatts";
+    public const string TelemetryPvProductionSourceKey = "telemetry.sources.pvProductionWatts";
+    public const string TelemetryBatterySocSourceKey = "telemetry.sources.batterySocPercent";
     public const string ConsumptionForecastAverageDailyConsumptionKwhKey = "consumptionForecast.averageDailyConsumptionKwh";
     public const string ConsumptionForecastTimeZoneKey = "consumptionForecast.timeZone";
     public const string DecisionLogRetentionDaysKey = "decisionLog.retentionDays";
@@ -60,6 +63,22 @@ public static class ControllerSettingDefaults
     public const string VictronTopicBatteryPowerKey = "victron.topics.batteryPower";
     public const string VictronTopicHouseConsumptionKey = "victron.topics.houseConsumption";
     public const string VictronWriteTopicChargeDischargeSetpointKey = "victron.writeTopics.chargeDischargeSetpoint";
+    public const string HagerEnergyApiBaseUrlKey = "hagerEnergy.apiBaseUrl";
+    public const string HagerEnergyAuthorizationEndpointKey = "hagerEnergy.authorizationEndpoint";
+    public const string HagerEnergyTokenEndpointKey = "hagerEnergy.tokenEndpoint";
+    public const string HagerEnergyRedirectUriKey = "hagerEnergy.redirectUri";
+    public const string HagerEnergyPostLoginRedirectUrlKey = "hagerEnergy.postLoginRedirectUrl";
+    public const string HagerEnergyScopeKey = "hagerEnergy.scope";
+    public const string HagerEnergyOAuthStateKey = "hagerEnergy.oauthState";
+    public const string HagerEnergyApiKeyKey = "hagerEnergy.apiKey";
+    public const string HagerEnergyClientIdKey = "hagerEnergy.clientId";
+    public const string HagerEnergyClientSecretKey = "hagerEnergy.clientSecret";
+    public const string HagerEnergyRefreshTokenKey = "hagerEnergy.refreshToken";
+    public const string HagerEnergyAccessTokenKey = "hagerEnergy.accessToken";
+    public const string HagerEnergyInstallationIdKey = "hagerEnergy.installationId";
+    public const string HagerEnergyGridImportJsonPathKey = "hagerEnergy.jsonPaths.gridImportWatts";
+    public const string HagerEnergyPvProductionJsonPathKey = "hagerEnergy.jsonPaths.pvProductionWatts";
+    public const string HagerEnergyBatterySocJsonPathKey = "hagerEnergy.jsonPaths.batterySocPercent";
 
     private static readonly ControllerSettingDefinition[] Definitions =
     {
@@ -75,6 +94,9 @@ public static class ControllerSettingDefaults
         new(TelemetryTemporaryGridImportWattsKey, "0", ControllerSettingSensitivity.Normal),
         new(TelemetryTemporaryPvProductionWattsKey, "0", ControllerSettingSensitivity.Normal),
         new(TelemetryGridPowerDeadbandWattsKey, "30", ControllerSettingSensitivity.Normal),
+        new(TelemetryGridImportSourceKey, "victronMqtt", ControllerSettingSensitivity.Normal),
+        new(TelemetryPvProductionSourceKey, "victronMqtt", ControllerSettingSensitivity.Normal),
+        new(TelemetryBatterySocSourceKey, "victronMqtt", ControllerSettingSensitivity.Normal),
         new(ConsumptionForecastAverageDailyConsumptionKwhKey, "24", ControllerSettingSensitivity.Normal),
         new(ConsumptionForecastTimeZoneKey, "Europe/Berlin", ControllerSettingSensitivity.Normal),
         new(DecisionLogRetentionDaysKey, "90", ControllerSettingSensitivity.Normal),
@@ -117,7 +139,23 @@ public static class ControllerSettingDefaults
         new(VictronTopicBatterySocKey, "N/{portalId}/battery/512/Soc", ControllerSettingSensitivity.Normal),
         new(VictronTopicBatteryPowerKey, "N/{portalId}/battery/512/Dc/0/Power", ControllerSettingSensitivity.Normal),
         new(VictronTopicHouseConsumptionKey, "N/{portalId}/system/0/Ac/Consumption/L1/Power", ControllerSettingSensitivity.Normal),
-        new(VictronWriteTopicChargeDischargeSetpointKey, "settings/0/Settings/CGwacs/AcPowerSetPoint", ControllerSettingSensitivity.Normal)
+        new(VictronWriteTopicChargeDischargeSetpointKey, "settings/0/Settings/CGwacs/AcPowerSetPoint", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyApiBaseUrlKey, "https://api.hagerenergy.com", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyAuthorizationEndpointKey, "https://auth.hagerenergy.com/realms/customer/.well-known/uma2-configuration", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyTokenEndpointKey, "https://auth.hagerenergy.com/realms/customer/protocol/openid-connect/token", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyRedirectUriKey, "http://localhost:5094/api/hager-energy/oauth/callback", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyPostLoginRedirectUrlKey, "http://localhost:5173/settings?section=system", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyScopeKey, "read:storage", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyOAuthStateKey, null, ControllerSettingSensitivity.Sensitive),
+        new(HagerEnergyApiKeyKey, null, ControllerSettingSensitivity.Sensitive),
+        new(HagerEnergyClientIdKey, null, ControllerSettingSensitivity.Sensitive),
+        new(HagerEnergyClientSecretKey, null, ControllerSettingSensitivity.Sensitive),
+        new(HagerEnergyRefreshTokenKey, null, ControllerSettingSensitivity.Sensitive),
+        new(HagerEnergyAccessTokenKey, null, ControllerSettingSensitivity.Sensitive),
+        new(HagerEnergyInstallationIdKey, null, ControllerSettingSensitivity.Sensitive),
+        new(HagerEnergyGridImportJsonPathKey, "data.gridPower", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyPvProductionJsonPathKey, "data.pvProduction", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyBatterySocJsonPathKey, "data.batteryStateOfCharge", ControllerSettingSensitivity.Normal)
     };
 
     /// <summary>

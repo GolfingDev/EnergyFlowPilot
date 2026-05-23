@@ -2,6 +2,7 @@ using TibberVictronController.Api.Configuration;
 using TibberVictronController.Api.Decision;
 using TibberVictronController.Api.Diagnostics;
 using TibberVictronController.Api.Forecast;
+using TibberVictronController.Api.HagerEnergy;
 using TibberVictronController.Api.Health;
 using TibberVictronController.Api.Metadata;
 using TibberVictronController.Api.Savings;
@@ -24,6 +25,7 @@ app.MapForecastEndpoints();
 app.MapCurrentDecisionEndpoints();
 app.MapSavingsEndpoints();
 app.MapGuiMetadataEndpoints();
+app.MapHagerEnergyOAuthEndpoints();
 
 app.Run();
 

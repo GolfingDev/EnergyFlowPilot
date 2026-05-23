@@ -17,6 +17,11 @@ public sealed class GuiMetadataEndpointTests
 
         Assert.Contains(metadata.Settings, setting => setting.Key == ControllerSettingDefaults.BatteryPlanningMaximumStateOfChargePercentKey && !string.IsNullOrWhiteSpace(setting.DisplayName));
         Assert.Contains(metadata.Settings, setting => setting.Key == ControllerSettingDefaults.TelemetryGridPowerDeadbandWattsKey && setting.Unit == "W");
+        Assert.Contains(metadata.Settings, setting => setting.Key == ControllerSettingDefaults.TelemetryGridImportSourceKey && setting.InputKind == "select");
+        Assert.Contains(metadata.Settings, setting => setting.Key == ControllerSettingDefaults.TelemetryPvProductionSourceKey);
+        Assert.Contains(metadata.Settings, setting => setting.Key == ControllerSettingDefaults.TelemetryBatterySocSourceKey);
+        Assert.Contains(metadata.Settings, setting => setting.Key == ControllerSettingDefaults.HagerEnergyRefreshTokenKey && setting.IsSensitive);
+        Assert.Contains(metadata.Settings, setting => setting.Key == ControllerSettingDefaults.HagerEnergyApiKeyKey && setting.IsSensitive);
         Assert.Contains(metadata.Settings, setting => setting.Key == ControllerSettingDefaults.TibberAccessTokenKey && setting.IsSensitive);
         Assert.Contains(metadata.Settings, setting => setting.Key == ControllerSettingDefaults.PvForecastApiKeyKey && setting.IsSensitive);
         Assert.Contains(metadata.DecisionRules, rule => rule.RuleId == BatteryForecastRuleIds.PlanningMaximumGridChargeLimit);
