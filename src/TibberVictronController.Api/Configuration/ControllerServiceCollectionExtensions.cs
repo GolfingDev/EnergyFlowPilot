@@ -40,6 +40,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<ControllerDbInitializer>();
         services.AddScoped<IControllerSettingStore, EfControllerSettingStore>();
         services.AddScoped<DatabaseMqttDeviceSettingsProvider>();
+        services.AddScoped<DatabaseVictronMqttSettingsProvider>();
         services.AddScoped<DatabaseHagerEnergySettingsProvider>();
         services.AddScoped<TelemetrySourceSelector>();
         services.AddSingleton<VictronMqttRuntimeStatus>();
