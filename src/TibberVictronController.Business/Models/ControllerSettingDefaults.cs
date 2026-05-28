@@ -139,7 +139,7 @@ public static class ControllerSettingDefaults
         new(VictronTopicBatterySocKey, "N/{portalId}/battery/512/Soc", ControllerSettingSensitivity.Normal),
         new(VictronTopicBatteryPowerKey, "N/{portalId}/battery/512/Dc/0/Power", ControllerSettingSensitivity.Normal),
         new(VictronTopicHouseConsumptionKey, "N/{portalId}/system/0/Ac/Consumption/L1/Power", ControllerSettingSensitivity.Normal),
-        new(VictronWriteTopicChargeDischargeSetpointKey, "settings/0/Settings/CGwacs/AcPowerSetPoint", ControllerSettingSensitivity.Normal),
+        new(VictronWriteTopicChargeDischargeSetpointKey, "W/{portalId}/settings/0/Settings/CGwacs/AcPowerSetPoint", ControllerSettingSensitivity.Normal),
         new(HagerEnergyApiBaseUrlKey, "https://api.hagerenergy.com", ControllerSettingSensitivity.Normal),
         new(HagerEnergyAuthorizationEndpointKey, "https://auth.hagerenergy.com/realms/customer/.well-known/uma2-configuration", ControllerSettingSensitivity.Normal),
         new(HagerEnergyTokenEndpointKey, "https://auth.hagerenergy.com/realms/customer/protocol/openid-connect/token", ControllerSettingSensitivity.Normal),

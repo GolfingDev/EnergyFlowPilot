@@ -14,6 +14,7 @@ public sealed class DecisionExecutionBackgroundServiceTests
     public async Task ExecuteSingleCycleAsyncCalculatesDecisionAndUsesConfiguredInterval()
     {
         var decisionService = new RecordingCurrentBatteryDecisionService();
+        var setpointPublisher = new RecordingVictronSetpointPublisher();
         var settingsStore = new InMemoryControllerSettingStore();
         await settingsStore.SaveSettingAsync(new ControllerSetting(
             ControllerSettingDefaults.DecisionWorkerIntervalSecondsKey,
@@ -29,7 +30,8 @@ public sealed class DecisionExecutionBackgroundServiceTests
             decisionService,
             settingsStore,
             new RecordingOperationalEventRepository(),
-            new RecordingWorkerFailureNotifier());
+            new RecordingWorkerFailureNotifier(),
+            setpointPublisher);
         var backgroundService = new DecisionExecutionBackgroundService(
             serviceProvider,
             NullLogger<DecisionExecutionBackgroundService>.Instance,
@@ -39,6 +41,42 @@ public sealed class DecisionExecutionBackgroundServiceTests
 
         Assert.Equal(TimeSpan.FromSeconds(90), delay);
         Assert.Equal(1, decisionService.CallCount);
+        Assert.Empty(setpointPublisher.PublishedResults);
+    }
+
+    [Fact]
+    public async Task ExecuteSingleCycleAsyncPublishesSetpointWhenDryRunIsDisabled()
+    {
+        var decisionService = new RecordingCurrentBatteryDecisionService(new CurrentBatteryDecision(
+            new BatteryDecisionInstruction(BatteryDecisionState.Charge, BatteryChargeSource.PV),
+            targetPowerWatts: 1200));
+        var setpointPublisher = new RecordingVictronSetpointPublisher();
+        var settingsStore = new InMemoryControllerSettingStore();
+        await settingsStore.SaveSettingAsync(new ControllerSetting(
+            ControllerSettingDefaults.DecisionWorkerIntervalSecondsKey,
+            "60",
+            ControllerSettingSensitivity.Normal,
+            NowUtc));
+        await settingsStore.SaveSettingAsync(new ControllerSetting(
+            ControllerSettingDefaults.VictronDryRunKey,
+            "false",
+            ControllerSettingSensitivity.Normal,
+            NowUtc));
+        var serviceProvider = CreateServiceProvider(
+            decisionService,
+            settingsStore,
+            new RecordingOperationalEventRepository(),
+            new RecordingWorkerFailureNotifier(),
+            setpointPublisher);
+        var backgroundService = new DecisionExecutionBackgroundService(
+            serviceProvider,
+            NullLogger<DecisionExecutionBackgroundService>.Instance,
+            new DecisionWorkerRuntimeStatus());
+
+        await backgroundService.ExecuteSingleCycleAsync(CancellationToken.None);
+
+        Assert.Single(setpointPublisher.PublishedResults);
+        Assert.Equal(1200, setpointPublisher.PublishedResults[0].Decision.TargetPowerWatts);
     }
 
     [Fact]
@@ -55,7 +93,8 @@ public sealed class DecisionExecutionBackgroundServiceTests
             decisionService,
             settingsStore,
             new RecordingOperationalEventRepository(),
-            new RecordingWorkerFailureNotifier());
+            new RecordingWorkerFailureNotifier(),
+            new RecordingVictronSetpointPublisher());
         var backgroundService = new DecisionExecutionBackgroundService(
             serviceProvider,
             NullLogger<DecisionExecutionBackgroundService>.Instance,
@@ -74,7 +113,8 @@ public sealed class DecisionExecutionBackgroundServiceTests
             new RecordingCurrentBatteryDecisionService(),
             new InMemoryControllerSettingStore(),
             new RecordingOperationalEventRepository(),
-            new RecordingWorkerFailureNotifier());
+            new RecordingWorkerFailureNotifier(),
+            new RecordingVictronSetpointPublisher());
         var backgroundService = new DecisionExecutionBackgroundService(
             serviceProvider,
             NullLogger<DecisionExecutionBackgroundService>.Instance,
@@ -94,13 +134,15 @@ public sealed class DecisionExecutionBackgroundServiceTests
         ICurrentBatteryDecisionService currentBatteryDecisionService,
         IControllerSettingStore controllerSettingStore,
         IOperationalEventRepository operationalEventRepository,
-        IWorkerFailureNotifier workerFailureNotifier)
+        IWorkerFailureNotifier workerFailureNotifier,
+        IVictronSetpointPublisher setpointPublisher)
     {
         var services = new ServiceCollection();
         services.AddSingleton(currentBatteryDecisionService);
         services.AddSingleton(controllerSettingStore);
         services.AddSingleton(operationalEventRepository);
         services.AddSingleton(workerFailureNotifier);
+        services.AddSingleton(setpointPublisher);
         services.AddSingleton<IUtcClock>(new FixedUtcClock(NowUtc));
 
         return services.BuildServiceProvider();
@@ -108,6 +150,20 @@ public sealed class DecisionExecutionBackgroundServiceTests
 
     private sealed class RecordingCurrentBatteryDecisionService : ICurrentBatteryDecisionService
     {
+        private readonly CurrentBatteryDecision decision;
+
+        public RecordingCurrentBatteryDecisionService()
+            : this(new CurrentBatteryDecision(
+                new BatteryDecisionInstruction(BatteryDecisionState.Idle, chargeSource: null),
+                targetPowerWatts: 0))
+        {
+        }
+
+        public RecordingCurrentBatteryDecisionService(CurrentBatteryDecision decision)
+        {
+            this.decision = decision;
+        }
+
         public int CallCount { get; private set; }
 
         public Task<CurrentBatteryDecisionResult> CalculateCurrentDecisionAsync(CancellationToken cancellationToken = default)
@@ -119,15 +175,25 @@ public sealed class DecisionExecutionBackgroundServiceTests
                 decidedAtUtc: NowUtc,
                 validFromUtc: NowUtc,
                 validToUtc: NowUtc.AddMinutes(15),
-                decision: new CurrentBatteryDecision(
-                    new BatteryDecisionInstruction(BatteryDecisionState.Idle, chargeSource: null),
-                    targetPowerWatts: 0),
+                decision: decision,
                 batteryState: new BatteryState(50m, NowUtc),
                 siteTelemetry: new CurrentSiteTelemetry(0, 0, NowUtc),
                 tibberPricePerKwh: null,
                 tibberPriceCurrency: null,
                 reasons: new[] { new BatteryDecisionReason("TEST", "Testbegruendung") },
                 inputSummaryJson: "{}"));
+        }
+    }
+
+    private sealed class RecordingVictronSetpointPublisher : IVictronSetpointPublisher
+    {
+        public List<CurrentBatteryDecisionResult> PublishedResults { get; } = new();
+
+        public Task PublishAsync(CurrentBatteryDecisionResult decisionResult, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            PublishedResults.Add(decisionResult);
+            return Task.CompletedTask;
         }
     }
 

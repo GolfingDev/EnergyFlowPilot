@@ -19,12 +19,13 @@ public sealed class VictronMqttTopicFactoryTests
             BatterySocTopicTemplate = "N/{portalId}/battery/512/Soc",
             BatteryPowerTopicTemplate = "N/{portalId}/battery/512/Dc/0/Power",
             HouseConsumptionTopicTemplate = "N/{portalId}/system/0/Ac/Consumption/L1/Power",
-            ChargeDischargeSetpointTopic = "settings/0/Settings/CGwacs/AcPowerSetPoint"
+            ChargeDischargeSetpointTopic = "W/{portalId}/settings/0/Settings/CGwacs/AcPowerSetPoint"
         };
 
         var topics = VictronMqttTopicFactory.Create(settings);
 
         Assert.Equal("N/c0619ab93165/grid/30/Ac/Power", topics.GridPowerTopic);
         Assert.Equal("N/c0619ab93165/system/0/Ac/Consumption/L1/Power", topics.HouseConsumptionTopic);
+        Assert.Equal("W/c0619ab93165/settings/0/Settings/CGwacs/AcPowerSetPoint", topics.ChargeDischargeSetpointTopic);
     }
 }

@@ -65,6 +65,12 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
         var isShadowMode = await GetShadowModeAsync(controllerSettingStore, cancellationToken);
         var decisionResult = await currentBatteryDecisionService.CalculateCurrentDecisionAsync(cancellationToken);
 
+        if (!isShadowMode)
+        {
+            var setpointPublisher = scope.ServiceProvider.GetRequiredService<IVictronSetpointPublisher>();
+            await setpointPublisher.PublishAsync(decisionResult, cancellationToken);
+        }
+
         logger.LogInformation(
             "Decision-Worker-Zyklus abgeschlossen. ShadowMode={ShadowMode}, ZeitpunktUtc={TimestampUtc}, Zustand={DecisionState}, LeistungW={TargetPowerWatts}",
             isShadowMode,
