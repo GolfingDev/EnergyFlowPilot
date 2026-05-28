@@ -26,4 +26,10 @@ public sealed class VictronMqttSettings
     public required string HouseConsumptionTopicTemplate { get; init; }
 
     public required string ChargeDischargeSetpointTopic { get; init; }
+
+    public required string DisableChargeTopic { get; init; }
+
+    public required string DisableFeedInTopic { get; init; }
+
+    public int BatteryIdleThresholdWatts { get; init; }
 }

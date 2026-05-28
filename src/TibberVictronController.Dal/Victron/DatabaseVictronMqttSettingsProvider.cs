@@ -30,7 +30,10 @@ public sealed class DatabaseVictronMqttSettingsProvider
             BatterySocTopicTemplate = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronTopicBatterySocKey, "Das Victron-Topic fuer Akku-SoC ist nicht konfiguriert.", cancellationToken),
             BatteryPowerTopicTemplate = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronTopicBatteryPowerKey, "Das Victron-Topic fuer Akku-Leistung ist nicht konfiguriert.", cancellationToken),
             HouseConsumptionTopicTemplate = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronTopicHouseConsumptionKey, "Das Victron-Topic fuer Hausverbrauch ist nicht konfiguriert.", cancellationToken),
-            ChargeDischargeSetpointTopic = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronWriteTopicChargeDischargeSetpointKey, "Das Victron-Write-Topic fuer den Lade-/Entlade-Setpoint ist nicht konfiguriert.", cancellationToken)
+            ChargeDischargeSetpointTopic = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronWriteTopicChargeDischargeSetpointKey, "Das Victron-Write-Topic fuer den Lade-/Entlade-Setpoint ist nicht konfiguriert.", cancellationToken),
+            DisableChargeTopic = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronWriteTopicDisableChargeKey, "Das Victron-Write-Topic fuer DisableCharge ist nicht konfiguriert.", cancellationToken),
+            DisableFeedInTopic = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronWriteTopicDisableFeedInKey, "Das Victron-Write-Topic fuer DisableFeedIn ist nicht konfiguriert.", cancellationToken),
+            BatteryIdleThresholdWatts = await GetRequiredIntegerSettingAsync(ControllerSettingDefaults.VictronBatteryIdleThresholdWattsKey, "Die Victron-Batterie-Stillstandsschwelle ist nicht konfiguriert.", "Die Victron-Batterie-Stillstandsschwelle muss als ganze Watt-Zahl konfiguriert sein.", cancellationToken)
         };
     }
 

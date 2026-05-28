@@ -13,7 +13,9 @@ public static class VictronMqttTopicFactory
             BatterySocTopic = Resolve(settings.BatterySocTopicTemplate, settings.PortalId),
             BatteryPowerTopic = Resolve(settings.BatteryPowerTopicTemplate, settings.PortalId),
             HouseConsumptionTopic = Resolve(settings.HouseConsumptionTopicTemplate, settings.PortalId),
-            ChargeDischargeSetpointTopic = Resolve(settings.ChargeDischargeSetpointTopic, settings.PortalId)
+            ChargeDischargeSetpointTopic = Resolve(settings.ChargeDischargeSetpointTopic, settings.PortalId),
+            DisableChargeTopic = Resolve(settings.DisableChargeTopic, settings.PortalId),
+            DisableFeedInTopic = Resolve(settings.DisableFeedInTopic, settings.PortalId)
         };
     }
 

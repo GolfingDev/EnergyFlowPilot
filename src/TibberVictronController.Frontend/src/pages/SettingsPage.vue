@@ -143,11 +143,14 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'victron.portalId', section: 'system', subgroup: 'Victron MQTT', category: 'important' },
   { key: 'victron.keepAliveSeconds', section: 'system', subgroup: 'Laufzeit', category: 'important' },
   { key: 'victron.staleAfterSeconds', section: 'system', subgroup: 'Laufzeit', category: 'critical' },
+  { key: 'victron.batteryIdleThresholdWatts', section: 'system', subgroup: 'Laufzeit', category: 'critical', helpText: 'Unterhalb dieser Zielleistung werden Laden und Entladen per Hub4-Flags gesperrt.' },
   { key: 'victron.topics.gridPower', section: 'system', subgroup: 'MQTT-Themen', category: 'normal' },
   { key: 'victron.topics.batterySoc', section: 'system', subgroup: 'MQTT-Themen', category: 'normal' },
   { key: 'victron.topics.batteryPower', section: 'system', subgroup: 'MQTT-Themen', category: 'normal' },
   { key: 'victron.topics.houseConsumption', section: 'system', subgroup: 'MQTT-Themen', category: 'normal' },
-  { key: 'victron.writeTopics.chargeDischargeSetpoint', section: 'system', subgroup: 'MQTT-Themen', category: 'critical' }
+  { key: 'victron.writeTopics.chargeDischargeSetpoint', section: 'system', subgroup: 'MQTT-Themen', category: 'critical' },
+  { key: 'victron.writeTopics.disableCharge', section: 'system', subgroup: 'MQTT-Themen', category: 'critical' },
+  { key: 'victron.writeTopics.disableFeedIn', section: 'system', subgroup: 'MQTT-Themen', category: 'critical' }
 ];
 
 const requiredKeys = new Set(['tibber.accessToken', 'battery.totalCapacityKwh']);

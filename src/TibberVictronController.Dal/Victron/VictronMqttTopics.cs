@@ -15,6 +15,10 @@ public sealed class VictronMqttTopics
 
     public required string ChargeDischargeSetpointTopic { get; init; }
 
+    public required string DisableChargeTopic { get; init; }
+
+    public required string DisableFeedInTopic { get; init; }
+
     public IReadOnlyList<string> ReadTopics => new[]
     {
         GridPowerTopic,

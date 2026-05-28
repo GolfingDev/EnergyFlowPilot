@@ -63,6 +63,9 @@ public static class ControllerSettingDefaults
     public const string VictronTopicBatteryPowerKey = "victron.topics.batteryPower";
     public const string VictronTopicHouseConsumptionKey = "victron.topics.houseConsumption";
     public const string VictronWriteTopicChargeDischargeSetpointKey = "victron.writeTopics.chargeDischargeSetpoint";
+    public const string VictronWriteTopicDisableChargeKey = "victron.writeTopics.disableCharge";
+    public const string VictronWriteTopicDisableFeedInKey = "victron.writeTopics.disableFeedIn";
+    public const string VictronBatteryIdleThresholdWattsKey = "victron.batteryIdleThresholdWatts";
     public const string HagerEnergyApiBaseUrlKey = "hagerEnergy.apiBaseUrl";
     public const string HagerEnergyAuthorizationEndpointKey = "hagerEnergy.authorizationEndpoint";
     public const string HagerEnergyTokenEndpointKey = "hagerEnergy.tokenEndpoint";
@@ -140,6 +143,9 @@ public static class ControllerSettingDefaults
         new(VictronTopicBatteryPowerKey, "N/{portalId}/battery/512/Dc/0/Power", ControllerSettingSensitivity.Normal),
         new(VictronTopicHouseConsumptionKey, "N/{portalId}/system/0/Ac/Consumption/L1/Power", ControllerSettingSensitivity.Normal),
         new(VictronWriteTopicChargeDischargeSetpointKey, "W/{portalId}/settings/0/Settings/CGwacs/AcPowerSetPoint", ControllerSettingSensitivity.Normal),
+        new(VictronWriteTopicDisableChargeKey, "W/{portalId}/vebus/276/Hub4/DisableCharge", ControllerSettingSensitivity.Normal),
+        new(VictronWriteTopicDisableFeedInKey, "W/{portalId}/vebus/276/Hub4/DisableFeedIn", ControllerSettingSensitivity.Normal),
+        new(VictronBatteryIdleThresholdWattsKey, "100", ControllerSettingSensitivity.Normal),
         new(HagerEnergyApiBaseUrlKey, "https://api.hagerenergy.com", ControllerSettingSensitivity.Normal),
         new(HagerEnergyAuthorizationEndpointKey, "https://auth.hagerenergy.com/realms/customer/.well-known/uma2-configuration", ControllerSettingSensitivity.Normal),
         new(HagerEnergyTokenEndpointKey, "https://auth.hagerenergy.com/realms/customer/protocol/openid-connect/token", ControllerSettingSensitivity.Normal),

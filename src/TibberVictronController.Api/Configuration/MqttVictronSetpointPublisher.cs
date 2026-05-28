@@ -26,7 +26,7 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
         var settings = await settingsProvider.GetSettingsAsync(cancellationToken);
         var topics = VictronMqttTopicFactory.Create(settings);
         var gridSetpointWatts = CalculateGridSetpointWatts(decisionResult);
-        var payload = JsonSerializer.Serialize(new { value = gridSetpointWatts });
+        var hub4Control = CalculateHub4Control(decisionResult, settings.BatteryIdleThresholdWatts);
 
         using var mqttClient = new MqttClientFactory().CreateMqttClient();
         var options = new MqttClientOptionsBuilder()
@@ -34,19 +34,19 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
             .WithKeepAlivePeriod(TimeSpan.FromSeconds(settings.KeepAliveSeconds))
             .WithClientId($"tibber-victron-controller-setpoint-{Guid.NewGuid():N}")
             .Build();
-        var message = new MqttApplicationMessageBuilder()
-            .WithTopic(topics.ChargeDischargeSetpointTopic)
-            .WithPayload(payload)
-            .Build();
 
         await mqttClient.ConnectAsync(options, cancellationToken);
-        await mqttClient.PublishAsync(message, cancellationToken);
+        await PublishValueAsync(mqttClient, topics.DisableChargeTopic, hub4Control.DisableCharge ? 1 : 0, cancellationToken);
+        await PublishValueAsync(mqttClient, topics.DisableFeedInTopic, hub4Control.DisableFeedIn ? 1 : 0, cancellationToken);
+        await PublishValueAsync(mqttClient, topics.ChargeDischargeSetpointTopic, gridSetpointWatts, cancellationToken);
         await mqttClient.DisconnectAsync(new MqttClientDisconnectOptions(), cancellationToken);
 
         logger.LogInformation(
-            "Victron-Setpoint per MQTT veroeffentlicht. Topic={Topic}, SetpointW={SetpointWatts}",
+            "Victron-Setpoint per MQTT veroeffentlicht. Topic={Topic}, SetpointW={SetpointWatts}, DisableCharge={DisableCharge}, DisableFeedIn={DisableFeedIn}",
             topics.ChargeDischargeSetpointTopic,
-            gridSetpointWatts);
+            gridSetpointWatts,
+            hub4Control.DisableCharge,
+            hub4Control.DisableFeedIn);
     }
 
     public static int CalculateGridSetpointWatts(CurrentBatteryDecisionResult decisionResult)
@@ -74,4 +74,42 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
 
         return gridPowerWithoutBatteryActionWatts + desiredBatteryPowerWatts;
     }
+
+    public static Hub4Control CalculateHub4Control(
+        CurrentBatteryDecisionResult decisionResult,
+        int batteryIdleThresholdWatts)
+    {
+        var thresholdWatts = Math.Max(0, batteryIdleThresholdWatts);
+        var desiredBatteryPowerWatts = decisionResult.Decision.Instruction.DecisionState switch
+        {
+            BatteryDecisionState.Charge => decisionResult.Decision.TargetPowerWatts,
+            BatteryDecisionState.Discharge => -decisionResult.Decision.TargetPowerWatts,
+            _ => 0
+        };
+
+        if (Math.Abs(desiredBatteryPowerWatts) <= thresholdWatts)
+        {
+            return new Hub4Control(DisableCharge: true, DisableFeedIn: true);
+        }
+
+        return desiredBatteryPowerWatts > 0
+            ? new Hub4Control(DisableCharge: false, DisableFeedIn: true)
+            : new Hub4Control(DisableCharge: true, DisableFeedIn: false);
+    }
+
+    private static async Task PublishValueAsync(
+        IMqttClient mqttClient,
+        string topic,
+        int value,
+        CancellationToken cancellationToken)
+    {
+        var message = new MqttApplicationMessageBuilder()
+            .WithTopic(topic)
+            .WithPayload(JsonSerializer.Serialize(new { value }))
+            .Build();
+
+        await mqttClient.PublishAsync(message, cancellationToken);
+    }
 }
+
+public sealed record Hub4Control(bool DisableCharge, bool DisableFeedIn);

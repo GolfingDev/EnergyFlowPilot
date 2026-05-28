@@ -166,6 +166,51 @@ public sealed class DecisionExecutionBackgroundServiceTests
         Assert.Equal(-2924, gridSetpointWatts);
     }
 
+    [Fact]
+    public void CalculateHub4ControlDisablesChargeAndFeedInInsideIdleThreshold()
+    {
+        var decisionResult = CreateDecisionResult(
+            new CurrentBatteryDecision(
+                new BatteryDecisionInstruction(BatteryDecisionState.Idle, chargeSource: null),
+                targetPowerWatts: 0),
+            new CurrentSiteTelemetry(8, 0, NowUtc, currentBatteryPowerWatts: 40));
+
+        var control = MqttVictronSetpointPublisher.CalculateHub4Control(decisionResult, batteryIdleThresholdWatts: 100);
+
+        Assert.True(control.DisableCharge);
+        Assert.True(control.DisableFeedIn);
+    }
+
+    [Fact]
+    public void CalculateHub4ControlAllowsOnlyChargeWhenCharging()
+    {
+        var decisionResult = CreateDecisionResult(
+            new CurrentBatteryDecision(
+                new BatteryDecisionInstruction(BatteryDecisionState.Charge, BatteryChargeSource.PV),
+                targetPowerWatts: 2500),
+            new CurrentSiteTelemetry(-3000, 0, NowUtc, currentBatteryPowerWatts: 2400));
+
+        var control = MqttVictronSetpointPublisher.CalculateHub4Control(decisionResult, batteryIdleThresholdWatts: 100);
+
+        Assert.False(control.DisableCharge);
+        Assert.True(control.DisableFeedIn);
+    }
+
+    [Fact]
+    public void CalculateHub4ControlAllowsOnlyFeedInWhenDischarging()
+    {
+        var decisionResult = CreateDecisionResult(
+            new CurrentBatteryDecision(
+                new BatteryDecisionInstruction(BatteryDecisionState.Discharge, chargeSource: null),
+                targetPowerWatts: 1200),
+            new CurrentSiteTelemetry(1200, 0, NowUtc, currentBatteryPowerWatts: 0));
+
+        var control = MqttVictronSetpointPublisher.CalculateHub4Control(decisionResult, batteryIdleThresholdWatts: 100);
+
+        Assert.True(control.DisableCharge);
+        Assert.False(control.DisableFeedIn);
+    }
+
     private static ServiceProvider CreateServiceProvider(
         ICurrentBatteryDecisionService currentBatteryDecisionService,
         IControllerSettingStore controllerSettingStore,

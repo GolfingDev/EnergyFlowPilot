@@ -19,7 +19,10 @@ public sealed class VictronMqttTopicFactoryTests
             BatterySocTopicTemplate = "N/{portalId}/battery/512/Soc",
             BatteryPowerTopicTemplate = "N/{portalId}/battery/512/Dc/0/Power",
             HouseConsumptionTopicTemplate = "N/{portalId}/system/0/Ac/Consumption/L1/Power",
-            ChargeDischargeSetpointTopic = "W/{portalId}/settings/0/Settings/CGwacs/AcPowerSetPoint"
+            ChargeDischargeSetpointTopic = "W/{portalId}/settings/0/Settings/CGwacs/AcPowerSetPoint",
+            DisableChargeTopic = "W/{portalId}/vebus/276/Hub4/DisableCharge",
+            DisableFeedInTopic = "W/{portalId}/vebus/276/Hub4/DisableFeedIn",
+            BatteryIdleThresholdWatts = 100
         };
 
         var topics = VictronMqttTopicFactory.Create(settings);
@@ -27,5 +30,7 @@ public sealed class VictronMqttTopicFactoryTests
         Assert.Equal("N/c0619ab93165/grid/30/Ac/Power", topics.GridPowerTopic);
         Assert.Equal("N/c0619ab93165/system/0/Ac/Consumption/L1/Power", topics.HouseConsumptionTopic);
         Assert.Equal("W/c0619ab93165/settings/0/Settings/CGwacs/AcPowerSetPoint", topics.ChargeDischargeSetpointTopic);
+        Assert.Equal("W/c0619ab93165/vebus/276/Hub4/DisableCharge", topics.DisableChargeTopic);
+        Assert.Equal("W/c0619ab93165/vebus/276/Hub4/DisableFeedIn", topics.DisableFeedInTopic);
     }
 }
