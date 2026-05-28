@@ -196,6 +196,36 @@ public sealed class CurrentBatteryDecisionServiceTests
         Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.AbsorbGridExport);
     }
 
+    [Fact]
+    public async Task CalculateCurrentDecisionAsyncKeepsActivePvChargePowerInExportCalculation()
+    {
+        var decisionLogRepository = new FakeDecisionLogRepository();
+        decisionLogRepository.SavedEntries.Add(CreateDecisionLogEntry(
+            decidedAtUtc: NowUtc.AddMinutes(-1),
+            validFromUtc: NowUtc.AddMinutes(-1),
+            validToUtc: NowUtc.AddMinutes(54),
+            decisionState: BatteryDecisionState.Charge,
+            chargeSource: BatteryChargeSource.PV,
+            targetPowerWatts: 5000));
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(40m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m, maximumChargePowerWatts: 5000)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(-3000, 8000, NowUtc)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.30m, 0.18m, 0.15m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = decisionLogRepository
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Charge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(BatteryChargeSource.PV, result.Decision.Instruction.ChargeSource);
+        Assert.Equal(5000, result.Decision.TargetPowerWatts);
+        Assert.Equal(-8000, result.SiteTelemetry.CurrentGridImportWatts);
+    }
+
     private static CurrentBatteryDecisionService CreateService(CurrentBatteryDecisionServiceDependencies dependencies)
     {
         return new CurrentBatteryDecisionService(dependencies);
@@ -226,6 +256,29 @@ public sealed class CurrentBatteryDecisionServiceTests
                 price,
                 "EUR"))
             .ToArray();
+    }
+
+    private static DecisionLogEntry CreateDecisionLogEntry(
+        DateTimeOffset decidedAtUtc,
+        DateTimeOffset validFromUtc,
+        DateTimeOffset validToUtc,
+        BatteryDecisionState decisionState,
+        BatteryChargeSource? chargeSource,
+        int targetPowerWatts)
+    {
+        return new DecisionLogEntry(
+            Guid.NewGuid(),
+            decidedAtUtc,
+            validFromUtc,
+            validToUtc,
+            new CurrentBatteryDecision(new BatteryDecisionInstruction(decisionState, chargeSource), targetPowerWatts),
+            stateOfChargePercent: 40m,
+            tibberPricePerKwh: 0.30m,
+            tibberPriceCurrency: "EUR",
+            gridImportWatts: null,
+            gridExportWatts: null,
+            inputSummaryJson: "{}",
+            new[] { new BatteryDecisionReason(CurrentBatteryDecisionRuleIds.AbsorbGridExport, "Testentscheidung.") });
     }
 
     private sealed class FakeCurrentSiteTelemetryProvider : ICurrentSiteTelemetryProvider

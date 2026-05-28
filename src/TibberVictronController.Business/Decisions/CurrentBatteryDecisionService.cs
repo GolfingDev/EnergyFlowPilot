@@ -151,28 +151,36 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 cancellationToken);
         }
 
-        if (Math.Abs(siteTelemetry.CurrentGridImportWatts) <= gridPowerDeadbandWatts)
+        var activePvChargePowerWatts = await GetActivePvChargePowerWattsAsync(decidedAtUtc, cancellationToken);
+        var decisionSiteTelemetry = activePvChargePowerWatts > 0
+            ? new CurrentSiteTelemetry(
+                siteTelemetry.CurrentGridImportWatts - activePvChargePowerWatts,
+                siteTelemetry.CurrentPvProductionWatts,
+                siteTelemetry.MeasuredAtUtc)
+            : siteTelemetry;
+
+        if (Math.Abs(decisionSiteTelemetry.CurrentGridImportWatts) <= gridPowerDeadbandWatts)
         {
             return await SaveIdleDecisionAsync(
                 decidedAtUtc,
                 currentPriceSlot.TimeSlot.EndsAtUtc,
                 batteryState,
-                new CurrentSiteTelemetry(0, siteTelemetry.CurrentPvProductionWatts, siteTelemetry.MeasuredAtUtc),
+                new CurrentSiteTelemetry(0, decisionSiteTelemetry.CurrentPvProductionWatts, decisionSiteTelemetry.MeasuredAtUtc),
                 currentPriceSlot.TotalPricePerKwh,
                 currentPriceSlot.Currency,
                 new BatteryDecisionReason(
                     CurrentBatteryDecisionRuleIds.GridPowerDeadband,
-                    $"Die aktuelle Netzleistung von {siteTelemetry.CurrentGridImportWatts} Watt liegt innerhalb des konfigurierten Puffers von +/- {gridPowerDeadbandWatts} Watt. Die Decision Engine ignoriert diese kleine Abweichung und bleibt im Idle-Zustand."),
+                    $"Die aktuelle Netzleistung von {decisionSiteTelemetry.CurrentGridImportWatts} Watt liegt innerhalb des konfigurierten Puffers von +/- {gridPowerDeadbandWatts} Watt. Die Decision Engine ignoriert diese kleine Abweichung und bleibt im Idle-Zustand."),
                 cancellationToken);
         }
 
-        if (siteTelemetry.CurrentGridImportWatts < 0)
+        if (decisionSiteTelemetry.CurrentGridImportWatts < 0)
         {
             return await CreateExportAbsorptionDecisionAsync(
                 decidedAtUtc,
                 batteryState,
                 batteryConfiguration,
-                siteTelemetry,
+                decisionSiteTelemetry,
                 currentPriceSlot,
                 priceForecast,
                 feedInCompensationPricePerKwh,
@@ -187,7 +195,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 decidedAtUtc,
                 batteryState,
                 batteryConfiguration,
-                siteTelemetry,
+                decisionSiteTelemetry,
                 currentPriceSlot,
                 feedInCompensationPricePerKwh,
                 priceRuleResult.Reasons[0],
@@ -196,7 +204,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 decidedAtUtc,
                 batteryState,
                 batteryConfiguration,
-                siteTelemetry,
+                decisionSiteTelemetry,
                 currentPriceSlot,
                 priceRuleResult.Reasons[0],
                 cancellationToken),
@@ -207,7 +215,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                     new BatteryDecisionInstruction(BatteryDecisionState.Idle, chargeSource: null),
                     targetPowerWatts: 0),
                 batteryState,
-                siteTelemetry,
+                decisionSiteTelemetry,
                 currentPriceSlot.TotalPricePerKwh,
                 currentPriceSlot.Currency,
                 priceRuleResult.Reasons,
@@ -263,6 +271,25 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                     $"Es liegen noch keine vollstaendigen Live-Telemetriedaten fuer Netzbezug, Hausverbrauch oder PV vor ({exception.Message}). Die Decision Engine bleibt deshalb im Idle-Zustand.")
             };
         }
+    }
+
+    private async Task<int> GetActivePvChargePowerWattsAsync(
+        DateTimeOffset decidedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var recentDecisions = await dependencies.DecisionLogRepository.GetRecentDecisionsAsync(1, cancellationToken);
+        var latestDecision = recentDecisions.FirstOrDefault();
+
+        if (latestDecision is null ||
+            latestDecision.ValidFromUtc > decidedAtUtc ||
+            latestDecision.ValidToUtc <= decidedAtUtc ||
+            latestDecision.Decision.Instruction.DecisionState != BatteryDecisionState.Charge ||
+            latestDecision.Decision.Instruction.ChargeSource != BatteryChargeSource.PV)
+        {
+            return 0;
+        }
+
+        return Math.Max(0, latestDecision.Decision.TargetPowerWatts);
     }
 
     private async Task<CurrentBatteryDecisionResult> CreateExportAbsorptionDecisionAsync(
