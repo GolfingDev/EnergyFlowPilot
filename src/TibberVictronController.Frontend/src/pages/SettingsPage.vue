@@ -60,7 +60,7 @@ interface UiError {
   details: string;
 }
 
-type SectionKey = 'battery' | 'price' | 'forecast' | 'consumption' | 'decision' | 'victron' | 'system' | 'operations';
+type SectionKey = 'operations' | 'battery' | 'control' | 'sources' | 'forecast' | 'advanced';
 type FieldCategory = 'normal' | 'important' | 'critical';
 
 interface SectionDefinition {
@@ -84,14 +84,12 @@ interface SelectOption {
 }
 
 const sectionDefinitions: SectionDefinition[] = [
+  { key: 'operations', title: 'Betrieb', description: 'Simulationsmodus, Worker-Intervalle, Dashboard-Aktualisierung und Protokollierung.' },
   { key: 'battery', title: 'Batterie', description: 'Kapazität, harte Grenzen, Planungsprofil und Wirkungsgrad.' },
-  { key: 'price', title: 'Tibber', description: 'Zugangsdaten und Preisparameter für dynamische Strompreise.' },
-  { key: 'forecast', title: 'PV / Prognose', description: 'Standort, PV-Leistung und Prognoseanbieter für die Planung.' },
-  { key: 'consumption', title: 'Verbrauch', description: 'Annahmen für den Last- und Verbrauchsforecast.' },
-  { key: 'decision', title: 'Entscheidungslogik', description: 'Verhalten der Entscheidungslogik, sofern Einstellungen vorhanden sind.' },
-  { key: 'victron', title: 'Victron', description: 'MQTT-Verbindung, Steuerungsmodus, Hub4-Schalter und Topic-Zuordnung.' },
-  { key: 'system', title: 'Energy Device', description: 'Live-Datenquellen und Hager Energy API.' },
-  { key: 'operations', title: 'Betrieb & Benachrichtigungen', description: 'Worker-Intervalle, Dashboard-Aktualisierung, Protokollierung und Fehlermails.' }
+  { key: 'control', title: 'Steuerung', description: 'Parameter, die direkt Lade-, Entlade- und Idle-Entscheidungen beeinflussen.' },
+  { key: 'sources', title: 'Datenquellen', description: 'Live-Datenquellen sowie Victron- und Hager-Verbindungen.' },
+  { key: 'forecast', title: 'Prognosen', description: 'Tibber-Preise, PV-Prognose und Verbrauchsannahmen.' },
+  { key: 'advanced', title: 'Erweitert', description: 'Roh-Topics, OAuth-Endpunkte, SMTP-Details und technische Sonderwerte.' }
 ];
 
 const fieldDefinitions: FieldDefinition[] = [
@@ -103,10 +101,10 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'battery.planningMaximumStateOfChargePercent', section: 'battery', subgroup: 'Planungsprofil', category: 'critical', helpText: 'Sehr hohe Werte lassen wenig Platz für unerwarteten PV-Überschuss.' },
   { key: 'battery.targetEndStateOfChargePercent', section: 'battery', subgroup: 'Planungsprofil', category: 'important' },
   { key: 'battery.roundTripEfficiencyPercent', section: 'battery', subgroup: 'Wirkungsgrad', category: 'important' },
-  { key: 'tibber.accessToken', section: 'price', subgroup: 'Tibber API', category: 'critical', helpText: 'Token werden nie im Klartext angezeigt. Leer lassen behält einen vorhandenen geheimen Wert.' },
-  { key: 'tibber.homeSelection', section: 'price', subgroup: 'Tibber API', category: 'normal' },
-  { key: 'forecast.horizonHours', section: 'price', subgroup: 'Preisplanung', category: 'important' },
-  { key: 'gridFeedIn.compensationPricePerKwh', section: 'price', subgroup: 'Preisplanung', category: 'important' },
+  { key: 'tibber.accessToken', section: 'forecast', subgroup: 'Tibber', category: 'critical', helpText: 'Token werden nie im Klartext angezeigt. Leer lassen behält einen vorhandenen geheimen Wert.' },
+  { key: 'tibber.homeSelection', section: 'forecast', subgroup: 'Tibber', category: 'normal' },
+  { key: 'forecast.horizonHours', section: 'forecast', subgroup: 'Planungshorizont', category: 'important' },
+  { key: 'gridFeedIn.compensationPricePerKwh', section: 'control', subgroup: 'Wirtschaftliche Steuerung', category: 'important' },
   { key: 'pvForecast.apiKey', section: 'forecast', subgroup: 'Forecast.Solar', category: 'critical', helpText: 'Optionaler Forecast.Solar API-Key für bezahlte Pläne. Leer lassen behält einen vorhandenen geheimen Wert.' },
   { key: 'pvForecast.latitude', section: 'forecast', subgroup: 'Standort', category: 'important' },
   { key: 'pvForecast.longitude', section: 'forecast', subgroup: 'Standort', category: 'important' },
@@ -114,44 +112,44 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'pvForecast.declinationDegrees', section: 'forecast', subgroup: 'PV-Anlage', category: 'normal' },
   { key: 'pvForecast.azimuthDegrees', section: 'forecast', subgroup: 'PV-Anlage', category: 'normal' },
   { key: 'pvForecast.timeZone', section: 'forecast', subgroup: 'Standort', category: 'normal', inputMode: 'timezone' },
-  { key: 'consumptionForecast.averageDailyConsumptionKwh', section: 'consumption', subgroup: 'Lastprofil', category: 'important' },
-  { key: 'consumptionForecast.timeZone', section: 'consumption', subgroup: 'Lastprofil', category: 'normal' },
-  { key: 'victron.dryRun', section: 'victron', subgroup: 'Betriebsmodus', category: 'critical', helpText: 'Simulationsmodus: Entscheidungen werden berechnet, aber Hardware wird nicht aktiv gesteuert.' },
-  { key: 'telemetry.sources.gridImportWatts', section: 'system', subgroup: 'Live-Datenquellen', category: 'critical', helpText: 'Quelle fuer Netzbezug und Netzeinspeisung. Fuer die Steuerung typischerweise MQTT.' },
-  { key: 'telemetry.sources.pvProductionWatts', section: 'system', subgroup: 'Live-Datenquellen', category: 'important', helpText: 'Quelle fuer die PV-Leistung. Fuer E3/DC typischerweise Hager API.' },
-  { key: 'telemetry.sources.batterySocPercent', section: 'system', subgroup: 'Live-Datenquellen', category: 'critical', helpText: 'Quelle fuer den Akkuladestand. Fuer die Steuerung typischerweise MQTT.' },
+  { key: 'consumptionForecast.averageDailyConsumptionKwh', section: 'forecast', subgroup: 'Verbrauchsprofil', category: 'important' },
+  { key: 'consumptionForecast.timeZone', section: 'advanced', subgroup: 'Zeitzonen', category: 'normal' },
+  { key: 'victron.dryRun', section: 'operations', subgroup: 'Betriebsmodus', category: 'critical', helpText: 'Simulationsmodus: Entscheidungen werden berechnet, aber Hardware wird nicht aktiv gesteuert.' },
+  { key: 'telemetry.sources.gridImportWatts', section: 'sources', subgroup: 'Live-Datenquellen', category: 'critical', helpText: 'Quelle fuer Netzbezug und Netzeinspeisung. Fuer die Steuerung typischerweise MQTT.' },
+  { key: 'telemetry.sources.pvProductionWatts', section: 'sources', subgroup: 'Live-Datenquellen', category: 'important', helpText: 'Quelle fuer die PV-Leistung. Fuer E3/DC typischerweise Hager API.' },
+  { key: 'telemetry.sources.batterySocPercent', section: 'sources', subgroup: 'Live-Datenquellen', category: 'critical', helpText: 'Quelle fuer den Akkuladestand. Fuer die Steuerung typischerweise MQTT.' },
   { key: 'decisionLog.retentionDays', section: 'operations', subgroup: 'Betrieb', category: 'normal', helpText: 'Wie lange Entscheidungsprotokolle gespeichert bleiben.' },
   { key: 'decisionWorker.intervalSeconds', section: 'operations', subgroup: 'Betrieb', category: 'important', helpText: 'Intervall für den automatischen Entscheidungs-Worker im Hintergrund.' },
   { key: 'dashboard.autoRefreshIntervalSeconds', section: 'operations', subgroup: 'Betrieb', category: 'normal', helpText: 'Intervall für die automatische Aktualisierung der Dashboard-Daten. 0 deaktiviert die Automatik.' },
   { key: 'notifications.workerFailureEmail.enabled', section: 'operations', subgroup: 'Benachrichtigungen', category: 'important', helpText: 'Versendet bei Worker-Fehlern automatisch eine E-Mail an den Betreiber.' },
-  { key: 'notifications.workerFailureEmail.smtpHost', section: 'operations', subgroup: 'Benachrichtigungen', category: 'important' },
-  { key: 'notifications.workerFailureEmail.smtpPort', section: 'operations', subgroup: 'Benachrichtigungen', category: 'normal' },
-  { key: 'notifications.workerFailureEmail.smtpUsername', section: 'operations', subgroup: 'Benachrichtigungen', category: 'normal' },
-  { key: 'notifications.workerFailureEmail.smtpPassword', section: 'operations', subgroup: 'Benachrichtigungen', category: 'critical', helpText: 'Geheimer SMTP-Zugang für den Versand von Fehlermails.' },
-  { key: 'notifications.workerFailureEmail.fromAddress', section: 'operations', subgroup: 'Benachrichtigungen', category: 'important' },
-  { key: 'notifications.workerFailureEmail.toAddress', section: 'operations', subgroup: 'Benachrichtigungen', category: 'important' },
-  { key: 'notifications.workerFailureEmail.enableSsl', section: 'operations', subgroup: 'Benachrichtigungen', category: 'important' },
-  { key: 'notifications.workerFailureEmail.subjectPrefix', section: 'operations', subgroup: 'Benachrichtigungen', category: 'normal' },
-  { key: 'hagerEnergy.apiBaseUrl', section: 'system', subgroup: 'Hager Energy API', category: 'important' },
-  { key: 'hagerEnergy.authorizationEndpoint', section: 'system', subgroup: 'Hager Energy OAuth', category: 'important', helpText: 'Discovery-URL aus der Hager-Doku. Die Login- und Token-URL werden daraus automatisch gelesen.' },
-  { key: 'hagerEnergy.redirectUri', section: 'system', subgroup: 'Hager Energy OAuth', category: 'important', helpText: 'Muss exakt als Redirect URI in der Hager-App registriert sein.' },
-  { key: 'hagerEnergy.apiKey', section: 'system', subgroup: 'Hager Energy API', category: 'critical', helpText: 'Optionaler api_key Header gemaess Hager-Energy-OpenAPI, falls fuer deinen Client ausgegeben.' },
-  { key: 'hagerEnergy.clientId', section: 'system', subgroup: 'Hager Energy API', category: 'critical' },
-  { key: 'hagerEnergy.clientSecret', section: 'system', subgroup: 'Hager Energy API', category: 'critical', helpText: 'Leer lassen, wenn dein OAuth-Client ohne Secret arbeitet.' },
-  { key: 'hagerEnergy.installationId', section: 'system', subgroup: 'Hager Energy API', category: 'critical' },
-  { key: 'victron.host', section: 'victron', subgroup: 'MQTT-Verbindung', category: 'critical' },
-  { key: 'victron.port', section: 'victron', subgroup: 'MQTT-Verbindung', category: 'important' },
-  { key: 'victron.portalId', section: 'victron', subgroup: 'MQTT-Verbindung', category: 'important' },
-  { key: 'victron.keepAliveSeconds', section: 'victron', subgroup: 'Laufzeit', category: 'important' },
-  { key: 'victron.staleAfterSeconds', section: 'victron', subgroup: 'Laufzeit', category: 'critical' },
-  { key: 'victron.batteryIdleThresholdWatts', section: 'victron', subgroup: 'Hub4-Steuerung', category: 'critical', helpText: 'Unterhalb dieser Zielleistung werden Laden und Entladen per Hub4-Flags gesperrt.' },
-  { key: 'victron.topics.gridPower', section: 'victron', subgroup: 'MQTT-Themen', category: 'normal' },
-  { key: 'victron.topics.batterySoc', section: 'victron', subgroup: 'MQTT-Themen', category: 'normal' },
-  { key: 'victron.topics.batteryPower', section: 'victron', subgroup: 'MQTT-Themen', category: 'normal' },
-  { key: 'victron.topics.houseConsumption', section: 'victron', subgroup: 'MQTT-Themen', category: 'normal' },
-  { key: 'victron.writeTopics.chargeDischargeSetpoint', section: 'victron', subgroup: 'MQTT-Schreibthemen', category: 'critical' },
-  { key: 'victron.writeTopics.disableCharge', section: 'victron', subgroup: 'MQTT-Schreibthemen', category: 'critical' },
-  { key: 'victron.writeTopics.disableFeedIn', section: 'victron', subgroup: 'MQTT-Schreibthemen', category: 'critical' }
+  { key: 'notifications.workerFailureEmail.smtpHost', section: 'advanced', subgroup: 'SMTP', category: 'important' },
+  { key: 'notifications.workerFailureEmail.smtpPort', section: 'advanced', subgroup: 'SMTP', category: 'normal' },
+  { key: 'notifications.workerFailureEmail.smtpUsername', section: 'advanced', subgroup: 'SMTP', category: 'normal' },
+  { key: 'notifications.workerFailureEmail.smtpPassword', section: 'advanced', subgroup: 'SMTP', category: 'critical', helpText: 'Geheimer SMTP-Zugang für den Versand von Fehlermails.' },
+  { key: 'notifications.workerFailureEmail.fromAddress', section: 'advanced', subgroup: 'SMTP', category: 'important' },
+  { key: 'notifications.workerFailureEmail.toAddress', section: 'advanced', subgroup: 'SMTP', category: 'important' },
+  { key: 'notifications.workerFailureEmail.enableSsl', section: 'advanced', subgroup: 'SMTP', category: 'important' },
+  { key: 'notifications.workerFailureEmail.subjectPrefix', section: 'advanced', subgroup: 'SMTP', category: 'normal' },
+  { key: 'hagerEnergy.apiBaseUrl', section: 'advanced', subgroup: 'Hager OAuth & API', category: 'important' },
+  { key: 'hagerEnergy.authorizationEndpoint', section: 'advanced', subgroup: 'Hager OAuth & API', category: 'important', helpText: 'Discovery-URL aus der Hager-Doku. Die Login- und Token-URL werden daraus automatisch gelesen.' },
+  { key: 'hagerEnergy.redirectUri', section: 'advanced', subgroup: 'Hager OAuth & API', category: 'important', helpText: 'Muss exakt als Redirect URI in der Hager-App registriert sein.' },
+  { key: 'hagerEnergy.apiKey', section: 'sources', subgroup: 'Hager Energy API', category: 'critical', helpText: 'Optionaler api_key Header gemaess Hager-Energy-OpenAPI, falls fuer deinen Client ausgegeben.' },
+  { key: 'hagerEnergy.clientId', section: 'sources', subgroup: 'Hager Energy API', category: 'critical' },
+  { key: 'hagerEnergy.clientSecret', section: 'sources', subgroup: 'Hager Energy API', category: 'critical', helpText: 'Leer lassen, wenn dein OAuth-Client ohne Secret arbeitet.' },
+  { key: 'hagerEnergy.installationId', section: 'sources', subgroup: 'Hager Energy API', category: 'critical' },
+  { key: 'victron.host', section: 'sources', subgroup: 'Victron MQTT', category: 'critical' },
+  { key: 'victron.port', section: 'sources', subgroup: 'Victron MQTT', category: 'important' },
+  { key: 'victron.portalId', section: 'sources', subgroup: 'Victron MQTT', category: 'important' },
+  { key: 'victron.keepAliveSeconds', section: 'advanced', subgroup: 'Victron Laufzeit', category: 'important' },
+  { key: 'victron.staleAfterSeconds', section: 'advanced', subgroup: 'Victron Laufzeit', category: 'critical' },
+  { key: 'victron.batteryIdleThresholdWatts', section: 'control', subgroup: 'Hub4-Steuerung', category: 'critical', helpText: 'Unterhalb dieser Zielleistung werden Laden und Entladen per Hub4-Flags gesperrt.' },
+  { key: 'victron.topics.gridPower', section: 'advanced', subgroup: 'MQTT-Lesethemen', category: 'normal' },
+  { key: 'victron.topics.batterySoc', section: 'advanced', subgroup: 'MQTT-Lesethemen', category: 'normal' },
+  { key: 'victron.topics.batteryPower', section: 'advanced', subgroup: 'MQTT-Lesethemen', category: 'normal' },
+  { key: 'victron.topics.houseConsumption', section: 'advanced', subgroup: 'MQTT-Lesethemen', category: 'normal' },
+  { key: 'victron.writeTopics.chargeDischargeSetpoint', section: 'advanced', subgroup: 'MQTT-Schreibthemen', category: 'critical' },
+  { key: 'victron.writeTopics.disableCharge', section: 'advanced', subgroup: 'MQTT-Schreibthemen', category: 'critical' },
+  { key: 'victron.writeTopics.disableFeedIn', section: 'advanced', subgroup: 'MQTT-Schreibthemen', category: 'critical' }
 ];
 
 const requiredKeys = new Set(['tibber.accessToken', 'battery.totalCapacityKwh']);
@@ -526,7 +524,16 @@ function getGroupDescription(groupTitle: string): string {
     case 'Betrieb':
       return 'Zentrale Intervalle für Worker, Dashboard und Protokollierung.';
     case 'Benachrichtigungen':
-      return 'SMTP- und Empfängereinstellungen für automatische Fehlermeldungen.';
+      return 'Nur der Hauptschalter. SMTP-Details liegen unter Erweitert.';
+    case 'Hub4-Steuerung':
+      return 'Schwellenwerte für echten Victron-Stillstand ohne unbeabsichtigtes Laden oder Entladen.';
+    case 'Live-Datenquellen':
+      return 'Legt fest, aus welchem System die Steuerung Netz, PV und SoC liest.';
+    case 'MQTT-Lesethemen':
+    case 'MQTT-Schreibthemen':
+      return 'Technische Topic-Zuordnung. Normalerweise nur ändern, wenn sich das Victron-MQTT-Schema ändert.';
+    case 'SMTP':
+      return 'Technische Versandparameter für Worker-Fehlermails.';
     default:
       return '';
   }
@@ -537,7 +544,11 @@ function formatTelemetrySource(value: string): string {
 }
 
 function isEmphasizedGroup(groupTitle: string): boolean {
-  return groupTitle === 'Betrieb' || groupTitle === 'Benachrichtigungen';
+  return groupTitle === 'Betrieb' ||
+    groupTitle === 'Betriebsmodus' ||
+    groupTitle === 'Hub4-Steuerung' ||
+    groupTitle === 'Live-Datenquellen' ||
+    groupTitle === 'Benachrichtigungen';
 }
 
 function getSettingOrFallback(key: string): ControllerSettingResponseDto {
