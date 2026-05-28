@@ -11,6 +11,7 @@ public sealed class VictronCurrentSiteTelemetryProviderTests
         var gridMeasuredAtUtc = new DateTimeOffset(2026, 5, 2, 10, 15, 0, TimeSpan.Zero);
         var houseMeasuredAtUtc = new DateTimeOffset(2026, 5, 2, 10, 16, 0, TimeSpan.Zero);
         snapshotStore.UpdateGridPower(1234m, gridMeasuredAtUtc);
+        snapshotStore.UpdateBatteryPower(2429m, gridMeasuredAtUtc);
         snapshotStore.UpdateHouseConsumption(-678m, houseMeasuredAtUtc);
         var provider = new VictronCurrentSiteTelemetryProvider(snapshotStore);
 
@@ -18,6 +19,7 @@ public sealed class VictronCurrentSiteTelemetryProviderTests
 
         Assert.Equal(1234, result.CurrentGridImportWatts);
         Assert.Equal(678, result.CurrentPvProductionWatts);
+        Assert.Equal(2429, result.CurrentBatteryPowerWatts);
         Assert.Equal(gridMeasuredAtUtc, result.MeasuredAtUtc);
     }
 }

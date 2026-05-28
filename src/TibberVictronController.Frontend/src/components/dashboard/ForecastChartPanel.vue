@@ -55,7 +55,7 @@ async function renderForecastChart(): Promise<void> {
   const configuration: ChartConfiguration = {
     type: 'bar',
     data: {
-      labels: entries.map((entry) => formatDateTime(entry.startsAtUtc)),
+      labels: entries.map((entry) => entry.startsAtUtc),
       datasets: [
         {
           type: 'bar',

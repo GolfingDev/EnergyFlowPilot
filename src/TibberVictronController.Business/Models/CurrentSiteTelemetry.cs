@@ -11,7 +11,8 @@ public sealed record CurrentSiteTelemetry
     public CurrentSiteTelemetry(
         int currentGridImportWatts,
         int currentPvProductionWatts,
-        DateTimeOffset measuredAtUtc)
+        DateTimeOffset measuredAtUtc,
+        int? currentBatteryPowerWatts = null)
     {
         if (measuredAtUtc.Offset != TimeSpan.Zero)
         {
@@ -20,12 +21,18 @@ public sealed record CurrentSiteTelemetry
 
         CurrentGridImportWatts = currentGridImportWatts;
         CurrentPvProductionWatts = currentPvProductionWatts;
+        CurrentBatteryPowerWatts = currentBatteryPowerWatts;
         MeasuredAtUtc = measuredAtUtc;
     }
 
     public int CurrentGridImportWatts { get; }
 
     public int CurrentPvProductionWatts { get; }
+
+    /// <summary>
+    /// Gets the current battery power in watts when available. Positive values mean battery charging.
+    /// </summary>
+    public int? CurrentBatteryPowerWatts { get; }
 
     public DateTimeOffset MeasuredAtUtc { get; }
 }

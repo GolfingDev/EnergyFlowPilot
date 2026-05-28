@@ -129,7 +129,7 @@ public sealed class CurrentBatteryDecisionServiceTests
         var result = await service.CalculateCurrentDecisionAsync();
 
         Assert.Equal(BatteryDecisionState.Idle, result.Decision.Instruction.DecisionState);
-        Assert.Equal(0, result.SiteTelemetry.CurrentGridImportWatts);
+        Assert.Equal(currentGridImportWatts, result.SiteTelemetry.CurrentGridImportWatts);
         Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.GridPowerDeadband);
     }
 

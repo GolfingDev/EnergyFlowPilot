@@ -25,7 +25,7 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
     {
         var settings = await settingsProvider.GetSettingsAsync(cancellationToken);
         var topics = VictronMqttTopicFactory.Create(settings);
-        var gridSetpointWatts = ToGridSetpointWatts(decisionResult);
+        var gridSetpointWatts = CalculateGridSetpointWatts(decisionResult);
         var payload = JsonSerializer.Serialize(new { value = gridSetpointWatts });
 
         using var mqttClient = new MqttClientFactory().CreateMqttClient();
@@ -49,13 +49,29 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
             gridSetpointWatts);
     }
 
-    private static int ToGridSetpointWatts(CurrentBatteryDecisionResult decisionResult)
+    public static int CalculateGridSetpointWatts(CurrentBatteryDecisionResult decisionResult)
     {
-        return decisionResult.Decision.Instruction.DecisionState switch
+        var desiredBatteryPowerWatts = decisionResult.Decision.Instruction.DecisionState switch
         {
-            BatteryDecisionState.Charge => decisionResult.SiteTelemetry.CurrentGridImportWatts + decisionResult.Decision.TargetPowerWatts,
-            BatteryDecisionState.Discharge => decisionResult.SiteTelemetry.CurrentGridImportWatts - decisionResult.Decision.TargetPowerWatts,
-            _ => decisionResult.SiteTelemetry.CurrentGridImportWatts
+            BatteryDecisionState.Charge => decisionResult.Decision.TargetPowerWatts,
+            BatteryDecisionState.Discharge => -decisionResult.Decision.TargetPowerWatts,
+            _ => 0
         };
+
+        if (decisionResult.SiteTelemetry.CurrentBatteryPowerWatts is null)
+        {
+            return decisionResult.Decision.Instruction.DecisionState switch
+            {
+                BatteryDecisionState.Charge => decisionResult.SiteTelemetry.CurrentGridImportWatts + decisionResult.Decision.TargetPowerWatts,
+                BatteryDecisionState.Discharge => decisionResult.SiteTelemetry.CurrentGridImportWatts - decisionResult.Decision.TargetPowerWatts,
+                _ => decisionResult.SiteTelemetry.CurrentGridImportWatts
+            };
+        }
+
+        var gridPowerWithoutBatteryActionWatts =
+            decisionResult.SiteTelemetry.CurrentGridImportWatts -
+            decisionResult.SiteTelemetry.CurrentBatteryPowerWatts.Value;
+
+        return gridPowerWithoutBatteryActionWatts + desiredBatteryPowerWatts;
     }
 }

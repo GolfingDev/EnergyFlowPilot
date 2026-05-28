@@ -156,7 +156,8 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             ? new CurrentSiteTelemetry(
                 siteTelemetry.CurrentGridImportWatts - activePvChargePowerWatts,
                 siteTelemetry.CurrentPvProductionWatts,
-                siteTelemetry.MeasuredAtUtc)
+                siteTelemetry.MeasuredAtUtc,
+                siteTelemetry.CurrentBatteryPowerWatts)
             : siteTelemetry;
 
         if (Math.Abs(decisionSiteTelemetry.CurrentGridImportWatts) <= gridPowerDeadbandWatts)
@@ -165,7 +166,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 decidedAtUtc,
                 currentPriceSlot.TimeSlot.EndsAtUtc,
                 batteryState,
-                new CurrentSiteTelemetry(0, decisionSiteTelemetry.CurrentPvProductionWatts, decisionSiteTelemetry.MeasuredAtUtc),
+                decisionSiteTelemetry,
                 currentPriceSlot.TotalPricePerKwh,
                 currentPriceSlot.Currency,
                 new BatteryDecisionReason(
@@ -513,6 +514,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             BatteryMeasuredAtUtc = batteryState.MeasuredAtUtc,
             CurrentGridImportWatts = siteTelemetry.CurrentGridImportWatts,
             CurrentPvProductionWatts = siteTelemetry.CurrentPvProductionWatts,
+            CurrentBatteryPowerWatts = siteTelemetry.CurrentBatteryPowerWatts,
             SiteTelemetryMeasuredAtUtc = siteTelemetry.MeasuredAtUtc,
             TibberPricePerKwh = tibberPricePerKwh,
             TibberPriceCurrency = tibberPriceCurrency

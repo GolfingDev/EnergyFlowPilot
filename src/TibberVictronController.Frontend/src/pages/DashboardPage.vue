@@ -204,8 +204,7 @@ function createLoadError(reason: unknown): Omit<DashboardLoadError, 'source'> {
 }
 
 function createForecastUrl(): string {
-  const startsAtUtc = new Date();
-  startsAtUtc.setUTCMinutes(0, 0, 0);
+  const startsAtUtc = roundUpToNextQuarterHourUtc(new Date());
 
   const parameters = new URLSearchParams({
     startsAtUtc: startsAtUtc.toISOString(),
@@ -213,6 +212,22 @@ function createForecastUrl(): string {
   });
 
   return `/api/forecast?${parameters.toString()}`;
+}
+
+function roundUpToNextQuarterHourUtc(value: Date): Date {
+  const rounded = new Date(value);
+  const minutes = rounded.getUTCMinutes();
+  const minutesToAdd = (15 - (minutes % 15)) % 15;
+
+  rounded.setUTCSeconds(0, 0);
+
+  if (minutesToAdd === 0) {
+    return rounded;
+  }
+
+  rounded.setUTCMinutes(minutes + minutesToAdd);
+
+  return rounded;
 }
 
 function createSavingsUrl(): string {

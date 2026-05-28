@@ -35,6 +35,9 @@ public sealed class MqttCurrentSiteTelemetryProvider : ICurrentSiteTelemetryProv
         }
 
         var currentGridImportWatts = DecimalToInt(snapshot.GridPowerWatts.Value);
+        var currentBatteryPowerWatts = snapshot.BatteryPowerWatts is null
+            ? (int?)null
+            : DecimalToInt(snapshot.BatteryPowerWatts.Value);
         var currentPvProductionWatts = effectiveHouseConsumptionWatts.Value < 0m
             ? DecimalToInt(Math.Abs(effectiveHouseConsumptionWatts.Value))
             : 0;
@@ -45,7 +48,8 @@ public sealed class MqttCurrentSiteTelemetryProvider : ICurrentSiteTelemetryProv
         return Task.FromResult(new CurrentSiteTelemetry(
             currentGridImportWatts,
             currentPvProductionWatts,
-            measuredAtUtc));
+            measuredAtUtc,
+            currentBatteryPowerWatts));
     }
 
     private static decimal? GetEffectiveHouseConsumptionWatts(MqttTelemetrySnapshot snapshot)

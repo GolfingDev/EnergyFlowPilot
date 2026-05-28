@@ -130,6 +130,42 @@ public sealed class DecisionExecutionBackgroundServiceTests
         Assert.Single(notifier!.SentExceptions);
     }
 
+    [Fact]
+    public void CalculateGridSetpointWattsStopsCurrentBatteryChargeWhenDecisionIsIdle()
+    {
+        var decisionResult = CreateDecisionResult(
+            new CurrentBatteryDecision(
+                new BatteryDecisionInstruction(BatteryDecisionState.Idle, chargeSource: null),
+                targetPowerWatts: 0),
+            new CurrentSiteTelemetry(
+                currentGridImportWatts: -2995,
+                currentPvProductionWatts: 0,
+                measuredAtUtc: NowUtc,
+                currentBatteryPowerWatts: 2429));
+
+        var gridSetpointWatts = MqttVictronSetpointPublisher.CalculateGridSetpointWatts(decisionResult);
+
+        Assert.Equal(-5424, gridSetpointWatts);
+    }
+
+    [Fact]
+    public void CalculateGridSetpointWattsKeepsTargetChargePowerRelativeToCurrentBatteryPower()
+    {
+        var decisionResult = CreateDecisionResult(
+            new CurrentBatteryDecision(
+                new BatteryDecisionInstruction(BatteryDecisionState.Charge, BatteryChargeSource.PV),
+                targetPowerWatts: 2500),
+            new CurrentSiteTelemetry(
+                currentGridImportWatts: -2995,
+                currentPvProductionWatts: 0,
+                measuredAtUtc: NowUtc,
+                currentBatteryPowerWatts: 2429));
+
+        var gridSetpointWatts = MqttVictronSetpointPublisher.CalculateGridSetpointWatts(decisionResult);
+
+        Assert.Equal(-2924, gridSetpointWatts);
+    }
+
     private static ServiceProvider CreateServiceProvider(
         ICurrentBatteryDecisionService currentBatteryDecisionService,
         IControllerSettingStore controllerSettingStore,
@@ -146,6 +182,23 @@ public sealed class DecisionExecutionBackgroundServiceTests
         services.AddSingleton<IUtcClock>(new FixedUtcClock(NowUtc));
 
         return services.BuildServiceProvider();
+    }
+
+    private static CurrentBatteryDecisionResult CreateDecisionResult(
+        CurrentBatteryDecision decision,
+        CurrentSiteTelemetry siteTelemetry)
+    {
+        return new CurrentBatteryDecisionResult(
+            decidedAtUtc: NowUtc,
+            validFromUtc: NowUtc,
+            validToUtc: NowUtc.AddMinutes(15),
+            decision,
+            batteryState: new BatteryState(50m, NowUtc),
+            siteTelemetry,
+            tibberPricePerKwh: null,
+            tibberPriceCurrency: null,
+            reasons: new[] { new BatteryDecisionReason("TEST", "Testbegruendung") },
+            inputSummaryJson: "{}");
     }
 
     private sealed class RecordingCurrentBatteryDecisionService : ICurrentBatteryDecisionService

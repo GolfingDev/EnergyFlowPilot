@@ -32,6 +32,9 @@ public sealed class VictronCurrentSiteTelemetryProvider : ICurrentSiteTelemetryP
         }
 
         var currentGridImportWatts = DecimalToInt(snapshot.GridPowerWatts.Value);
+        var currentBatteryPowerWatts = snapshot.BatteryPowerWatts is null
+            ? (int?)null
+            : DecimalToInt(snapshot.BatteryPowerWatts.Value);
         var currentPvProductionWatts = snapshot.HouseConsumptionWatts.Value < 0m
             ? DecimalToInt(Math.Abs(snapshot.HouseConsumptionWatts.Value))
             : 0;
@@ -42,7 +45,8 @@ public sealed class VictronCurrentSiteTelemetryProvider : ICurrentSiteTelemetryP
         return Task.FromResult(new CurrentSiteTelemetry(
             currentGridImportWatts,
             currentPvProductionWatts,
-            measuredAtUtc));
+            measuredAtUtc,
+            currentBatteryPowerWatts));
     }
 
     private static int DecimalToInt(decimal value)
