@@ -60,7 +60,7 @@ interface UiError {
   details: string;
 }
 
-type SectionKey = 'battery' | 'price' | 'forecast' | 'consumption' | 'decision' | 'system' | 'operations';
+type SectionKey = 'battery' | 'price' | 'forecast' | 'consumption' | 'decision' | 'victron' | 'system' | 'operations';
 type FieldCategory = 'normal' | 'important' | 'critical';
 
 interface SectionDefinition {
@@ -89,7 +89,8 @@ const sectionDefinitions: SectionDefinition[] = [
   { key: 'forecast', title: 'PV / Prognose', description: 'Standort, PV-Leistung und Prognoseanbieter für die Planung.' },
   { key: 'consumption', title: 'Verbrauch', description: 'Annahmen für den Last- und Verbrauchsforecast.' },
   { key: 'decision', title: 'Entscheidungslogik', description: 'Verhalten der Entscheidungslogik, sofern Einstellungen vorhanden sind.' },
-  { key: 'system', title: 'Energy Device', description: 'Live-Datenquelle, Hager Energy API und technische Victron-Anbindung.' },
+  { key: 'victron', title: 'Victron', description: 'MQTT-Verbindung, Steuerungsmodus, Hub4-Schalter und Topic-Zuordnung.' },
+  { key: 'system', title: 'Energy Device', description: 'Live-Datenquellen und Hager Energy API.' },
   { key: 'operations', title: 'Betrieb & Benachrichtigungen', description: 'Worker-Intervalle, Dashboard-Aktualisierung, Protokollierung und Fehlermails.' }
 ];
 
@@ -115,7 +116,7 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'pvForecast.timeZone', section: 'forecast', subgroup: 'Standort', category: 'normal', inputMode: 'timezone' },
   { key: 'consumptionForecast.averageDailyConsumptionKwh', section: 'consumption', subgroup: 'Lastprofil', category: 'important' },
   { key: 'consumptionForecast.timeZone', section: 'consumption', subgroup: 'Lastprofil', category: 'normal' },
-  { key: 'victron.dryRun', section: 'decision', subgroup: 'Betriebsmodus', category: 'critical', helpText: 'Simulationsmodus: Entscheidungen werden berechnet, aber Hardware wird nicht aktiv gesteuert.' },
+  { key: 'victron.dryRun', section: 'victron', subgroup: 'Betriebsmodus', category: 'critical', helpText: 'Simulationsmodus: Entscheidungen werden berechnet, aber Hardware wird nicht aktiv gesteuert.' },
   { key: 'telemetry.sources.gridImportWatts', section: 'system', subgroup: 'Live-Datenquellen', category: 'critical', helpText: 'Quelle fuer Netzbezug und Netzeinspeisung. Fuer die Steuerung typischerweise MQTT.' },
   { key: 'telemetry.sources.pvProductionWatts', section: 'system', subgroup: 'Live-Datenquellen', category: 'important', helpText: 'Quelle fuer die PV-Leistung. Fuer E3/DC typischerweise Hager API.' },
   { key: 'telemetry.sources.batterySocPercent', section: 'system', subgroup: 'Live-Datenquellen', category: 'critical', helpText: 'Quelle fuer den Akkuladestand. Fuer die Steuerung typischerweise MQTT.' },
@@ -138,19 +139,19 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'hagerEnergy.clientId', section: 'system', subgroup: 'Hager Energy API', category: 'critical' },
   { key: 'hagerEnergy.clientSecret', section: 'system', subgroup: 'Hager Energy API', category: 'critical', helpText: 'Leer lassen, wenn dein OAuth-Client ohne Secret arbeitet.' },
   { key: 'hagerEnergy.installationId', section: 'system', subgroup: 'Hager Energy API', category: 'critical' },
-  { key: 'victron.host', section: 'system', subgroup: 'Victron MQTT', category: 'critical' },
-  { key: 'victron.port', section: 'system', subgroup: 'Victron MQTT', category: 'important' },
-  { key: 'victron.portalId', section: 'system', subgroup: 'Victron MQTT', category: 'important' },
-  { key: 'victron.keepAliveSeconds', section: 'system', subgroup: 'Laufzeit', category: 'important' },
-  { key: 'victron.staleAfterSeconds', section: 'system', subgroup: 'Laufzeit', category: 'critical' },
-  { key: 'victron.batteryIdleThresholdWatts', section: 'system', subgroup: 'Laufzeit', category: 'critical', helpText: 'Unterhalb dieser Zielleistung werden Laden und Entladen per Hub4-Flags gesperrt.' },
-  { key: 'victron.topics.gridPower', section: 'system', subgroup: 'MQTT-Themen', category: 'normal' },
-  { key: 'victron.topics.batterySoc', section: 'system', subgroup: 'MQTT-Themen', category: 'normal' },
-  { key: 'victron.topics.batteryPower', section: 'system', subgroup: 'MQTT-Themen', category: 'normal' },
-  { key: 'victron.topics.houseConsumption', section: 'system', subgroup: 'MQTT-Themen', category: 'normal' },
-  { key: 'victron.writeTopics.chargeDischargeSetpoint', section: 'system', subgroup: 'MQTT-Themen', category: 'critical' },
-  { key: 'victron.writeTopics.disableCharge', section: 'system', subgroup: 'MQTT-Themen', category: 'critical' },
-  { key: 'victron.writeTopics.disableFeedIn', section: 'system', subgroup: 'MQTT-Themen', category: 'critical' }
+  { key: 'victron.host', section: 'victron', subgroup: 'MQTT-Verbindung', category: 'critical' },
+  { key: 'victron.port', section: 'victron', subgroup: 'MQTT-Verbindung', category: 'important' },
+  { key: 'victron.portalId', section: 'victron', subgroup: 'MQTT-Verbindung', category: 'important' },
+  { key: 'victron.keepAliveSeconds', section: 'victron', subgroup: 'Laufzeit', category: 'important' },
+  { key: 'victron.staleAfterSeconds', section: 'victron', subgroup: 'Laufzeit', category: 'critical' },
+  { key: 'victron.batteryIdleThresholdWatts', section: 'victron', subgroup: 'Hub4-Steuerung', category: 'critical', helpText: 'Unterhalb dieser Zielleistung werden Laden und Entladen per Hub4-Flags gesperrt.' },
+  { key: 'victron.topics.gridPower', section: 'victron', subgroup: 'MQTT-Themen', category: 'normal' },
+  { key: 'victron.topics.batterySoc', section: 'victron', subgroup: 'MQTT-Themen', category: 'normal' },
+  { key: 'victron.topics.batteryPower', section: 'victron', subgroup: 'MQTT-Themen', category: 'normal' },
+  { key: 'victron.topics.houseConsumption', section: 'victron', subgroup: 'MQTT-Themen', category: 'normal' },
+  { key: 'victron.writeTopics.chargeDischargeSetpoint', section: 'victron', subgroup: 'MQTT-Schreibthemen', category: 'critical' },
+  { key: 'victron.writeTopics.disableCharge', section: 'victron', subgroup: 'MQTT-Schreibthemen', category: 'critical' },
+  { key: 'victron.writeTopics.disableFeedIn', section: 'victron', subgroup: 'MQTT-Schreibthemen', category: 'critical' }
 ];
 
 const requiredKeys = new Set(['tibber.accessToken', 'battery.totalCapacityKwh']);
