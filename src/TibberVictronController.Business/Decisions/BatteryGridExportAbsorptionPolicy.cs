@@ -7,8 +7,6 @@ namespace TibberVictronController.Business.Decisions;
 /// </summary>
 public sealed class BatteryGridExportAbsorptionPolicy
 {
-    private const decimal FullBatterySocPercent = 100m;
-
     /// <summary>
     /// Calculates a charge setpoint for negative grid import while preserving headroom for more valuable negative-price charging.
     /// </summary>
@@ -39,7 +37,7 @@ public sealed class BatteryGridExportAbsorptionPolicy
             throw new ArgumentOutOfRangeException(nameof(feedInCompensationPricePerKwh), "Die Einspeiseverguetung darf nicht negativ sein.");
         }
 
-        if (currentGridImportWatts >= 0 || batteryState.StateOfChargePercent >= FullBatterySocPercent)
+        if (currentGridImportWatts >= 0 || batteryState.StateOfChargePercent >= batteryConfiguration.PlanningMaximumStateOfChargePercent)
         {
             return 0;
         }

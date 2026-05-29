@@ -312,8 +312,10 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
         if (targetPowerWatts <= 0)
         {
-            var reason = batteryState.StateOfChargePercent >= 100m
-                ? new BatteryDecisionReason(CurrentBatteryDecisionRuleIds.BatteryFull, "Der Akku ist bereits voll. Die Decision Engine kann aktuellen Netzexport deshalb nicht weiter aufnehmen.")
+            var reason = batteryState.StateOfChargePercent >= batteryConfiguration.PlanningMaximumStateOfChargePercent
+                ? new BatteryDecisionReason(
+                    BatteryForecastRuleIds.PlanningMaximumSocHeadroom,
+                    $"Das Planungs-Maximum von {batteryConfiguration.PlanningMaximumStateOfChargePercent:0.#} Prozent ist erreicht. Die Decision Engine nimmt aktuellen Netzexport deshalb nicht weiter in die Batterie auf.")
                 : new BatteryDecisionReason(
                     BatteryForecastRuleIds.PreserveHeadroomForNegativePrice,
                     "Die Decision Engine haelt Kapazitaet fuer spaetere negative Tibber-Preise frei und bleibt deshalb trotz aktuellem Netzexport im Idle-Zustand.");

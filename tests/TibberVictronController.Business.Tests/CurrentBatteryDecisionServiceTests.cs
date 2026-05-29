@@ -197,6 +197,32 @@ public sealed class CurrentBatteryDecisionServiceTests
     }
 
     [Fact]
+    public async Task CalculateCurrentDecisionAsyncDoesNotChargeFromPvAbovePlanningMaximum()
+    {
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(99m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(new BatteryConfigurationValues
+            {
+                TotalCapacityKwh = 12m,
+                MaximumChargePowerWatts = 3000,
+                PlanningMaximumStateOfChargePercent = 95m
+            })),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(-1400, 2200, NowUtc)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.30m, 0.18m, 0.15m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Idle, result.Decision.Instruction.DecisionState);
+        Assert.Equal(0, result.Decision.TargetPowerWatts);
+        Assert.Contains(result.Reasons, reason => reason.RuleName == BatteryForecastRuleIds.PlanningMaximumSocHeadroom);
+    }
+
+    [Fact]
     public async Task CalculateCurrentDecisionAsyncKeepsActivePvChargePowerInExportCalculation()
     {
         var decisionLogRepository = new FakeDecisionLogRepository();

@@ -58,6 +58,28 @@ public sealed class BatteryGridExportAbsorptionPolicyTests
         Assert.Equal(0, targetPowerWatts);
     }
 
+    [Fact]
+    public void CalculateTargetPowerReturnsZeroWhenPlanningMaximumIsReached()
+    {
+        var policy = new BatteryGridExportAbsorptionPolicy();
+        var batteryState = new BatteryState(99m, StartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(new BatteryConfigurationValues
+        {
+            TotalCapacityKwh = 12m,
+            MaximumChargePowerWatts = 3000,
+            PlanningMaximumStateOfChargePercent = 95m
+        });
+
+        var targetPowerWatts = policy.CalculateTargetPowerWatts(
+            currentGridImportWatts: -1200,
+            batteryState,
+            batteryConfiguration,
+            priceForecast: Array.Empty<TibberPriceForecastSlot>(),
+            feedInCompensationPricePerKwh: 0.08m);
+
+        Assert.Equal(0, targetPowerWatts);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(500)]
