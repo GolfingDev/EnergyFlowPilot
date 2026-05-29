@@ -25,12 +25,15 @@ public static class CurrentDecisionEndpoints
     }
 
     public static async Task<IResult> GetCurrentDecisionAsync(
-        ICurrentBatteryDecisionService currentBatteryDecisionService,
+        IDecisionLogRepository decisionLogRepository,
         CancellationToken cancellationToken)
     {
-        var decisionResult = await currentBatteryDecisionService.CalculateCurrentDecisionAsync(cancellationToken);
+        var logEntries = await decisionLogRepository.GetRecentDecisionsAsync(1, cancellationToken);
+        var latestLogEntry = logEntries.FirstOrDefault();
 
-        return TypedResults.Ok(CurrentDecisionDtoMapper.Map(decisionResult));
+        return latestLogEntry is null
+            ? TypedResults.NotFound()
+            : TypedResults.Ok(CurrentDecisionDtoMapper.MapCurrent(latestLogEntry));
     }
 
     public static async Task<IResult> GetDecisionLogsAsync(

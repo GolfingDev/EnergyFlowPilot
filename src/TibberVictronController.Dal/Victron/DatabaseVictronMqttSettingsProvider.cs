@@ -26,11 +26,18 @@ public sealed class DatabaseVictronMqttSettingsProvider
             KeepAliveSeconds = await GetRequiredIntegerSettingAsync(ControllerSettingDefaults.VictronKeepAliveSecondsKey, "Der Victron-MQTT-KeepAlive ist nicht konfiguriert.", "Der Victron-MQTT-KeepAlive muss als ganze Zahl konfiguriert sein.", cancellationToken),
             StaleAfterSeconds = await GetRequiredIntegerSettingAsync(ControllerSettingDefaults.VictronStaleAfterSecondsKey, "Die Victron-Stale-Grenze ist nicht konfiguriert.", "Die Victron-Stale-Grenze muss als ganze Zahl konfiguriert sein.", cancellationToken),
             DryRun = await GetRequiredBooleanSettingAsync(ControllerSettingDefaults.VictronDryRunKey, "Die Victron-DryRun-Einstellung ist nicht konfiguriert.", "Die Victron-DryRun-Einstellung muss true oder false sein.", cancellationToken),
+            ControlMode = await GetControlModeAsync(cancellationToken),
             GridPowerTopicTemplate = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronTopicGridPowerKey, "Das Victron-Topic fuer Netzleistung ist nicht konfiguriert.", cancellationToken),
             BatterySocTopicTemplate = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronTopicBatterySocKey, "Das Victron-Topic fuer Akku-SoC ist nicht konfiguriert.", cancellationToken),
             BatteryPowerTopicTemplate = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronTopicBatteryPowerKey, "Das Victron-Topic fuer Akku-Leistung ist nicht konfiguriert.", cancellationToken),
             HouseConsumptionTopicTemplate = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronTopicHouseConsumptionKey, "Das Victron-Topic fuer Hausverbrauch ist nicht konfiguriert.", cancellationToken),
             ChargeDischargeSetpointTopic = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronWriteTopicChargeDischargeSetpointKey, "Das Victron-Write-Topic fuer den Lade-/Entlade-Setpoint ist nicht konfiguriert.", cancellationToken),
+            Hub4ModeTopic = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronWriteTopicHub4ModeKey, "Das Victron-Write-Topic fuer den Hub4Mode ist nicht konfiguriert.", cancellationToken),
+            SwitchEssModeViaMqtt = await GetRequiredBooleanSettingAsync(ControllerSettingDefaults.VictronExternalEssSwitchModeViaMqttKey, "Der External-ESS-MQTT-Umschalter ist nicht konfiguriert.", "Der External-ESS-MQTT-Umschalter muss true oder false sein.", cancellationToken),
+            ExternalEssPhaseCount = await GetExternalEssPhaseCountAsync(cancellationToken),
+            ExternalEssL1AcPowerSetpointTopic = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronExternalEssL1AcPowerSetpointTopicKey, "Das Victron-External-ESS-Write-Topic fuer L1 ist nicht konfiguriert.", cancellationToken),
+            ExternalEssL2AcPowerSetpointTopic = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronExternalEssL2AcPowerSetpointTopicKey, "Das Victron-External-ESS-Write-Topic fuer L2 ist nicht konfiguriert.", cancellationToken),
+            ExternalEssL3AcPowerSetpointTopic = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronExternalEssL3AcPowerSetpointTopicKey, "Das Victron-External-ESS-Write-Topic fuer L3 ist nicht konfiguriert.", cancellationToken),
             DisableChargeTopic = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronWriteTopicDisableChargeKey, "Das Victron-Write-Topic fuer DisableCharge ist nicht konfiguriert.", cancellationToken),
             DisableFeedInTopic = await GetRequiredStringSettingAsync(ControllerSettingDefaults.VictronWriteTopicDisableFeedInKey, "Das Victron-Write-Topic fuer DisableFeedIn ist nicht konfiguriert.", cancellationToken),
             BatteryIdleThresholdWatts = await GetRequiredIntegerSettingAsync(ControllerSettingDefaults.VictronBatteryIdleThresholdWattsKey, "Die Victron-Batterie-Stillstandsschwelle ist nicht konfiguriert.", "Die Victron-Batterie-Stillstandsschwelle muss als ganze Watt-Zahl konfiguriert sein.", cancellationToken)
@@ -71,5 +78,36 @@ public sealed class DatabaseVictronMqttSettingsProvider
         }
 
         return parsedValue;
+    }
+
+    private async Task<VictronControlMode> GetControlModeAsync(CancellationToken cancellationToken)
+    {
+        var value = await GetRequiredStringSettingAsync(
+            ControllerSettingDefaults.VictronControlModeKey,
+            "Der Victron-Steuermodus ist nicht konfiguriert.",
+            cancellationToken);
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "normaless" => VictronControlMode.NormalEss,
+            "externaless" => VictronControlMode.ExternalEss,
+            _ => throw new InvalidOperationException("Der Victron-Steuermodus muss normalEss oder externalEss sein.")
+        };
+    }
+
+    private async Task<int> GetExternalEssPhaseCountAsync(CancellationToken cancellationToken)
+    {
+        var phaseCount = await GetRequiredIntegerSettingAsync(
+            ControllerSettingDefaults.VictronExternalEssPhaseCountKey,
+            "Die External-ESS-Phasenanzahl ist nicht konfiguriert.",
+            "Die External-ESS-Phasenanzahl muss als ganze Zahl konfiguriert sein.",
+            cancellationToken);
+
+        if (phaseCount is < 1 or > 3)
+        {
+            throw new InvalidOperationException("Die External-ESS-Phasenanzahl muss zwischen 1 und 3 liegen.");
+        }
+
+        return phaseCount;
     }
 }

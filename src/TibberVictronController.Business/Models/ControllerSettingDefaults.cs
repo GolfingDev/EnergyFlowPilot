@@ -58,11 +58,18 @@ public static class ControllerSettingDefaults
     public const string VictronKeepAliveSecondsKey = "victron.keepAliveSeconds";
     public const string VictronStaleAfterSecondsKey = "victron.staleAfterSeconds";
     public const string VictronDryRunKey = "victron.dryRun";
+    public const string VictronControlModeKey = "victron.controlMode";
     public const string VictronTopicGridPowerKey = "victron.topics.gridPower";
     public const string VictronTopicBatterySocKey = "victron.topics.batterySoc";
     public const string VictronTopicBatteryPowerKey = "victron.topics.batteryPower";
     public const string VictronTopicHouseConsumptionKey = "victron.topics.houseConsumption";
     public const string VictronWriteTopicChargeDischargeSetpointKey = "victron.writeTopics.chargeDischargeSetpoint";
+    public const string VictronWriteTopicHub4ModeKey = "victron.writeTopics.hub4Mode";
+    public const string VictronExternalEssPhaseCountKey = "victron.externalEss.phaseCount";
+    public const string VictronExternalEssSwitchModeViaMqttKey = "victron.externalEss.switchModeViaMqtt";
+    public const string VictronExternalEssL1AcPowerSetpointTopicKey = "victron.externalEss.writeTopics.l1AcPowerSetpoint";
+    public const string VictronExternalEssL2AcPowerSetpointTopicKey = "victron.externalEss.writeTopics.l2AcPowerSetpoint";
+    public const string VictronExternalEssL3AcPowerSetpointTopicKey = "victron.externalEss.writeTopics.l3AcPowerSetpoint";
     public const string VictronWriteTopicDisableChargeKey = "victron.writeTopics.disableCharge";
     public const string VictronWriteTopicDisableFeedInKey = "victron.writeTopics.disableFeedIn";
     public const string VictronBatteryIdleThresholdWattsKey = "victron.batteryIdleThresholdWatts";
@@ -138,11 +145,18 @@ public static class ControllerSettingDefaults
         new(VictronKeepAliveSecondsKey, "15", ControllerSettingSensitivity.Normal),
         new(VictronStaleAfterSecondsKey, "30", ControllerSettingSensitivity.Normal),
         new(VictronDryRunKey, "true", ControllerSettingSensitivity.Normal),
+        new(VictronControlModeKey, "normalEss", ControllerSettingSensitivity.Normal),
         new(VictronTopicGridPowerKey, "N/{portalId}/grid/30/Ac/Power", ControllerSettingSensitivity.Normal),
         new(VictronTopicBatterySocKey, "N/{portalId}/battery/512/Soc", ControllerSettingSensitivity.Normal),
         new(VictronTopicBatteryPowerKey, "N/{portalId}/battery/512/Dc/0/Power", ControllerSettingSensitivity.Normal),
         new(VictronTopicHouseConsumptionKey, "N/{portalId}/system/0/Ac/Consumption/L1/Power", ControllerSettingSensitivity.Normal),
         new(VictronWriteTopicChargeDischargeSetpointKey, "W/{portalId}/settings/0/Settings/CGwacs/AcPowerSetPoint", ControllerSettingSensitivity.Normal),
+        new(VictronWriteTopicHub4ModeKey, "W/{portalId}/settings/0/Settings/CGwacs/Hub4Mode", ControllerSettingSensitivity.Normal),
+        new(VictronExternalEssPhaseCountKey, "1", ControllerSettingSensitivity.Normal),
+        new(VictronExternalEssSwitchModeViaMqttKey, "false", ControllerSettingSensitivity.Normal),
+        new(VictronExternalEssL1AcPowerSetpointTopicKey, "W/{portalId}/vebus/276/Hub4/L1/AcPowerSetpoint", ControllerSettingSensitivity.Normal),
+        new(VictronExternalEssL2AcPowerSetpointTopicKey, "W/{portalId}/vebus/276/Hub4/L2/AcPowerSetpoint", ControllerSettingSensitivity.Normal),
+        new(VictronExternalEssL3AcPowerSetpointTopicKey, "W/{portalId}/vebus/276/Hub4/L3/AcPowerSetpoint", ControllerSettingSensitivity.Normal),
         new(VictronWriteTopicDisableChargeKey, "W/{portalId}/vebus/276/Hub4/DisableCharge", ControllerSettingSensitivity.Normal),
         new(VictronWriteTopicDisableFeedInKey, "W/{portalId}/vebus/276/Hub4/DisableFeedIn", ControllerSettingSensitivity.Normal),
         new(VictronBatteryIdleThresholdWattsKey, "100", ControllerSettingSensitivity.Normal),

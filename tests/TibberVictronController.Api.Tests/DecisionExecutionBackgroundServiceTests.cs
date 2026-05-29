@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TibberVictronController.Api.Configuration;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
+using TibberVictronController.Dal.Victron;
 
 namespace TibberVictronController.Api.Tests;
 
@@ -104,6 +105,37 @@ public sealed class DecisionExecutionBackgroundServiceTests
 
         Assert.Equal(TimeSpan.FromSeconds(60), delay);
         Assert.Equal(1, decisionService.CallCount);
+    }
+
+    [Fact]
+    public async Task ExecuteSingleCycleAsyncCapsIntervalWhenExternalEssIsActive()
+    {
+        var decisionService = new RecordingCurrentBatteryDecisionService();
+        var settingsStore = new InMemoryControllerSettingStore();
+        await settingsStore.SaveSettingAsync(new ControllerSetting(
+            ControllerSettingDefaults.DecisionWorkerIntervalSecondsKey,
+            "90",
+            ControllerSettingSensitivity.Normal,
+            NowUtc));
+        await settingsStore.SaveSettingAsync(new ControllerSetting(
+            ControllerSettingDefaults.VictronControlModeKey,
+            "externalEss",
+            ControllerSettingSensitivity.Normal,
+            NowUtc));
+        var serviceProvider = CreateServiceProvider(
+            decisionService,
+            settingsStore,
+            new RecordingOperationalEventRepository(),
+            new RecordingWorkerFailureNotifier(),
+            new RecordingVictronSetpointPublisher());
+        var backgroundService = new DecisionExecutionBackgroundService(
+            serviceProvider,
+            NullLogger<DecisionExecutionBackgroundService>.Instance,
+            new DecisionWorkerRuntimeStatus());
+
+        var delay = await backgroundService.ExecuteSingleCycleAsync(CancellationToken.None);
+
+        Assert.Equal(TimeSpan.FromSeconds(45), delay);
     }
 
     [Fact]
@@ -209,6 +241,36 @@ public sealed class DecisionExecutionBackgroundServiceTests
 
         Assert.True(control.DisableCharge);
         Assert.False(control.DisableFeedIn);
+    }
+
+    [Theory]
+    [InlineData(1500, 3, new[] { 500, 500, 500 })]
+    [InlineData(1501, 3, new[] { 501, 500, 500 })]
+    [InlineData(-1501, 3, new[] { -501, -500, -500 })]
+    public void SplitSetpointAcrossPhasesPreservesTotalSetpoint(int totalSetpointWatts, int phaseCount, int[] expectedSetpoints)
+    {
+        var setpoints = MqttVictronSetpointPublisher.SplitSetpointAcrossPhases(totalSetpointWatts, phaseCount);
+
+        Assert.Equal(expectedSetpoints, setpoints);
+        Assert.Equal(totalSetpointWatts, setpoints.Sum());
+    }
+
+    [Theory]
+    [InlineData(VictronControlMode.NormalEss, 1)]
+    [InlineData(VictronControlMode.ExternalEss, 3)]
+    public void CalculateHub4ModeValueMapsControlModeToVictronMode(VictronControlMode controlMode, int expectedValue)
+    {
+        Assert.Equal(expectedValue, MqttVictronSetpointPublisher.CalculateHub4ModeValue(controlMode));
+    }
+
+    [Fact]
+    public void CreateExternalEssPhaseControlTopicUsesPhaseScopedHub4ControlPath()
+    {
+        var topic = MqttVictronSetpointPublisher.CreateExternalEssPhaseControlTopic(
+            "W/c0619ab93165/vebus/276/Hub4/L1/AcPowerSetpoint",
+            "DisableCharge");
+
+        Assert.Equal("W/c0619ab93165/vebus/276/Hub4/L1/DisableCharge", topic);
     }
 
     private static ServiceProvider CreateServiceProvider(

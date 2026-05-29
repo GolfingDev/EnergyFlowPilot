@@ -49,6 +49,12 @@ const savingsPeriodOptions: readonly SavingsPeriodOption[] = [
 
 const forecastLoadError = computed(() => loadErrors.value.find((error) => error.source === 'Forecast') ?? null);
 const savingsCurrency = computed(() => savings.value?.currency || decision.value?.tibberPriceCurrency || 'EUR');
+const showLoadingOverlay = computed(() =>
+  isLoading.value &&
+  status.value === null &&
+  decision.value === null &&
+  forecast.value === null &&
+  savings.value === null);
 const autoRefreshLabel = computed(() => refreshInSeconds.value > 0
   ? `Auto-Refresh: ${refreshInSeconds.value} s`
   : 'Auto-Refresh: aus');
@@ -73,41 +79,66 @@ async function loadDashboard(): Promise<void> {
   isLoading.value = true;
   loadErrors.value = [];
 
-  const results = await Promise.allSettled([
-    fetchJson<ControllerSettingsResponseDto>('/api/settings'),
-    fetchJson<ControllerStatusResponseDto>('/api/status'),
-    fetchJson<CurrentBatteryDecisionResponseDto>('/api/decision/current'),
-    fetchJson<DecisionLogEntryResponseDto[]>('/api/decision/logs?maxCount=20'),
-    fetchJson<BatteryForecastResponseDto>(createForecastUrl()),
-    fetchJson<BatterySavingsResponseDto>(createSavingsUrl())
-  ]);
+  try {
+    const settingsRequest = fetchJson<ControllerSettingsResponseDto>('/api/settings');
+    const statusRequest = fetchJson<ControllerStatusResponseDto>('/api/status');
+    const decisionLogRequest = fetchJson<DecisionLogEntryResponseDto[]>('/api/decision/logs?maxCount=20');
+    const forecastRequest = fetchJson<BatteryForecastResponseDto>(createForecastUrl());
+    const savingsRequest = fetchJson<BatterySavingsResponseDto>(createSavingsUrl());
 
-  applyResult(results[0], 'Einstellungen', applyDashboardSettings);
-  applyResult(results[1], 'Status', (value) => {
-    status.value = value;
-  });
-  applyResult(results[2], 'Aktuelle Entscheidung', (value) => {
-    decision.value = value;
-  }, () => {
-    decision.value = null;
-  });
-  applyResult(results[3], 'Entscheidungslog', (value) => {
-    decisionLogEntries.value = value;
-  }, () => {
-    decisionLogEntries.value = [];
-  });
-  applyResult(results[4], 'Forecast', (value) => {
-    forecast.value = value;
-  }, () => {
-    forecast.value = null;
-  });
-  applyResult(results[5], 'Ersparnis', (value) => {
-    savings.value = value;
-  }, () => {
-    savings.value = null;
-  });
+    const fastResults = await Promise.allSettled([
+      settingsRequest,
+      statusRequest,
+      decisionLogRequest
+    ]);
 
-  isLoading.value = false;
+    applyResult(fastResults[0], 'Einstellungen', applyDashboardSettings);
+    applyResult(fastResults[1], 'Status', (value) => {
+      status.value = value;
+    });
+    applyResult(fastResults[2], 'Entscheidungslog', (value) => {
+      decisionLogEntries.value = value;
+      decision.value = value.length > 0 ? mapLogEntryToCurrentDecision(value[0]) : null;
+    }, () => {
+      decisionLogEntries.value = [];
+      decision.value = null;
+    });
+
+    const slowResults = await Promise.allSettled([
+      forecastRequest,
+      savingsRequest
+    ]);
+
+    applyResult(slowResults[0], 'Forecast', (value) => {
+      forecast.value = value;
+    }, () => {
+      forecast.value = null;
+    });
+    applyResult(slowResults[1], 'Ersparnis', (value) => {
+      savings.value = value;
+    }, () => {
+      savings.value = null;
+    });
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+function mapLogEntryToCurrentDecision(entry: DecisionLogEntryResponseDto): CurrentBatteryDecisionResponseDto {
+  return {
+    decisionState: entry.decisionState,
+    chargeSource: entry.chargeSource,
+    targetPowerWatts: entry.targetPowerWatts,
+    decidedAtUtc: entry.decidedAtUtc,
+    validFromUtc: entry.validFromUtc,
+    validToUtc: entry.validToUtc,
+    stateOfChargePercent: entry.stateOfChargePercent ?? 0,
+    currentGridImportWatts: (entry.gridImportWatts ?? 0) - (entry.gridExportWatts ?? 0),
+    currentPvProductionWatts: 0,
+    tibberPricePerKwh: entry.tibberPricePerKwh,
+    tibberPriceCurrency: entry.tibberPriceCurrency,
+    reasons: entry.reasons
+  };
 }
 
 function applyResult<TValue>(
@@ -265,7 +296,7 @@ onBeforeUnmount(() => {
 <template>
   <v-container class="dashboard-page" fluid>
 
-    <EnergyLoadingOverlay v-model="isLoading" title="Loading forecast"
+    <EnergyLoadingOverlay :model-value="showLoadingOverlay" title="Loading forecast"
       subtitle="Calculating price, PV and battery plan…" :size="200" />
 
 

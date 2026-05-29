@@ -105,6 +105,20 @@ public sealed class ControllerSettingDefaultsTests
     }
 
     [Fact]
+    public void CreateDefaultSettingsContainsVictronControlModeDefaults()
+    {
+        var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);
+
+        Assert.Equal("normalEss", GetSettingValue(settings, ControllerSettingDefaults.VictronControlModeKey));
+        Assert.Equal("false", GetSettingValue(settings, ControllerSettingDefaults.VictronExternalEssSwitchModeViaMqttKey));
+        Assert.Equal("W/{portalId}/settings/0/Settings/CGwacs/Hub4Mode", GetSettingValue(settings, ControllerSettingDefaults.VictronWriteTopicHub4ModeKey));
+        Assert.Equal("1", GetSettingValue(settings, ControllerSettingDefaults.VictronExternalEssPhaseCountKey));
+        Assert.Equal("W/{portalId}/vebus/276/Hub4/L1/AcPowerSetpoint", GetSettingValue(settings, ControllerSettingDefaults.VictronExternalEssL1AcPowerSetpointTopicKey));
+        Assert.Equal("W/{portalId}/vebus/276/Hub4/L2/AcPowerSetpoint", GetSettingValue(settings, ControllerSettingDefaults.VictronExternalEssL2AcPowerSetpointTopicKey));
+        Assert.Equal("W/{portalId}/vebus/276/Hub4/L3/AcPowerSetpoint", GetSettingValue(settings, ControllerSettingDefaults.VictronExternalEssL3AcPowerSetpointTopicKey));
+    }
+
+    [Fact]
     public void CreateDefaultSettingsContainsHagerEnergyApiDefaults()
     {
         var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);

@@ -17,6 +17,8 @@ public sealed class VictronMqttSettings
 
     public bool DryRun { get; init; }
 
+    public VictronControlMode ControlMode { get; init; }
+
     public required string GridPowerTopicTemplate { get; init; }
 
     public required string BatterySocTopicTemplate { get; init; }
@@ -26,6 +28,18 @@ public sealed class VictronMqttSettings
     public required string HouseConsumptionTopicTemplate { get; init; }
 
     public required string ChargeDischargeSetpointTopic { get; init; }
+
+    public required string Hub4ModeTopic { get; init; }
+
+    public bool SwitchEssModeViaMqtt { get; init; }
+
+    public int ExternalEssPhaseCount { get; init; }
+
+    public required string ExternalEssL1AcPowerSetpointTopic { get; init; }
+
+    public required string ExternalEssL2AcPowerSetpointTopic { get; init; }
+
+    public required string ExternalEssL3AcPowerSetpointTopic { get; init; }
 
     public required string DisableChargeTopic { get; init; }
 

@@ -142,12 +142,19 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'victron.portalId', section: 'sources', subgroup: 'Victron MQTT', category: 'important' },
   { key: 'victron.keepAliveSeconds', section: 'advanced', subgroup: 'Victron Laufzeit', category: 'important' },
   { key: 'victron.staleAfterSeconds', section: 'advanced', subgroup: 'Victron Laufzeit', category: 'critical' },
+  { key: 'victron.controlMode', section: 'control', subgroup: 'Victron Steuermodus', category: 'critical', helpText: 'External ESS nur nutzen, wenn im Cerbo ESS auf Externe Steuerung gestellt ist.' },
+  { key: 'victron.externalEss.switchModeViaMqtt', section: 'control', subgroup: 'Victron Steuermodus', category: 'critical', helpText: 'Setzt den Cerbo-ESS-Modus per MQTT passend zum ausgewaehlten Steuermodus.' },
   { key: 'victron.batteryIdleThresholdWatts', section: 'control', subgroup: 'Hub4-Steuerung', category: 'critical', helpText: 'Unterhalb dieser Zielleistung werden Laden und Entladen per Hub4-Flags gesperrt.' },
   { key: 'victron.topics.gridPower', section: 'advanced', subgroup: 'MQTT-Lesethemen', category: 'normal' },
   { key: 'victron.topics.batterySoc', section: 'advanced', subgroup: 'MQTT-Lesethemen', category: 'normal' },
   { key: 'victron.topics.batteryPower', section: 'advanced', subgroup: 'MQTT-Lesethemen', category: 'normal' },
   { key: 'victron.topics.houseConsumption', section: 'advanced', subgroup: 'MQTT-Lesethemen', category: 'normal' },
   { key: 'victron.writeTopics.chargeDischargeSetpoint', section: 'advanced', subgroup: 'MQTT-Schreibthemen', category: 'critical' },
+  { key: 'victron.writeTopics.hub4Mode', section: 'advanced', subgroup: 'MQTT-Schreibthemen', category: 'critical' },
+  { key: 'victron.externalEss.phaseCount', section: 'advanced', subgroup: 'External ESS', category: 'critical' },
+  { key: 'victron.externalEss.writeTopics.l1AcPowerSetpoint', section: 'advanced', subgroup: 'External ESS', category: 'critical' },
+  { key: 'victron.externalEss.writeTopics.l2AcPowerSetpoint', section: 'advanced', subgroup: 'External ESS', category: 'important' },
+  { key: 'victron.externalEss.writeTopics.l3AcPowerSetpoint', section: 'advanced', subgroup: 'External ESS', category: 'important' },
   { key: 'victron.writeTopics.disableCharge', section: 'advanced', subgroup: 'MQTT-Schreibthemen', category: 'critical' },
   { key: 'victron.writeTopics.disableFeedIn', section: 'advanced', subgroup: 'MQTT-Schreibthemen', category: 'critical' }
 ];
@@ -160,6 +167,10 @@ const timezoneOptions = [
 const telemetrySourceOptions: SelectOption[] = [
   { title: 'MQTT', value: 'victronMqtt' },
   { title: 'Hager API', value: 'hagerEnergyApi' }
+];
+const victronControlModeOptions: SelectOption[] = [
+  { title: 'Normales ESS', value: 'normalEss' },
+  { title: 'External ESS', value: 'externalEss' }
 ];
 const fallbackMetadata: SettingMetadataDto[] = [
   {
@@ -226,7 +237,9 @@ const validationErrors = computed(() => Array.from(new Set([
   ...getFieldErrors('battery.targetEndStateOfChargePercent'),
   ...getFieldErrors('battery.roundTripEfficiencyPercent'),
   ...getFieldErrors('battery.maximumChargePowerWatts'),
-  ...getFieldErrors('battery.maximumDischargePowerWatts')
+  ...getFieldErrors('battery.maximumDischargePowerWatts'),
+  ...getFieldErrors('victron.controlMode'),
+  ...getFieldErrors('victron.externalEss.phaseCount')
 ])));
 
 const warningMessages = computed(() => {
@@ -234,6 +247,8 @@ const warningMessages = computed(() => {
   const planningMaximum = getNumericDraftValue('battery.planningMaximumStateOfChargePercent');
   const keepAliveSeconds = getNumericDraftValue('victron.keepAliveSeconds');
   const staleAfterSeconds = getNumericDraftValue('victron.staleAfterSeconds');
+  const decisionWorkerIntervalSeconds = getNumericDraftValue('decisionWorker.intervalSeconds');
+  const victronControlMode = getDraftValue('victron.controlMode') || 'normalEss';
 
   if (planningMaximum !== null && planningMaximum > 98) {
     warnings.push('Das Planungsmaximum liegt über 98 %. Dadurch bleibt kaum Puffer für unerwarteten PV-Überschuss.');
@@ -245,6 +260,14 @@ const warningMessages = computed(() => {
 
   if (staleAfterSeconds !== null && staleAfterSeconds < 10) {
     warnings.push('Ein sehr kurzes Stale-Timeout kann zu häufigen Sicherheits-Fallbacks führen.');
+  }
+
+  if (victronControlMode === 'externalEss' && decisionWorkerIntervalSeconds !== null && decisionWorkerIntervalSeconds > 45) {
+    warnings.push('External ESS erwartet regelmaessige Setpoints. Der Worker wird zur Laufzeit auf maximal 45 Sekunden begrenzt.');
+  }
+
+  if (victronControlMode === 'externalEss' && getDraftValue('victron.externalEss.switchModeViaMqtt') !== 'true') {
+    warnings.push('External ESS ist gewaehlt, aber der Cerbo-ESS-Modus wird nicht per MQTT gesetzt. Stelle ihn manuell im Cerbo um oder aktiviere den MQTT-Umschalter.');
   }
 
   return warnings;
@@ -292,6 +315,8 @@ const summaryItems = computed(() => {
     { label: 'Nutzbare Planungskapazität', value: usableCapacity !== null ? `${formatDecimal(usableCapacity, 2)} kWh` : 'Nicht verfügbar' },
     { label: 'Ziel-SoC am Ende', value: targetEnd !== null ? formatPercentValue(targetEnd) : 'Nicht verfügbar' },
     { label: 'Simulationsmodus', value: getDraftValue('victron.dryRun') === 'true' ? 'Aktiv' : 'Inaktiv' },
+    { label: 'Victron Steuerung', value: formatVictronControlMode(getDraftValue('victron.controlMode') || 'normalEss') },
+    { label: 'ESS-Modus MQTT', value: getDraftValue('victron.externalEss.switchModeViaMqtt') === 'true' ? 'Aktiv' : 'Inaktiv' },
     { label: 'Netzquelle', value: formatTelemetrySource(getDraftValue('telemetry.sources.gridImportWatts') || 'victronMqtt') },
     { label: 'PV-Quelle', value: formatTelemetrySource(getDraftValue('telemetry.sources.pvProductionWatts') || 'victronMqtt') },
     { label: 'Tibber Token', value: isSettingConfigured('tibber.accessToken') ? 'Konfiguriert' : 'Fehlt' },
@@ -489,6 +514,17 @@ function getFieldErrors(key: string): string[] {
       break;
   }
 
+  if (key === 'victron.controlMode') {
+    const controlMode = getDraftValue(key);
+    if (controlMode !== 'normalEss' && controlMode !== 'externalEss') {
+      errors.push('Der Victron-Steuermodus muss Normales ESS oder External ESS sein.');
+    }
+  }
+
+  if (key === 'victron.externalEss.phaseCount' && numericValue !== null && (numericValue < 1 || numericValue > 3 || !Number.isInteger(numericValue))) {
+    errors.push('External ESS Phasen muss 1, 2 oder 3 sein.');
+  }
+
   return errors;
 }
 
@@ -505,6 +541,10 @@ function shouldRenderNumber(field: FieldDefinition): boolean {
 
 function shouldRenderTelemetrySourceSelect(field: FieldDefinition): boolean {
   return field.key.startsWith('telemetry.sources.');
+}
+
+function shouldRenderVictronControlModeSelect(field: FieldDefinition): boolean {
+  return field.key === 'victron.controlMode';
 }
 
 function shouldRenderSensitive(field: FieldDefinition): boolean {
@@ -527,8 +567,12 @@ function getGroupDescription(groupTitle: string): string {
       return 'Nur der Hauptschalter. SMTP-Details liegen unter Erweitert.';
     case 'Hub4-Steuerung':
       return 'Schwellenwerte für echten Victron-Stillstand ohne unbeabsichtigtes Laden oder Entladen.';
+    case 'Victron Steuermodus':
+      return 'Waehlt, ob Victron selbst ESS regelt oder der Controller im Cerbo-Modus Externe Steuerung die Hub4-Setpoints fuehrt.';
     case 'Live-Datenquellen':
       return 'Legt fest, aus welchem System die Steuerung Netz, PV und SoC liest.';
+    case 'External ESS':
+      return 'Setpoints fuer den Cerbo-ESS-Modus Externe Steuerung. Bei dreiphasigen Anlagen Phasenanzahl auf 3 setzen.';
     case 'MQTT-Lesethemen':
     case 'MQTT-Schreibthemen':
       return 'Technische Topic-Zuordnung. Normalerweise nur ändern, wenn sich das Victron-MQTT-Schema ändert.';
@@ -543,9 +587,14 @@ function formatTelemetrySource(value: string): string {
   return telemetrySourceOptions.find((option) => option.value === value)?.title ?? value;
 }
 
+function formatVictronControlMode(value: string): string {
+  return victronControlModeOptions.find((option) => option.value === value)?.title ?? value;
+}
+
 function isEmphasizedGroup(groupTitle: string): boolean {
   return groupTitle === 'Betrieb' ||
     groupTitle === 'Betriebsmodus' ||
+    groupTitle === 'Victron Steuermodus' ||
     groupTitle === 'Hub4-Steuerung' ||
     groupTitle === 'Live-Datenquellen' ||
     groupTitle === 'Benachrichtigungen';
@@ -828,6 +877,19 @@ watch(() => route.query.section, () => {
                     :id="field.key"
                     v-model="draftValues[field.key]"
                     :items="telemetrySourceOptions"
+                    item-title="title"
+                    item-value="value"
+                    :error-messages="getFieldErrors(field.key)"
+                    density="comfortable"
+                    hide-details="auto"
+                    variant="outlined"
+                  />
+
+                  <v-select
+                    v-else-if="shouldRenderVictronControlModeSelect(field)"
+                    :id="field.key"
+                    v-model="draftValues[field.key]"
+                    :items="victronControlModeOptions"
                     item-title="title"
                     item-value="value"
                     :error-messages="getFieldErrors(field.key)"

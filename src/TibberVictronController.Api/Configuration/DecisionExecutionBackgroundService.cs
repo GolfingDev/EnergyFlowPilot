@@ -12,6 +12,7 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
 {
     private const int DefaultIntervalSeconds = 60;
     private const int MinimumIntervalSeconds = 5;
+    private const int ExternalEssMaximumIntervalSeconds = 45;
 
     private readonly IServiceProvider serviceProvider;
     private readonly ILogger<DecisionExecutionBackgroundService> logger;
@@ -117,7 +118,27 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
             return TimeSpan.FromSeconds(DefaultIntervalSeconds);
         }
 
-        return TimeSpan.FromSeconds(Math.Max(MinimumIntervalSeconds, intervalSeconds));
+        var boundedIntervalSeconds = Math.Max(MinimumIntervalSeconds, intervalSeconds);
+
+        if (await UsesExternalEssControlModeAsync(controllerSettingStore, cancellationToken))
+        {
+            boundedIntervalSeconds = Math.Min(boundedIntervalSeconds, ExternalEssMaximumIntervalSeconds);
+        }
+
+        return TimeSpan.FromSeconds(boundedIntervalSeconds);
+    }
+
+    private static async Task<bool> UsesExternalEssControlModeAsync(
+        IControllerSettingStore controllerSettingStore,
+        CancellationToken cancellationToken)
+    {
+        var setting = await controllerSettingStore.GetSettingAsync(
+            ControllerSettingDefaults.VictronControlModeKey,
+            cancellationToken);
+
+        return setting is not null &&
+            setting.IsConfigured &&
+            string.Equals(setting.Value, "externalEss", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<bool> GetShadowModeAsync(
