@@ -199,6 +199,24 @@ public sealed class DecisionExecutionBackgroundServiceTests
     }
 
     [Fact]
+    public void CalculateExternalEssSetpointWattsUsesDirectSignedBatteryTarget()
+    {
+        var chargeDecision = CreateDecisionResult(
+            new CurrentBatteryDecision(
+                new BatteryDecisionInstruction(BatteryDecisionState.Charge, BatteryChargeSource.Grid),
+                targetPowerWatts: 2500),
+            new CurrentSiteTelemetry(-4000, 0, NowUtc, currentBatteryPowerWatts: 0));
+        var dischargeDecision = CreateDecisionResult(
+            new CurrentBatteryDecision(
+                new BatteryDecisionInstruction(BatteryDecisionState.Discharge, chargeSource: null),
+                targetPowerWatts: 1200),
+            new CurrentSiteTelemetry(1800, 0, NowUtc, currentBatteryPowerWatts: 0));
+
+        Assert.Equal(2500, MqttVictronSetpointPublisher.CalculateExternalEssSetpointWatts(chargeDecision));
+        Assert.Equal(-1200, MqttVictronSetpointPublisher.CalculateExternalEssSetpointWatts(dischargeDecision));
+    }
+
+    [Fact]
     public void CalculateHub4ControlDisablesChargeAndFeedInInsideIdleThreshold()
     {
         var decisionResult = CreateDecisionResult(

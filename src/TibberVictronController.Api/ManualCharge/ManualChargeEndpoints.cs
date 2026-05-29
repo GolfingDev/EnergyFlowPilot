@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
+using TibberVictronController.Api.Configuration;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
 
@@ -36,6 +37,10 @@ public static class ManualChargeEndpoints
         [FromServices]
         IControllerSettingStore controllerSettingStore,
         [FromServices]
+        ICurrentBatteryDecisionService currentBatteryDecisionService,
+        [FromServices]
+        IVictronSetpointPublisher victronSetpointPublisher,
+        [FromServices]
         IUtcClock utcClock,
         CancellationToken cancellationToken)
     {
@@ -49,6 +54,10 @@ public static class ManualChargeEndpoints
         ManualChargeRequestDto request,
         [FromServices]
         IControllerSettingStore controllerSettingStore,
+        [FromServices]
+        ICurrentBatteryDecisionService currentBatteryDecisionService,
+        [FromServices]
+        IVictronSetpointPublisher victronSetpointPublisher,
         [FromServices]
         IUtcClock utcClock,
         CancellationToken cancellationToken)
@@ -67,6 +76,11 @@ public static class ManualChargeEndpoints
         var expiresAtUtc = utcClock.UtcNow.AddMinutes(request.DurationMinutes);
 
         await SaveManualChargeAsync(controllerSettingStore, powerWatts, expiresAtUtc, utcClock.UtcNow, cancellationToken);
+        await TriggerImmediateDecisionAsync(
+            controllerSettingStore,
+            currentBatteryDecisionService,
+            victronSetpointPublisher,
+            cancellationToken);
 
         return TypedResults.Ok(CreateStatus(powerWatts, expiresAtUtc, utcClock.UtcNow));
     }
@@ -75,12 +89,50 @@ public static class ManualChargeEndpoints
         [FromServices]
         IControllerSettingStore controllerSettingStore,
         [FromServices]
+        ICurrentBatteryDecisionService currentBatteryDecisionService,
+        [FromServices]
+        IVictronSetpointPublisher victronSetpointPublisher,
+        [FromServices]
         IUtcClock utcClock,
         CancellationToken cancellationToken)
     {
         await SaveManualChargeAsync(controllerSettingStore, 0, DisabledUntilUtc, utcClock.UtcNow, cancellationToken);
+        await TriggerImmediateDecisionAsync(
+            controllerSettingStore,
+            currentBatteryDecisionService,
+            victronSetpointPublisher,
+            cancellationToken);
 
         return TypedResults.Ok(CreateStatus(0, null, utcClock.UtcNow));
+    }
+
+    private static async Task TriggerImmediateDecisionAsync(
+        IControllerSettingStore controllerSettingStore,
+        ICurrentBatteryDecisionService currentBatteryDecisionService,
+        IVictronSetpointPublisher victronSetpointPublisher,
+        CancellationToken cancellationToken)
+    {
+        var decisionResult = await currentBatteryDecisionService.CalculateCurrentDecisionAsync(cancellationToken);
+        if (await IsDryRunAsync(controllerSettingStore, cancellationToken))
+        {
+            return;
+        }
+
+        await victronSetpointPublisher.PublishAsync(decisionResult, cancellationToken);
+    }
+
+    private static async Task<bool> IsDryRunAsync(
+        IControllerSettingStore controllerSettingStore,
+        CancellationToken cancellationToken)
+    {
+        var setting = await controllerSettingStore.GetSettingAsync(
+            ControllerSettingDefaults.VictronDryRunKey,
+            cancellationToken);
+
+        return setting is null ||
+            !setting.IsConfigured ||
+            !bool.TryParse(setting.Value, out var isDryRun) ||
+            isDryRun;
     }
 
     private static async Task<ManualChargeStatusDto> ReadStatusAsync(

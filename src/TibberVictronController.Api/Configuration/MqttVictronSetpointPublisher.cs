@@ -125,15 +125,23 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
             return;
         }
 
-        var externalSetpointWatts = decisionResult.Decision.Instruction.DecisionState == BatteryDecisionState.Idle
-            ? 0
-            : gridSetpointWatts;
+        var externalSetpointWatts = CalculateExternalEssSetpointWatts(decisionResult);
         var phaseSetpoints = SplitSetpointAcrossPhases(externalSetpointWatts, topics.ExternalEssAcPowerSetpointTopics.Count);
 
         for (var index = 0; index < phaseSetpoints.Count; index++)
         {
             await PublishValueAsync(mqttClient, topics.ExternalEssAcPowerSetpointTopics[index], phaseSetpoints[index], cancellationToken);
         }
+    }
+
+    public static int CalculateExternalEssSetpointWatts(CurrentBatteryDecisionResult decisionResult)
+    {
+        return decisionResult.Decision.Instruction.DecisionState switch
+        {
+            BatteryDecisionState.Charge => decisionResult.Decision.TargetPowerWatts,
+            BatteryDecisionState.Discharge => -decisionResult.Decision.TargetPowerWatts,
+            _ => 0
+        };
     }
 
     private static async Task PublishHub4ControlAsync(
