@@ -8,6 +8,7 @@ import EnergySavingsPanel from '../components/dashboard/EnergySavingsPanel.vue';
 import EnergyLoadingOverlay from '../components/EnergyLoadingOverlay.vue'
 import ForecastChartPanel from '../components/dashboard/ForecastChartPanel.vue';
 import LiveEnergyFlowPanel from '../components/dashboard/LiveEnergyFlowPanel.vue';
+import { formatNumber } from '../components/dashboard/dashboardFormatters';
 import type {
   ApiErrorDto,
   BatteryForecastResponseDto,
@@ -17,6 +18,7 @@ import type {
   CurrentBatteryDecisionResponseDto,
   DecisionLogEntryResponseDto,
   DashboardLoadError,
+  ManualChargeStatusResponseDto,
   SavingsPeriod,
   SavingsPeriodOption
 } from '../components/dashboard/dashboardTypes';
@@ -29,8 +31,12 @@ const decision = ref<CurrentBatteryDecisionResponseDto | null>(null);
 const decisionLogEntries = ref<DecisionLogEntryResponseDto[]>([]);
 const forecast = ref<BatteryForecastResponseDto | null>(null);
 const savings = ref<BatterySavingsResponseDto | null>(null);
+const manualCharge = ref<ManualChargeStatusResponseDto | null>(null);
 const loadErrors = ref<DashboardLoadError[]>([]);
 const isLoading = ref(false);
+const isManualChargeBusy = ref(false);
+const manualChargeDurationMinutes = ref(30);
+const manualChargePowerKw = ref(2.5);
 const autoRefreshIntervalSeconds = ref(60);
 const savingsPeriod = ref<SavingsPeriod>('day');
 const storedDashboardViewMode = localStorage.getItem('energyFlowPilotDashboardViewMode');
@@ -62,6 +68,15 @@ const showLoadingOverlay = computed(() =>
 const autoRefreshLabel = computed(() => refreshInSeconds.value > 0
   ? `Auto-Refresh: ${refreshInSeconds.value} s`
   : 'Auto-Refresh: aus');
+const manualChargeRemainingLabel = computed(() => {
+  if (!manualCharge.value?.isActive) {
+    return 'Nicht aktiv';
+  }
+
+  const remainingMinutes = Math.ceil(manualCharge.value.remainingSeconds / 60);
+
+  return `${formatNumber(manualCharge.value.powerKw, 1)} kW fuer noch ${remainingMinutes} min`;
+});
 const currentConsumptionWatts = computed(() => {
   if (!decision.value) {
     return null;
@@ -87,7 +102,8 @@ async function loadDashboard(): Promise<void> {
     const fastResults = await Promise.allSettled([
       fetchJson<ControllerSettingsResponseDto>('/api/settings'),
       fetchJson<ControllerStatusResponseDto>('/api/status'),
-      fetchJson<DecisionLogEntryResponseDto[]>('/api/decision/logs?maxCount=20')
+      fetchJson<DecisionLogEntryResponseDto[]>('/api/decision/logs?maxCount=20'),
+      fetchJson<ManualChargeStatusResponseDto>('/api/manual-charge')
     ]);
 
     applyResult(fastResults[0], 'Einstellungen', applyDashboardSettings);
@@ -100,6 +116,11 @@ async function loadDashboard(): Promise<void> {
     }, () => {
       decisionLogEntries.value = [];
       decision.value = null;
+    });
+    applyResult(fastResults[3], 'Manuelle Ladung', (value) => {
+      manualCharge.value = value;
+    }, () => {
+      manualCharge.value = null;
     });
   } finally {
     isLoading.value = false;
@@ -229,6 +250,34 @@ function createForecastUrl(): string {
   return `/api/forecast?${parameters.toString()}`;
 }
 
+async function postJson<TResponse>(url: string, body: unknown): Promise<TResponse> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null) as ApiErrorDto | null;
+    throw new Error(createApiErrorMessage(url, response.status, error));
+  }
+
+  return await response.json() as TResponse;
+}
+
+async function deleteJson<TResponse>(url: string): Promise<TResponse> {
+  const response = await fetch(url, { method: 'DELETE' });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null) as ApiErrorDto | null;
+    throw new Error(createApiErrorMessage(url, response.status, error));
+  }
+
+  return await response.json() as TResponse;
+}
+
 async function loadSlowDashboardData(force = false): Promise<void> {
   await Promise.allSettled([
     loadForecast(force),
@@ -317,6 +366,47 @@ async function changeSavingsPeriod(period: SavingsPeriod): Promise<void> {
   await loadSavings(true);
 }
 
+async function startManualCharge(): Promise<void> {
+  if (isManualChargeBusy.value) {
+    return;
+  }
+
+  isManualChargeBusy.value = true;
+  try {
+    manualCharge.value = await postJson<ManualChargeStatusResponseDto>('/api/manual-charge', {
+      durationMinutes: Math.max(1, Math.round(Number(manualChargeDurationMinutes.value))),
+      powerKw: Number(manualChargePowerKw.value)
+    });
+    await loadDashboard();
+  } catch (error) {
+    loadErrors.value.push({
+      source: 'Manuelle Ladung',
+      ...createLoadError(error)
+    });
+  } finally {
+    isManualChargeBusy.value = false;
+  }
+}
+
+async function stopManualCharge(): Promise<void> {
+  if (isManualChargeBusy.value) {
+    return;
+  }
+
+  isManualChargeBusy.value = true;
+  try {
+    manualCharge.value = await deleteJson<ManualChargeStatusResponseDto>('/api/manual-charge');
+    await loadDashboard();
+  } catch (error) {
+    loadErrors.value.push({
+      source: 'Manuelle Ladung',
+      ...createLoadError(error)
+    });
+  } finally {
+    isManualChargeBusy.value = false;
+  }
+}
+
 onMounted(() => {
   void loadDashboard();
 });
@@ -359,6 +449,53 @@ onBeforeUnmount(() => {
         Kennzahlen
       </button>
     </div>
+
+    <section class="manual-charge-panel">
+      <div>
+        <span class="manual-charge-panel__eyebrow">Manuelle Ladung</span>
+        <strong>{{ manualChargeRemainingLabel }}</strong>
+      </div>
+
+      <div class="manual-charge-panel__controls">
+        <v-text-field
+          v-model.number="manualChargeDurationMinutes"
+          type="number"
+          min="1"
+          max="1440"
+          step="1"
+          label="Minuten"
+          density="compact"
+          hide-details
+          variant="outlined"
+        />
+        <v-text-field
+          v-model.number="manualChargePowerKw"
+          type="number"
+          min="0.1"
+          max="50"
+          step="0.1"
+          label="kW"
+          density="compact"
+          hide-details
+          variant="outlined"
+        />
+        <v-btn
+          color="primary"
+          :loading="isManualChargeBusy"
+          @click="startManualCharge"
+        >
+          Start
+        </v-btn>
+        <v-btn
+          variant="outlined"
+          :disabled="!manualCharge?.isActive"
+          :loading="isManualChargeBusy"
+          @click="stopManualCharge"
+        >
+          Stop
+        </v-btn>
+      </div>
+    </section>
 
     <LiveEnergyFlowPanel
       v-if="dashboardViewMode === 'visual'"

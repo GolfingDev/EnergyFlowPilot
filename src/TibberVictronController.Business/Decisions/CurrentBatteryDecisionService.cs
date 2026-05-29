@@ -61,6 +61,28 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
         var batteryState = batteryStateResult.BatteryState;
         var siteTelemetry = siteTelemetryResult.SiteTelemetry;
+        var manualChargeOverride = await TryGetManualChargeOverrideAsync(decidedAtUtc, batteryConfiguration, cancellationToken);
+        if (manualChargeOverride is not null)
+        {
+            return await SaveDecisionAsync(
+                decidedAtUtc,
+                manualChargeOverride.ExpiresAtUtc,
+                new CurrentBatteryDecision(
+                    new BatteryDecisionInstruction(BatteryDecisionState.Charge, BatteryChargeSource.Grid),
+                    manualChargeOverride.TargetPowerWatts),
+                batteryState,
+                siteTelemetry,
+                tibberPricePerKwh: null,
+                tibberPriceCurrency: null,
+                new[]
+                {
+                    new BatteryDecisionReason(
+                        CurrentBatteryDecisionRuleIds.ManualGridCharge,
+                        manualChargeOverride.Message)
+                },
+                cancellationToken);
+        }
+
         var feedInCompensationPricePerKwh = await GetFeedInCompensationPricePerKwhAsync(cancellationToken);
         var gridPowerDeadbandWatts = await GetGridPowerDeadbandWattsAsync(cancellationToken);
         IReadOnlyList<TibberPriceForecastSlot> priceForecast;
@@ -291,6 +313,46 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         }
 
         return Math.Max(0, latestDecision.Decision.TargetPowerWatts);
+    }
+
+    private async Task<ManualChargeOverride?> TryGetManualChargeOverrideAsync(
+        DateTimeOffset decidedAtUtc,
+        BatteryConfiguration batteryConfiguration,
+        CancellationToken cancellationToken)
+    {
+        var powerSetting = await dependencies.ControllerSettingStore.GetSettingAsync(
+            ControllerSettingDefaults.ManualChargePowerWattsKey,
+            cancellationToken);
+        var expiresAtSetting = await dependencies.ControllerSettingStore.GetSettingAsync(
+            ControllerSettingDefaults.ManualChargeExpiresAtUtcKey,
+            cancellationToken);
+
+        if (powerSetting?.Value is null ||
+            expiresAtSetting?.Value is null ||
+            !int.TryParse(powerSetting.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var requestedPowerWatts) ||
+            requestedPowerWatts <= 0 ||
+            !DateTimeOffset.TryParse(
+                expiresAtSetting.Value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var expiresAtUtc) ||
+            expiresAtUtc.Offset != TimeSpan.Zero ||
+            expiresAtUtc <= decidedAtUtc)
+        {
+            return null;
+        }
+
+        var targetPowerWatts = Math.Min(requestedPowerWatts, batteryConfiguration.MaximumChargePowerWatts);
+        if (targetPowerWatts <= 0)
+        {
+            return null;
+        }
+
+        var message = requestedPowerWatts == targetPowerWatts
+            ? $"Manuelle Netzladung mit {targetPowerWatts} Watt ist bis {expiresAtUtc:O} aktiv."
+            : $"Manuelle Netzladung wurde von {requestedPowerWatts} auf {targetPowerWatts} Watt begrenzt und ist bis {expiresAtUtc:O} aktiv.";
+
+        return new ManualChargeOverride(targetPowerWatts, expiresAtUtc, message);
     }
 
     private async Task<CurrentBatteryDecisionResult> CreateExportAbsorptionDecisionAsync(
@@ -643,4 +705,9 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
         public BatteryDecisionReason? Reason { get; init; }
     }
+
+    private sealed record ManualChargeOverride(
+        int TargetPowerWatts,
+        DateTimeOffset ExpiresAtUtc,
+        string Message);
 }

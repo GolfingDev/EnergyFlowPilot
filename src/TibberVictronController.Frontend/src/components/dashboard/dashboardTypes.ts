@@ -92,6 +92,14 @@ export interface BatterySavingsResponseDto {
   aggregate: BatterySavingsMetricsDto;
 }
 
+export interface ManualChargeStatusResponseDto {
+  isActive: boolean;
+  powerWatts: number;
+  powerKw: number;
+  expiresAtUtc: string | null;
+  remainingSeconds: number;
+}
+
 export interface ControllerSettingResponseDto {
   key: string;
   value: string | null;

@@ -1,3 +1,4 @@
+using System.Globalization;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Models;
@@ -107,6 +108,48 @@ public sealed class CurrentBatteryDecisionServiceTests
 
         Assert.Equal(BatteryDecisionState.Discharge, result.Decision.Instruction.DecisionState);
         Assert.Equal(1200, result.Decision.TargetPowerWatts);
+    }
+
+    [Fact]
+    public async Task CalculateCurrentDecisionAsyncUsesActiveManualGridCharge()
+    {
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(60m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m, maximumChargePowerWatts: 3000)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(1200, 0, NowUtc)),
+            TibberPriceForecastProvider = new ThrowingTibberPriceForecastProvider("Tibber darf fuer manuelle Ladung nicht gebraucht werden."),
+            ControllerSettingStore = CreateSettingsStore(manualChargePowerWatts: 2500, manualChargeExpiresAtUtc: NowUtc.AddMinutes(30)),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Charge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(BatteryChargeSource.Grid, result.Decision.Instruction.ChargeSource);
+        Assert.Equal(2500, result.Decision.TargetPowerWatts);
+        Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.ManualGridCharge);
+    }
+
+    [Fact]
+    public async Task CalculateCurrentDecisionAsyncCapsManualGridChargeToBatteryMaximum()
+    {
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(60m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m, maximumChargePowerWatts: 3000)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(1200, 0, NowUtc)),
+            TibberPriceForecastProvider = new ThrowingTibberPriceForecastProvider("Tibber darf fuer manuelle Ladung nicht gebraucht werden."),
+            ControllerSettingStore = CreateSettingsStore(manualChargePowerWatts: 5000, manualChargeExpiresAtUtc: NowUtc.AddMinutes(30)),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Charge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(3000, result.Decision.TargetPowerWatts);
     }
 
     [Theory]
@@ -257,7 +300,9 @@ public sealed class CurrentBatteryDecisionServiceTests
         return new CurrentBatteryDecisionService(dependencies);
     }
 
-    private static FakeControllerSettingStore CreateSettingsStore()
+    private static FakeControllerSettingStore CreateSettingsStore(
+        int manualChargePowerWatts = 0,
+        DateTimeOffset? manualChargeExpiresAtUtc = null)
     {
         var settingsStore = new FakeControllerSettingStore();
         settingsStore.SaveSettingAsync(new ControllerSetting(
@@ -268,6 +313,16 @@ public sealed class CurrentBatteryDecisionServiceTests
         settingsStore.SaveSettingAsync(new ControllerSetting(
             ControllerSettingDefaults.TelemetryGridPowerDeadbandWattsKey,
             "30",
+            ControllerSettingSensitivity.Normal,
+            NowUtc)).GetAwaiter().GetResult();
+        settingsStore.SaveSettingAsync(new ControllerSetting(
+            ControllerSettingDefaults.ManualChargePowerWattsKey,
+            manualChargePowerWatts.ToString(CultureInfo.InvariantCulture),
+            ControllerSettingSensitivity.Normal,
+            NowUtc)).GetAwaiter().GetResult();
+        settingsStore.SaveSettingAsync(new ControllerSetting(
+            ControllerSettingDefaults.ManualChargeExpiresAtUtcKey,
+            (manualChargeExpiresAtUtc ?? new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero)).ToString("O", CultureInfo.InvariantCulture),
             ControllerSettingSensitivity.Normal,
             NowUtc)).GetAwaiter().GetResult();
 
