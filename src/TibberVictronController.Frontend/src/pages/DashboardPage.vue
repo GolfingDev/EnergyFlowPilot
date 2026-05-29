@@ -39,6 +39,10 @@ const dashboardViewMode = ref<DashboardViewMode>(
     ? storedDashboardViewMode
     : 'visual');
 let autoRefreshTimer: ReturnType<typeof window.setInterval> | null = null;
+let isForecastLoading = false;
+let isSavingsLoading = false;
+let lastForecastUrl: string | null = null;
+let lastSavingsUrl: string | null = null;
 
 const savingsPeriodOptions: readonly SavingsPeriodOption[] = [
   { label: 'Tag', value: 'day' },
@@ -80,16 +84,10 @@ async function loadDashboard(): Promise<void> {
   loadErrors.value = [];
 
   try {
-    const settingsRequest = fetchJson<ControllerSettingsResponseDto>('/api/settings');
-    const statusRequest = fetchJson<ControllerStatusResponseDto>('/api/status');
-    const decisionLogRequest = fetchJson<DecisionLogEntryResponseDto[]>('/api/decision/logs?maxCount=20');
-    const forecastRequest = fetchJson<BatteryForecastResponseDto>(createForecastUrl());
-    const savingsRequest = fetchJson<BatterySavingsResponseDto>(createSavingsUrl());
-
     const fastResults = await Promise.allSettled([
-      settingsRequest,
-      statusRequest,
-      decisionLogRequest
+      fetchJson<ControllerSettingsResponseDto>('/api/settings'),
+      fetchJson<ControllerStatusResponseDto>('/api/status'),
+      fetchJson<DecisionLogEntryResponseDto[]>('/api/decision/logs?maxCount=20')
     ]);
 
     applyResult(fastResults[0], 'Einstellungen', applyDashboardSettings);
@@ -103,25 +101,11 @@ async function loadDashboard(): Promise<void> {
       decisionLogEntries.value = [];
       decision.value = null;
     });
-
-    const slowResults = await Promise.allSettled([
-      forecastRequest,
-      savingsRequest
-    ]);
-
-    applyResult(slowResults[0], 'Forecast', (value) => {
-      forecast.value = value;
-    }, () => {
-      forecast.value = null;
-    });
-    applyResult(slowResults[1], 'Ersparnis', (value) => {
-      savings.value = value;
-    }, () => {
-      savings.value = null;
-    });
   } finally {
     isLoading.value = false;
   }
+
+  void loadSlowDashboardData();
 }
 
 function mapLogEntryToCurrentDecision(entry: DecisionLogEntryResponseDto): CurrentBatteryDecisionResponseDto {
@@ -245,6 +229,63 @@ function createForecastUrl(): string {
   return `/api/forecast?${parameters.toString()}`;
 }
 
+async function loadSlowDashboardData(force = false): Promise<void> {
+  await Promise.allSettled([
+    loadForecast(force),
+    loadSavings(force)
+  ]);
+}
+
+async function loadForecast(force = false): Promise<void> {
+  if (isForecastLoading) {
+    return;
+  }
+
+  const forecastUrl = createForecastUrl();
+  if (!force && forecast.value !== null && lastForecastUrl === forecastUrl) {
+    return;
+  }
+
+  isForecastLoading = true;
+  try {
+    forecast.value = await fetchJson<BatteryForecastResponseDto>(forecastUrl);
+    lastForecastUrl = forecastUrl;
+  } catch (error) {
+    forecast.value = null;
+    loadErrors.value.push({
+      source: 'Forecast',
+      ...createLoadError(error)
+    });
+  } finally {
+    isForecastLoading = false;
+  }
+}
+
+async function loadSavings(force = false): Promise<void> {
+  if (isSavingsLoading) {
+    return;
+  }
+
+  const savingsUrl = createSavingsUrl();
+  if (!force && savings.value !== null && lastSavingsUrl === savingsUrl) {
+    return;
+  }
+
+  isSavingsLoading = true;
+  try {
+    savings.value = await fetchJson<BatterySavingsResponseDto>(savingsUrl);
+    lastSavingsUrl = savingsUrl;
+  } catch (error) {
+    savings.value = null;
+    loadErrors.value.push({
+      source: 'Ersparnis',
+      ...createLoadError(error)
+    });
+  } finally {
+    isSavingsLoading = false;
+  }
+}
+
 function roundUpToNextQuarterHourUtc(value: Date): Date {
   const rounded = new Date(value);
   const minutes = rounded.getUTCMinutes();
@@ -273,15 +314,7 @@ function createSavingsUrl(): string {
 
 async function changeSavingsPeriod(period: SavingsPeriod): Promise<void> {
   savingsPeriod.value = period;
-
-  try {
-    savings.value = await fetchJson<BatterySavingsResponseDto>(createSavingsUrl());
-  } catch (error) {
-    loadErrors.value.push({
-      source: 'Ersparnis',
-      ...createLoadError(error)
-    });
-  }
+  await loadSavings(true);
 }
 
 onMounted(() => {
