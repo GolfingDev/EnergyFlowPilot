@@ -18,6 +18,15 @@ public interface IDecisionLogRepository
     Task<IReadOnlyList<DecisionLogEntry>> GetRecentDecisionsAsync(int maxCount, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets realtime decisions in the UTC time range ordered from oldest to newest.
+    /// </summary>
+    Task<IReadOnlyList<DecisionLogEntry>> GetDecisionsAsync(
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        int maxCount,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes decision logs older than the configured UTC cutoff.
     /// </summary>
     Task<int> DeleteDecisionsOlderThanAsync(DateTimeOffset cutoffUtc, CancellationToken cancellationToken = default);

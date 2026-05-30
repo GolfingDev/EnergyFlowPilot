@@ -79,6 +79,23 @@ public sealed class CurrentDecisionEndpointTests
         Assert.Equal("PV", value[0].ChargeSource);
     }
 
+    [Fact]
+    public async Task GetDecisionHistoryAsyncReturnsHistoricalDecisionLogsOldestFirst()
+    {
+        var nowUtc = DateTimeOffset.UtcNow;
+        var oldEntry = CreateLogEntry(nowUtc.AddHours(-2));
+        var newEntry = CreateLogEntry(nowUtc.AddHours(-1));
+        var logRepository = new FakeDecisionLogRepository(new[] { newEntry, oldEntry });
+
+        var result = await CurrentDecisionEndpoints.GetDecisionHistoryAsync(logRepository, 24, 200, CancellationToken.None);
+
+        var okResult = Assert.IsType<Ok<DecisionLogEntryResponseDto[]>>(result);
+        var value = Assert.IsType<DecisionLogEntryResponseDto[]>(okResult.Value);
+        Assert.Equal(2, value.Length);
+        Assert.Equal(oldEntry.DecidedAtUtc, value[0].DecidedAtUtc);
+        Assert.Equal(newEntry.DecidedAtUtc, value[1].DecidedAtUtc);
+    }
+
     private sealed class FakeDecisionLogRepository : IDecisionLogRepository
     {
         private readonly IReadOnlyList<DecisionLogEntry> entries;
@@ -99,9 +116,42 @@ public sealed class CurrentDecisionEndpointTests
             return Task.FromResult<IReadOnlyList<DecisionLogEntry>>(entries.Take(maxCount).ToArray());
         }
 
+        public Task<IReadOnlyList<DecisionLogEntry>> GetDecisionsAsync(
+            DateTimeOffset fromUtc,
+            DateTimeOffset toUtc,
+            int maxCount,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<IReadOnlyList<DecisionLogEntry>>(entries
+                .Where(entry => entry.DecidedAtUtc >= fromUtc && entry.DecidedAtUtc <= toUtc)
+                .OrderBy(entry => entry.DecidedAtUtc)
+                .Take(maxCount)
+                .ToArray());
+        }
+
         public Task<int> DeleteDecisionsOlderThanAsync(DateTimeOffset cutoffUtc, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
+    }
+
+    private static DecisionLogEntry CreateLogEntry(DateTimeOffset decidedAtUtc)
+    {
+        return new DecisionLogEntry(
+            Guid.NewGuid(),
+            decidedAtUtc,
+            decidedAtUtc,
+            decidedAtUtc.AddMinutes(15),
+            new CurrentBatteryDecision(
+                new BatteryDecisionInstruction(BatteryDecisionState.Charge, BatteryChargeSource.Grid),
+                1200),
+            55m,
+            0.18m,
+            "EUR",
+            800,
+            0,
+            "{}",
+            new[] { new BatteryDecisionReason("Rule", "Begruendung") });
     }
 }

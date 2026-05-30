@@ -412,6 +412,20 @@ public sealed class CurrentBatteryDecisionServiceTests
             return Task.FromResult<IReadOnlyList<DecisionLogEntry>>(SavedEntries.Take(maxCount).ToArray());
         }
 
+        public Task<IReadOnlyList<DecisionLogEntry>> GetDecisionsAsync(
+            DateTimeOffset fromUtc,
+            DateTimeOffset toUtc,
+            int maxCount,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<IReadOnlyList<DecisionLogEntry>>(SavedEntries
+                .Where(entry => entry.DecidedAtUtc >= fromUtc && entry.DecidedAtUtc <= toUtc)
+                .OrderBy(entry => entry.DecidedAtUtc)
+                .Take(maxCount)
+                .ToArray());
+        }
+
         public Task<int> DeleteDecisionsOlderThanAsync(DateTimeOffset thresholdUtc, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import DashboardErrorPanels from '../components/dashboard/DashboardErrorPanels.vue';
 import DashboardHeader from '../components/dashboard/DashboardHeader.vue';
 import DashboardMetricGrid from '../components/dashboard/DashboardMetricGrid.vue';
+import DecisionHistoryChartPanel from '../components/dashboard/DecisionHistoryChartPanel.vue';
 import DecisionDetailsPanel from '../components/dashboard/DecisionDetailsPanel.vue';
 import EnergySavingsPanel from '../components/dashboard/EnergySavingsPanel.vue';
 import EnergyLoadingOverlay from '../components/EnergyLoadingOverlay.vue'
@@ -29,6 +30,7 @@ const refreshInSeconds = ref(0);
 const status = ref<ControllerStatusResponseDto | null>(null);
 const decision = ref<CurrentBatteryDecisionResponseDto | null>(null);
 const decisionLogEntries = ref<DecisionLogEntryResponseDto[]>([]);
+const decisionHistoryEntries = ref<DecisionLogEntryResponseDto[]>([]);
 const forecast = ref<BatteryForecastResponseDto | null>(null);
 const savings = ref<BatterySavingsResponseDto | null>(null);
 const manualCharge = ref<ManualChargeStatusResponseDto | null>(null);
@@ -39,6 +41,7 @@ const manualChargeDurationMinutes = ref(30);
 const manualChargePowerKw = ref(2.5);
 const autoRefreshIntervalSeconds = ref(60);
 const savingsPeriod = ref<SavingsPeriod>('day');
+const decisionHistoryHours = ref(24);
 const storedDashboardViewMode = localStorage.getItem('energyFlowPilotDashboardViewMode');
 const dashboardViewMode = ref<DashboardViewMode>(
   storedDashboardViewMode === 'metrics' || storedDashboardViewMode === 'visual'
@@ -281,8 +284,24 @@ async function deleteJson<TResponse>(url: string): Promise<TResponse> {
 async function loadSlowDashboardData(force = false): Promise<void> {
   await Promise.allSettled([
     loadForecast(force),
-    loadSavings(force)
+    loadSavings(force),
+    loadDecisionHistory(force)
   ]);
+}
+
+async function loadDecisionHistory(force = false): Promise<void> {
+  const historyUrl = createDecisionHistoryUrl();
+  void force;
+
+  try {
+    decisionHistoryEntries.value = await fetchJson<DecisionLogEntryResponseDto[]>(historyUrl);
+  } catch (error) {
+    decisionHistoryEntries.value = [];
+    loadErrors.value.push({
+      source: 'Entscheidungshistorie',
+      ...createLoadError(error)
+    });
+  }
 }
 
 async function loadForecast(force = false): Promise<void> {
@@ -359,6 +378,20 @@ function createSavingsUrl(): string {
   });
 
   return `/api/savings?${parameters.toString()}`;
+}
+
+function createDecisionHistoryUrl(): string {
+  const parameters = new URLSearchParams({
+    hours: String(decisionHistoryHours.value),
+    maxCount: '5000'
+  });
+
+  return `/api/decision/history?${parameters.toString()}`;
+}
+
+async function changeDecisionHistoryHours(hours: number): Promise<void> {
+  decisionHistoryHours.value = hours;
+  await loadDecisionHistory(true);
 }
 
 async function changeSavingsPeriod(period: SavingsPeriod): Promise<void> {
@@ -516,6 +549,12 @@ onBeforeUnmount(() => {
     />
 
     <ForecastChartPanel :forecast="forecast" :forecast-load-error="forecastLoadError" />
+
+    <DecisionHistoryChartPanel
+      :entries="decisionHistoryEntries"
+      :hours="decisionHistoryHours"
+      @change-hours="changeDecisionHistoryHours"
+    />
 
     <div class="dashboard-layout">
       <main class="dashboard-main">

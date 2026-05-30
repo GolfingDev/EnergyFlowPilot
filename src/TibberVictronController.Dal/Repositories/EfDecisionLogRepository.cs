@@ -40,6 +40,36 @@ public sealed class EfDecisionLogRepository : IDecisionLogRepository
             .ToArrayAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<DecisionLogEntry>> GetDecisionsAsync(
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        int maxCount,
+        CancellationToken cancellationToken = default)
+    {
+        if (fromUtc.Offset != TimeSpan.Zero || toUtc.Offset != TimeSpan.Zero)
+        {
+            throw new ArgumentException("Der Decision-Log-Zeitraum muss in UTC angegeben sein.");
+        }
+
+        if (toUtc <= fromUtc)
+        {
+            throw new ArgumentException("Das Decision-Log-Ende muss nach dem Start liegen.", nameof(toUtc));
+        }
+
+        if (maxCount <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxCount), "Die Anzahl der Decision-Log-Eintraege muss groesser als 0 sein.");
+        }
+
+        return await dbContext.DecisionLogEntries
+            .Include(logEntry => logEntry.Reasons)
+            .Where(logEntry => logEntry.DecidedAtUtc >= fromUtc && logEntry.DecidedAtUtc <= toUtc)
+            .OrderBy(logEntry => logEntry.DecidedAtUtc)
+            .Take(maxCount)
+            .Select(logEntry => MapToDomain(logEntry))
+            .ToArrayAsync(cancellationToken);
+    }
+
     public async Task<int> DeleteDecisionsOlderThanAsync(
         DateTimeOffset cutoffUtc,
         CancellationToken cancellationToken = default)
