@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { HubConnectionBuilder, LogLevel, type HubConnection } from '@microsoft/signalr';
+import { HubConnectionBuilder, HttpTransportType, LogLevel, type HubConnection } from '@microsoft/signalr';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import DashboardErrorPanels from '../components/dashboard/DashboardErrorPanels.vue';
 import DashboardHeader from '../components/dashboard/DashboardHeader.vue';
@@ -408,7 +408,9 @@ async function startLiveUpdates(): Promise<void> {
   }
 
   liveConnection = new HubConnectionBuilder()
-    .withUrl('/api/hubs/dashboard')
+    .withUrl('/api/hubs/dashboard', {
+      transport: HttpTransportType.ServerSentEvents | HttpTransportType.LongPolling
+    })
     .withAutomaticReconnect()
     .configureLogging(LogLevel.Warning)
     .build();
