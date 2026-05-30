@@ -1,5 +1,3 @@
-using System.Text.Json;
-using MQTTnet;
 using TibberVictronController.Business.Models;
 using TibberVictronController.Dal.Victron;
 
@@ -11,13 +9,16 @@ namespace TibberVictronController.Api.Configuration;
 public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
 {
     private readonly DatabaseVictronMqttSettingsProvider settingsProvider;
+    private readonly IVictronMqttControlClient mqttControlClient;
     private readonly ILogger<MqttVictronSetpointPublisher> logger;
 
     public MqttVictronSetpointPublisher(
         DatabaseVictronMqttSettingsProvider settingsProvider,
+        IVictronMqttControlClient mqttControlClient,
         ILogger<MqttVictronSetpointPublisher> logger)
     {
         this.settingsProvider = settingsProvider;
+        this.mqttControlClient = mqttControlClient;
         this.logger = logger;
     }
 
@@ -28,23 +29,15 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
         var gridSetpointWatts = CalculateGridSetpointWatts(decisionResult);
         var hub4Control = CalculateHub4Control(decisionResult, settings.BatteryIdleThresholdWatts);
 
-        using var mqttClient = new MqttClientFactory().CreateMqttClient();
-        var options = new MqttClientOptionsBuilder()
-            .WithTcpServer(settings.Host, settings.Port)
-            .WithKeepAlivePeriod(TimeSpan.FromSeconds(settings.KeepAliveSeconds))
-            .WithClientId($"tibber-victron-controller-setpoint-{Guid.NewGuid():N}")
-            .Build();
-
-        await mqttClient.ConnectAsync(options, cancellationToken);
-        await PublishHub4ModeAsync(mqttClient, settings, topics, cancellationToken);
-        await PublishHub4ControlAsync(mqttClient, settings, topics, hub4Control, cancellationToken);
-        await PublishSetpointAsync(mqttClient, settings, topics, gridSetpointWatts, decisionResult, cancellationToken);
-        await mqttClient.DisconnectAsync(new MqttClientDisconnectOptions(), cancellationToken);
+        await PublishHub4ModeAsync(mqttControlClient, settings, topics, cancellationToken);
+        await PublishHub4ControlAsync(mqttControlClient, settings, topics, hub4Control, cancellationToken);
+        await PublishSetpointAsync(mqttControlClient, settings, topics, gridSetpointWatts, decisionResult, cancellationToken);
 
         logger.LogInformation(
-            "Victron-Setpoint per MQTT veroeffentlicht. ControlMode={ControlMode}, SetpointW={SetpointWatts}, DisableCharge={DisableCharge}, DisableFeedIn={DisableFeedIn}",
+            "Victron-Setpoint per MQTT veroeffentlicht. ControlMode={ControlMode}, GridSetpointW={GridSetpointWatts}, ExternalSetpointW={ExternalSetpointWatts}, DisableCharge={DisableCharge}, DisableFeedIn={DisableFeedIn}",
             settings.ControlMode,
             gridSetpointWatts,
+            CalculateExternalEssSetpointWatts(decisionResult),
             hub4Control.DisableCharge,
             hub4Control.DisableFeedIn);
     }
@@ -98,21 +91,16 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
     }
 
     private static async Task PublishValueAsync(
-        IMqttClient mqttClient,
+        IVictronMqttControlClient mqttClient,
         string topic,
         int value,
         CancellationToken cancellationToken)
     {
-        var message = new MqttApplicationMessageBuilder()
-            .WithTopic(topic)
-            .WithPayload(JsonSerializer.Serialize(new { value }))
-            .Build();
-
-        await mqttClient.PublishAsync(message, cancellationToken);
+        await mqttClient.PublishValueAsync(topic, value, cancellationToken);
     }
 
     private static async Task PublishSetpointAsync(
-        IMqttClient mqttClient,
+        IVictronMqttControlClient mqttClient,
         VictronMqttSettings settings,
         VictronMqttTopics topics,
         int gridSetpointWatts,
@@ -145,7 +133,7 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
     }
 
     private static async Task PublishHub4ControlAsync(
-        IMqttClient mqttClient,
+        IVictronMqttControlClient mqttClient,
         VictronMqttSettings settings,
         VictronMqttTopics topics,
         Hub4Control hub4Control,
@@ -179,7 +167,7 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
     }
 
     private static async Task PublishHub4ModeAsync(
-        IMqttClient mqttClient,
+        IVictronMqttControlClient mqttClient,
         VictronMqttSettings settings,
         VictronMqttTopics topics,
         CancellationToken cancellationToken)

@@ -51,6 +51,8 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<ILiveConsumptionRepository, EfLiveConsumptionRepository>();
         services.AddScoped<IWorkerFailureNotifier, WorkerFailureEmailNotifier>();
         services.AddScoped<IVictronSetpointPublisher, MqttVictronSetpointPublisher>();
+        services.AddSingleton<VictronMqttClientService>();
+        services.AddSingleton<IVictronMqttControlClient>(serviceProvider => serviceProvider.GetRequiredService<VictronMqttClientService>());
         services.AddSingleton<MqttTelemetrySnapshotStore>();
         services.AddScoped<IControllerSettingsService, ControllerSettingsService>();
         services.AddScoped<IBatteryConfigurationProvider, DatabaseBatteryConfigurationProvider>();
@@ -83,7 +85,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddHttpClient<ForecastSolarPvForecastProvider>();
         services.AddScoped<IWeatherForecastProvider, CachedWeatherForecastProvider>();
         services.AddHostedService<DecisionExecutionBackgroundService>();
-        services.AddHostedService<MqttTelemetryBackgroundService>();
+        services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<VictronMqttClientService>());
 
         return services;
     }
