@@ -33,6 +33,8 @@ INSTALL_ROOT="/opt/${APP_NAME}"
 API_PUBLISH_DIR="${INSTALL_ROOT}/api"
 API_STAGING_DIR="${INSTALL_ROOT}/api-next"
 FRONTEND_WEB_ROOT="/var/www/${APP_NAME}"
+NGINX_SITE_FILE="/etc/nginx/sites-available/${APP_NAME}.conf"
+NGINX_SITE_LINK="/etc/nginx/sites-enabled/${APP_NAME}.conf"
 
 BACKEND_PORT="${BACKEND_PORT:-5094}"
 PUBLISH_RUNTIME="${PUBLISH_RUNTIME:-linux-arm64}"
@@ -201,6 +203,64 @@ deploy_files() {
   fi
 }
 
+write_nginx_config() {
+  if ! command -v nginx >/dev/null 2>&1; then
+    return 0
+  fi
+
+  cat > "${NGINX_SITE_FILE}" <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name _;
+
+    root ${FRONTEND_WEB_ROOT};
+    index index.html;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:${BACKEND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+
+    location = /health {
+        proxy_pass http://127.0.0.1:${BACKEND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /hubs/ {
+        proxy_pass http://127.0.0.1:${BACKEND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+EOF
+
+  ln -sf "${NGINX_SITE_FILE}" "${NGINX_SITE_LINK}"
+}
+
 wait_for_healthcheck() {
   local attempts=30
   local delay_seconds=2
@@ -247,6 +307,7 @@ main() {
   update_repository
   publish_backend_to_staging
   build_frontend
+  write_nginx_config
   deploy_files
   wait_for_healthcheck || true
   cleanup

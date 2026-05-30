@@ -7,10 +7,6 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': 'http://localhost:5094',
-      '/hubs': {
-        target: 'http://localhost:5094',
-        ws: true
-      },
       '/health': 'http://localhost:5094'
     }
   }

@@ -408,7 +408,7 @@ async function startLiveUpdates(): Promise<void> {
   }
 
   liveConnection = new HubConnectionBuilder()
-    .withUrl('/hubs/dashboard')
+    .withUrl('/api/hubs/dashboard')
     .withAutomaticReconnect()
     .configureLogging(LogLevel.Warning)
     .build();
