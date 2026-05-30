@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { HubConnectionBuilder, LogLevel, type HubConnection } from '@microsoft/signalr';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import DashboardErrorPanels from '../components/dashboard/DashboardErrorPanels.vue';
 import DashboardHeader from '../components/dashboard/DashboardHeader.vue';
@@ -17,6 +18,7 @@ import type {
   ControllerSettingsResponseDto,
   ControllerStatusResponseDto,
   CurrentBatteryDecisionResponseDto,
+  DashboardTelemetryUpdateDto,
   DecisionLogEntryResponseDto,
   DashboardLoadError,
   ManualChargeStatusResponseDto,
@@ -52,6 +54,7 @@ let isForecastLoading = false;
 let isSavingsLoading = false;
 let lastForecastUrl: string | null = null;
 let lastSavingsUrl: string | null = null;
+let liveConnection: HubConnection | null = null;
 
 const savingsPeriodOptions: readonly SavingsPeriodOption[] = [
   { label: 'Tag', value: 'day' },
@@ -190,7 +193,7 @@ function configureAutoRefresh(): void {
 
     refreshInSeconds.value = refreshInSeconds.value - 1;
     if (refreshInSeconds.value <= 0){
-    void loadDashboard();
+    void loadSlowDashboardData(true);
     refreshInSeconds.value = autoRefreshIntervalSeconds.value;
   }
 }, 1000);
@@ -399,6 +402,64 @@ async function changeSavingsPeriod(period: SavingsPeriod): Promise<void> {
   await loadSavings(true);
 }
 
+async function startLiveUpdates(): Promise<void> {
+  if (liveConnection !== null) {
+    return;
+  }
+
+  liveConnection = new HubConnectionBuilder()
+    .withUrl('/hubs/dashboard')
+    .withAutomaticReconnect()
+    .configureLogging(LogLevel.Warning)
+    .build();
+
+  liveConnection.on('dashboardDecisionUpdated', (updatedDecision: CurrentBatteryDecisionResponseDto) => {
+    decision.value = updatedDecision;
+  });
+
+  liveConnection.on('dashboardTelemetryUpdated', (telemetry: DashboardTelemetryUpdateDto) => {
+    applyLiveTelemetry(telemetry);
+  });
+
+  liveConnection.onreconnected(() => {
+    void loadDashboard();
+  });
+
+  try {
+    await liveConnection.start();
+  } catch (error) {
+    loadErrors.value.push({
+      source: 'Live-Daten',
+      ...createLoadError(error)
+    });
+    liveConnection = null;
+  }
+}
+
+async function stopLiveUpdates(): Promise<void> {
+  const connection = liveConnection;
+  liveConnection = null;
+
+  if (connection === null) {
+    return;
+  }
+
+  await connection.stop();
+}
+
+function applyLiveTelemetry(telemetry: DashboardTelemetryUpdateDto): void {
+  if (decision.value === null) {
+    return;
+  }
+
+  decision.value = {
+    ...decision.value,
+    currentGridImportWatts: telemetry.currentGridImportWatts,
+    currentPvProductionWatts: telemetry.currentPvProductionWatts,
+    stateOfChargePercent: telemetry.stateOfChargePercent ?? decision.value.stateOfChargePercent
+  };
+}
+
 async function startManualCharge(): Promise<void> {
   if (isManualChargeBusy.value) {
     return;
@@ -442,10 +503,12 @@ async function stopManualCharge(): Promise<void> {
 
 onMounted(() => {
   void loadDashboard();
+  void startLiveUpdates();
 });
 
 onBeforeUnmount(() => {
   clearAutoRefresh();
+  void stopLiveUpdates();
 });
 </script>
 

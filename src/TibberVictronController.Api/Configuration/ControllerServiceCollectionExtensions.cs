@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Services;
+using TibberVictronController.Api.Dashboard;
 using TibberVictronController.Dal.Battery;
 using TibberVictronController.Dal.Consumption;
 using TibberVictronController.Dal.HagerEnergy;
@@ -36,6 +37,7 @@ public static class ControllerServiceCollectionExtensions
         }
 
         services.AddSingleton<IUtcClock, SystemUtcClock>();
+        services.AddSignalR();
         services.AddDbContext<ControllerDbContext>(options => options.UseSqlite(connectionString));
         services.AddScoped<ControllerDbInitializer>();
         services.AddScoped<IControllerSettingStore, EfControllerSettingStore>();
@@ -50,6 +52,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IOperationalEventRepository, EfOperationalEventRepository>();
         services.AddScoped<ILiveConsumptionRepository, EfLiveConsumptionRepository>();
         services.AddScoped<IWorkerFailureNotifier, WorkerFailureEmailNotifier>();
+        services.AddSingleton<IDashboardLiveUpdatePublisher, SignalRDashboardLiveUpdatePublisher>();
         services.AddScoped<IVictronSetpointPublisher, MqttVictronSetpointPublisher>();
         services.AddSingleton<VictronMqttClientService>();
         services.AddSingleton<IVictronMqttControlClient>(serviceProvider => serviceProvider.GetRequiredService<VictronMqttClientService>());

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MQTTnet;
 using MQTTnet.Protocol;
+using TibberVictronController.Api.Dashboard;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
 using TibberVictronController.Dal.Mqtt;
@@ -239,6 +240,12 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
         if (shouldPersistConsumptionSample)
         {
             await PersistLiveConsumptionSampleAsync(GetPersistedHouseConsumptionWatts(snapshotStore, value), measuredAtUtc);
+        }
+
+        var dashboardLiveUpdatePublisher = serviceProvider.GetService<IDashboardLiveUpdatePublisher>();
+        if (dashboardLiveUpdatePublisher is not null)
+        {
+            await dashboardLiveUpdatePublisher.PublishTelemetryAsync(snapshotStore.GetSnapshot());
         }
     }
 

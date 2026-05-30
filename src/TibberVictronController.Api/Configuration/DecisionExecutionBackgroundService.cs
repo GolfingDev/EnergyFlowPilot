@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
+using TibberVictronController.Api.Dashboard;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
 
@@ -70,6 +71,12 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
         {
             var setpointPublisher = scope.ServiceProvider.GetRequiredService<IVictronSetpointPublisher>();
             await setpointPublisher.PublishAsync(decisionResult, cancellationToken);
+        }
+
+        var dashboardLiveUpdatePublisher = scope.ServiceProvider.GetService<IDashboardLiveUpdatePublisher>();
+        if (dashboardLiveUpdatePublisher is not null)
+        {
+            await dashboardLiveUpdatePublisher.PublishDecisionAsync(decisionResult, cancellationToken);
         }
 
         logger.LogInformation(

@@ -1,4 +1,5 @@
 using TibberVictronController.Api.Configuration;
+using TibberVictronController.Api.Dashboard;
 using TibberVictronController.Api.Decision;
 using TibberVictronController.Api.Diagnostics;
 using TibberVictronController.Api.Forecast;
@@ -28,6 +29,7 @@ app.MapManualChargeEndpoints();
 app.MapSavingsEndpoints();
 app.MapGuiMetadataEndpoints();
 app.MapHagerEnergyOAuthEndpoints();
+app.MapDashboardHub();
 
 app.Run();
 

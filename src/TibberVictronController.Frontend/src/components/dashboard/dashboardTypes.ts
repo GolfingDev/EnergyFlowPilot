@@ -46,6 +46,14 @@ export interface CurrentBatteryDecisionResponseDto {
   reasons: CurrentBatteryDecisionReasonDto[];
 }
 
+export interface DashboardTelemetryUpdateDto {
+  currentGridImportWatts: number;
+  currentPvProductionWatts: number;
+  currentBatteryPowerWatts: number | null;
+  stateOfChargePercent: number | null;
+  measuredAtUtc: string;
+}
+
 export interface BatteryForecastReasonDto {
   ruleName: string;
   message: string;
