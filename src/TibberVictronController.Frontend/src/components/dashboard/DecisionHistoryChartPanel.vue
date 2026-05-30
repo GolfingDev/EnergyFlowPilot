@@ -66,6 +66,28 @@ function createSmoothedSocSeries(entries: DecisionLogEntryResponseDto[]): (numbe
   });
 }
 
+function createSparsePowerSeries(
+  entries: DecisionLogEntryResponseDto[],
+  selector: (entry: DecisionLogEntryResponseDto) => number | null): (number | null)[] {
+  let lastValue: number | null = null;
+
+  return entries.map((entry) => {
+    const value = selector(entry);
+
+    if (value === null) {
+      lastValue = null;
+      return null;
+    }
+
+    if (lastValue === value) {
+      return null;
+    }
+
+    lastValue = value;
+    return value;
+  });
+}
+
 async function renderChart(): Promise<void> {
   await nextTick();
 
@@ -81,20 +103,27 @@ async function renderChart(): Promise<void> {
   const mutedColor = getCssVariable('--efp-muted', '#64748b');
   const borderColor = getCssVariable('--efp-border-soft', '#e8eef4');
   const smoothedSocValues = createSmoothedSocSeries(entries);
+  const targetPowerValues = createSparsePowerSeries(entries, getSignedTargetPowerWatts);
+  const batteryPowerValues = entries.map((entry) => entry.batteryPowerWatts);
+  const gridPowerValues = entries.map((entry) => (entry.gridImportWatts ?? 0) - (entry.gridExportWatts ?? 0));
   const configuration: ChartConfiguration = {
-    type: 'bar',
+    type: 'line',
     data: {
       labels: entries.map((entry) => entry.decidedAtUtc),
       datasets: [
         {
-          type: 'bar',
+          type: 'line',
           label: 'Zielleistung',
-          data: entries.map(getSignedTargetPowerWatts),
+          data: targetPowerValues,
           yAxisID: 'power',
-          backgroundColor: entries.map(getDecisionColor),
-          borderColor: entries.map(getDecisionColor),
-          borderRadius: 3,
-          borderWidth: 1,
+          borderColor: '#f59e0b',
+          backgroundColor: '#f59e0b',
+          borderWidth: 2,
+          pointRadius: entries.map((entry) => Math.abs(getSignedTargetPowerWatts(entry)) > 0 ? 2.5 : 1.5),
+          pointBackgroundColor: entries.map(getDecisionColor),
+          pointBorderColor: entries.map(getDecisionColor),
+          stepped: true,
+          spanGaps: true,
           order: 3
         },
         {
@@ -104,16 +133,16 @@ async function renderChart(): Promise<void> {
           yAxisID: 'soc',
           borderColor: textColor,
           backgroundColor: textColor,
-          borderWidth: 2.5,
-          pointRadius: 1.8,
-          tension: 0.25,
+          borderWidth: 1.8,
+          pointRadius: 0,
+          tension: 0.18,
           spanGaps: true,
           order: 1
         },
         {
           type: 'line',
           label: 'Akku Ist',
-          data: entries.map((entry) => entry.batteryPowerWatts),
+          data: batteryPowerValues,
           yAxisID: 'power',
           borderColor: '#e11d48',
           backgroundColor: '#e11d48',
@@ -126,7 +155,7 @@ async function renderChart(): Promise<void> {
         {
           type: 'line',
           label: 'Netz',
-          data: entries.map((entry) => (entry.gridImportWatts ?? 0) - (entry.gridExportWatts ?? 0)),
+          data: gridPowerValues,
           yAxisID: 'power',
           borderColor: '#4f46e5',
           backgroundColor: '#4f46e5',
@@ -161,8 +190,9 @@ async function renderChart(): Promise<void> {
 
               return [
                 `Entscheidung: ${getDecisionLabel(entry.decisionState, entry.chargeSource)}`,
-                `Ziel: ${formatPower(entry.targetPowerWatts)}`,
-                `Akku Ist: ${formatPower(entry.batteryPowerWatts)}`,
+                `Ziel: ${formatPower(getSignedTargetPowerWatts(entry))}`,
+                `Akku Ist: ${formatPower(batteryPowerValues[items[0]?.dataIndex ?? 0])}`,
+                `Netz: ${formatPower(gridPowerValues[items[0]?.dataIndex ?? 0])}`,
                 `SoC: ${formatPercent(smoothedSocValues[items[0]?.dataIndex ?? 0])}`,
                 `Grund: ${entry.reasons[0]?.ruleId ?? 'Unbekannt'}`
               ];
