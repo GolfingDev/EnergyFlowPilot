@@ -1,3 +1,4 @@
+using System.Text.Json;
 using TibberVictronController.Business.Models;
 
 namespace TibberVictronController.Api.Decision;
@@ -38,6 +39,7 @@ public static class CurrentDecisionDtoMapper
             logEntry.TibberPriceCurrency,
             logEntry.GridImportWatts,
             logEntry.GridExportWatts,
+            TryReadBatteryPowerWatts(logEntry.InputSummaryJson),
             logEntry.Reasons
                 .Select(reason => new CurrentBatteryDecisionReasonDto(reason.RuleName, reason.Message))
                 .ToArray());
@@ -60,5 +62,26 @@ public static class CurrentDecisionDtoMapper
             logEntry.Reasons
                 .Select(reason => new CurrentBatteryDecisionReasonDto(reason.RuleName, reason.Message))
                 .ToArray());
+    }
+
+    private static int? TryReadBatteryPowerWatts(string inputSummaryJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(inputSummaryJson);
+            if (!document.RootElement.TryGetProperty("CurrentBatteryPowerWatts", out var property) ||
+                property.ValueKind == JsonValueKind.Null)
+            {
+                return null;
+            }
+
+            return property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out var value)
+                ? value
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 }

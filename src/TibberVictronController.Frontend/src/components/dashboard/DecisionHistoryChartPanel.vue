@@ -53,6 +53,19 @@ function getDecisionColor(entry: DecisionLogEntryResponseDto): string {
   return '#94a3b8';
 }
 
+function createSmoothedSocSeries(entries: DecisionLogEntryResponseDto[]): (number | null)[] {
+  let lastKnownSoc: number | null = null;
+
+  return entries.map((entry) => {
+    if (typeof entry.stateOfChargePercent === 'number' && entry.stateOfChargePercent > 0) {
+      lastKnownSoc = entry.stateOfChargePercent;
+      return entry.stateOfChargePercent;
+    }
+
+    return lastKnownSoc;
+  });
+}
+
 async function renderChart(): Promise<void> {
   await nextTick();
 
@@ -67,6 +80,7 @@ async function renderChart(): Promise<void> {
   const textColor = getCssVariable('--efp-text', '#172026');
   const mutedColor = getCssVariable('--efp-muted', '#64748b');
   const borderColor = getCssVariable('--efp-border-soft', '#e8eef4');
+  const smoothedSocValues = createSmoothedSocSeries(entries);
   const configuration: ChartConfiguration = {
     type: 'bar',
     data: {
@@ -86,7 +100,7 @@ async function renderChart(): Promise<void> {
         {
           type: 'line',
           label: 'SoC',
-          data: entries.map((entry) => entry.stateOfChargePercent),
+          data: smoothedSocValues,
           yAxisID: 'soc',
           borderColor: textColor,
           backgroundColor: textColor,
@@ -95,6 +109,19 @@ async function renderChart(): Promise<void> {
           tension: 0.25,
           spanGaps: true,
           order: 1
+        },
+        {
+          type: 'line',
+          label: 'Akku Ist',
+          data: entries.map((entry) => entry.batteryPowerWatts),
+          yAxisID: 'power',
+          borderColor: '#e11d48',
+          backgroundColor: '#e11d48',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.25,
+          spanGaps: true,
+          order: 2
         },
         {
           type: 'line',
@@ -134,8 +161,9 @@ async function renderChart(): Promise<void> {
 
               return [
                 `Entscheidung: ${getDecisionLabel(entry.decisionState, entry.chargeSource)}`,
-                `Leistung: ${formatPower(entry.targetPowerWatts)}`,
-                `SoC: ${formatPercent(entry.stateOfChargePercent)}`,
+                `Ziel: ${formatPower(entry.targetPowerWatts)}`,
+                `Akku Ist: ${formatPower(entry.batteryPowerWatts)}`,
+                `SoC: ${formatPercent(smoothedSocValues[items[0]?.dataIndex ?? 0])}`,
                 `Grund: ${entry.reasons[0]?.ruleId ?? 'Unbekannt'}`
               ];
             }

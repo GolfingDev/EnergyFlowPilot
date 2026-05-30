@@ -27,6 +27,7 @@ export interface DecisionLogEntryResponseDto {
   tibberPriceCurrency: string | null;
   gridImportWatts: number | null;
   gridExportWatts: number | null;
+  batteryPowerWatts: number | null;
   reasons: CurrentBatteryDecisionReasonDto[];
 }
 

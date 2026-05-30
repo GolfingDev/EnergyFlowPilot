@@ -17,6 +17,7 @@ public sealed record DecisionLogEntryResponseDto(
     string? TibberPriceCurrency,
     int? GridImportWatts,
     int? GridExportWatts,
+    int? BatteryPowerWatts,
     IReadOnlyList<CurrentBatteryDecisionReasonDto> Reasons);
 
 public sealed record CurrentBatteryDecisionResponseDto(

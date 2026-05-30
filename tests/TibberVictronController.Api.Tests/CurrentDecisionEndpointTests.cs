@@ -66,7 +66,7 @@ public sealed class CurrentDecisionEndpointTests
                 "EUR",
                 null,
                 1793,
-                "{}",
+                "{\"CurrentBatteryPowerWatts\":-725}",
                 new[] { new BatteryDecisionReason("ABSORB_GRID_EXPORT", "Aktueller Netzexport wird geladen.") })
         });
 
@@ -77,6 +77,7 @@ public sealed class CurrentDecisionEndpointTests
         Assert.Single(value);
         Assert.Equal("Charge", value[0].DecisionState);
         Assert.Equal("PV", value[0].ChargeSource);
+        Assert.Equal(-725, value[0].BatteryPowerWatts);
     }
 
     [Fact]
