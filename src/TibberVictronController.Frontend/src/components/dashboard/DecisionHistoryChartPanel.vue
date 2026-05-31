@@ -5,6 +5,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { DecisionLogEntryResponseDto } from './dashboardTypes';
 import { formatDateTime, formatPercent, formatPower, getDecisionLabel } from './dashboardFormatters';
 
+type HistorySeriesKey = 'target' | 'soc' | 'battery' | 'grid';
+
 const props = defineProps<{
   entries: DecisionLogEntryResponseDto[];
   hours: number;
@@ -16,6 +18,12 @@ const emit = defineEmits<{
 
 const chartCanvas = ref<HTMLCanvasElement | null>(null);
 const chartEntries = computed(() => props.entries);
+const visibleSeries = ref<Record<HistorySeriesKey, boolean>>({
+  target: true,
+  soc: true,
+  battery: true,
+  grid: true
+});
 let chart: Chart | null = null;
 
 const hourOptions = [
@@ -23,6 +31,13 @@ const hourOptions = [
   { label: '24 h', value: 24 },
   { label: '3 Tage', value: 72 },
   { label: '7 Tage', value: 168 }
+];
+
+const seriesOptions: { key: HistorySeriesKey; label: string; color: string }[] = [
+  { key: 'soc', label: 'SoC', color: '#f8fafc' },
+  { key: 'battery', label: 'Akku Ist', color: '#e11d48' },
+  { key: 'grid', label: 'Netz', color: '#4f46e5' },
+  { key: 'target', label: 'Zielleistung', color: '#f59e0b' }
 ];
 
 function getSignedTargetPowerWatts(entry: DecisionLogEntryResponseDto): number {
@@ -88,6 +103,13 @@ function createSparsePowerSeries(
   });
 }
 
+function toggleSeries(seriesKey: HistorySeriesKey): void {
+  visibleSeries.value = {
+    ...visibleSeries.value,
+    [seriesKey]: !visibleSeries.value[seriesKey]
+  };
+}
+
 async function renderChart(): Promise<void> {
   await nextTick();
 
@@ -115,6 +137,7 @@ async function renderChart(): Promise<void> {
           type: 'line',
           label: 'Zielleistung',
           data: targetPowerValues,
+          hidden: !visibleSeries.value.target,
           yAxisID: 'power',
           borderColor: '#f59e0b',
           backgroundColor: '#f59e0b',
@@ -130,6 +153,7 @@ async function renderChart(): Promise<void> {
           type: 'line',
           label: 'SoC',
           data: smoothedSocValues,
+          hidden: !visibleSeries.value.soc,
           yAxisID: 'soc',
           borderColor: textColor,
           backgroundColor: textColor,
@@ -143,6 +167,7 @@ async function renderChart(): Promise<void> {
           type: 'line',
           label: 'Akku Ist',
           data: batteryPowerValues,
+          hidden: !visibleSeries.value.battery,
           yAxisID: 'power',
           borderColor: '#e11d48',
           backgroundColor: '#e11d48',
@@ -156,6 +181,7 @@ async function renderChart(): Promise<void> {
           type: 'line',
           label: 'Netz',
           data: gridPowerValues,
+          hidden: !visibleSeries.value.grid,
           yAxisID: 'power',
           borderColor: '#4f46e5',
           backgroundColor: '#4f46e5',
@@ -176,11 +202,7 @@ async function renderChart(): Promise<void> {
       },
       plugins: {
         legend: {
-          position: 'bottom',
-          labels: {
-            color: mutedColor,
-            usePointStyle: true
-          }
+          display: false
         },
         tooltip: {
           callbacks: {
@@ -221,6 +243,7 @@ async function renderChart(): Promise<void> {
           }
         },
         power: {
+          display: visibleSeries.value.target || visibleSeries.value.battery || visibleSeries.value.grid,
           position: 'left',
           grid: {
             color: borderColor
@@ -235,6 +258,7 @@ async function renderChart(): Promise<void> {
           }
         },
         soc: {
+          display: visibleSeries.value.soc,
           position: 'right',
           min: 0,
           max: 100,
@@ -282,6 +306,10 @@ watch(chartEntries, () => {
   void renderChart();
 });
 
+watch(visibleSeries, () => {
+  void renderChart();
+});
+
 onBeforeUnmount(() => {
   window.removeEventListener('energyflowpilot-theme-changed', refreshChartTheme);
   destroyChart();
@@ -307,6 +335,21 @@ onBeforeUnmount(() => {
           {{ option.label }}
         </button>
       </div>
+    </div>
+
+    <div v-if="entries.length" class="decision-history-panel__series" aria-label="Sichtbare Linien">
+      <button
+        v-for="series in seriesOptions"
+        :key="series.key"
+        type="button"
+        class="decision-history-panel__series-button"
+        :class="{ 'decision-history-panel__series-button--inactive': !visibleSeries[series.key] }"
+        :aria-pressed="visibleSeries[series.key]"
+        @click="toggleSeries(series.key)"
+      >
+        <span class="decision-history-panel__series-dot" :style="{ backgroundColor: series.color }"></span>
+        <span>{{ series.label }}</span>
+      </button>
     </div>
 
     <div class="decision-history-chart">

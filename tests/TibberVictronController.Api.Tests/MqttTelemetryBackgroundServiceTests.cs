@@ -6,6 +6,42 @@ namespace TibberVictronController.Api.Tests;
 public sealed class MqttTelemetryBackgroundServiceTests
 {
     [Fact]
+    public void KeepAliveMissCounterStartsAtZeroBeforeFirstKeepAlive()
+    {
+        var missCount = VictronMqttClientService.CalculateConsecutiveKeepAlivesWithoutTelemetry(
+            hasPreviousKeepAlive: false,
+            messageCountBeforePreviousKeepAlive: 0,
+            currentMessageCount: 0,
+            currentMissCount: 2);
+
+        Assert.Equal(0, missCount);
+    }
+
+    [Fact]
+    public void KeepAliveMissCounterIncrementsWhenNoTelemetryArrivedSincePreviousKeepAlive()
+    {
+        var missCount = VictronMqttClientService.CalculateConsecutiveKeepAlivesWithoutTelemetry(
+            hasPreviousKeepAlive: true,
+            messageCountBeforePreviousKeepAlive: 7,
+            currentMessageCount: 7,
+            currentMissCount: 1);
+
+        Assert.Equal(2, missCount);
+    }
+
+    [Fact]
+    public void KeepAliveMissCounterResetsWhenTelemetryArrivedSincePreviousKeepAlive()
+    {
+        var missCount = VictronMqttClientService.CalculateConsecutiveKeepAlivesWithoutTelemetry(
+            hasPreviousKeepAlive: true,
+            messageCountBeforePreviousKeepAlive: 7,
+            currentMessageCount: 8,
+            currentMissCount: 2);
+
+        Assert.Equal(0, missCount);
+    }
+
+    [Fact]
     public void ApplyTelemetryValueUpdatesGridAndHouseConsumptionWhenBothUseSameTopic()
     {
         var measuredAtUtc = new DateTimeOffset(2026, 5, 3, 12, 0, 0, TimeSpan.Zero);
