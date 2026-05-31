@@ -13,8 +13,12 @@
 
 .v-theme--controllerLight {
   --efp-background: #f4f7fa;
+  --efp-background-art: #f4f7fa;
   --efp-surface: #ffffff;
+  --efp-panel-background: #ffffff;
   --efp-surface-muted: #f8fafc;
+  --efp-topbar-background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.9));
+  --efp-nav-background: linear-gradient(180deg, #ffffff, #f8fafc);
   --efp-border: #dbe3ea;
   --efp-border-soft: #edf1f5;
   --efp-text: #172026;
@@ -25,14 +29,22 @@
   --efp-warning: #b7791f;
   --efp-warning-text: #775319;
   --efp-error: #b42318;
+  --efp-card-accent: rgba(31, 111, 120, 0.1);
+  --efp-page-glow: transparent;
   --efp-shadow: 0 8px 22px rgba(23, 32, 38, 0.04);
   --efp-strong-shadow: 0 10px 24px rgba(23, 32, 38, 0.12);
 }
 
 .v-theme--controllerDark {
   --efp-background: #101214;
+  --efp-background-art:
+    radial-gradient(circle at 18% 0%, rgba(79, 195, 247, 0.08), transparent 34%),
+    linear-gradient(180deg, #101214 0%, #0b0d10 100%);
   --efp-surface: #181b20;
+  --efp-panel-background: linear-gradient(180deg, rgba(29, 33, 39, 0.98), rgba(21, 24, 29, 0.98));
   --efp-surface-muted: #13161a;
+  --efp-topbar-background: linear-gradient(180deg, rgba(26, 29, 35, 0.96), rgba(15, 17, 21, 0.92));
+  --efp-nav-background: linear-gradient(180deg, rgba(28, 34, 41, 0.92), rgba(16, 19, 24, 0.92));
   --efp-border: #303640;
   --efp-border-soft: #252b33;
   --efp-text: #f3f3f3;
@@ -43,8 +55,116 @@
   --efp-warning: #f1c40f;
   --efp-warning-text: #f1c40f;
   --efp-error: #ff7b7b;
+  --efp-card-accent: rgba(79, 195, 247, 0.12);
+  --efp-page-glow: rgba(79, 195, 247, 0.08);
   --efp-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
   --efp-strong-shadow: 0 10px 24px rgba(0, 0, 0, 0.32);
+}
+
+.v-theme--controlCenterLight {
+  --efp-background: #fbfdff;
+  --efp-background-art:
+    radial-gradient(circle at 12% 6%, rgba(14, 165, 183, 0.14), transparent 30%),
+    radial-gradient(circle at 92% 12%, rgba(47, 142, 232, 0.12), transparent 24%),
+    linear-gradient(180deg, #ffffff 0%, #f0fbfd 100%);
+  --efp-surface: #ffffff;
+  --efp-panel-background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 253, 255, 0.96));
+  --efp-surface-muted: #f1f8fb;
+  --efp-topbar-background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(239, 250, 253, 0.9));
+  --efp-nav-background: linear-gradient(180deg, #e7f9fc, #ffffff);
+  --efp-border: #c8e6ef;
+  --efp-border-soft: #e4f4f8;
+  --efp-text: #0f2535;
+  --efp-muted: #62798b;
+  --efp-secondary: #3f5b6c;
+  --efp-primary: #0ea5b7;
+  --efp-success: #2f8a4a;
+  --efp-warning: #e59f11;
+  --efp-warning-text: #9a5f00;
+  --efp-error: #c2410c;
+  --efp-card-accent: rgba(14, 165, 183, 0.16);
+  --efp-page-glow: rgba(14, 165, 183, 0.16);
+  --efp-shadow: 0 12px 30px rgba(14, 70, 88, 0.09);
+  --efp-strong-shadow: 0 22px 50px rgba(14, 70, 88, 0.18);
+}
+
+.v-theme--flowCenterLight {
+  --efp-background: #f7fafc;
+  --efp-background-art:
+    linear-gradient(180deg, #ffffff 0%, #eef7fb 100%);
+  --efp-surface: #ffffff;
+  --efp-panel-background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 252, 255, 0.96));
+  --efp-surface-muted: #f1f7fb;
+  --efp-topbar-background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(241, 248, 252, 0.9));
+  --efp-nav-background: linear-gradient(180deg, #eef7fb, #ffffff);
+  --efp-border: #c9dfeb;
+  --efp-border-soft: #e5f0f6;
+  --efp-text: #102638;
+  --efp-muted: #607789;
+  --efp-secondary: #465d70;
+  --efp-primary: #1282c4;
+  --efp-success: #32914d;
+  --efp-warning: #e49a12;
+  --efp-warning-text: #955f00;
+  --efp-error: #c2410c;
+  --efp-card-accent: rgba(18, 130, 196, 0.14);
+  --efp-page-glow: rgba(18, 130, 196, 0.08);
+  --efp-shadow: 0 12px 28px rgba(22, 66, 90, 0.08);
+  --efp-strong-shadow: 0 20px 48px rgba(22, 66, 90, 0.16);
+}
+
+.v-theme--executiveDark {
+  --efp-background: #030b15;
+  --efp-background-art:
+    radial-gradient(circle at 5% 100%, rgba(47, 142, 232, 0.22), transparent 34%),
+    radial-gradient(circle at 78% 0%, rgba(116, 214, 77, 0.1), transparent 28%),
+    linear-gradient(135deg, #020711 0%, #071827 52%, #030914 100%);
+  --efp-surface: #101b28;
+  --efp-panel-background: linear-gradient(180deg, rgba(15, 29, 43, 0.96), rgba(7, 19, 31, 0.96));
+  --efp-surface-muted: #081522;
+  --efp-topbar-background: linear-gradient(180deg, rgba(9, 21, 34, 0.94), rgba(4, 11, 20, 0.9));
+  --efp-nav-background: linear-gradient(180deg, rgba(22, 42, 62, 0.92), rgba(8, 20, 34, 0.92));
+  --efp-border: #2d4660;
+  --efp-border-soft: #183149;
+  --efp-text: #edf7ff;
+  --efp-muted: #9bb6ce;
+  --efp-secondary: #c2d5e6;
+  --efp-primary: #2f8ee8;
+  --efp-success: #74d64d;
+  --efp-warning: #f5b82e;
+  --efp-warning-text: #ffd36d;
+  --efp-error: #ff6b7d;
+  --efp-card-accent: rgba(47, 142, 232, 0.18);
+  --efp-page-glow: rgba(47, 142, 232, 0.2);
+  --efp-shadow: 0 18px 46px rgba(0, 0, 0, 0.38);
+  --efp-strong-shadow: 0 28px 70px rgba(0, 0, 0, 0.56);
+}
+
+.v-theme--mobileFocusDark {
+  --efp-background: #030608;
+  --efp-background-art:
+    radial-gradient(circle at 50% -8%, rgba(47, 155, 255, 0.25), transparent 30%),
+    radial-gradient(circle at 100% 68%, rgba(85, 214, 92, 0.1), transparent 24%),
+    linear-gradient(180deg, #030608 0%, #081018 48%, #030608 100%);
+  --efp-surface: #11181f;
+  --efp-panel-background: linear-gradient(180deg, rgba(18, 28, 37, 0.98), rgba(9, 15, 22, 0.98));
+  --efp-surface-muted: #081017;
+  --efp-topbar-background: linear-gradient(180deg, rgba(8, 13, 18, 0.96), rgba(3, 7, 10, 0.92));
+  --efp-nav-background: linear-gradient(180deg, rgba(13, 30, 46, 0.94), rgba(5, 11, 16, 0.94));
+  --efp-border: #25435a;
+  --efp-border-soft: #142838;
+  --efp-text: #f4f8fb;
+  --efp-muted: #a7b7c8;
+  --efp-secondary: #c8d6e4;
+  --efp-primary: #2f9bff;
+  --efp-success: #55d65c;
+  --efp-warning: #facc15;
+  --efp-warning-text: #facc15;
+  --efp-error: #fb7185;
+  --efp-card-accent: rgba(47, 155, 255, 0.2);
+  --efp-page-glow: rgba(47, 155, 255, 0.22);
+  --efp-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
+  --efp-strong-shadow: 0 24px 60px rgba(0, 0, 0, 0.52);
 }
 
 * {
@@ -55,7 +175,37 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: var(--efp-background, #f4f7fa);
+  background: var(--efp-background-art, var(--efp-background, #f4f7fa));
+}
+
+.v-application {
+  background: var(--efp-background-art, var(--efp-background)) !important;
+}
+
+.panel,
+.metric-card,
+.manual-charge-panel,
+.settings-card,
+.settings-summary,
+.theme-menu,
+.mega-menu {
+  background: var(--efp-panel-background, var(--efp-surface)) !important;
+}
+
+.panel,
+.metric-card,
+.manual-charge-panel {
+  box-shadow: var(--efp-shadow), inset 0 1px 0 color-mix(in srgb, white 10%, transparent) !important;
+}
+
+.v-theme--controlCenterLight .metric-card:first-child,
+.v-theme--flowCenterLight .metric-card:first-child,
+.v-theme--mobileFocusDark .metric-card:first-child,
+.v-theme--executiveDark .metric-card:first-child {
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--efp-primary) 22%, var(--efp-panel-background) 78%),
+      var(--efp-panel-background)) !important;
 }
 
 button,

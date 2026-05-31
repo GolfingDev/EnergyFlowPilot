@@ -3,6 +3,13 @@ import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTheme } from 'vuetify';
 import GeneralOverlay from './components/GeneralOverlay.vue'
+import {
+  defaultEnergyFlowTheme,
+  energyFlowThemes,
+  getEnergyFlowTheme,
+  isEnergyFlowThemeName,
+  type EnergyFlowThemeName
+} from './themeRegistry';
 
 type SettingsSectionKey = 'battery' | 'price' | 'forecast' | 'consumption' | 'decision' | 'system' | 'operations';
 
@@ -20,9 +27,15 @@ const theme = useTheme();
 const storedTheme = localStorage.getItem('energyFlowPilotTheme');
 const isLoading = ref(false);
 const isSettingsMenuOpen = ref(false);
+const isThemeMenuOpen = ref(false);
+const isSidebarThemeMenuOpen = ref(false);
+const storedSidebarCollapsed = localStorage.getItem('energyFlowPilotExecutiveSidebarCollapsed');
+const isExecutiveSidebarCollapsed = ref(storedSidebarCollapsed === 'true');
 
-if (storedTheme === 'controllerDark' || storedTheme === 'controllerLight') {
+if (isEnergyFlowThemeName(storedTheme)) {
   theme.change(storedTheme);
+} else {
+  theme.change(defaultEnergyFlowTheme);
 }
 
 const settingsMenuGroups: SettingsMenuGroup[] = [
@@ -53,10 +66,23 @@ const settingsMenuGroups: SettingsMenuGroup[] = [
 ];
 
 const activeRouteName = computed(() => String(route.name ?? ''));
-const isDarkTheme = computed(() => theme.global.name.value === 'controllerDark');
+const activeTheme = computed(() => getEnergyFlowTheme(theme.global.name.value));
+const usesExecutiveShell = computed(() => activeTheme.value.name === 'executiveDark');
+const pageTitle = computed(() => activeRouteName.value === 'settings' ? 'Einstellungen' : 'Übersicht');
 
 function navigateTo(routeName: string): void {
   void router.push({ name: routeName });
+}
+
+function navigateToDashboardSection(sectionId: string): void {
+  void router.push({ name: 'dashboard' }).then(() => {
+    window.setTimeout(() => {
+      document.getElementById(sectionId)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+    }, 50);
+  });
 }
 
 function openSettingsSection(section: SettingsSectionKey): void {
@@ -67,8 +93,9 @@ function openSettingsSection(section: SettingsSectionKey): void {
   });
 }
 
-function toggleTheme(): void {
-  const nextTheme = isDarkTheme.value ? 'controllerLight' : 'controllerDark';
+function changeTheme(nextTheme: EnergyFlowThemeName): void {
+  isThemeMenuOpen.value = false;
+  isSidebarThemeMenuOpen.value = false;
   theme.change(nextTheme);
   localStorage.setItem('energyFlowPilotTheme', nextTheme);
   window.dispatchEvent(new CustomEvent('energyflowpilot-theme-changed'));
@@ -77,12 +104,110 @@ function toggleTheme(): void {
 function openSettingsPage(): void {
   openSettingsSection('battery');
 }
+
+function toggleExecutiveSidebar(): void {
+  isExecutiveSidebarCollapsed.value = !isExecutiveSidebarCollapsed.value;
+  localStorage.setItem('energyFlowPilotExecutiveSidebarCollapsed', String(isExecutiveSidebarCollapsed.value));
+}
 </script>
 
 <template>
-  <v-app class="app-shell">
+  <v-app
+    class="app-shell"
+    :class="{
+      'app-shell--executive': usesExecutiveShell,
+      'app-shell--executive-collapsed': usesExecutiveShell && isExecutiveSidebarCollapsed
+    }"
+  >
+    <aside v-if="usesExecutiveShell" class="executive-sidebar" aria-label="Hauptnavigation">
+      <button class="executive-sidebar__brand" type="button" aria-label="EnergyFlowPilot Startseite" @click="navigateTo('dashboard')">
+        <img class="executive-sidebar__logo" src="/Logo.png" alt="" />
+        <span>EnergyFlowPilot</span>
+      </button>
+
+      <nav class="executive-sidebar__nav">
+        <button
+          type="button"
+          :class="{ 'executive-sidebar__item--active': activeRouteName === 'dashboard' }"
+          @click="navigateTo('dashboard')"
+        >
+          <v-icon icon="mdi-home-outline" size="22" />
+          <span>Übersicht</span>
+        </button>
+        <button type="button" @click="navigateToDashboardSection('dashboard-live-flow')">
+          <v-icon icon="mdi-transmission-tower" size="22" />
+          <span>Energiefluss</span>
+        </button>
+        <button type="button" @click="navigateToDashboardSection('dashboard-forecast')">
+          <v-icon icon="mdi-chart-line" size="22" />
+          <span>Prognosen</span>
+        </button>
+        <button type="button" @click="navigateToDashboardSection('dashboard-details')">
+          <v-icon icon="mdi-alert-outline" size="22" />
+          <span>Status</span>
+        </button>
+        <button
+          type="button"
+          :class="{ 'executive-sidebar__item--active': activeRouteName === 'settings' }"
+          @click="openSettingsPage"
+        >
+          <v-icon icon="mdi-cog-outline" size="22" />
+          <span>Einstellungen</span>
+        </button>
+      </nav>
+
+      <button
+        class="executive-sidebar__collapse"
+        type="button"
+        :aria-label="isExecutiveSidebarCollapsed ? 'Menü ausklappen' : 'Menü einklappen'"
+        @click="toggleExecutiveSidebar"
+      >
+        <v-icon :icon="isExecutiveSidebarCollapsed ? 'mdi-chevron-right' : 'mdi-chevron-left'" size="20" />
+        <span>Menü einklappen</span>
+      </button>
+
+      <div class="executive-sidebar__footer">
+        <v-menu v-model="isSidebarThemeMenuOpen" location="end bottom" offset="12" :close-on-content-click="false">
+          <template #activator="{ props }">
+            <button class="executive-sidebar__theme" type="button" v-bind="props" :aria-label="`Design wechseln. Aktiv: ${activeTheme.label}`">
+              <v-icon :icon="activeTheme.icon" size="20" />
+              <span>
+                <small>Design</small>
+                <strong>{{ activeTheme.label }}</strong>
+              </span>
+            </button>
+          </template>
+
+          <div class="theme-menu">
+            <div class="theme-menu__header">
+              <strong>Design auswählen</strong>
+              <span>Layout, Kontrast und Stimmung der Oberfläche.</span>
+            </div>
+
+            <button
+              v-for="themeOption in energyFlowThemes"
+              :key="themeOption.name"
+              class="theme-menu__item"
+              :class="{ 'theme-menu__item--active': activeTheme.name === themeOption.name }"
+              type="button"
+              @click="changeTheme(themeOption.name)"
+            >
+              <v-icon :icon="themeOption.icon" size="20" />
+              <span>
+                <strong>{{ themeOption.label }}</strong>
+                <small>{{ themeOption.description }}</small>
+              </span>
+              <v-icon v-if="activeTheme.name === themeOption.name" icon="mdi-check" size="18" />
+            </button>
+          </div>
+        </v-menu>
+      </div>
+    </aside>
+
     <v-app-bar class="top-bar" elevation="0" height="74">
       <div class="top-bar__inner">
+        <h1 v-if="usesExecutiveShell" class="top-bar__title">{{ pageTitle }}</h1>
+
         <button class="top-bar__brand" type="button" aria-label="EnergyFlowPilot Startseite" @click="isLoading = true">
           <img class="top-bar__logo" src="/Logo.png" alt="" />
           <div class="top-bar__copy">
@@ -137,13 +262,37 @@ function openSettingsPage(): void {
         </div>
 
         <div class="top-bar__actions">
-          <v-btn
-            class="theme-toggle"
-            :icon="isDarkTheme ? 'mdi-weather-sunny' : 'mdi-weather-night'"
-            :aria-label="isDarkTheme ? 'Helles Design aktivieren' : 'Dunkles Design aktivieren'"
-            variant="text"
-            @click="toggleTheme"
-          />
+          <v-menu v-model="isThemeMenuOpen" location="bottom end" offset="12" :close-on-content-click="false">
+            <template #activator="{ props }">
+              <button class="theme-picker-button" type="button" v-bind="props" :aria-label="`Theme wechseln. Aktiv: ${activeTheme.label}`">
+                <v-icon :icon="activeTheme.icon" size="20" />
+                <span>{{ activeTheme.label }}</span>
+              </button>
+            </template>
+
+            <div class="theme-menu">
+              <div class="theme-menu__header">
+                <strong>Design auswählen</strong>
+                <span>Farben, Kontrast und Stimmung der Oberfläche.</span>
+              </div>
+
+              <button
+                v-for="themeOption in energyFlowThemes"
+                :key="themeOption.name"
+                class="theme-menu__item"
+                :class="{ 'theme-menu__item--active': activeTheme.name === themeOption.name }"
+                type="button"
+                @click="changeTheme(themeOption.name)"
+              >
+                <v-icon :icon="themeOption.icon" size="20" />
+                <span>
+                  <strong>{{ themeOption.label }}</strong>
+                  <small>{{ themeOption.description }}</small>
+                </span>
+                <v-icon v-if="activeTheme.name === themeOption.name" icon="mdi-check" size="18" />
+              </button>
+            </div>
+          </v-menu>
         </div>
       </div>
     </v-app-bar>

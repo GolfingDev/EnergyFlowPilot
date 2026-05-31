@@ -70,7 +70,8 @@
   isolation: isolate;
 }
 
-:global(.v-theme--controllerLight) .live-flow__stage {
+:global(.v-theme--controllerLight) .live-flow__stage,
+:global(.v-theme--controlCenterLight) .live-flow__stage {
   background: #edf7fb;
 }
 
@@ -99,7 +100,8 @@
   pointer-events: none;
 }
 
-:global(.v-theme--controllerLight) .live-flow__stage::after {
+:global(.v-theme--controllerLight) .live-flow__stage::after,
+:global(.v-theme--controlCenterLight) .live-flow__stage::after {
   background:
     radial-gradient(circle at 54% 63%, rgba(14, 165, 183, 0.04), transparent 28%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.2));
@@ -158,7 +160,8 @@
   transform: translate(-50%, -50%);
 }
 
-:global(.v-theme--controllerLight) .live-flow__node {
+:global(.v-theme--controllerLight) .live-flow__node,
+:global(.v-theme--controlCenterLight) .live-flow__node {
   border-color: rgba(14, 165, 183, 0.34);
   background: rgba(255, 255, 255, 0.8);
   color: #172026;

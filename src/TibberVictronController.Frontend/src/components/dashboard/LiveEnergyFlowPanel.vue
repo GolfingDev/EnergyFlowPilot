@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { useTheme } from 'vuetify';
 import type { CurrentBatteryDecisionResponseDto } from './dashboardTypes';
 import { formatPercent, formatPower, getDecisionLabel } from './dashboardFormatters';
+import { getEnergyFlowTheme } from '../../themeRegistry';
 
 const props = defineProps<{
   decision: CurrentBatteryDecisionResponseDto | null;
@@ -22,7 +23,7 @@ interface FlowDefinition {
 const decisionLabel = computed(() => props.decision
   ? getDecisionLabel(props.decision.decisionState, props.decision.chargeSource)
   : 'Nicht verfuegbar');
-const sceneImage = computed(() => theme.global.name.value === 'controllerDark'
+const sceneImage = computed(() => getEnergyFlowTheme(theme.global.name.value).dark
   ? '/live-energy-scene-dark.png'
   : '/live-energy-scene-light.png');
 const hasPvTelemetry = computed(() => false);

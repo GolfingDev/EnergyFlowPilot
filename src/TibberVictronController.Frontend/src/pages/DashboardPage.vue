@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { HubConnectionBuilder, HttpTransportType, LogLevel, type HubConnection } from '@microsoft/signalr';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useTheme } from 'vuetify';
 import DashboardErrorPanels from '../components/dashboard/DashboardErrorPanels.vue';
 import DashboardHeader from '../components/dashboard/DashboardHeader.vue';
 import DashboardMetricGrid from '../components/dashboard/DashboardMetricGrid.vue';
 import DecisionHistoryChartPanel from '../components/dashboard/DecisionHistoryChartPanel.vue';
 import DecisionDetailsPanel from '../components/dashboard/DecisionDetailsPanel.vue';
 import EnergySavingsPanel from '../components/dashboard/EnergySavingsPanel.vue';
-import EnergyLoadingOverlay from '../components/EnergyLoadingOverlay.vue'
+import EnergyLoadingOverlay from '../components/EnergyLoadingOverlay.vue';
 import ForecastChartPanel from '../components/dashboard/ForecastChartPanel.vue';
 import LiveEnergyFlowPanel from '../components/dashboard/LiveEnergyFlowPanel.vue';
-import { formatNumber } from '../components/dashboard/dashboardFormatters';
+import SchematicEnergyFlowPanel from '../components/dashboard/SchematicEnergyFlowPanel.vue';
+import { formatCurrency, formatDateTime, formatNumber, formatPercent, formatPower, formatPrice, getDecisionLabel } from '../components/dashboard/dashboardFormatters';
+import { getEnergyFlowTheme } from '../themeRegistry';
 import type {
   ApiErrorDto,
   BatteryForecastResponseDto,
@@ -29,6 +32,7 @@ import type {
 type DashboardViewMode = 'visual' | 'metrics';
 
 const refreshInSeconds = ref(0);
+const theme = useTheme();
 const status = ref<ControllerStatusResponseDto | null>(null);
 const decision = ref<CurrentBatteryDecisionResponseDto | null>(null);
 const decisionLogEntries = ref<DecisionLogEntryResponseDto[]>([]);
@@ -81,7 +85,7 @@ const manualChargeRemainingLabel = computed(() => {
 
   const remainingMinutes = Math.ceil(manualCharge.value.remainingSeconds / 60);
 
-  return `${formatNumber(manualCharge.value.powerKw, 1)} kW fuer noch ${remainingMinutes} min`;
+  return `${formatNumber(manualCharge.value.powerKw, 1)} kW für noch ${remainingMinutes} min`;
 });
 const currentConsumptionWatts = computed(() => {
   if (!decision.value) {
@@ -89,6 +93,118 @@ const currentConsumptionWatts = computed(() => {
   }
 
   return Math.max(0, decision.value.currentGridImportWatts);
+});
+const activeTheme = computed(() => getEnergyFlowTheme(theme.global.name.value));
+const usesPresetDashboard = computed(() =>
+  activeTheme.value.name === 'controlCenterLight' ||
+  activeTheme.value.name === 'flowCenterLight' ||
+  activeTheme.value.name === 'executiveDark' ||
+  activeTheme.value.name === 'mobileFocusDark');
+const usesControlCenterDashboard = computed(() =>
+  activeTheme.value.name === 'controlCenterLight' ||
+  activeTheme.value.name === 'flowCenterLight');
+const usesControlChartsDashboard = computed(() => activeTheme.value.name === 'controlCenterLight');
+const usesFlowCenterDashboard = computed(() => activeTheme.value.name === 'flowCenterLight');
+const dashboardLayoutClass = computed(() => `dashboard-page--${activeTheme.value.name}`);
+const signedGridPowerWatts = computed(() => decision.value?.currentGridImportWatts ?? null);
+const signedBatteryPowerWatts = computed(() => {
+  if (!decision.value) {
+    return null;
+  }
+
+  if (decision.value.decisionState === 'Charge') {
+    return decision.value.targetPowerWatts;
+  }
+
+  if (decision.value.decisionState === 'Discharge') {
+    return -decision.value.targetPowerWatts;
+  }
+
+  return 0;
+});
+const forecastConsumptionKwh = computed(() => forecast.value?.entries.reduce((sum, entry) => sum + entry.expectedConsumptionKwh, 0) ?? null);
+const currentDecisionLabel = computed(() => decision.value
+  ? getDecisionLabel(decision.value.decisionState, decision.value.chargeSource)
+  : 'Keine Entscheidung');
+const controlCenterKpis = computed(() => [
+  {
+    icon: 'mdi-battery-charging-medium',
+    label: 'Akku-SoC',
+    value: formatPercent(decision.value?.stateOfChargePercent),
+    trend: currentDecisionLabel.value
+  },
+  {
+    icon: 'mdi-timeline-check-outline',
+    label: 'Aktuelle Entscheidung',
+    value: currentDecisionLabel.value,
+    trend: decision.value ? `Ziel: ${formatPower(decision.value.targetPowerWatts)}` : 'Keine belastbare Entscheidung'
+  },
+  {
+    icon: 'mdi-transmission-tower',
+    label: 'Netzleistung',
+    value: formatPower(signedGridPowerWatts.value),
+    trend: signedGridPowerWatts.value !== null && signedGridPowerWatts.value < 0 ? 'Einspeisung' : 'Bezug'
+  },
+  {
+    icon: 'mdi-currency-eur',
+    label: 'Ersparnis',
+    value: savings.value ? formatCurrency(savings.value.aggregate.netSavings, savingsCurrency.value) : 'Nicht verfügbar',
+    trend: savings.value ? `Zeitraum: ${savings.value.period}` : 'Noch keine Daten'
+  }
+]);
+const controlCenterStatusRows = computed(() => [
+  {
+    icon: 'mdi-lan-connect',
+    label: 'Victron MQTT',
+    value: status.value?.victronMqttStatus ?? 'Unbekannt',
+    state: status.value?.victronMqttLastSuccessfulMessageAtUtc
+      ? formatDateTime(status.value.victronMqttLastSuccessfulMessageAtUtc)
+      : 'Keine Daten'
+  },
+  {
+    icon: 'mdi-cog-sync-outline',
+    label: 'Controller',
+    value: status.value?.status ?? 'Unbekannt',
+    state: autoRefreshLabel.value
+  },
+  {
+    icon: 'mdi-battery-outline',
+    label: 'Batterie',
+    value: formatPower(signedBatteryPowerWatts.value),
+    state: formatPercent(decision.value?.stateOfChargePercent)
+  },
+  {
+    icon: 'mdi-home-lightning-bolt-outline',
+    label: 'Verbrauch',
+    value: forecastConsumptionKwh.value === null ? formatPower(currentConsumptionWatts.value) : `${formatNumber(forecastConsumptionKwh.value, 1)} kWh`,
+    state: 'Live / Forecast'
+  }
+]);
+const controlCenterDecisionRows = computed(() => decisionLogEntries.value.slice(0, 4));
+const controlCenterWarnings = computed(() => {
+  const errors = loadErrors.value.slice(0, 3).map((error) => ({
+    title: error.source,
+    text: error.message,
+    icon: 'mdi-alert-circle-outline'
+  }));
+
+  if (errors.length > 0) {
+    return errors;
+  }
+
+  if (status.value?.victronMqttLastError) {
+    return [{
+      title: 'Victron MQTT',
+      text: status.value.victronMqttLastError,
+      icon: 'mdi-alert-circle-outline'
+    }];
+  }
+
+  return [{
+    title: 'System',
+    text: 'Keine aktuellen Warnungen.',
+    icon: 'mdi-information-outline'
+  }];
 });
 
 function changeDashboardViewMode(mode: DashboardViewMode): void {
@@ -190,13 +306,12 @@ function configureAutoRefresh(): void {
   refreshInSeconds.value = autoRefreshIntervalSeconds.value;
 
   autoRefreshTimer = window.setInterval(() => {
-
     refreshInSeconds.value = refreshInSeconds.value - 1;
-    if (refreshInSeconds.value <= 0){
-    void loadSlowDashboardData(true);
-    refreshInSeconds.value = autoRefreshIntervalSeconds.value;
-  }
-}, 1000);
+    if (refreshInSeconds.value <= 0) {
+      void loadSlowDashboardData(true);
+      refreshInSeconds.value = autoRefreshIntervalSeconds.value;
+    }
+  }, 1000);
 }
 
 function clearAutoRefresh(): void {
@@ -515,121 +630,268 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <v-container class="dashboard-page" fluid>
-
+  <v-container class="dashboard-page" :class="dashboardLayoutClass" fluid>
     <EnergyLoadingOverlay :model-value="showLoadingOverlay" title="Loading forecast"
-      subtitle="Calculating price, PV and battery plan…" :size="200" />
+      subtitle="Calculating price, PV and battery plan..." :size="200" />
 
-
-    <DashboardHeader :status="status" :is-loading="isLoading" :auto-refresh-label="autoRefreshLabel"
+    <DashboardHeader v-if="!usesControlCenterDashboard" :status="status" :is-loading="isLoading" :auto-refresh-label="autoRefreshLabel"
       @refresh="loadDashboard" />
-
-    <!-- <div v-if="isLoading" class="loading-panel">
-      <v-progress-circular indeterminate color="primary" size="24" />
-      <span>Dashboard-Daten werden geladen...</span>
-    </div> -->
 
     <DashboardErrorPanels :errors="loadErrors" />
 
-    <div class="dashboard-view-switch" aria-label="Dashboard-Ansicht">
-      <button
-        type="button"
-        :class="{ 'dashboard-view-switch__button--active': dashboardViewMode === 'visual' }"
-        @click="changeDashboardViewMode('visual')"
-      >
-        Bildansicht
-      </button>
-      <button
-        type="button"
-        :class="{ 'dashboard-view-switch__button--active': dashboardViewMode === 'metrics' }"
-        @click="changeDashboardViewMode('metrics')"
-      >
-        Kennzahlen
-      </button>
-    </div>
+    <template v-if="usesControlCenterDashboard">
+      <header class="control-center-header">
+        <div>
+          <span class="control-center-header__eyebrow">{{ usesFlowCenterDashboard ? 'Flow Center' : 'Control Charts' }}</span>
+          <h1>Übersicht</h1>
+          <p>{{ usesFlowCenterDashboard ? 'Live-Fluss, Status und aktuelle Entscheidung.' : 'Kennzahlen, Forecast und Entscheidungshistorie.' }}</p>
+        </div>
+        <div class="control-center-header__actions">
+          <v-btn variant="outlined" :loading="isLoading" @click="loadDashboard">
+            Aktualisieren
+          </v-btn>
+          <span>{{ autoRefreshLabel }}</span>
+        </div>
+      </header>
 
-    <section class="manual-charge-panel">
-      <div>
-        <span class="manual-charge-panel__eyebrow">Manuelle Ladung</span>
-        <strong>{{ manualChargeRemainingLabel }}</strong>
+      <section v-if="usesControlChartsDashboard" id="dashboard-overview" class="control-center-kpis">
+        <article v-for="kpi in controlCenterKpis" :key="kpi.label" class="control-center-kpi">
+          <div class="control-center-kpi__icon">
+            <v-icon :icon="kpi.icon" size="26" />
+          </div>
+          <div>
+            <span>{{ kpi.label }}</span>
+            <strong>{{ kpi.value }}</strong>
+            <small>{{ kpi.trend }}</small>
+          </div>
+        </article>
+
+        <article id="dashboard-details" class="panel control-center-status-strip">
+          <div class="control-center-status-strip__header">
+            <h2>Gerätestatus</h2>
+            <span>{{ status?.status ?? 'Unbekannt' }}</span>
+          </div>
+          <div class="control-center-status-strip__rows">
+            <div v-for="row in controlCenterStatusRows.slice(0, 3)" :key="row.label">
+              <v-icon :icon="row.icon" size="16" />
+              <span>{{ row.label }}</span>
+              <strong>{{ row.value }}</strong>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section v-if="usesControlChartsDashboard" class="control-center-grid control-center-grid--charts">
+        <article id="dashboard-forecast" class="panel control-center-section control-center-section--price">
+          <div class="panel__header control-center-panel-header">
+            <div>
+              <h2>Preis & Forecast</h2>
+              <p>{{ formatPrice(decision?.tibberPricePerKwh, decision?.tibberPriceCurrency) }}</p>
+            </div>
+          </div>
+          <ForecastChartPanel :forecast="forecast" :forecast-load-error="forecastLoadError" />
+        </article>
+
+        <article id="dashboard-history" class="panel control-center-section control-center-section--history-chart">
+          <DecisionHistoryChartPanel
+            :entries="decisionHistoryEntries"
+            :hours="decisionHistoryHours"
+            @change-hours="changeDecisionHistoryHours"
+          />
+        </article>
+
+        <article class="panel control-center-section control-center-section--history-list">
+          <div class="panel__header control-center-panel-header">
+            <div>
+              <h2>Letzte Entscheidungen</h2>
+              <p>Automatisch protokollierte Aktionen.</p>
+            </div>
+          </div>
+          <div class="control-center-list">
+            <div v-for="entry in controlCenterDecisionRows" :key="entry.id" class="control-center-list-row">
+              <span>{{ new Date(entry.decidedAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}</span>
+              <strong>{{ getDecisionLabel(entry.decisionState, entry.chargeSource) }}</strong>
+              <em>{{ formatPower(entry.targetPowerWatts) }}</em>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel control-center-section control-center-section--manual">
+          <div class="panel__header control-center-panel-header">
+            <div>
+              <h2>Manuelle Ladung</h2>
+              <p>{{ manualChargeRemainingLabel }}</p>
+            </div>
+          </div>
+          <div class="manual-charge-panel__controls control-center-manual-controls">
+            <v-text-field v-model.number="manualChargeDurationMinutes" type="number" min="1" max="1440" step="1" label="Minuten" density="compact" hide-details variant="outlined" />
+            <v-text-field v-model.number="manualChargePowerKw" type="number" min="0.1" max="50" step="0.1" label="kW" density="compact" hide-details variant="outlined" />
+            <v-btn color="primary" :loading="isManualChargeBusy" @click="startManualCharge">Start</v-btn>
+            <v-btn variant="outlined" :disabled="!manualCharge?.isActive" :loading="isManualChargeBusy" @click="stopManualCharge">Stop</v-btn>
+          </div>
+        </article>
+
+        <article class="panel control-center-section control-center-section--warnings">
+          <div class="panel__header control-center-panel-header">
+            <div>
+              <h2>Warnungen</h2>
+              <p>Aktuelle Hinweise und Ladefehler.</p>
+            </div>
+          </div>
+          <div class="control-center-warning-list">
+            <div v-for="warning in controlCenterWarnings" :key="`${warning.title}-${warning.text}`" class="control-center-warning">
+              <v-icon :icon="warning.icon" size="22" />
+              <div>
+                <strong>{{ warning.title }}</strong>
+                <span>{{ warning.text }}</span>
+              </div>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section v-else class="control-center-grid control-center-grid--flow">
+        <SchematicEnergyFlowPanel
+          id="dashboard-live-flow"
+          class="control-center-section control-center-section--flow"
+          :decision="decision"
+          :current-consumption-watts="currentConsumptionWatts"
+        />
+
+        <article id="dashboard-details" class="panel control-center-section control-center-section--status">
+          <div class="panel__header control-center-panel-header">
+            <div>
+              <h2>Gerätestatus</h2>
+              <p>{{ status?.status ?? 'Unbekannt' }}</p>
+            </div>
+          </div>
+          <div class="control-center-status-list">
+            <div v-for="row in controlCenterStatusRows" :key="row.label" class="control-center-status-row">
+              <v-icon :icon="row.icon" size="20" />
+              <span>{{ row.label }}</span>
+              <strong>{{ row.value }}</strong>
+              <small>{{ row.state }}</small>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel control-center-section control-center-section--current-decision">
+          <div class="panel__header control-center-panel-header">
+            <div>
+              <h2>Aktuelle Entscheidung</h2>
+              <p>{{ decision ? formatDateTime(decision.decidedAtUtc) : 'Keine Entscheidung vorhanden' }}</p>
+            </div>
+          </div>
+          <div class="control-center-decision-card">
+            <v-icon icon="mdi-timeline-check-outline" size="28" />
+            <div>
+              <strong>{{ currentDecisionLabel }}</strong>
+              <span>Ziel: {{ formatPower(decision?.targetPowerWatts) }}</span>
+              <span>SoC: {{ formatPercent(decision?.stateOfChargePercent) }}</span>
+            </div>
+          </div>
+          <div class="control-center-list">
+            <div v-for="entry in controlCenterDecisionRows" :key="entry.id" class="control-center-list-row">
+              <span>{{ new Date(entry.decidedAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}</span>
+              <strong>{{ getDecisionLabel(entry.decisionState, entry.chargeSource) }}</strong>
+              <em>{{ formatPower(entry.targetPowerWatts) }}</em>
+            </div>
+          </div>
+        </article>
+
+        <article id="dashboard-forecast" class="panel control-center-section control-center-section--price">
+          <div class="panel__header control-center-panel-header">
+            <div>
+              <h2>Preis & Forecast</h2>
+              <p>{{ formatPrice(decision?.tibberPricePerKwh, decision?.tibberPriceCurrency) }}</p>
+            </div>
+          </div>
+          <ForecastChartPanel :forecast="forecast" :forecast-load-error="forecastLoadError" />
+        </article>
+      </section>
+    </template>
+
+    <template v-else>
+      <div v-if="!usesPresetDashboard" class="dashboard-view-switch" aria-label="Dashboard-Ansicht">
+        <button
+          type="button"
+          :class="{ 'dashboard-view-switch__button--active': dashboardViewMode === 'visual' }"
+          @click="changeDashboardViewMode('visual')"
+        >
+          Bildansicht
+        </button>
+        <button
+          type="button"
+          :class="{ 'dashboard-view-switch__button--active': dashboardViewMode === 'metrics' }"
+          @click="changeDashboardViewMode('metrics')"
+        >
+          Kennzahlen
+        </button>
       </div>
 
-      <div class="manual-charge-panel__controls">
-        <v-text-field
-          v-model.number="manualChargeDurationMinutes"
-          type="number"
-          min="1"
-          max="1440"
-          step="1"
-          label="Minuten"
-          density="compact"
-          hide-details
-          variant="outlined"
+      <section class="manual-charge-panel">
+        <div>
+          <span class="manual-charge-panel__eyebrow">Manuelle Ladung</span>
+          <strong>{{ manualChargeRemainingLabel }}</strong>
+        </div>
+
+        <div class="manual-charge-panel__controls">
+          <v-text-field v-model.number="manualChargeDurationMinutes" type="number" min="1" max="1440" step="1" label="Minuten" density="compact" hide-details variant="outlined" />
+          <v-text-field v-model.number="manualChargePowerKw" type="number" min="0.1" max="50" step="0.1" label="kW" density="compact" hide-details variant="outlined" />
+          <v-btn color="primary" :loading="isManualChargeBusy" @click="startManualCharge">Start</v-btn>
+          <v-btn variant="outlined" :disabled="!manualCharge?.isActive" :loading="isManualChargeBusy" @click="stopManualCharge">Stop</v-btn>
+        </div>
+      </section>
+
+      <div class="dashboard-content-grid">
+        <DashboardMetricGrid
+          id="dashboard-overview"
+          v-if="usesPresetDashboard || dashboardViewMode === 'metrics'"
+          class="dashboard-section dashboard-section--metrics"
+          :decision="decision"
+          :forecast="forecast"
+          :savings="savings"
+          :savings-currency="savingsCurrency"
+          :savings-period="savingsPeriod"
+          :savings-period-options="savingsPeriodOptions"
+          :current-consumption-watts="currentConsumptionWatts"
+          @change-savings-period="changeSavingsPeriod"
         />
-        <v-text-field
-          v-model.number="manualChargePowerKw"
-          type="number"
-          min="0.1"
-          max="50"
-          step="0.1"
-          label="kW"
-          density="compact"
-          hide-details
-          variant="outlined"
+
+        <LiveEnergyFlowPanel
+          id="dashboard-live-flow"
+          v-if="usesPresetDashboard || dashboardViewMode === 'visual'"
+          class="dashboard-section dashboard-section--live"
+          :decision="decision"
+          :current-consumption-watts="currentConsumptionWatts"
         />
-        <v-btn
-          color="primary"
-          :loading="isManualChargeBusy"
-          @click="startManualCharge"
-        >
-          Start
-        </v-btn>
-        <v-btn
-          variant="outlined"
-          :disabled="!manualCharge?.isActive"
-          :loading="isManualChargeBusy"
-          @click="stopManualCharge"
-        >
-          Stop
-        </v-btn>
+
+        <ForecastChartPanel
+          id="dashboard-forecast"
+          class="dashboard-section dashboard-section--forecast"
+          :forecast="forecast"
+          :forecast-load-error="forecastLoadError"
+        />
+
+        <DecisionHistoryChartPanel
+          id="dashboard-history"
+          class="dashboard-section dashboard-section--history"
+          :entries="decisionHistoryEntries"
+          :hours="decisionHistoryHours"
+          @change-hours="changeDecisionHistoryHours"
+        />
+
+        <div id="dashboard-details" class="dashboard-layout dashboard-section dashboard-section--details">
+          <main class="dashboard-main">
+            <DecisionDetailsPanel :decision="decision" :decision-log-entries="decisionLogEntries" />
+          </main>
+
+          <aside class="dashboard-side">
+            <EnergySavingsPanel :savings="savings" />
+          </aside>
+        </div>
       </div>
-    </section>
-
-    <LiveEnergyFlowPanel
-      v-if="dashboardViewMode === 'visual'"
-      :decision="decision"
-      :current-consumption-watts="currentConsumptionWatts"
-    />
-
-    <DashboardMetricGrid
-      v-else
-      :decision="decision"
-      :forecast="forecast"
-      :savings="savings"
-      :savings-currency="savingsCurrency"
-      :savings-period="savingsPeriod"
-      :savings-period-options="savingsPeriodOptions"
-      :current-consumption-watts="currentConsumptionWatts"
-      @change-savings-period="changeSavingsPeriod"
-    />
-
-    <ForecastChartPanel :forecast="forecast" :forecast-load-error="forecastLoadError" />
-
-    <DecisionHistoryChartPanel
-      :entries="decisionHistoryEntries"
-      :hours="decisionHistoryHours"
-      @change-hours="changeDecisionHistoryHours"
-    />
-
-    <div class="dashboard-layout">
-      <main class="dashboard-main">
-        <DecisionDetailsPanel :decision="decision" :decision-log-entries="decisionLogEntries" />
-      </main>
-
-      <aside class="dashboard-side">
-        <EnergySavingsPanel :savings="savings" />
-      </aside>
-    </div>
+    </template>
   </v-container>
 </template>
 
