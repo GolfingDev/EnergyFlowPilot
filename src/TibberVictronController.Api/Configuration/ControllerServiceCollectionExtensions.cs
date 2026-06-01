@@ -47,6 +47,9 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<TelemetrySourceSelector>();
         services.AddSingleton<VictronMqttRuntimeStatus>();
         services.AddSingleton<DecisionWorkerRuntimeStatus>();
+        services.AddSingleton<DecisionCalculationTrigger>();
+        services.AddSingleton<SignificantTelemetryChangeDetector>();
+        services.AddSingleton<VictronSetpointRefreshState>();
         services.AddScoped<IDecisionLogRepository, EfDecisionLogRepository>();
         services.AddScoped<IBatterySavingsRepository, EfBatterySavingsRepository>();
         services.AddScoped<IOperationalEventRepository, EfOperationalEventRepository>();
@@ -88,6 +91,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddHttpClient<ForecastSolarPvForecastProvider>();
         services.AddScoped<IWeatherForecastProvider, CachedWeatherForecastProvider>();
         services.AddHostedService<DecisionExecutionBackgroundService>();
+        services.AddHostedService<VictronSetpointRefreshBackgroundService>();
         services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<VictronMqttClientService>());
 
         return services;

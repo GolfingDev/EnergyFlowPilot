@@ -12,15 +12,18 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
 
     private readonly DatabaseVictronMqttSettingsProvider settingsProvider;
     private readonly IVictronMqttControlClient mqttControlClient;
+    private readonly VictronSetpointRefreshState refreshState;
     private readonly ILogger<MqttVictronSetpointPublisher> logger;
 
     public MqttVictronSetpointPublisher(
         DatabaseVictronMqttSettingsProvider settingsProvider,
         IVictronMqttControlClient mqttControlClient,
+        VictronSetpointRefreshState refreshState,
         ILogger<MqttVictronSetpointPublisher> logger)
     {
         this.settingsProvider = settingsProvider;
         this.mqttControlClient = mqttControlClient;
+        this.refreshState = refreshState;
         this.logger = logger;
     }
 
@@ -33,8 +36,10 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
         var hub4Control = CalculateHub4Control(decisionResult, settings.BatteryIdleThresholdWatts, effectiveTargetPowerWatts);
 
         await PublishHub4ModeAsync(mqttControlClient, settings, topics, logger, cancellationToken);
-        await PublishHub4ControlAsync(mqttControlClient, settings, topics, hub4Control, cancellationToken);
-        await PublishSetpointAsync(mqttControlClient, settings, topics, gridSetpointWatts, decisionResult, effectiveTargetPowerWatts, cancellationToken);
+        await PublishHub4ControlAsync(mqttControlClient, settings, topics, logger, hub4Control, cancellationToken);
+        var setpoints = CreateSetpoints(settings, topics, gridSetpointWatts, decisionResult, effectiveTargetPowerWatts);
+        await PublishSetpointsAsync(mqttControlClient, setpoints, cancellationToken);
+        refreshState.Update(new VictronSetpointRefreshSnapshot(decisionResult.ValidToUtc, setpoints));
 
         logger.LogInformation(
             "Victron-Setpoint per MQTT veröffentlicht. ControlMode={ControlMode}, GridSetpointW={GridSetpointWatts}, ExternalSetpointW={ExternalSetpointWatts}, EffectiveTargetPowerW={EffectiveTargetPowerWatts}, DisableCharge={DisableCharge}, DisableFeedIn={DisableFeedIn}",
@@ -116,27 +121,41 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
         await mqttClient.PublishValueAsync(topic, value, cancellationToken);
     }
 
-    private static async Task PublishSetpointAsync(
-        IVictronMqttControlClient mqttClient,
+    private static IReadOnlyList<VictronSetpointValue> CreateSetpoints(
         VictronMqttSettings settings,
         VictronMqttTopics topics,
         int gridSetpointWatts,
         CurrentBatteryDecisionResult decisionResult,
-        int effectiveTargetPowerWatts,
-        CancellationToken cancellationToken)
+        int effectiveTargetPowerWatts)
     {
         if (settings.ControlMode == VictronControlMode.NormalEss)
         {
-            await PublishValueAsync(mqttClient, topics.ChargeDischargeSetpointTopic, gridSetpointWatts, cancellationToken);
-            return;
+            return new[]
+            {
+                new VictronSetpointValue(topics.ChargeDischargeSetpointTopic, gridSetpointWatts)
+            };
         }
 
         var externalSetpointWatts = CalculateExternalEssSetpointWatts(decisionResult, effectiveTargetPowerWatts);
         var phaseSetpoints = SplitSetpointAcrossPhases(externalSetpointWatts, topics.ExternalEssAcPowerSetpointTopics.Count);
+        var setpoints = new List<VictronSetpointValue>(phaseSetpoints.Count);
 
         for (var index = 0; index < phaseSetpoints.Count; index++)
         {
-            await PublishValueAsync(mqttClient, topics.ExternalEssAcPowerSetpointTopics[index], phaseSetpoints[index], cancellationToken);
+            setpoints.Add(new VictronSetpointValue(topics.ExternalEssAcPowerSetpointTopics[index], phaseSetpoints[index]));
+        }
+
+        return setpoints;
+    }
+
+    private static async Task PublishSetpointsAsync(
+        IVictronMqttControlClient mqttClient,
+        IReadOnlyList<VictronSetpointValue> setpoints,
+        CancellationToken cancellationToken)
+    {
+        foreach (var setpoint in setpoints)
+        {
+            await PublishValueAsync(mqttClient, setpoint.Topic, setpoint.Value, cancellationToken);
         }
     }
 
@@ -210,34 +229,26 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
         IVictronMqttControlClient mqttClient,
         VictronMqttSettings settings,
         VictronMqttTopics topics,
+        ILogger logger,
         Hub4Control hub4Control,
         CancellationToken cancellationToken)
     {
-        await PublishValueAsync(mqttClient, topics.DisableChargeTopic, hub4Control.DisableCharge ? 1 : 0, cancellationToken);
-        await PublishValueAsync(mqttClient, topics.DisableFeedInTopic, hub4Control.DisableFeedIn ? 1 : 0, cancellationToken);
-
-        if (settings.ControlMode == VictronControlMode.NormalEss)
-        {
-            return;
-        }
-
-        foreach (var setpointTopic in topics.ExternalEssAcPowerSetpointTopics)
-        {
-            await PublishValueAsync(mqttClient, CreateExternalEssPhaseControlTopic(setpointTopic, "DisableCharge"), hub4Control.DisableCharge ? 1 : 0, cancellationToken);
-            await PublishValueAsync(mqttClient, CreateExternalEssPhaseControlTopic(setpointTopic, "DisableFeedIn"), hub4Control.DisableFeedIn ? 1 : 0, cancellationToken);
-        }
-    }
-
-    public static string CreateExternalEssPhaseControlTopic(string acPowerSetpointTopic, string controlPath)
-    {
-        const string setpointSuffix = "/AcPowerSetpoint";
-
-        if (!acPowerSetpointTopic.EndsWith(setpointSuffix, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ArgumentException("Das External-ESS-Setpoint-Topic muss mit /AcPowerSetpoint enden.", nameof(acPowerSetpointTopic));
-        }
-
-        return acPowerSetpointTopic[..^setpointSuffix.Length] + "/" + controlPath;
+        await PublishValueIfChangedAsync(
+            mqttClient,
+            topics.DisableChargeTopic,
+            topics.DisableChargeReadTopic,
+            hub4Control.DisableCharge ? 1 : 0,
+            "DisableCharge",
+            logger,
+            cancellationToken);
+        await PublishValueIfChangedAsync(
+            mqttClient,
+            topics.DisableFeedInTopic,
+            topics.DisableFeedInReadTopic,
+            hub4Control.DisableFeedIn ? 1 : 0,
+            "DisableFeedIn",
+            logger,
+            cancellationToken);
     }
 
     private static async Task PublishHub4ModeAsync(
@@ -278,6 +289,33 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
     public static bool ShouldPublishHub4Mode(bool hasCurrentMode, decimal currentMode, int desiredMode)
     {
         return hasCurrentMode && currentMode != desiredMode;
+    }
+
+    private static async Task PublishValueIfChangedAsync(
+        IVictronMqttControlClient mqttClient,
+        string writeTopic,
+        string readTopic,
+        int desiredValue,
+        string label,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (!mqttClient.TryGetLatestValue(readTopic, out var currentValue))
+        {
+            logger.LogDebug(
+                "{Label} wird nicht geschrieben, weil noch kein Readback vorliegt. ReadTopic={ReadTopic}, DesiredValue={DesiredValue}",
+                label,
+                readTopic,
+                desiredValue);
+            return;
+        }
+
+        if (currentValue == desiredValue)
+        {
+            return;
+        }
+
+        await PublishValueAsync(mqttClient, writeTopic, desiredValue, cancellationToken);
     }
 
     public static int CalculateHub4ModeValue(VictronControlMode controlMode)

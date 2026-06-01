@@ -18,15 +18,34 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
     private readonly IServiceProvider serviceProvider;
     private readonly ILogger<DecisionExecutionBackgroundService> logger;
     private readonly DecisionWorkerRuntimeStatus runtimeStatus;
+    private readonly DecisionCalculationTrigger calculationTrigger;
+    private readonly VictronSetpointRefreshState setpointRefreshState;
 
     public DecisionExecutionBackgroundService(
         IServiceProvider serviceProvider,
         ILogger<DecisionExecutionBackgroundService> logger,
         DecisionWorkerRuntimeStatus runtimeStatus)
+        : this(
+            serviceProvider,
+            logger,
+            runtimeStatus,
+            new DecisionCalculationTrigger(),
+            new VictronSetpointRefreshState())
+    {
+    }
+
+    public DecisionExecutionBackgroundService(
+        IServiceProvider serviceProvider,
+        ILogger<DecisionExecutionBackgroundService> logger,
+        DecisionWorkerRuntimeStatus runtimeStatus,
+        DecisionCalculationTrigger calculationTrigger,
+        VictronSetpointRefreshState setpointRefreshState)
     {
         this.serviceProvider = serviceProvider;
         this.logger = logger;
         this.runtimeStatus = runtimeStatus;
+        this.calculationTrigger = calculationTrigger;
+        this.setpointRefreshState = setpointRefreshState;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -50,7 +69,7 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
                 await HandleCycleFailureAsync(exception, stoppingToken);
             }
 
-            await Task.Delay(delay, stoppingToken);
+            await calculationTrigger.WaitAsync(delay, stoppingToken);
         }
 
         runtimeStatus.MarkStopped();
@@ -71,6 +90,10 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
         {
             var setpointPublisher = scope.ServiceProvider.GetRequiredService<IVictronSetpointPublisher>();
             await setpointPublisher.PublishAsync(decisionResult, cancellationToken);
+        }
+        else
+        {
+            setpointRefreshState.Clear();
         }
 
         var dashboardLiveUpdatePublisher = scope.ServiceProvider.GetService<IDashboardLiveUpdatePublisher>();

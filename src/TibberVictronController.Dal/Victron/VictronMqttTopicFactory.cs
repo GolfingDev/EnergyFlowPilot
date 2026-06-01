@@ -20,7 +20,9 @@ public static class VictronMqttTopicFactory
             BatteryVoltageTopic = $"N/{settings.PortalId}/battery/512/Dc/0/Voltage",
             ExternalEssAcPowerSetpointTopics = ResolveExternalEssAcPowerSetpointTopics(settings),
             DisableChargeTopic = Resolve(settings.DisableChargeTopic, settings.PortalId),
-            DisableFeedInTopic = Resolve(settings.DisableFeedInTopic, settings.PortalId)
+            DisableChargeReadTopic = ToReadTopic(Resolve(settings.DisableChargeTopic, settings.PortalId)),
+            DisableFeedInTopic = Resolve(settings.DisableFeedInTopic, settings.PortalId),
+            DisableFeedInReadTopic = ToReadTopic(Resolve(settings.DisableFeedInTopic, settings.PortalId))
         };
     }
 

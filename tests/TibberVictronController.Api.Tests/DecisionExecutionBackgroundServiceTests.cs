@@ -304,16 +304,6 @@ public sealed class DecisionExecutionBackgroundServiceTests
         Assert.Equal(expectedResult, MqttVictronSetpointPublisher.ShouldPublishHub4Mode(hasCurrentMode, currentMode, desiredMode));
     }
 
-    [Fact]
-    public void CreateExternalEssPhaseControlTopicUsesPhaseScopedHub4ControlPath()
-    {
-        var topic = MqttVictronSetpointPublisher.CreateExternalEssPhaseControlTopic(
-            "W/c0619ab93165/vebus/276/Hub4/L1/AcPowerSetpoint",
-            "DisableCharge");
-
-        Assert.Equal("W/c0619ab93165/vebus/276/Hub4/L1/DisableCharge", topic);
-    }
-
     private static ServiceProvider CreateServiceProvider(
         ICurrentBatteryDecisionService currentBatteryDecisionService,
         IControllerSettingStore controllerSettingStore,

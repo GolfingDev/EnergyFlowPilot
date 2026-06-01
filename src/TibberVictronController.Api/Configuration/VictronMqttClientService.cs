@@ -23,6 +23,8 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
     private readonly IServiceProvider serviceProvider;
     private readonly ILogger<VictronMqttClientService> logger;
     private readonly VictronMqttRuntimeStatus runtimeStatus;
+    private readonly DecisionCalculationTrigger calculationTrigger;
+    private readonly SignificantTelemetryChangeDetector telemetryChangeDetector;
     private readonly ConcurrentDictionary<string, decimal> latestValuesByTopic = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim connectionLock = new(1, 1);
     private IMqttClient? mqttClient;
@@ -32,11 +34,15 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
     public VictronMqttClientService(
         IServiceProvider serviceProvider,
         ILogger<VictronMqttClientService> logger,
-        VictronMqttRuntimeStatus runtimeStatus)
+        VictronMqttRuntimeStatus runtimeStatus,
+        DecisionCalculationTrigger calculationTrigger,
+        SignificantTelemetryChangeDetector telemetryChangeDetector)
     {
         this.serviceProvider = serviceProvider;
         this.logger = logger;
         this.runtimeStatus = runtimeStatus;
+        this.calculationTrigger = calculationTrigger;
+        this.telemetryChangeDetector = telemetryChangeDetector;
     }
 
     public async Task PublishValueAsync(string topic, int value, CancellationToken cancellationToken = default)
@@ -211,10 +217,11 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
                 return Task.CompletedTask;
             };
 
+            var clientId = CreateClientId(settings);
             var options = new MqttClientOptionsBuilder()
                 .WithTcpServer(settings.Host, settings.Port)
                 .WithKeepAlivePeriod(TimeSpan.FromSeconds(settings.KeepAliveSeconds))
-                .WithClientId($"tibber-victron-controller-{settings.PortalId}")
+                .WithClientId(clientId)
                 .Build();
             var subscribeOptions = new MqttClientSubscribeOptions
             {
@@ -234,7 +241,8 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             runtimeStatus.MarkConnected();
 
             logger.LogInformation(
-                "Victron MQTT verbunden. PortalId={PortalId}, Host={Host}, Port={Port}, Topics={TopicCount}",
+                "Victron MQTT verbunden. ClientId={ClientId}, PortalId={PortalId}, Host={Host}, Port={Port}, Topics={TopicCount}",
+                clientId,
                 settings.PortalId,
                 settings.Host,
                 settings.Port,
@@ -269,12 +277,23 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
         Interlocked.Increment(ref receivedTelemetryMessageCount);
         runtimeStatus.MarkMessageReceived(measuredAtUtc);
 
+        var signalKind = GetTelemetrySignalKind(eventArguments.ApplicationMessage.Topic, topics);
         var shouldPersistConsumptionSample = ApplyTelemetryValue(
             eventArguments.ApplicationMessage.Topic,
             value,
             measuredAtUtc,
             topics,
             snapshotStore);
+
+        if (signalKind is not null &&
+            telemetryChangeDetector.ShouldTrigger(eventArguments.ApplicationMessage.Topic, value, signalKind.Value))
+        {
+            calculationTrigger.Signal();
+            logger.LogDebug(
+                "Decision-Neuberechnung wegen signifikanter Telemetrieaenderung signalisiert. Topic={Topic}, Value={Value}",
+                eventArguments.ApplicationMessage.Topic,
+                value);
+        }
 
         if (shouldPersistConsumptionSample)
         {
@@ -322,6 +341,23 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
         return false;
     }
 
+    private static TelemetrySignalKind? GetTelemetrySignalKind(string topic, VictronMqttTopics topics)
+    {
+        if (string.Equals(topic, topics.BatterySocTopic, StringComparison.Ordinal))
+        {
+            return TelemetrySignalKind.StateOfCharge;
+        }
+
+        if (string.Equals(topic, topics.GridPowerTopic, StringComparison.Ordinal) ||
+            string.Equals(topic, topics.BatteryPowerTopic, StringComparison.Ordinal) ||
+            string.Equals(topic, topics.HouseConsumptionTopic, StringComparison.Ordinal))
+        {
+            return TelemetrySignalKind.Power;
+        }
+
+        return null;
+    }
+
     private async Task PublishKeepAliveAsync(VictronMqttSettings settings, CancellationToken cancellationToken)
     {
         var client = mqttClient;
@@ -336,6 +372,15 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             .Build();
 
         await client.PublishAsync(message, cancellationToken);
+    }
+
+    private static string CreateClientId(VictronMqttSettings settings)
+    {
+        var machineName = Environment.MachineName
+            .Replace(" ", "-", StringComparison.Ordinal)
+            .ToLowerInvariant();
+
+        return $"tibber-victron-controller-{settings.PortalId}-{machineName}-{Environment.ProcessId}";
     }
 
     private async Task PersistLiveConsumptionSampleAsync(decimal houseConsumptionWatts, DateTimeOffset measuredAtUtc)

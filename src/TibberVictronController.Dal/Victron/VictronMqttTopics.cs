@@ -27,7 +27,11 @@ public sealed class VictronMqttTopics
 
     public required string DisableChargeTopic { get; init; }
 
+    public required string DisableChargeReadTopic { get; init; }
+
     public required string DisableFeedInTopic { get; init; }
+
+    public required string DisableFeedInReadTopic { get; init; }
 
     public IReadOnlyList<string> ReadTopics => new[]
     {
@@ -37,6 +41,8 @@ public sealed class VictronMqttTopics
         HouseConsumptionTopic,
         Hub4ModeReadTopic,
         VebusMaxChargeCurrentTopic,
-        BatteryVoltageTopic
+        BatteryVoltageTopic,
+        DisableChargeReadTopic,
+        DisableFeedInReadTopic
     };
 }
