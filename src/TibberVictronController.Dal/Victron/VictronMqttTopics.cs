@@ -17,6 +17,12 @@ public sealed class VictronMqttTopics
 
     public required string Hub4ModeTopic { get; init; }
 
+    public required string Hub4ModeReadTopic { get; init; }
+
+    public required string VebusMaxChargeCurrentTopic { get; init; }
+
+    public required string BatteryVoltageTopic { get; init; }
+
     public required IReadOnlyList<string> ExternalEssAcPowerSetpointTopics { get; init; }
 
     public required string DisableChargeTopic { get; init; }
@@ -28,6 +34,9 @@ public sealed class VictronMqttTopics
         GridPowerTopic,
         BatterySocTopic,
         BatteryPowerTopic,
-        HouseConsumptionTopic
+        HouseConsumptionTopic,
+        Hub4ModeReadTopic,
+        VebusMaxChargeCurrentTopic,
+        BatteryVoltageTopic
     };
 }

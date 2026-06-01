@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using MQTTnet;
 using MQTTnet.Protocol;
@@ -22,6 +23,7 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
     private readonly IServiceProvider serviceProvider;
     private readonly ILogger<VictronMqttClientService> logger;
     private readonly VictronMqttRuntimeStatus runtimeStatus;
+    private readonly ConcurrentDictionary<string, decimal> latestValuesByTopic = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim connectionLock = new(1, 1);
     private IMqttClient? mqttClient;
     private VictronMqttSettings? activeSettings;
@@ -64,6 +66,11 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             await DisconnectClientAsync(CancellationToken.None);
             throw;
         }
+    }
+
+    public bool TryGetLatestValue(string topic, out decimal value)
+    {
+        return latestValuesByTopic.TryGetValue(topic, out value);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -184,6 +191,7 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             var topics = VictronMqttTopicFactory.Create(settings);
             var snapshotStore = serviceProvider.GetRequiredService<MqttTelemetrySnapshotStore>();
             snapshotStore.Clear();
+            latestValuesByTopic.Clear();
 
             var client = new MqttClientFactory().CreateMqttClient();
             client.ApplicationMessageReceivedAsync += async eventArguments =>
@@ -257,6 +265,7 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
         }
 
         var measuredAtUtc = DateTimeOffset.UtcNow;
+        latestValuesByTopic[eventArguments.ApplicationMessage.Topic] = value;
         Interlocked.Increment(ref receivedTelemetryMessageCount);
         runtimeStatus.MarkMessageReceived(measuredAtUtc);
 

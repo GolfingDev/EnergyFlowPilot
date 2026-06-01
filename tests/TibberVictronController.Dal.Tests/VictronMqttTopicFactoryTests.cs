@@ -38,6 +38,12 @@ public sealed class VictronMqttTopicFactoryTests
         Assert.Equal("N/c0619ab93165/system/0/Ac/Consumption/L1/Power", topics.HouseConsumptionTopic);
         Assert.Equal("W/c0619ab93165/settings/0/Settings/CGwacs/AcPowerSetPoint", topics.ChargeDischargeSetpointTopic);
         Assert.Equal("W/c0619ab93165/settings/0/Settings/CGwacs/Hub4Mode", topics.Hub4ModeTopic);
+        Assert.Equal("N/c0619ab93165/settings/0/Settings/CGwacs/Hub4Mode", topics.Hub4ModeReadTopic);
+        Assert.Equal("N/c0619ab93165/vebus/276/Dc/0/MaxChargeCurrent", topics.VebusMaxChargeCurrentTopic);
+        Assert.Equal("N/c0619ab93165/battery/512/Dc/0/Voltage", topics.BatteryVoltageTopic);
+        Assert.Contains("N/c0619ab93165/settings/0/Settings/CGwacs/Hub4Mode", topics.ReadTopics);
+        Assert.Contains("N/c0619ab93165/vebus/276/Dc/0/MaxChargeCurrent", topics.ReadTopics);
+        Assert.Contains("N/c0619ab93165/battery/512/Dc/0/Voltage", topics.ReadTopics);
         Assert.Equal(new[]
         {
             "W/c0619ab93165/vebus/276/Hub4/L1/AcPowerSetpoint",

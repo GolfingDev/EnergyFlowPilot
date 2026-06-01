@@ -1,0 +1,336 @@
+.energy-flow-diagram {
+  display: grid;
+  gap: 14px;
+}
+
+.energy-flow-diagram__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.energy-flow-diagram__header span {
+  color: var(--efp-primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.energy-flow-diagram__header h2 {
+  margin: 3px 0 0;
+  color: var(--efp-text);
+  font-size: 1.05rem;
+}
+
+.energy-flow-diagram__canvas {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--efp-border-soft);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 52% 46%, color-mix(in srgb, var(--efp-primary) 8%, transparent), transparent 25%),
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--efp-surface-muted) 78%, transparent),
+      color-mix(in srgb, var(--efp-surface) 90%, transparent));
+}
+
+.energy-flow-diagram__canvas--desktop {
+  min-height: 460px;
+}
+
+.energy-flow-diagram__canvas--mobile {
+  display: none;
+  min-height: 620px;
+}
+
+.energy-flow-diagram__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.energy-flow-diagram__line-base,
+.energy-flow-diagram__line-active {
+  fill: none;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.energy-flow-diagram__line-base {
+  stroke: color-mix(in srgb, var(--efp-border) 84%, transparent);
+  stroke-width: 8;
+}
+
+.energy-flow-diagram__line-active {
+  stroke: var(--efp-primary);
+  stroke-width: var(--flow-width);
+  stroke-dasharray: 11 13;
+  animation: energy-flow-move var(--flow-speed) linear infinite;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--efp-primary) 24%, transparent));
+}
+
+.energy-flow-diagram__line-active--pv {
+  stroke: var(--efp-success);
+}
+
+.energy-flow-diagram__line-active--grid {
+  stroke: #94a3b8;
+}
+
+.energy-flow-diagram__line-active--batteryCharge {
+  stroke: #06b6d4;
+}
+
+.energy-flow-diagram__line-active--batteryDischarge {
+  stroke: #f59e0b;
+}
+
+.energy-flow-diagram__line-active--load {
+  stroke: #3b82f6;
+}
+
+@keyframes energy-flow-move {
+  from {
+    stroke-dashoffset: 0;
+  }
+
+  to {
+    stroke-dashoffset: -48;
+  }
+}
+
+.energy-flow-node,
+.energy-flow-hub,
+.energy-flow-mini-node,
+.energy-flow-mobile-hub {
+  position: absolute;
+  border: 1px solid var(--efp-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--efp-panel-background, var(--efp-surface)) 94%, transparent);
+  box-shadow: var(--efp-shadow);
+}
+
+.energy-flow-node {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  column-gap: 12px;
+  align-items: center;
+  width: 250px;
+  min-height: 100px;
+  padding: 14px;
+}
+
+.energy-flow-node .v-icon {
+  grid-row: 1 / span 3;
+  color: var(--efp-primary);
+}
+
+.energy-flow-node span,
+.energy-flow-node small {
+  color: var(--efp-muted);
+}
+
+.energy-flow-node span {
+  font-size: 0.8rem;
+}
+
+.energy-flow-node strong {
+  color: var(--efp-text);
+  font-size: 1.25rem;
+  line-height: 1.15;
+}
+
+.energy-flow-node small {
+  font-size: 0.72rem;
+}
+
+.energy-flow-node--pv {
+  left: 32px;
+  top: 42px;
+  border-color: color-mix(in srgb, var(--efp-success) 35%, var(--efp-border));
+}
+
+.energy-flow-node--grid {
+  left: 32px;
+  top: 178px;
+}
+
+.energy-flow-node--battery {
+  left: 32px;
+  bottom: 42px;
+  border-color: color-mix(in srgb, #06b6d4 35%, var(--efp-border));
+}
+
+.energy-flow-node--house {
+  right: 32px;
+  top: 178px;
+  border-color: color-mix(in srgb, #3b82f6 32%, var(--efp-border));
+}
+
+.energy-flow-hub {
+  left: 50%;
+  top: 50%;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  column-gap: 12px;
+  align-items: center;
+  width: 180px;
+  min-height: 126px;
+  padding: 16px;
+  background: linear-gradient(180deg, #122033, #0c1624);
+  border-color: #22344c;
+  color: #f8fafc;
+  transform: translate(-50%, -50%);
+}
+
+.energy-flow-hub .v-icon {
+  grid-row: 1 / span 3;
+  color: #93c5fd;
+}
+
+.energy-flow-hub span,
+.energy-flow-hub small {
+  color: #cbd5e1;
+}
+
+.energy-flow-hub strong {
+  color: #ffffff;
+  font-size: 1.45rem;
+}
+
+.energy-flow-diagram__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.energy-flow-diagram__chips .v-chip strong {
+  margin-left: 8px;
+}
+
+.energy-flow-mini-node {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  width: 104px;
+  min-height: 80px;
+  padding: 10px;
+}
+
+.energy-flow-mini-node .v-icon {
+  grid-row: 1 / span 2;
+  color: var(--efp-primary);
+}
+
+.energy-flow-mini-node span {
+  color: var(--efp-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.energy-flow-mini-node strong {
+  color: var(--efp-text);
+  font-size: 0.86rem;
+  line-height: 1.15;
+}
+
+.energy-flow-mini-node--pv-position {
+  left: 18px;
+  top: 28px;
+}
+
+.energy-flow-mini-node--grid-position {
+  left: 50%;
+  top: 28px;
+  transform: translateX(-50%);
+}
+
+.energy-flow-mini-node--battery-position {
+  right: 18px;
+  top: 28px;
+}
+
+.energy-flow-mobile-hub {
+  left: 50%;
+  top: 260px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  align-items: center;
+  width: 180px;
+  min-height: 104px;
+  padding: 14px;
+  background: linear-gradient(180deg, #122033, #0c1624);
+  color: #f8fafc;
+  transform: translateX(-50%);
+}
+
+.energy-flow-mobile-hub .v-icon {
+  grid-row: 1 / span 2;
+  color: #93c5fd;
+}
+
+.energy-flow-mobile-hub span {
+  color: #cbd5e1;
+  font-size: 0.82rem;
+}
+
+.energy-flow-mobile-hub strong {
+  color: #ffffff;
+  font-size: 1.2rem;
+}
+
+.energy-flow-mini-node--house-position {
+  left: 50%;
+  top: 488px;
+  transform: translateX(-50%);
+}
+
+.energy-flow-mini-node--export-position {
+  left: 74px;
+  bottom: 24px;
+}
+
+.energy-flow-mini-node--charge-position {
+  right: 74px;
+  bottom: 24px;
+}
+
+@media (max-width: 860px) {
+  .energy-flow-diagram__canvas--desktop {
+    display: none;
+  }
+
+  .energy-flow-diagram__canvas--mobile {
+    display: block;
+  }
+
+  .energy-flow-diagram__chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+}
+
+@media (max-width: 430px) {
+  .energy-flow-diagram__canvas--mobile {
+    min-height: 600px;
+  }
+
+  .energy-flow-mini-node--export-position {
+    left: 38px;
+  }
+
+  .energy-flow-mini-node--charge-position {
+    right: 38px;
+  }
+}

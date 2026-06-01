@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import EnergyFlowDiagram from './EnergyFlowDiagram.vue';
 import type { CurrentBatteryDecisionResponseDto } from './dashboardTypes';
+import type { EnergyFlow, EnergyFlowNode } from './energyFlowDiagramTypes';
 import { formatPercent, formatPower } from './dashboardFormatters';
 
 const props = defineProps<{
@@ -8,12 +10,12 @@ const props = defineProps<{
   currentConsumptionWatts: number | null;
 }>();
 
-const hasPvTelemetry = computed(() => (props.decision?.currentPvProductionWatts ?? 0) > 0);
-const pvWatts = computed(() => hasPvTelemetry.value ? Math.max(0, props.decision?.currentPvProductionWatts ?? 0) : null);
-const gridPowerWatts = computed(() => props.decision?.currentGridImportWatts ?? null);
-const batteryPowerWatts = computed(() => {
+const pvWatts = computed(() => Math.max(0, props.decision?.currentPvProductionWatts ?? 0));
+const gridWatts = computed(() => props.decision?.currentGridImportWatts ?? 0);
+const houseWatts = computed(() => Math.max(0, props.currentConsumptionWatts ?? 0));
+const batteryWatts = computed(() => {
   if (!props.decision) {
-    return null;
+    return 0;
   }
 
   if (props.decision.decisionState === 'Charge') {
@@ -26,97 +28,126 @@ const batteryPowerWatts = computed(() => {
 
   return 0;
 });
-const batteryLabel = computed(() => {
-  if (!props.decision) {
-    return 'Nicht verfügbar';
+const batterySoc = computed(() => props.decision?.stateOfChargePercent ?? null);
+const batterySubtitle = computed(() => {
+  if (batteryWatts.value > 0) {
+    return `Lädt mit ${formatPower(batteryWatts.value)}`;
   }
 
-  const power = formatPower(batteryPowerWatts.value);
-  const soc = formatPercent(props.decision.stateOfChargePercent);
+  if (batteryWatts.value < 0) {
+    return `Entlädt mit ${formatPower(Math.abs(batteryWatts.value))}`;
+  }
 
-  return `${soc} · ${power}`;
+  return 'Standby';
 });
-const isCharging = computed(() => (batteryPowerWatts.value ?? 0) > 0);
-const isDischarging = computed(() => (batteryPowerWatts.value ?? 0) < 0);
-const hasGridImport = computed(() => (gridPowerWatts.value ?? 0) > 0);
-const hasGridExport = computed(() => (gridPowerWatts.value ?? 0) < 0);
+const gridSubtitle = computed(() => {
+  if (gridWatts.value > 0) {
+    return 'Netzbezug';
+  }
+
+  if (gridWatts.value < 0) {
+    return 'Einspeisung';
+  }
+
+  return 'Kein Fluss';
+});
+const nodes = computed<EnergyFlowNode[]>(() => [
+  {
+    id: 'pv',
+    label: 'PV-Anlage',
+    value: pvWatts.value > 0 ? formatPower(pvWatts.value) : 'Keine Daten',
+    subtitle: 'Erzeugung',
+    icon: 'mdi-solar-power-variant-outline',
+    tone: 'pv'
+  },
+  {
+    id: 'grid',
+    label: 'Netz',
+    value: formatPower(Math.abs(gridWatts.value)),
+    subtitle: gridSubtitle.value,
+    icon: gridWatts.value < 0 ? 'mdi-transmission-tower-export' : 'mdi-transmission-tower-import',
+    tone: 'grid'
+  },
+  {
+    id: 'battery',
+    label: 'Batteriespeicher',
+    value: batterySoc.value === null ? 'Nicht verfügbar' : formatPercent(batterySoc.value),
+    subtitle: batterySubtitle.value,
+    icon: batteryWatts.value > 0 ? 'mdi-battery-charging-medium' : 'mdi-battery-medium',
+    tone: batteryWatts.value < 0 ? 'batteryDischarge' : 'batteryCharge'
+  },
+  {
+    id: 'hub',
+    label: 'Energy Hub',
+    value: formatPower(houseWatts.value),
+    subtitle: 'Verteilung im Haus',
+    icon: 'mdi-home-lightning-bolt-outline',
+    tone: 'load'
+  },
+  {
+    id: 'house',
+    label: 'Hausverbrauch',
+    value: formatPower(houseWatts.value),
+    subtitle: 'Aktueller Bedarf',
+    icon: 'mdi-home-lightning-bolt-outline',
+    tone: 'load'
+  }
+]);
+const flows = computed<EnergyFlow[]>(() => [
+  {
+    id: 'pv-to-hub',
+    from: 'pv',
+    to: 'hub',
+    label: 'PV -> Hub',
+    watts: pvWatts.value,
+    tone: 'pv'
+  },
+  {
+    id: 'grid-to-hub',
+    from: 'grid',
+    to: 'hub',
+    label: 'Netz -> Hub',
+    watts: Math.max(0, gridWatts.value),
+    tone: 'grid'
+  },
+  {
+    id: 'hub-to-grid',
+    from: 'hub',
+    to: 'grid',
+    label: 'Hub -> Netz',
+    watts: Math.max(0, -gridWatts.value),
+    tone: 'grid'
+  },
+  {
+    id: 'battery-to-hub',
+    from: 'battery',
+    to: 'hub',
+    label: 'Akku -> Hub',
+    watts: Math.max(0, -batteryWatts.value),
+    tone: 'batteryDischarge'
+  },
+  {
+    id: 'hub-to-battery',
+    from: 'hub',
+    to: 'battery',
+    label: 'Hub -> Akku',
+    watts: Math.max(0, batteryWatts.value),
+    tone: 'batteryCharge'
+  },
+  {
+    id: 'hub-to-house',
+    from: 'hub',
+    to: 'house',
+    label: 'Hub -> Haus',
+    watts: houseWatts.value,
+    tone: 'load'
+  }
+]);
 </script>
 
 <template>
   <section class="panel schematic-flow">
-    <div class="schematic-flow__header">
-      <div>
-        <span>Control Center</span>
-        <h2>Energiefluss - Live</h2>
-      </div>
-    </div>
-
-    <div class="schematic-flow__stage">
-      <svg class="schematic-flow__lines" viewBox="0 0 900 420" aria-hidden="true">
-        <path
-          class="schematic-flow__line schematic-flow__line--generation"
-          :class="{ 'schematic-flow__line--active': hasPvTelemetry }"
-          d="M 280 78 H 450"
-        />
-        <path
-          class="schematic-flow__line schematic-flow__line--grid"
-          :class="{ 'schematic-flow__line--active': hasGridImport || hasGridExport }"
-          d="M 280 314 H 450"
-        />
-        <path
-          class="schematic-flow__line"
-          :class="{
-            'schematic-flow__line--charge': isCharging,
-            'schematic-flow__line--discharge': isDischarging,
-            'schematic-flow__line--battery-idle': !isCharging && !isDischarging,
-            'schematic-flow__line--active': isCharging || isDischarging
-          }"
-          d="M 450 78 H 620"
-        />
-        <path
-          class="schematic-flow__line schematic-flow__line--consumption"
-          :class="{ 'schematic-flow__line--active': currentConsumptionWatts !== null }"
-          d="M 450 314 H 620"
-        />
-      </svg>
-
-      <article class="schematic-flow__node schematic-flow__node--pv">
-        <v-icon icon="mdi-solar-power-variant-outline" size="30" />
-        <span>PV-Anlage</span>
-        <strong>{{ pvWatts === null ? 'Keine Daten' : formatPower(pvWatts) }}</strong>
-      </article>
-
-      <article class="schematic-flow__node schematic-flow__node--grid">
-        <v-icon icon="mdi-transmission-tower" size="30" />
-        <span>Netz</span>
-        <strong>{{ formatPower(gridPowerWatts) }}</strong>
-      </article>
-
-      <div class="schematic-flow__home">
-        <v-icon icon="mdi-home-outline" size="44" />
-      </div>
-
-      <article class="schematic-flow__node schematic-flow__node--battery">
-        <v-icon icon="mdi-battery-charging-medium" size="30" />
-        <span>Batteriespeicher</span>
-        <strong>{{ batteryLabel }}</strong>
-      </article>
-
-      <article class="schematic-flow__node schematic-flow__node--home">
-        <v-icon icon="mdi-home-lightning-bolt-outline" size="30" />
-        <span>Hausverbrauch</span>
-        <strong>{{ formatPower(currentConsumptionWatts) }}</strong>
-      </article>
-
-    </div>
-
-    <div class="schematic-flow__legend">
-      <span><i class="schematic-flow__legend-line schematic-flow__legend-line--generation"></i> Erzeugung</span>
-      <span><i class="schematic-flow__legend-line schematic-flow__legend-line--consumption"></i> Verbrauch</span>
-      <span><i class="schematic-flow__legend-line schematic-flow__legend-line--charge"></i> Laden</span>
-      <span><i class="schematic-flow__legend-line schematic-flow__legend-line--discharge"></i> Entladen</span>
-      <span><i class="schematic-flow__legend-line schematic-flow__legend-line--grid"></i> Netzfluss</span>
-    </div>
+    <EnergyFlowDiagram :nodes="nodes" :flows="flows" :battery-soc="batterySoc" />
   </section>
 </template>
 

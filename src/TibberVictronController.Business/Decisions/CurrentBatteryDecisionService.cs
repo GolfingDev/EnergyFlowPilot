@@ -342,7 +342,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             return null;
         }
 
-        var targetPowerWatts = Math.Min(requestedPowerWatts, batteryConfiguration.MaximumChargePowerWatts);
+        var targetPowerWatts = LimitChargePowerBySettings(requestedPowerWatts, batteryConfiguration);
         if (targetPowerWatts <= 0)
         {
             return null;
@@ -350,7 +350,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
         var message = requestedPowerWatts == targetPowerWatts
             ? $"Manuelle Netzladung mit {targetPowerWatts} Watt ist bis {expiresAtUtc:O} aktiv."
-            : $"Manuelle Netzladung wurde von {requestedPowerWatts} auf {targetPowerWatts} Watt begrenzt und ist bis {expiresAtUtc:O} aktiv.";
+            : $"Manuelle Netzladung würde {requestedPowerWatts} Watt anfordern. Laut Einstellungen sind maximal {targetPowerWatts} Watt möglich; die Begrenzung gilt bis {expiresAtUtc:O}.";
 
         return new ManualChargeOverride(targetPowerWatts, expiresAtUtc, message);
     }
@@ -393,6 +393,17 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 cancellationToken);
         }
 
+        var reasons = new List<BatteryDecisionReason>
+        {
+            new(
+                CurrentBatteryDecisionRuleIds.AbsorbGridExport,
+                $"Aktueller Netzexport von {Math.Abs(siteTelemetry.CurrentGridImportWatts)} Watt wird in die Batterie geladen, damit keine Einspeisung stehen bleibt.")
+        };
+        AddChargePowerLimitReason(
+            reasons,
+            calculatedTargetPowerWatts: Math.Abs(siteTelemetry.CurrentGridImportWatts),
+            limitedTargetPowerWatts: targetPowerWatts);
+
         return await SaveDecisionAsync(
             decidedAtUtc,
             currentPriceSlot.TimeSlot.EndsAtUtc,
@@ -403,12 +414,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             siteTelemetry,
             currentPriceSlot.TotalPricePerKwh,
             currentPriceSlot.Currency,
-            new[]
-            {
-                new BatteryDecisionReason(
-                    CurrentBatteryDecisionRuleIds.AbsorbGridExport,
-                    $"Aktueller Netzexport von {Math.Abs(siteTelemetry.CurrentGridImportWatts)} Watt wird in die Batterie geladen, damit keine Einspeisung stehen bleibt.")
-            },
+            reasons,
             cancellationToken);
     }
 
@@ -429,9 +435,9 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         var targetBatteryEnergyKwh = batteryConfiguration.TotalCapacityKwh * targetStateOfChargePercent / 100m;
         var availableStoredCapacityKwh = targetBatteryEnergyKwh - currentBatteryEnergyKwh;
         var singleDirectionEfficiency = CalculateSingleDirectionEfficiency(batteryConfiguration);
-        var maximumChargeEnergyKwh = batteryConfiguration.MaximumChargePowerWatts / 1000m * (decimal)currentPriceSlot.TimeSlot.Duration.TotalHours;
-        var chargeInputEnergyKwh = Math.Max(0m, Math.Min(maximumChargeEnergyKwh, availableStoredCapacityKwh / singleDirectionEfficiency));
-        var targetPowerWatts = CalculatePowerWatts(chargeInputEnergyKwh, currentPriceSlot.TimeSlot.Duration);
+        var calculatedChargeInputEnergyKwh = Math.Max(0m, availableStoredCapacityKwh / singleDirectionEfficiency);
+        var calculatedTargetPowerWatts = CalculatePowerWatts(calculatedChargeInputEnergyKwh, currentPriceSlot.TimeSlot.Duration);
+        var targetPowerWatts = LimitChargePowerBySettings(calculatedTargetPowerWatts, batteryConfiguration);
 
         if (targetPowerWatts <= 0)
         {
@@ -459,6 +465,9 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             ? $"{baseReason.Message} Das Planungs-Maximum begrenzt die Netzladung auf {targetStateOfChargePercent:0.#} Prozent, damit PV-Puffer frei bleibt."
             : baseReason.Message;
 
+        var reasons = new List<BatteryDecisionReason> { new(ruleId, reasonMessage) };
+        AddChargePowerLimitReason(reasons, calculatedTargetPowerWatts, targetPowerWatts);
+
         return await SaveDecisionAsync(
             decidedAtUtc,
             currentPriceSlot.TimeSlot.EndsAtUtc,
@@ -469,7 +478,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             siteTelemetry,
             currentPriceSlot.TotalPricePerKwh,
             currentPriceSlot.Currency,
-            new[] { new BatteryDecisionReason(ruleId, reasonMessage) },
+            reasons,
             cancellationToken);
     }
 
@@ -676,6 +685,26 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         }
 
         return (int)Math.Round(energyKwh / (decimal)duration.TotalHours * 1000m, MidpointRounding.AwayFromZero);
+    }
+
+    private static int LimitChargePowerBySettings(int calculatedTargetPowerWatts, BatteryConfiguration batteryConfiguration)
+    {
+        return Math.Min(calculatedTargetPowerWatts, batteryConfiguration.MaximumChargePowerWatts);
+    }
+
+    private static void AddChargePowerLimitReason(
+        ICollection<BatteryDecisionReason> reasons,
+        int calculatedTargetPowerWatts,
+        int limitedTargetPowerWatts)
+    {
+        if (calculatedTargetPowerWatts <= limitedTargetPowerWatts)
+        {
+            return;
+        }
+
+        reasons.Add(new BatteryDecisionReason(
+            CurrentBatteryDecisionRuleIds.ChargePowerLimitedBySettings,
+            $"Errechnet waren {calculatedTargetPowerWatts} Watt Ladeleistung. Laut Einstellungen sind maximal {limitedTargetPowerWatts} Watt möglich."));
     }
 
     private static BatteryState CreateFallbackBatteryState(DateTimeOffset decidedAtUtc)

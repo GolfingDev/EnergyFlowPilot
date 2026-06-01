@@ -217,6 +217,16 @@ public sealed class DecisionExecutionBackgroundServiceTests
     }
 
     [Fact]
+    public void CalculateVebusChargePowerLimitWattsKeepsSafetyBufferBelowCurrentLimit()
+    {
+        var limitWatts = MqttVictronSetpointPublisher.CalculateVebusChargePowerLimitWatts(
+            maxChargeCurrentAmps: 50m,
+            batteryVoltageVolts: 49.92m);
+
+        Assert.Equal(2246, limitWatts);
+    }
+
+    [Fact]
     public void CalculateHub4ControlDisablesChargeAndFeedInInsideIdleThreshold()
     {
         var decisionResult = CreateDecisionResult(
@@ -279,6 +289,19 @@ public sealed class DecisionExecutionBackgroundServiceTests
     public void CalculateHub4ModeValueMapsControlModeToVictronMode(VictronControlMode controlMode, int expectedValue)
     {
         Assert.Equal(expectedValue, MqttVictronSetpointPublisher.CalculateHub4ModeValue(controlMode));
+    }
+
+    [Theory]
+    [InlineData(false, 0, 3, false)]
+    [InlineData(true, 3, 3, false)]
+    [InlineData(true, 1, 3, true)]
+    public void ShouldPublishHub4ModeOnlyWritesKnownMismatches(
+        bool hasCurrentMode,
+        decimal currentMode,
+        int desiredMode,
+        bool expectedResult)
+    {
+        Assert.Equal(expectedResult, MqttVictronSetpointPublisher.ShouldPublishHub4Mode(hasCurrentMode, currentMode, desiredMode));
     }
 
     [Fact]

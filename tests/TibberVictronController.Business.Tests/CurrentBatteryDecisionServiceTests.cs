@@ -150,6 +150,10 @@ public sealed class CurrentBatteryDecisionServiceTests
 
         Assert.Equal(BatteryDecisionState.Charge, result.Decision.Instruction.DecisionState);
         Assert.Equal(3000, result.Decision.TargetPowerWatts);
+        Assert.Contains(result.Reasons, reason =>
+            reason.RuleName == CurrentBatteryDecisionRuleIds.ManualGridCharge &&
+            reason.Message.Contains("5000 Watt", StringComparison.Ordinal) &&
+            reason.Message.Contains("3000 Watt", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -237,6 +241,31 @@ public sealed class CurrentBatteryDecisionServiceTests
         Assert.Equal(BatteryChargeSource.PV, result.Decision.Instruction.ChargeSource);
         Assert.Equal(1400, result.Decision.TargetPowerWatts);
         Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.AbsorbGridExport);
+    }
+
+    [Fact]
+    public async Task CalculateCurrentDecisionAsyncLogsWhenPvChargeIsLimitedBySettings()
+    {
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(40m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m, maximumChargePowerWatts: 2500)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(-4200, 5000, NowUtc)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.30m, 0.18m, 0.15m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Charge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(BatteryChargeSource.PV, result.Decision.Instruction.ChargeSource);
+        Assert.Equal(2500, result.Decision.TargetPowerWatts);
+        Assert.Contains(result.Reasons, reason =>
+            reason.RuleName == CurrentBatteryDecisionRuleIds.ChargePowerLimitedBySettings &&
+            reason.Message.Contains("4200 Watt", StringComparison.Ordinal) &&
+            reason.Message.Contains("2500 Watt", StringComparison.Ordinal));
     }
 
     [Fact]

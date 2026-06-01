@@ -15,6 +15,9 @@ public static class VictronMqttTopicFactory
             HouseConsumptionTopic = Resolve(settings.HouseConsumptionTopicTemplate, settings.PortalId),
             ChargeDischargeSetpointTopic = Resolve(settings.ChargeDischargeSetpointTopic, settings.PortalId),
             Hub4ModeTopic = Resolve(settings.Hub4ModeTopic, settings.PortalId),
+            Hub4ModeReadTopic = ToReadTopic(Resolve(settings.Hub4ModeTopic, settings.PortalId)),
+            VebusMaxChargeCurrentTopic = $"N/{settings.PortalId}/vebus/276/Dc/0/MaxChargeCurrent",
+            BatteryVoltageTopic = $"N/{settings.PortalId}/battery/512/Dc/0/Voltage",
             ExternalEssAcPowerSetpointTopics = ResolveExternalEssAcPowerSetpointTopics(settings),
             DisableChargeTopic = Resolve(settings.DisableChargeTopic, settings.PortalId),
             DisableFeedInTopic = Resolve(settings.DisableFeedInTopic, settings.PortalId)
@@ -39,5 +42,12 @@ public static class VictronMqttTopicFactory
     private static string Resolve(string topicTemplate, string portalId)
     {
         return topicTemplate.Replace("{portalId}", portalId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ToReadTopic(string topic)
+    {
+        return topic.StartsWith("W/", StringComparison.OrdinalIgnoreCase)
+            ? "N/" + topic[2..]
+            : topic;
     }
 }
