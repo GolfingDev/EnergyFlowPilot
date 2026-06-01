@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useTheme } from 'vuetify';
-import type { CurrentBatteryDecisionResponseDto } from './dashboardTypes';
+import type { CurrentBatteryDecisionResponseDto, DashboardTelemetryUpdateDto } from './dashboardTypes';
 import { formatPercent, formatPower, getDecisionLabel } from './dashboardFormatters';
 import { getEnergyFlowTheme } from '../../themeRegistry';
 
 const props = defineProps<{
   decision: CurrentBatteryDecisionResponseDto | null;
+  liveTelemetry: DashboardTelemetryUpdateDto | null;
   currentConsumptionWatts: number | null;
 }>();
 
@@ -26,16 +27,20 @@ const decisionLabel = computed(() => props.decision
 const sceneImage = computed(() => getEnergyFlowTheme(theme.global.name.value).dark
   ? '/live-energy-scene-dark.png'
   : '/live-energy-scene-light.png');
-const hasPvTelemetry = computed(() => false);
-const pvWatts = computed(() => hasPvTelemetry.value ? Math.max(0, props.decision?.currentPvProductionWatts ?? 0) : 0);
-const gridImportWatts = computed(() => Math.max(0, props.decision?.currentGridImportWatts ?? 0));
+const gridWatts = computed(() => props.liveTelemetry?.currentGridImportWatts ?? props.decision?.currentGridImportWatts ?? 0);
+const gridImportWatts = computed(() => Math.max(0, gridWatts.value));
 const targetPowerWatts = computed(() => Math.max(0, Math.abs(props.decision?.targetPowerWatts ?? 0)));
-const homeWatts = computed(() => Math.max(0, props.currentConsumptionWatts ?? 0));
+const homeWatts = computed(() => Math.max(0, props.liveTelemetry?.currentHouseConsumptionWatts ?? props.currentConsumptionWatts ?? 0));
+const batteryWatts = computed(() => props.liveTelemetry?.currentBatteryPowerWatts ?? 0);
+const batteryChargeWatts = computed(() => Math.max(0, batteryWatts.value));
+const batteryDischargeWatts = computed(() => Math.max(0, -batteryWatts.value));
+const pvWatts = computed(() => Math.max(0, homeWatts.value + batteryWatts.value - gridWatts.value));
+const hasPvTelemetry = computed(() => pvWatts.value > 0);
 const isCharging = computed(() => props.decision?.decisionState === 'Charge');
-const isDischarging = computed(() => props.decision?.decisionState === 'Discharge');
 const chargeSource = computed(() => props.decision?.chargeSource?.toLowerCase() ?? '');
 const isGridCharging = computed(() => isCharging.value && chargeSource.value.includes('grid'));
 const isPvCharging = computed(() => isCharging.value && !isGridCharging.value);
+const batterySoc = computed(() => props.liveTelemetry?.stateOfChargePercent ?? props.decision?.stateOfChargePercent ?? null);
 
 const flows = computed<FlowDefinition[]>(() => {
   const pvToBatteryWatts = isPvCharging.value ? Math.min(pvWatts.value, targetPowerWatts.value) : 0;
@@ -65,7 +70,7 @@ const flows = computed<FlowDefinition[]>(() => {
     {
       key: 'battery-home',
       label: 'Akku -> Haus',
-      valueWatts: isDischarging.value ? targetPowerWatts.value : 0,
+      valueWatts: batteryDischargeWatts.value,
       path: 'M 255 620 C 440 655 680 645 865 612',
       color: 'green'
     },
@@ -79,7 +84,7 @@ const flows = computed<FlowDefinition[]>(() => {
     {
       key: 'grid-battery',
       label: 'Netz -> Akku',
-      valueWatts: isGridCharging.value ? targetPowerWatts.value : 0,
+      valueWatts: isGridCharging.value ? Math.min(gridImportWatts.value, batteryChargeWatts.value) : 0,
       path: 'M 1340 525 C 1040 705 620 710 260 635',
       color: 'green'
     }
@@ -106,7 +111,7 @@ function getFlowWidth(valueWatts: number): number {
       </div>
       <div class="live-flow__state">
         <span>{{ decisionLabel }}</span>
-        <strong>{{ formatPercent(decision?.stateOfChargePercent) }}</strong>
+        <strong>{{ formatPercent(batterySoc) }}</strong>
       </div>
     </div>
 
@@ -132,13 +137,13 @@ function getFlowWidth(valueWatts: number): number {
         <div v-if="hasPvTelemetry" class="live-flow__node live-flow__node--pv">
           <v-icon icon="mdi-solar-power-variant" size="22" />
           <span>PV</span>
-          <strong>{{ formatPower(decision?.currentPvProductionWatts) }}</strong>
+          <strong>{{ formatPower(pvWatts) }}</strong>
         </div>
 
         <div class="live-flow__node live-flow__node--battery">
           <v-icon icon="mdi-battery-charging-medium" size="22" />
           <span>Akku</span>
-          <strong>{{ formatPower(targetPowerWatts) }}</strong>
+          <strong>{{ formatPower(batteryWatts) }}</strong>
         </div>
 
         <div class="live-flow__node live-flow__node--home">
@@ -150,14 +155,14 @@ function getFlowWidth(valueWatts: number): number {
         <div class="live-flow__node live-flow__node--grid">
           <v-icon icon="mdi-transmission-tower" size="23" />
           <span>Netz</span>
-          <strong>{{ formatPower(decision?.currentGridImportWatts) }}</strong>
+          <strong>{{ formatPower(gridWatts) }}</strong>
         </div>
       </div>
 
       <aside class="live-flow__details">
         <div v-if="hasPvTelemetry" class="live-flow__metric">
           <span>PV-Produktion</span>
-          <strong>{{ formatPower(decision?.currentPvProductionWatts) }}</strong>
+          <strong>{{ formatPower(pvWatts) }}</strong>
         </div>
         <div class="live-flow__metric">
           <span>Hausverbrauch</span>
@@ -165,11 +170,11 @@ function getFlowWidth(valueWatts: number): number {
         </div>
         <div class="live-flow__metric">
           <span>Netzbezug</span>
-          <strong>{{ formatPower(decision?.currentGridImportWatts) }}</strong>
+          <strong>{{ formatPower(gridWatts) }}</strong>
         </div>
         <div class="live-flow__metric">
           <span>Akku-Leistung</span>
-          <strong>{{ formatPower(targetPowerWatts) }}</strong>
+          <strong>{{ formatPower(batteryWatts) }}</strong>
         </div>
 
         <div class="live-flow__routes">

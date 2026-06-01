@@ -49,27 +49,16 @@ public sealed class SignalRDashboardLiveUpdatePublisher : IDashboardLiveUpdatePu
             return null;
         }
 
-        var effectiveHouseConsumptionWatts = snapshot.HouseConsumptionWatts is null or 0m
-            ? snapshot.GridPowerWatts
-            : snapshot.HouseConsumptionWatts;
-        var effectiveHouseConsumptionMeasuredAtUtc = snapshot.HouseConsumptionWatts is null or 0m
-            ? snapshot.GridPowerMeasuredAtUtc
-            : snapshot.HouseConsumptionMeasuredAtUtc;
-
-        if (effectiveHouseConsumptionWatts is null || effectiveHouseConsumptionMeasuredAtUtc is null)
-        {
-            return null;
-        }
-
-        var measuredAtUtc = snapshot.GridPowerMeasuredAtUtc.Value <= effectiveHouseConsumptionMeasuredAtUtc.Value
+        var measuredAtUtc = snapshot.HouseConsumptionMeasuredAtUtc is not null &&
+            snapshot.GridPowerMeasuredAtUtc.Value <= snapshot.HouseConsumptionMeasuredAtUtc.Value
             ? snapshot.GridPowerMeasuredAtUtc.Value
-            : effectiveHouseConsumptionMeasuredAtUtc.Value;
+            : snapshot.HouseConsumptionMeasuredAtUtc ?? snapshot.GridPowerMeasuredAtUtc.Value;
 
         return new DashboardTelemetryUpdateDto(
             DecimalToInt(snapshot.GridPowerWatts.Value),
-            effectiveHouseConsumptionWatts.Value < 0m
-                ? DecimalToInt(Math.Abs(effectiveHouseConsumptionWatts.Value))
-                : 0,
+            snapshot.HouseConsumptionWatts is null
+                ? null
+                : DecimalToInt(Math.Max(0m, snapshot.HouseConsumptionWatts.Value)),
             snapshot.BatteryPowerWatts is null ? null : DecimalToInt(snapshot.BatteryPowerWatts.Value),
             snapshot.BatterySocPercent,
             measuredAtUtc);

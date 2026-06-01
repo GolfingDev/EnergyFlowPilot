@@ -35,6 +35,7 @@ const refreshInSeconds = ref(0);
 const theme = useTheme();
 const status = ref<ControllerStatusResponseDto | null>(null);
 const decision = ref<CurrentBatteryDecisionResponseDto | null>(null);
+const liveTelemetry = ref<DashboardTelemetryUpdateDto | null>(null);
 const decisionLogEntries = ref<DecisionLogEntryResponseDto[]>([]);
 const decisionHistoryEntries = ref<DecisionLogEntryResponseDto[]>([]);
 const forecast = ref<BatteryForecastResponseDto | null>(null);
@@ -88,11 +89,7 @@ const manualChargeRemainingLabel = computed(() => {
   return `${formatNumber(manualCharge.value.powerKw, 1)} kW für noch ${remainingMinutes} min`;
 });
 const currentConsumptionWatts = computed(() => {
-  if (!decision.value) {
-    return null;
-  }
-
-  return Math.max(0, decision.value.currentGridImportWatts);
+  return liveTelemetry.value?.currentHouseConsumptionWatts ?? null;
 });
 const activeTheme = computed(() => getEnergyFlowTheme(theme.global.name.value));
 const usesPresetDashboard = computed(() =>
@@ -565,6 +562,8 @@ async function stopLiveUpdates(): Promise<void> {
 }
 
 function applyLiveTelemetry(telemetry: DashboardTelemetryUpdateDto): void {
+  liveTelemetry.value = telemetry;
+
   if (decision.value === null) {
     return;
   }
@@ -572,7 +571,6 @@ function applyLiveTelemetry(telemetry: DashboardTelemetryUpdateDto): void {
   decision.value = {
     ...decision.value,
     currentGridImportWatts: telemetry.currentGridImportWatts,
-    currentPvProductionWatts: telemetry.currentPvProductionWatts,
     stateOfChargePercent: telemetry.stateOfChargePercent ?? decision.value.stateOfChargePercent
   };
 }
@@ -755,6 +753,7 @@ onBeforeUnmount(() => {
           id="dashboard-live-flow"
           class="control-center-section control-center-section--flow"
           :decision="decision"
+          :live-telemetry="liveTelemetry"
           :current-consumption-watts="currentConsumptionWatts"
         />
 
@@ -863,6 +862,7 @@ onBeforeUnmount(() => {
           v-if="usesPresetDashboard || dashboardViewMode === 'visual'"
           class="dashboard-section dashboard-section--live"
           :decision="decision"
+          :live-telemetry="liveTelemetry"
           :current-consumption-watts="currentConsumptionWatts"
         />
 

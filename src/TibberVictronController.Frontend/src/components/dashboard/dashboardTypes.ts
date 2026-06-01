@@ -48,7 +48,7 @@ export interface CurrentBatteryDecisionResponseDto {
 
 export interface DashboardTelemetryUpdateDto {
   currentGridImportWatts: number;
-  currentPvProductionWatts: number;
+  currentHouseConsumptionWatts: number | null;
   currentBatteryPowerWatts: number | null;
   stateOfChargePercent: number | null;
   measuredAtUtc: string;

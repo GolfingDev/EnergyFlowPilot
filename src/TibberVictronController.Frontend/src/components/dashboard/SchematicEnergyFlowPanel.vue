@@ -1,19 +1,23 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import EnergyFlowDiagram from './EnergyFlowDiagram.vue';
-import type { CurrentBatteryDecisionResponseDto } from './dashboardTypes';
+import type { CurrentBatteryDecisionResponseDto, DashboardTelemetryUpdateDto } from './dashboardTypes';
 import type { EnergyFlow, EnergyFlowNode } from './energyFlowDiagramTypes';
 import { formatPercent, formatPower } from './dashboardFormatters';
 
 const props = defineProps<{
   decision: CurrentBatteryDecisionResponseDto | null;
+  liveTelemetry: DashboardTelemetryUpdateDto | null;
   currentConsumptionWatts: number | null;
 }>();
 
-const pvWatts = computed(() => Math.max(0, props.decision?.currentPvProductionWatts ?? 0));
-const gridWatts = computed(() => props.decision?.currentGridImportWatts ?? 0);
-const houseWatts = computed(() => Math.max(0, props.currentConsumptionWatts ?? 0));
+const gridWatts = computed(() => props.liveTelemetry?.currentGridImportWatts ?? props.decision?.currentGridImportWatts ?? 0);
+const houseWatts = computed(() => Math.max(0, props.liveTelemetry?.currentHouseConsumptionWatts ?? props.currentConsumptionWatts ?? 0));
 const batteryWatts = computed(() => {
+  if (props.liveTelemetry?.currentBatteryPowerWatts !== null && props.liveTelemetry?.currentBatteryPowerWatts !== undefined) {
+    return props.liveTelemetry.currentBatteryPowerWatts;
+  }
+
   if (!props.decision) {
     return 0;
   }
@@ -28,7 +32,8 @@ const batteryWatts = computed(() => {
 
   return 0;
 });
-const batterySoc = computed(() => props.decision?.stateOfChargePercent ?? null);
+const pvWatts = computed(() => Math.max(0, houseWatts.value + batteryWatts.value - gridWatts.value));
+const batterySoc = computed(() => props.liveTelemetry?.stateOfChargePercent ?? props.decision?.stateOfChargePercent ?? null);
 const batterySubtitle = computed(() => {
   if (batteryWatts.value > 0) {
     return `Lädt mit ${formatPower(batteryWatts.value)}`;
@@ -55,8 +60,8 @@ const nodes = computed<EnergyFlowNode[]>(() => [
   {
     id: 'pv',
     label: 'PV-Anlage',
-    value: pvWatts.value > 0 ? formatPower(pvWatts.value) : 'Keine Daten',
-    subtitle: 'Erzeugung',
+    value: pvWatts.value > 0 ? formatPower(pvWatts.value) : 'Abgeleitet',
+    subtitle: 'Bilanzwert',
     icon: 'mdi-solar-power-variant-outline',
     tone: 'pv'
   },
