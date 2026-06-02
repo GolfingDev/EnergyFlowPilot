@@ -18,7 +18,8 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan LoopDelay = TimeSpan.FromSeconds(5);
-    private const int MaximumConsecutiveKeepAlivesWithoutTelemetry = 3;
+    private static readonly TimeSpan MinimumVictronKeepAliveInterval = TimeSpan.FromSeconds(30);
+    private const string SuppressedKeepAlivePayload = """{"keepalive-options":["suppress-republish"]}""";
 
     private readonly IServiceProvider serviceProvider;
     private readonly ILogger<VictronMqttClientService> logger;
@@ -115,15 +116,18 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
     {
         await EnsureConnectedAsync(stoppingToken);
 
+        var initialFullPublishRequested = false;
         var nextKeepAliveAtUtc = DateTimeOffset.UtcNow;
-        var hasPreviousKeepAlive = false;
-        var messageCountBeforePreviousKeepAlive = Interlocked.Read(ref receivedTelemetryMessageCount);
-        var consecutiveKeepAlivesWithoutTelemetry = 0;
 
         while (!stoppingToken.IsCancellationRequested)
         {
             var settings = activeSettings ?? throw new InvalidOperationException("Victron MQTT ist nicht konfiguriert.");
-            var keepAliveInterval = TimeSpan.FromSeconds(Math.Max(5, settings.KeepAliveSeconds));
+            var keepAliveInterval = TimeSpan.FromSeconds(settings.KeepAliveSeconds);
+            if (keepAliveInterval < MinimumVictronKeepAliveInterval)
+            {
+                keepAliveInterval = MinimumVictronKeepAliveInterval;
+            }
+
             var utcNow = DateTimeOffset.UtcNow;
 
             if (mqttClient is null || !mqttClient.IsConnected)
@@ -133,22 +137,8 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
 
             if (utcNow >= nextKeepAliveAtUtc)
             {
-                var currentMessageCount = Interlocked.Read(ref receivedTelemetryMessageCount);
-                consecutiveKeepAlivesWithoutTelemetry = CalculateConsecutiveKeepAlivesWithoutTelemetry(
-                    hasPreviousKeepAlive,
-                    messageCountBeforePreviousKeepAlive,
-                    currentMessageCount,
-                    consecutiveKeepAlivesWithoutTelemetry);
-
-                if (consecutiveKeepAlivesWithoutTelemetry >= MaximumConsecutiveKeepAlivesWithoutTelemetry)
-                {
-                    runtimeStatus.MarkFailed("Victron MQTT hat nach drei KeepAlive-Anfragen keine Telemetriedaten geliefert. Die Verbindung wird neu aufgebaut.");
-                    throw new InvalidOperationException("Victron MQTT hat nach drei KeepAlive-Anfragen keine Telemetriedaten geliefert. Die Verbindung wird neu aufgebaut.");
-                }
-
-                await PublishKeepAliveAsync(settings, stoppingToken);
-                hasPreviousKeepAlive = true;
-                messageCountBeforePreviousKeepAlive = currentMessageCount;
+                await PublishKeepAliveAsync(settings, suppressRepublish: initialFullPublishRequested, stoppingToken);
+                initialFullPublishRequested = true;
                 nextKeepAliveAtUtc = utcNow.Add(keepAliveInterval);
             }
 
@@ -162,20 +152,14 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
         }
     }
 
-    public static int CalculateConsecutiveKeepAlivesWithoutTelemetry(
-        bool hasPreviousKeepAlive,
-        long messageCountBeforePreviousKeepAlive,
-        long currentMessageCount,
-        int currentMissCount)
+    public static string CreateKeepAlivePayload(bool suppressRepublish)
     {
-        if (!hasPreviousKeepAlive)
-        {
-            return 0;
-        }
+        return suppressRepublish ? SuppressedKeepAlivePayload : string.Empty;
+    }
 
-        return currentMessageCount == messageCountBeforePreviousKeepAlive
-            ? currentMissCount + 1
-            : 0;
+    public static bool RequiresReconnect(VictronMqttSettings left, VictronMqttSettings right)
+    {
+        return !SettingsMatch(left, right);
     }
 
     private async Task EnsureConnectedAsync(CancellationToken cancellationToken)
@@ -196,8 +180,9 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
 
             var topics = VictronMqttTopicFactory.Create(settings);
             var snapshotStore = serviceProvider.GetRequiredService<MqttTelemetrySnapshotStore>();
-            snapshotStore.Clear();
+            snapshotStore.Clear(preserveLatestValues: true);
             latestValuesByTopic.Clear();
+            Interlocked.Exchange(ref receivedTelemetryMessageCount, 0);
 
             var client = new MqttClientFactory().CreateMqttClient();
             client.ApplicationMessageReceivedAsync += async eventArguments =>
@@ -208,10 +193,13 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             {
                 if (!cancellationToken.IsCancellationRequested)
                 {
-                    runtimeStatus.MarkFailed("Victron MQTT-Verbindung wurde unterbrochen und wird neu aufgebaut.");
+                    var reason = eventArguments.ReasonString ?? eventArguments.Reason.ToString();
+                    runtimeStatus.MarkFailed($"Victron MQTT-Verbindung wurde unterbrochen: {reason}");
                     logger.LogWarning(
                         eventArguments.Exception,
-                        "Victron MQTT-Verbindung wurde unterbrochen. Ein neuer Verbindungsaufbau wird vorbereitet.");
+                        "Victron MQTT-Verbindung wurde unterbrochen. Reason={Reason}, ReasonString={ReasonString}. Ein neuer Verbindungsaufbau wird vorbereitet.",
+                        eventArguments.Reason,
+                        eventArguments.ReasonString);
                 }
 
                 return Task.CompletedTask;
@@ -358,7 +346,7 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
         return null;
     }
 
-    private async Task PublishKeepAliveAsync(VictronMqttSettings settings, CancellationToken cancellationToken)
+    private async Task PublishKeepAliveAsync(VictronMqttSettings settings, bool suppressRepublish, CancellationToken cancellationToken)
     {
         var client = mqttClient;
         if (client is null || !client.IsConnected)
@@ -368,10 +356,13 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
 
         var message = new MqttApplicationMessageBuilder()
             .WithTopic($"R/{settings.PortalId}/keepalive")
-            .WithPayload(string.Empty)
+            .WithPayload(CreateKeepAlivePayload(suppressRepublish))
             .Build();
 
         await client.PublishAsync(message, cancellationToken);
+        logger.LogDebug(
+            "Victron MQTT KeepAlive gesendet. SuppressRepublish={SuppressRepublish}",
+            suppressRepublish);
     }
 
     private static string CreateClientId(VictronMqttSettings settings)
@@ -505,9 +496,6 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             left.Port == right.Port &&
             string.Equals(left.PortalId, right.PortalId, StringComparison.Ordinal) &&
             left.KeepAliveSeconds == right.KeepAliveSeconds &&
-            left.StaleAfterSeconds == right.StaleAfterSeconds &&
-            left.DryRun == right.DryRun &&
-            left.ControlMode == right.ControlMode &&
             string.Equals(left.GridPowerTopicTemplate, right.GridPowerTopicTemplate, StringComparison.Ordinal) &&
             string.Equals(left.BatterySocTopicTemplate, right.BatterySocTopicTemplate, StringComparison.Ordinal) &&
             string.Equals(left.BatteryPowerTopicTemplate, right.BatteryPowerTopicTemplate, StringComparison.Ordinal) &&

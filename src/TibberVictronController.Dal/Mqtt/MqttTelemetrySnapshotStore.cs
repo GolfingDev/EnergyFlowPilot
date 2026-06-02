@@ -16,11 +16,14 @@ public sealed class MqttTelemetrySnapshotStore
         }
     }
 
-    public void Clear()
+    public void Clear(bool preserveLatestValues = false)
     {
         lock (syncRoot)
         {
-            snapshot = new MqttTelemetrySnapshot();
+            if (!preserveLatestValues)
+            {
+                snapshot = new MqttTelemetrySnapshot();
+            }
         }
     }
 
