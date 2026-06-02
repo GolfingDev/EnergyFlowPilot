@@ -324,6 +324,36 @@ public sealed class CurrentBatteryDecisionServiceTests
         Assert.Equal(-8000, result.SiteTelemetry.CurrentGridImportWatts);
     }
 
+    [Fact]
+    public async Task CalculateCurrentDecisionAsyncDoesNotInferExportFromActivePvChargeWhenGridImports()
+    {
+        var decisionLogRepository = new FakeDecisionLogRepository();
+        decisionLogRepository.SavedEntries.Add(CreateDecisionLogEntry(
+            decidedAtUtc: NowUtc.AddMinutes(-1),
+            validFromUtc: NowUtc.AddMinutes(-1),
+            validToUtc: NowUtc.AddMinutes(54),
+            decisionState: BatteryDecisionState.Charge,
+            chargeSource: BatteryChargeSource.PV,
+            targetPowerWatts: 476));
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(40m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m, maximumChargePowerWatts: 5000)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(12, 0, NowUtc)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.30m, 0.18m, 0.15m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = decisionLogRepository
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Idle, result.Decision.Instruction.DecisionState);
+        Assert.Equal(0, result.Decision.TargetPowerWatts);
+        Assert.Equal(12, result.SiteTelemetry.CurrentGridImportWatts);
+        Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.GridPowerDeadband);
+    }
+
     private static CurrentBatteryDecisionService CreateService(CurrentBatteryDecisionServiceDependencies dependencies)
     {
         return new CurrentBatteryDecisionService(dependencies);

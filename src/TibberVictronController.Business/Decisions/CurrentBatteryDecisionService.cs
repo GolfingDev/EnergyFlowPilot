@@ -174,7 +174,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         }
 
         var activePvChargePowerWatts = await GetActivePvChargePowerWattsAsync(decidedAtUtc, cancellationToken);
-        var decisionSiteTelemetry = activePvChargePowerWatts > 0
+        var decisionSiteTelemetry = activePvChargePowerWatts > 0 && siteTelemetry.CurrentGridImportWatts < 0
             ? new CurrentSiteTelemetry(
                 siteTelemetry.CurrentGridImportWatts - activePvChargePowerWatts,
                 siteTelemetry.CurrentPvProductionWatts,
