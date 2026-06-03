@@ -111,6 +111,27 @@ public sealed class CurrentBatteryDecisionServiceTests
     }
 
     [Fact]
+    public async Task CalculateCurrentDecisionAsyncUsesOldSocWhenSiteTelemetryIsFresh()
+    {
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(60m, NowUtc.AddHours(-2))),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m, maximumDischargePowerWatts: 3000, roundTripEfficiencyPercent: 100m)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(1200, 0, NowUtc)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.48m, 0.18m, 0.15m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Discharge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(1200, result.Decision.TargetPowerWatts);
+        Assert.Equal(NowUtc.AddHours(-2), result.BatteryState.MeasuredAtUtc);
+    }
+
+    [Fact]
     public async Task CalculateCurrentDecisionAsyncUsesActiveManualGridCharge()
     {
         var service = CreateService(new CurrentBatteryDecisionServiceDependencies

@@ -10,7 +10,6 @@ namespace TibberVictronController.Business.Decisions;
 /// </summary>
 public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionService
 {
-    private static readonly TimeSpan BatteryStateMaxAge = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan SiteTelemetryMaxAge = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan DecisionLookahead = TimeSpan.FromHours(24);
     private const int MaximumPlausiblePowerWatts = 100_000;
@@ -85,21 +84,6 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
         var feedInCompensationPricePerKwh = await GetFeedInCompensationPricePerKwhAsync(cancellationToken);
         var gridPowerDeadbandWatts = await GetGridPowerDeadbandWattsAsync(cancellationToken);
-
-        if (batteryState.MeasuredAtUtc < decidedAtUtc.Subtract(BatteryStateMaxAge))
-        {
-            return await SaveIdleDecisionAsync(
-                decidedAtUtc,
-                decidedAtUtc.AddMinutes(15),
-                batteryState,
-                siteTelemetry,
-                tibberPricePerKwh: null,
-                tibberPriceCurrency: null,
-                new BatteryDecisionReason(
-                    CurrentBatteryDecisionRuleIds.StaleBatteryState,
-                    "Die Live-SoC-Messung ist zu alt. Die Decision Engine bleibt deshalb im Idle-Zustand."),
-                cancellationToken);
-        }
 
         if (siteTelemetry.MeasuredAtUtc < decidedAtUtc.Subtract(SiteTelemetryMaxAge))
         {
