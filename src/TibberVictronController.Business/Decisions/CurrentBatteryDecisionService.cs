@@ -85,33 +85,6 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
         var feedInCompensationPricePerKwh = await GetFeedInCompensationPricePerKwhAsync(cancellationToken);
         var gridPowerDeadbandWatts = await GetGridPowerDeadbandWattsAsync(cancellationToken);
-        IReadOnlyList<TibberPriceForecastSlot> priceForecast;
-
-        try
-        {
-            priceForecast = await dependencies.TibberPriceForecastProvider.GetPriceForecastAsync(
-                decidedAtUtc,
-                decidedAtUtc.Add(DecisionLookahead),
-                cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            return await SaveIdleDecisionAsync(
-                decidedAtUtc,
-                decidedAtUtc.AddMinutes(15),
-                batteryState,
-                siteTelemetry,
-                tibberPricePerKwh: null,
-                tibberPriceCurrency: null,
-                new BatteryDecisionReason(
-                    CurrentBatteryDecisionRuleIds.MissingCurrentPrice,
-                    $"Die aktuellen Tibber-Preise konnten nicht geladen werden ({exception.Message}). Die Decision Engine bleibt deshalb im Idle-Zustand."),
-                cancellationToken);
-        }
-
-        var currentPriceSlot = priceForecast.SingleOrDefault(priceSlot =>
-            priceSlot.TimeSlot.StartsAtUtc <= decidedAtUtc &&
-            decidedAtUtc < priceSlot.TimeSlot.EndsAtUtc);
 
         if (batteryState.MeasuredAtUtc < decidedAtUtc.Subtract(BatteryStateMaxAge))
         {
@@ -158,21 +131,6 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 cancellationToken);
         }
 
-        if (currentPriceSlot is null)
-        {
-            return await SaveIdleDecisionAsync(
-                decidedAtUtc,
-                decidedAtUtc.AddMinutes(15),
-                batteryState,
-                siteTelemetry,
-                tibberPricePerKwh: null,
-                tibberPriceCurrency: null,
-                new BatteryDecisionReason(
-                    CurrentBatteryDecisionRuleIds.MissingCurrentPrice,
-                    "Fuer den aktuellen Zeitpunkt liegt kein gueltiger Tibber-Preis vor. Die Decision Engine bleibt deshalb im Idle-Zustand."),
-                cancellationToken);
-        }
-
         var activePvChargePowerWatts = await GetActivePvChargePowerWattsAsync(decidedAtUtc, cancellationToken);
         var decisionSiteTelemetry = activePvChargePowerWatts > 0 && siteTelemetry.CurrentGridImportWatts < 0
             ? new CurrentSiteTelemetry(
@@ -186,15 +144,36 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         {
             return await SaveIdleDecisionAsync(
                 decidedAtUtc,
-                currentPriceSlot.TimeSlot.EndsAtUtc,
+                decidedAtUtc.AddMinutes(15),
                 batteryState,
                 decisionSiteTelemetry,
-                currentPriceSlot.TotalPricePerKwh,
-                currentPriceSlot.Currency,
+                tibberPricePerKwh: null,
+                tibberPriceCurrency: null,
                 new BatteryDecisionReason(
                     CurrentBatteryDecisionRuleIds.GridPowerDeadband,
                     $"Die aktuelle Netzleistung von {decisionSiteTelemetry.CurrentGridImportWatts} Watt liegt innerhalb des konfigurierten Puffers von +/- {gridPowerDeadbandWatts} Watt. Die Decision Engine ignoriert diese kleine Abweichung und bleibt im Idle-Zustand."),
                 cancellationToken);
+        }
+
+        IReadOnlyList<TibberPriceForecastSlot>? priceForecast = null;
+        TibberPriceForecastSlot? currentPriceSlot = null;
+        BatteryDecisionReason? missingCurrentPriceReason = null;
+
+        try
+        {
+            priceForecast = await dependencies.TibberPriceForecastProvider.GetPriceForecastAsync(
+                decidedAtUtc,
+                decidedAtUtc.Add(DecisionLookahead),
+                cancellationToken);
+            currentPriceSlot = priceForecast.SingleOrDefault(priceSlot =>
+                priceSlot.TimeSlot.StartsAtUtc <= decidedAtUtc &&
+                decidedAtUtc < priceSlot.TimeSlot.EndsAtUtc);
+        }
+        catch (Exception exception)
+        {
+            missingCurrentPriceReason = new BatteryDecisionReason(
+                CurrentBatteryDecisionRuleIds.MissingCurrentPrice,
+                $"Die aktuellen Tibber-Preise konnten nicht geladen werden ({exception.Message}). Die Decision Engine bleibt deshalb im Idle-Zustand.");
         }
 
         if (decisionSiteTelemetry.CurrentGridImportWatts < 0)
@@ -205,8 +184,41 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 batteryConfiguration,
                 decisionSiteTelemetry,
                 currentPriceSlot,
-                priceForecast,
+                priceForecast ?? Array.Empty<TibberPriceForecastSlot>(),
                 feedInCompensationPricePerKwh,
+                cancellationToken);
+        }
+
+        if (missingCurrentPriceReason is not null)
+        {
+            return await SaveIdleDecisionAsync(
+                decidedAtUtc,
+                decidedAtUtc.AddMinutes(15),
+                batteryState,
+                decisionSiteTelemetry,
+                tibberPricePerKwh: null,
+                tibberPriceCurrency: null,
+                missingCurrentPriceReason,
+                cancellationToken);
+        }
+
+        if (priceForecast is null)
+        {
+            throw new InvalidOperationException("Die Tibber-Preise wurden nicht geladen.");
+        }
+
+        if (currentPriceSlot is null)
+        {
+            return await SaveIdleDecisionAsync(
+                decidedAtUtc,
+                decidedAtUtc.AddMinutes(15),
+                batteryState,
+                decisionSiteTelemetry,
+                tibberPricePerKwh: null,
+                tibberPriceCurrency: null,
+                new BatteryDecisionReason(
+                    CurrentBatteryDecisionRuleIds.MissingCurrentPrice,
+                    "Für den aktuellen Zeitpunkt liegt kein gültiger Tibber-Preis vor. Die Decision Engine bleibt deshalb im Idle-Zustand."),
                 cancellationToken);
         }
 
@@ -360,7 +372,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         BatteryState batteryState,
         BatteryConfiguration batteryConfiguration,
         CurrentSiteTelemetry siteTelemetry,
-        TibberPriceForecastSlot currentPriceSlot,
+        TibberPriceForecastSlot? currentPriceSlot,
         IReadOnlyList<TibberPriceForecastSlot> priceForecast,
         decimal feedInCompensationPricePerKwh,
         CancellationToken cancellationToken)
@@ -384,11 +396,11 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
             return await SaveIdleDecisionAsync(
                 decidedAtUtc,
-                currentPriceSlot.TimeSlot.EndsAtUtc,
+                currentPriceSlot?.TimeSlot.EndsAtUtc ?? decidedAtUtc.AddMinutes(15),
                 batteryState,
                 siteTelemetry,
-                currentPriceSlot.TotalPricePerKwh,
-                currentPriceSlot.Currency,
+                currentPriceSlot?.TotalPricePerKwh,
+                currentPriceSlot?.Currency,
                 reason,
                 cancellationToken);
         }
@@ -406,14 +418,14 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
         return await SaveDecisionAsync(
             decidedAtUtc,
-            currentPriceSlot.TimeSlot.EndsAtUtc,
+            currentPriceSlot?.TimeSlot.EndsAtUtc ?? decidedAtUtc.AddMinutes(15),
             new CurrentBatteryDecision(
                 new BatteryDecisionInstruction(BatteryDecisionState.Charge, BatteryChargeSource.PV),
                 targetPowerWatts),
             batteryState,
             siteTelemetry,
-            currentPriceSlot.TotalPricePerKwh,
-            currentPriceSlot.Currency,
+            currentPriceSlot?.TotalPricePerKwh,
+            currentPriceSlot?.Currency,
             reasons,
             cancellationToken);
     }

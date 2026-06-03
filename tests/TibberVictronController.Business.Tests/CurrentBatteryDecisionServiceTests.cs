@@ -244,6 +244,29 @@ public sealed class CurrentBatteryDecisionServiceTests
     }
 
     [Fact]
+    public async Task CalculateCurrentDecisionAsyncChargesFromPvExportWhenPriceLookupFails()
+    {
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(40m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m, maximumChargePowerWatts: 3000)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(-1400, 2200, NowUtc)),
+            TibberPriceForecastProvider = new ThrowingTibberPriceForecastProvider("Tibber API ist derzeit nicht erreichbar."),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Charge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(BatteryChargeSource.PV, result.Decision.Instruction.ChargeSource);
+        Assert.Equal(1400, result.Decision.TargetPowerWatts);
+        Assert.Null(result.TibberPricePerKwh);
+        Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.AbsorbGridExport);
+    }
+
+    [Fact]
     public async Task CalculateCurrentDecisionAsyncLogsWhenPvChargeIsLimitedBySettings()
     {
         var service = CreateService(new CurrentBatteryDecisionServiceDependencies

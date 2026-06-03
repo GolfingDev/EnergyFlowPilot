@@ -65,14 +65,42 @@ public sealed class VictronSetpointRefreshBackgroundService : BackgroundService
             return;
         }
 
-        foreach (var setpoint in snapshot.Setpoints)
+        var topics = VictronMqttTopicFactory.Create(settings);
+        var setpoints = MqttVictronSetpointPublisher.ApplySetpointRamp(
+            snapshot.Setpoints,
+            snapshot.DesiredSetpoints,
+            MqttVictronSetpointPublisher.SetpointRampStepWatts);
+        var hub4Control = MqttVictronSetpointPublisher.CalculateHub4ControlFromSignedBatteryTarget(
+            setpoints.Sum(setpoint => setpoint.Value),
+            settings.BatteryIdleThresholdWatts);
+        await PublishValueIfChangedAsync(topics.DisableChargeTopic, topics.DisableChargeReadTopic, hub4Control.DisableCharge ? 1 : 0, cancellationToken);
+        await PublishValueIfChangedAsync(topics.DisableFeedInTopic, topics.DisableFeedInReadTopic, hub4Control.DisableFeedIn ? 1 : 0, cancellationToken);
+
+        foreach (var setpoint in setpoints)
         {
             await mqttControlClient.PublishValueAsync(setpoint.Topic, setpoint.Value, cancellationToken);
         }
 
+        refreshState.Update(snapshot with { Setpoints = setpoints });
+
         logger.LogDebug(
             "Victron-Setpoint refreshed. Count={SetpointCount}, ValidToUtc={ValidToUtc}",
-            snapshot.Setpoints.Count,
+            setpoints.Count,
             snapshot.ValidToUtc);
+    }
+
+    private async Task PublishValueIfChangedAsync(
+        string writeTopic,
+        string readTopic,
+        int desiredValue,
+        CancellationToken cancellationToken)
+    {
+        if (mqttControlClient.TryGetLatestValue(readTopic, out var currentValue) &&
+            currentValue == desiredValue)
+        {
+            return;
+        }
+
+        await mqttControlClient.PublishValueAsync(writeTopic, desiredValue, cancellationToken);
     }
 }

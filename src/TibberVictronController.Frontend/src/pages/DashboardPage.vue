@@ -123,6 +123,7 @@ const forecastConsumptionKwh = computed(() => forecast.value?.entries.reduce((su
 const currentDecisionLabel = computed(() => decision.value
   ? getDecisionLabel(decision.value.decisionState, decision.value.chargeSource)
   : 'Keine Entscheidung');
+const currentDecisionReason = computed(() => decision.value?.reasons[0] ?? null);
 const controlCenterKpis = computed(() => [
   {
     icon: 'mdi-battery-charging-medium',
@@ -781,14 +782,22 @@ onBeforeUnmount(() => {
               <p>{{ decision ? formatDateTime(decision.decidedAtUtc) : 'Keine Entscheidung vorhanden' }}</p>
             </div>
           </div>
-          <div class="control-center-decision-card">
-            <v-icon icon="mdi-timeline-check-outline" size="28" />
-            <div>
-              <strong>{{ currentDecisionLabel }}</strong>
-              <span>Ziel: {{ formatPower(decision?.targetPowerWatts) }}</span>
-              <span>SoC: {{ formatPercent(decision?.stateOfChargePercent) }}</span>
+          <v-tooltip location="top" max-width="420">
+            <template #activator="{ props: tooltipProps }">
+              <div class="control-center-decision-card" v-bind="tooltipProps">
+                <v-icon icon="mdi-timeline-check-outline" size="28" />
+                <div>
+                  <strong>{{ currentDecisionLabel }}</strong>
+                  <span>Ziel: {{ formatPower(decision?.targetPowerWatts) }}</span>
+                  <span>SoC: {{ formatPercent(decision?.stateOfChargePercent) }}</span>
+                </div>
+              </div>
+            </template>
+            <div class="control-center-decision-tooltip">
+              <strong>{{ currentDecisionReason?.ruleId ?? 'Keine Begründung' }}</strong>
+              <span>{{ currentDecisionReason?.message ?? 'Für die aktuelle Entscheidung liegt noch keine Begründung vor.' }}</span>
             </div>
-          </div>
+          </v-tooltip>
           <div class="control-center-list">
             <div v-for="entry in controlCenterDecisionRows" :key="entry.id" class="control-center-list-row">
               <span>{{ new Date(entry.decidedAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}</span>

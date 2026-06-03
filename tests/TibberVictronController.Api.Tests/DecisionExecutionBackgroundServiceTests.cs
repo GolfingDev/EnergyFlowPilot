@@ -283,6 +283,39 @@ public sealed class DecisionExecutionBackgroundServiceTests
         Assert.Equal(totalSetpointWatts, setpoints.Sum());
     }
 
+    [Fact]
+    public void ApplySetpointRampIncreasesSetpointOnlyByConfiguredStep()
+    {
+        var currentSetpoints = new[] { new VictronSetpointValue("topic", 0) };
+        var desiredSetpoints = new[] { new VictronSetpointValue("topic", 1200) };
+
+        var rampedSetpoints = MqttVictronSetpointPublisher.ApplySetpointRamp(currentSetpoints, desiredSetpoints, maximumStepWatts: 250);
+
+        Assert.Equal(new[] { new VictronSetpointValue("topic", 250) }, rampedSetpoints);
+    }
+
+    [Fact]
+    public void ApplySetpointRampMovesDirectionChangesThroughZero()
+    {
+        var currentSetpoints = new[] { new VictronSetpointValue("topic", 500) };
+        var desiredSetpoints = new[] { new VictronSetpointValue("topic", -800) };
+
+        var rampedSetpoints = MqttVictronSetpointPublisher.ApplySetpointRamp(currentSetpoints, desiredSetpoints, maximumStepWatts: 250);
+
+        Assert.Equal(new[] { new VictronSetpointValue("topic", 250) }, rampedSetpoints);
+    }
+
+    [Fact]
+    public void ApplySetpointRampUsesDesiredSetpointWhenDeltaFitsStep()
+    {
+        var currentSetpoints = new[] { new VictronSetpointValue("topic", 500) };
+        var desiredSetpoints = new[] { new VictronSetpointValue("topic", 620) };
+
+        var rampedSetpoints = MqttVictronSetpointPublisher.ApplySetpointRamp(currentSetpoints, desiredSetpoints, maximumStepWatts: 250);
+
+        Assert.Equal(new[] { new VictronSetpointValue("topic", 620) }, rampedSetpoints);
+    }
+
     [Theory]
     [InlineData(VictronControlMode.NormalEss, 1)]
     [InlineData(VictronControlMode.ExternalEss, 3)]

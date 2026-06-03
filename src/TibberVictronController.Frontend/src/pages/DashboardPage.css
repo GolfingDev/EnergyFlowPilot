@@ -367,6 +367,28 @@
   font-size: 0.82rem;
 }
 
+.control-center-decision-tooltip {
+  display: grid;
+  gap: 6px;
+  max-width: 380px;
+  line-height: 1.35;
+}
+
+.control-center-decision-tooltip strong,
+.control-center-decision-tooltip span {
+  display: block;
+}
+
+.control-center-decision-tooltip strong {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.control-center-decision-tooltip span {
+  font-size: 0.88rem;
+}
+
 .dashboard-content-grid {
   display: block;
 }

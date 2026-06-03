@@ -38,10 +38,26 @@ public sealed class VictronSetpointRefreshState
         currentSnapshot = default!;
         return false;
     }
+
+    public bool TryGetLatest(out VictronSetpointRefreshSnapshot currentSnapshot)
+    {
+        lock (syncRoot)
+        {
+            if (snapshot is not null)
+            {
+                currentSnapshot = snapshot;
+                return true;
+            }
+        }
+
+        currentSnapshot = default!;
+        return false;
+    }
 }
 
 public sealed record VictronSetpointRefreshSnapshot(
     DateTimeOffset ValidToUtc,
-    IReadOnlyList<VictronSetpointValue> Setpoints);
+    IReadOnlyList<VictronSetpointValue> Setpoints,
+    IReadOnlyList<VictronSetpointValue> DesiredSetpoints);
 
 public sealed record VictronSetpointValue(string Topic, int Value);
