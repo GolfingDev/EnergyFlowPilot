@@ -17,6 +17,8 @@ public sealed class CurrentBatteryDecisionServiceDependencies
 
     public required ITibberPriceForecastProvider TibberPriceForecastProvider { get; init; }
 
+    public IBatteryForecastService? BatteryForecastService { get; init; }
+
     public required IControllerSettingStore ControllerSettingStore { get; init; }
 
     public required IDecisionLogRepository DecisionLogRepository { get; init; }

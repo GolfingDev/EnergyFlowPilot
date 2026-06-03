@@ -82,6 +82,7 @@ public static class ControllerServiceCollectionExtensions
             BatteryConfigurationProvider = serviceProvider.GetRequiredService<IBatteryConfigurationProvider>(),
             CurrentSiteTelemetryProvider = serviceProvider.GetRequiredService<ICurrentSiteTelemetryProvider>(),
             TibberPriceForecastProvider = serviceProvider.GetRequiredService<ITibberPriceForecastProvider>(),
+            BatteryForecastService = serviceProvider.GetRequiredService<IBatteryForecastService>(),
             ControllerSettingStore = serviceProvider.GetRequiredService<IControllerSettingStore>(),
             DecisionLogRepository = serviceProvider.GetRequiredService<IDecisionLogRepository>()
         });

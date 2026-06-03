@@ -70,7 +70,7 @@ public static class DecisionAuditInvariantValidator
     private static void ValidateStateOfChargeBoundaries(DecisionAuditReport report, List<string> violations)
     {
         var minSoc = report.Scenario.BatteryConfiguration.MinimumStateOfChargePercent;
-        const decimal maxSoc = 100m;
+        var maxSoc = report.Scenario.BatteryConfiguration.PlanningMaximumStateOfChargePercent;
 
         foreach (var slot in report.DecisionSlots)
         {
@@ -84,7 +84,7 @@ public static class DecisionAuditInvariantValidator
     private static void ValidateChargeAndDischargeBoundaries(DecisionAuditReport report, List<string> violations)
     {
         var minSoc = report.Scenario.BatteryConfiguration.MinimumStateOfChargePercent;
-        const decimal maxSoc = 100m;
+        var maxSoc = report.Scenario.BatteryConfiguration.PlanningMaximumStateOfChargePercent;
 
         foreach (var slot in report.DecisionSlots)
         {

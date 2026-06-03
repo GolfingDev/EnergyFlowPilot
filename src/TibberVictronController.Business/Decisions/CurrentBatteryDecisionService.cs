@@ -242,8 +242,15 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 decisionSiteTelemetry,
                 currentPriceSlot,
                 priceRuleResult.Reasons[0],
+                batteryConfiguration.MinimumStateOfChargePercent,
                 cancellationToken),
-            _ => await SaveDecisionAsync(
+            _ => await TryCreateForecastBackedDischargeDecisionAsync(
+                decidedAtUtc,
+                batteryState,
+                batteryConfiguration,
+                decisionSiteTelemetry,
+                currentPriceSlot,
+                cancellationToken) ?? await SaveDecisionAsync(
                 decidedAtUtc,
                 currentPriceSlot.TimeSlot.EndsAtUtc,
                 new CurrentBatteryDecision(
@@ -256,6 +263,84 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 priceRuleResult.Reasons,
                 cancellationToken)
         };
+    }
+
+    private async Task<CurrentBatteryDecisionResult?> TryCreateForecastBackedDischargeDecisionAsync(
+        DateTimeOffset decidedAtUtc,
+        BatteryState batteryState,
+        BatteryConfiguration batteryConfiguration,
+        CurrentSiteTelemetry siteTelemetry,
+        TibberPriceForecastSlot currentPriceSlot,
+        CancellationToken cancellationToken)
+    {
+        if (dependencies.BatteryForecastService is null ||
+            siteTelemetry.CurrentGridImportWatts <= 0)
+        {
+            return null;
+        }
+
+        BatteryForecastResult forecastResult;
+        try
+        {
+            forecastResult = await dependencies.BatteryForecastService.CalculateForecastAsync(
+                decidedAtUtc,
+                decidedAtUtc.Add(DecisionLookahead),
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            return await SaveIdleDecisionAsync(
+                decidedAtUtc,
+                currentPriceSlot.TimeSlot.EndsAtUtc,
+                batteryState,
+                siteTelemetry,
+                currentPriceSlot.TotalPricePerKwh,
+                currentPriceSlot.Currency,
+                new BatteryDecisionReason(
+                    CurrentBatteryDecisionRuleIds.ForecastKeepsDischargeReserve,
+                    $"Der 24h-Forecast konnte nicht berechnet werden ({exception.Message}). Die Decision Engine entlädt bei neutralem Preis deshalb nicht."),
+                cancellationToken);
+        }
+
+        var futureEntries = forecastResult.Entries
+            .Where(entry => entry.TimeSlot.EndsAtUtc > decidedAtUtc)
+            .OrderBy(entry => entry.TimeSlot.StartsAtUtc)
+            .ToArray();
+        var finalStateOfChargePercent = futureEntries.Length == 0
+            ? batteryState.StateOfChargePercent
+            : futureEntries[^1].StateOfChargeAfterPercent;
+        var reservePercent = Math.Max(
+            batteryConfiguration.TargetEndStateOfChargePercent,
+            batteryConfiguration.PlanningMinimumStateOfChargePercent);
+
+        if (finalStateOfChargePercent <= reservePercent)
+        {
+            return await SaveIdleDecisionAsync(
+                decidedAtUtc,
+                currentPriceSlot.TimeSlot.EndsAtUtc,
+                batteryState,
+                siteTelemetry,
+                currentPriceSlot.TotalPricePerKwh,
+                currentPriceSlot.Currency,
+                new BatteryDecisionReason(
+                    CurrentBatteryDecisionRuleIds.ForecastKeepsDischargeReserve,
+                    $"Der 24h-Forecast endet bei {finalStateOfChargePercent:0.#} Prozent SoC und schützt damit die Reserve von {reservePercent:0.#} Prozent. Die Decision Engine entlädt bei neutralem Preis nicht."),
+                cancellationToken);
+        }
+
+        var reason = new BatteryDecisionReason(
+            CurrentBatteryDecisionRuleIds.ForecastAllowsLoadCoverageDischarge,
+            $"Aktueller Netzbezug von {siteTelemetry.CurrentGridImportWatts} Watt wird aus dem Akku gedeckt. Der 24h-Forecast endet trotz Verbrauch, günstiger Ladefenster und PV-Prognose bei {finalStateOfChargePercent:0.#} Prozent SoC und bleibt damit über der Reserve von {reservePercent:0.#} Prozent.");
+
+        return await CreateDischargeDecisionAsync(
+            decidedAtUtc,
+            batteryState,
+            batteryConfiguration,
+            siteTelemetry,
+            currentPriceSlot,
+            reason,
+            reservePercent,
+            cancellationToken);
     }
 
     private async Task<LiveBatteryStateReadResult> TryGetBatteryStateAsync(
@@ -501,6 +586,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         CurrentSiteTelemetry siteTelemetry,
         TibberPriceForecastSlot currentPriceSlot,
         BatteryDecisionReason baseReason,
+        decimal reserveStateOfChargePercent,
         CancellationToken cancellationToken)
     {
         var powerLimitedTargetWatts = dischargePowerLimiter.CalculateTargetPowerWatts(
@@ -523,7 +609,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         }
 
         var currentBatteryEnergyKwh = batteryConfiguration.TotalCapacityKwh * batteryState.StateOfChargePercent / 100m;
-        var minimumBatteryEnergyKwh = batteryConfiguration.TotalCapacityKwh * batteryConfiguration.MinimumStateOfChargePercent / 100m;
+        var minimumBatteryEnergyKwh = batteryConfiguration.TotalCapacityKwh * reserveStateOfChargePercent / 100m;
         var singleDirectionEfficiency = CalculateSingleDirectionEfficiency(batteryConfiguration);
         var availableLoadCoverageKwh = Math.Max(0m, (currentBatteryEnergyKwh - minimumBatteryEnergyKwh) * singleDirectionEfficiency);
         var maximumEnergyLimitedWatts = CalculatePowerWatts(availableLoadCoverageKwh, currentPriceSlot.TimeSlot.Duration);
@@ -540,7 +626,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 currentPriceSlot.Currency,
                 new BatteryDecisionReason(
                     BatteryForecastRuleIds.MinimumSocReserve,
-                    "Der minimale Akkuladestand ist erreicht. Die Decision Engine entlaedt deshalb nicht weiter."),
+                    $"Die Entlade-Reserve von {reserveStateOfChargePercent:0.#} Prozent ist erreicht. Die Decision Engine entlädt deshalb nicht weiter."),
                 cancellationToken);
         }
 

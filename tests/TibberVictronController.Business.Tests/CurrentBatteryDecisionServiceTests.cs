@@ -201,6 +201,46 @@ public sealed class CurrentBatteryDecisionServiceTests
     }
 
     [Fact]
+    public async Task CalculateCurrentDecisionAsyncDischargesAtNeutralPriceWhenForecastKeepsReserve()
+    {
+        var batteryConfiguration = new BatteryConfiguration(new BatteryConfigurationValues
+        {
+            TotalCapacityKwh = 12m,
+            MinimumStateOfChargePercent = 10m,
+            MaximumDischargePowerWatts = 3000,
+            RoundTripEfficiencyPercent = 100m,
+            TargetEndStateOfChargePercent = 25m,
+            PlanningMinimumStateOfChargePercent = 15m,
+            PlanningMaximumStateOfChargePercent = 95m
+        });
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(95m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(batteryConfiguration),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(800, 0, NowUtc)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.20m, 0.18m, 0.30m)),
+            BatteryForecastService = new StaticBatteryForecastService(new BatteryForecastResult(
+                new BatteryState(95m, NowUtc),
+                batteryConfiguration,
+                new[]
+                {
+                    CreateForecastEntry(
+                        stateOfChargeBeforePercent: 95m,
+                        stateOfChargeAfterPercent: 70m)
+                })),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Discharge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(800, result.Decision.TargetPowerWatts);
+        Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.ForecastAllowsLoadCoverageDischarge);
+    }
+
+    [Fact]
     public async Task CalculateCurrentDecisionAsyncChargesFromPvAboveGridPowerDeadband()
     {
         var service = CreateService(new CurrentBatteryDecisionServiceDependencies
@@ -444,6 +484,23 @@ public sealed class CurrentBatteryDecisionServiceTests
             new[] { new BatteryDecisionReason(CurrentBatteryDecisionRuleIds.AbsorbGridExport, "Testentscheidung.") });
     }
 
+    private static BatteryForecastEntry CreateForecastEntry(
+        decimal stateOfChargeBeforePercent,
+        decimal stateOfChargeAfterPercent)
+    {
+        return new BatteryForecastEntry(
+            new ForecastTimeSlot(NowUtc, NowUtc.AddHours(1)),
+            TibberPricePerKwh: 0.20m,
+            TibberPriceCurrency: "EUR",
+            ExpectedPvYieldKwh: 0m,
+            ExpectedConsumptionKwh: 0.80m,
+            ExpectedGridImportBeforeBatteryKwh: 0.80m,
+            stateOfChargeBeforePercent,
+            stateOfChargeAfterPercent,
+            new CurrentBatteryDecision(new BatteryDecisionInstruction(BatteryDecisionState.Idle, chargeSource: null), 0),
+            new[] { new BatteryDecisionReason(BatteryForecastRuleIds.NeutralIdle, "Test-Forecast.") });
+    }
+
     private sealed class FakeCurrentSiteTelemetryProvider : ICurrentSiteTelemetryProvider
     {
         private readonly CurrentSiteTelemetry siteTelemetry;
@@ -541,6 +598,25 @@ public sealed class CurrentBatteryDecisionServiceTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(priceForecast);
+        }
+    }
+
+    private sealed class StaticBatteryForecastService : IBatteryForecastService
+    {
+        private readonly BatteryForecastResult forecastResult;
+
+        public StaticBatteryForecastService(BatteryForecastResult forecastResult)
+        {
+            this.forecastResult = forecastResult;
+        }
+
+        public Task<BatteryForecastResult> CalculateForecastAsync(
+            DateTimeOffset startsAtUtc,
+            DateTimeOffset endsAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(forecastResult);
         }
     }
 

@@ -30,14 +30,16 @@ public sealed class DecisionAuditHarnessTests
         Assert.Contains(report.DecisionSlots, slot => slot.Action == "ChargeFromGrid");
         Assert.Contains(report.DecisionSlots, slot => slot.Action == "Discharge");
         Assert.All(report.DecisionSlots, AssertReasonMatchesAction);
-        Assert.All(report.DecisionSlots.Where(slot => slot.TibberPricePerKwh < 0m && slot.ExpectedSocPercent < 100m), slot =>
+        Assert.All(report.DecisionSlots.Where(slot =>
+                slot.TibberPricePerKwh < 0m &&
+                slot.ExpectedSocPercent < report.Scenario.BatteryConfiguration.PlanningMaximumStateOfChargePercent),
+            slot =>
             Assert.Equal("ChargeFromGrid", slot.Action));
         Assert.Contains(report.DecisionSlots, slot =>
             slot.RuleId == BatteryForecastRuleIds.DischargeBeforeNegativePriceWindow &&
             slot.TimeSlot.StartsAtUtc.Hour < 12);
-        Assert.Contains(report.DecisionSlots, slot =>
-            slot.RuleId == BatteryForecastRuleIds.NegativePriceGridCharge &&
-            slot.ExpectedSocPercent - slot.StateOfChargeBeforePercent < 6.25m);
+        Assert.All(report.DecisionSlots, slot =>
+            Assert.True(slot.ExpectedSocPercent <= report.Scenario.BatteryConfiguration.PlanningMaximumStateOfChargePercent));
         Assert.Contains(report.DecisionSlots, slot =>
             slot.RuleId == BatteryForecastRuleIds.ExpensivePriceDischarge &&
             slot.StateOfChargeBeforePercent - slot.ExpectedSocPercent > slot.DischargedEnergyKwh / scenario.BatteryConfiguration.TotalCapacityKwh * 100m);

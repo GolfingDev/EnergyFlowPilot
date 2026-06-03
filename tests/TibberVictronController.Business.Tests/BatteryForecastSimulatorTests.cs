@@ -402,7 +402,37 @@ public sealed class BatteryForecastSimulatorTests
     }
 
     [Fact]
-    public void SimulatePreventsGridChargingWithConcreteRuleIdWhenPlanningMaximumIsReached()
+    public void SimulateLimitsPvChargingToPlanningMaximum()
+    {
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(94m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(new BatteryConfigurationValues
+        {
+            TotalCapacityKwh = 10m,
+            MaximumChargePowerWatts = 3000,
+            RoundTripEfficiencyPercent = 100m,
+            PlanningMaximumStateOfChargePercent = 95m
+        });
+        var priceForecast = CreatePriceForecast(0.20m);
+        var pvForecast = CreatePvForecast(1.00m);
+        var consumptionForecast = CreateConsumptionForecast(0m);
+
+        var result = simulator.Simulate(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            batteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh: 0.08m);
+
+        var entry = result.Entries.Single();
+        Assert.Equal(BatteryDecisionState.Charge, entry.Decision.Instruction.DecisionState);
+        Assert.Equal(400, entry.Decision.TargetPowerWatts);
+        Assert.Equal(95m, entry.StateOfChargeAfterPercent);
+    }
+
+    [Fact]
+    public void SimulatePreventsChargingWithConcreteRuleIdWhenPlanningMaximumIsReached()
     {
         var simulator = new BatteryForecastSimulator();
         var batteryState = new BatteryState(90m, ForecastStartsAtUtc);
@@ -413,7 +443,7 @@ public sealed class BatteryForecastSimulatorTests
             RoundTripEfficiencyPercent = 100m,
             PlanningMaximumStateOfChargePercent = 90m
         });
-        var priceForecast = CreatePriceForecast(0.10m, 0.30m, 0.50m);
+        var priceForecast = CreatePriceForecast(-0.10m, 0.30m, 0.50m);
         var pvForecast = CreatePvForecast(0m, 0m, 0m);
         var consumptionForecast = CreateConsumptionForecast(0m, 0m, 0m);
 
@@ -433,7 +463,7 @@ public sealed class BatteryForecastSimulatorTests
     }
 
     [Fact]
-    public void SimulateAllowsGridChargingAbovePlanningMaximumWhenPriceIsBelowFeedInCompensation()
+    public void SimulateDoesNotGridChargeAbovePlanningMaximumWhenPriceIsBelowFeedInCompensation()
     {
         var simulator = new BatteryForecastSimulator();
         var batteryState = new BatteryState(88m, ForecastStartsAtUtc);
@@ -458,8 +488,9 @@ public sealed class BatteryForecastSimulatorTests
 
         var entry = result.Entries[0];
         Assert.Equal(BatteryDecisionState.Charge, entry.Decision.Instruction.DecisionState);
-        Assert.Equal(3000, entry.Decision.TargetPowerWatts);
-        Assert.True(entry.StateOfChargeAfterPercent > batteryConfiguration.PlanningMaximumStateOfChargePercent);
+        Assert.Equal(960, entry.Decision.TargetPowerWatts);
+        Assert.Equal(batteryConfiguration.PlanningMaximumStateOfChargePercent, entry.StateOfChargeAfterPercent);
+        Assert.Contains(entry.Reasons, reason => reason.RuleName == BatteryForecastRuleIds.PlanningMaximumGridChargeLimit);
     }
 
     private static IReadOnlyList<TibberPriceForecastSlot> CreatePriceForecast(params decimal[] prices)

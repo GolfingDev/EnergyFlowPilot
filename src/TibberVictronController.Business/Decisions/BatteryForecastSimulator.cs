@@ -7,8 +7,6 @@ namespace TibberVictronController.Business.Decisions;
 /// </summary>
 public sealed class BatteryForecastSimulator
 {
-    private const decimal FullBatterySocPercent = 100m;
-
     private readonly BatteryChargeWindowPlanner chargeWindowPlanner = new();
     private readonly TibberPriceDecisionRule tibberPriceDecisionRule = new();
 
@@ -128,7 +126,8 @@ public sealed class BatteryForecastSimulator
         decimal maximumChargeInputEnergyKwh,
         decimal singleDirectionEfficiency)
     {
-        var availableCapacityKwh = batteryConfiguration.TotalCapacityKwh - batteryEnergyBeforeKwh;
+        var maximumPlannedBatteryEnergyKwh = CalculatePlanningMaximumBatteryEnergyKwh(batteryConfiguration);
+        var availableCapacityKwh = maximumPlannedBatteryEnergyKwh - batteryEnergyBeforeKwh;
 
         if (availableCapacityKwh <= 0m)
         {
@@ -140,8 +139,8 @@ public sealed class BatteryForecastSimulator
                 stateOfChargeBeforePercent,
                 batteryEnergyBeforeKwh,
                 batteryConfiguration,
-                BatteryForecastRuleIds.BatteryFullPvSurplus,
-                "Der erwartete Netzbezug ist negativ, aber der Akku ist voll und kann keinen Ueberschuss aufnehmen.");
+                BatteryForecastRuleIds.PlanningMaximumSocHeadroom,
+                $"Der erwartete Netzbezug ist negativ, aber das Planungs-Maximum von {batteryConfiguration.PlanningMaximumStateOfChargePercent:0.#} Prozent ist erreicht. Die Decision Engine nimmt keinen weiteren Überschuss auf.");
         }
 
         if (ShouldPreserveHeadroomForFutureNegativePriceCharging(priceForecast, priceSlot.TimeSlot.StartsAtUtc, feedInCompensationPricePerKwh))
@@ -226,7 +225,7 @@ public sealed class BatteryForecastSimulator
 
         if (priceSlot.TotalPricePerKwh < 0m)
         {
-            if (batteryEnergyBeforeKwh >= batteryConfiguration.TotalCapacityKwh)
+            if (batteryEnergyBeforeKwh >= CalculatePlanningMaximumBatteryEnergyKwh(batteryConfiguration))
             {
                 return CreateIdleSlot(
                     priceSlot,
@@ -236,8 +235,8 @@ public sealed class BatteryForecastSimulator
                     stateOfChargeBeforePercent,
                     batteryEnergyBeforeKwh,
                     batteryConfiguration,
-                    BatteryForecastRuleIds.BatteryFullIdle,
-                    "Der Tibber-Preis ist negativ, aber der Akku ist voll und kann nicht weiter geladen werden.");
+                    BatteryForecastRuleIds.PlanningMaximumSocHeadroom,
+                    $"Der Tibber-Preis ist negativ, aber das Planungs-Maximum von {batteryConfiguration.PlanningMaximumStateOfChargePercent:0.#} Prozent ist erreicht. Die Decision Engine lädt nicht weiter.");
             }
 
             if (isPlannedGridChargeSlot || !HasFutureCheaperNegativePrice(priceForecast, priceSlot))
@@ -357,7 +356,7 @@ public sealed class BatteryForecastSimulator
 
         if (isPlannedGridChargeSlot &&
             priceRuleResult.Instruction.DecisionState == BatteryDecisionState.Charge &&
-            batteryEnergyBeforeKwh < batteryConfiguration.TotalCapacityKwh)
+            batteryEnergyBeforeKwh < CalculatePlanningMaximumBatteryEnergyKwh(batteryConfiguration))
         {
             return CreateGridChargeSlot(new GridChargeSlotInput
             {
@@ -397,14 +396,9 @@ public sealed class BatteryForecastSimulator
 
     private static SimulatedSlot CreateGridChargeSlot(GridChargeSlotInput input)
     {
-        var gridChargeLimit = new GridChargeLimit
-        {
-            BatteryConfiguration = input.BatteryConfiguration,
-            BatteryEnergyBeforeKwh = input.BatteryEnergyBeforeKwh,
-            CurrentPricePerKwh = input.PriceSlot.TotalPricePerKwh,
-            FeedInCompensationPricePerKwh = input.FeedInCompensationPricePerKwh
-        };
-        var availableCapacityKwh = CalculateAvailableGridChargeStoredCapacityKwh(gridChargeLimit);
+        var availableCapacityKwh = CalculateAvailableGridChargeStoredCapacityKwh(
+            input.BatteryConfiguration,
+            input.BatteryEnergyBeforeKwh);
         var physicalCapacityKwh = input.BatteryConfiguration.TotalCapacityKwh - input.BatteryEnergyBeforeKwh;
         var chargeInputEnergyKwh = CalculateChargeInputEnergyKwh(input.MaximumChargeInputEnergyKwh, input.MaximumChargeInputEnergyKwh, availableCapacityKwh, input.SingleDirectionEfficiency);
         var unrestrictedChargeInputEnergyKwh = CalculateChargeInputEnergyKwh(input.MaximumChargeInputEnergyKwh, input.MaximumChargeInputEnergyKwh, physicalCapacityKwh, input.SingleDirectionEfficiency);
@@ -427,7 +421,7 @@ public sealed class BatteryForecastSimulator
         var targetPowerWatts = CalculatePowerWatts(chargeInputEnergyKwh, input.PriceSlot.TimeSlot);
         var isLimitedByPlanningMaximum = chargeInputEnergyKwh < unrestrictedChargeInputEnergyKwh;
         var planningMaximumReason = isLimitedByPlanningMaximum
-            ? " Das Planungs-Maximum laesst einen PV-Prognosepuffer frei."
+            ? " Das Planungs-Maximum lässt einen PV-Prognosepuffer frei."
             : string.Empty;
         var ruleId = isLimitedByPlanningMaximum
             ? BatteryForecastRuleIds.PlanningMaximumGridChargeLimit
@@ -574,7 +568,7 @@ public sealed class BatteryForecastSimulator
         decimal batteryEnergyBeforeKwh,
         decimal singleDirectionEfficiency)
     {
-        var availableStoredCapacityKwh = batteryConfiguration.TotalCapacityKwh - batteryEnergyBeforeKwh;
+        var availableStoredCapacityKwh = CalculatePlanningMaximumBatteryEnergyKwh(batteryConfiguration) - batteryEnergyBeforeKwh;
 
         return Math.Max(0m, availableStoredCapacityKwh / singleDirectionEfficiency);
     }
@@ -617,7 +611,10 @@ public sealed class BatteryForecastSimulator
         string ruleId,
         string reasonMessage)
     {
-        var boundedBatteryEnergyAfterKwh = Math.Clamp(batteryEnergyAfterKwh, 0m, batteryConfiguration.TotalCapacityKwh);
+        var boundedBatteryEnergyAfterKwh = Math.Clamp(
+            batteryEnergyAfterKwh,
+            0m,
+            CalculatePlanningMaximumBatteryEnergyKwh(batteryConfiguration));
         var stateOfChargeAfterPercent = CalculateStateOfChargePercent(boundedBatteryEnergyAfterKwh, batteryConfiguration);
         var decision = new CurrentBatteryDecision(instruction, targetPowerWatts);
         var entry = new BatteryForecastEntry(
@@ -725,19 +722,13 @@ public sealed class BatteryForecastSimulator
             priceSlot.TotalPricePerKwh < currentPriceSlot.TotalPricePerKwh);
     }
 
-    private static decimal CalculateAvailableGridChargeStoredCapacityKwh(GridChargeLimit gridChargeLimit)
+    private static decimal CalculateAvailableGridChargeStoredCapacityKwh(
+        BatteryConfiguration batteryConfiguration,
+        decimal batteryEnergyBeforeKwh)
     {
-        var totalAvailableCapacityKwh = gridChargeLimit.BatteryConfiguration.TotalCapacityKwh - gridChargeLimit.BatteryEnergyBeforeKwh;
+        var planningMaximumBatteryEnergyKwh = CalculatePlanningMaximumBatteryEnergyKwh(batteryConfiguration);
 
-        if (!gridChargeLimit.IsPlanningMaximumApplied)
-        {
-            return totalAvailableCapacityKwh;
-        }
-
-        var planningMaximumBatteryEnergyKwh = gridChargeLimit.BatteryConfiguration.TotalCapacityKwh *
-            gridChargeLimit.BatteryConfiguration.PlanningMaximumStateOfChargePercent / 100m;
-
-        return planningMaximumBatteryEnergyKwh - gridChargeLimit.BatteryEnergyBeforeKwh;
+        return planningMaximumBatteryEnergyKwh - batteryEnergyBeforeKwh;
     }
 
     private static decimal CalculateChargeInputEnergyKwh(
@@ -771,6 +762,11 @@ public sealed class BatteryForecastSimulator
         return batteryConfiguration.TotalCapacityKwh * batteryConfiguration.TargetEndStateOfChargePercent / 100m;
     }
 
+    private static decimal CalculatePlanningMaximumBatteryEnergyKwh(BatteryConfiguration batteryConfiguration)
+    {
+        return batteryConfiguration.TotalCapacityKwh * batteryConfiguration.PlanningMaximumStateOfChargePercent / 100m;
+    }
+
     private static decimal CalculateSingleDirectionEfficiency(BatteryConfiguration batteryConfiguration)
     {
         return (decimal)Math.Sqrt((double)(batteryConfiguration.RoundTripEfficiencyPercent / 100m));
@@ -782,23 +778,10 @@ public sealed class BatteryForecastSimulator
     {
         var stateOfChargePercent = batteryEnergyKwh / batteryConfiguration.TotalCapacityKwh * 100m;
 
-        return Math.Round(Math.Clamp(stateOfChargePercent, 0m, FullBatterySocPercent), 4, MidpointRounding.AwayFromZero);
+        return Math.Round(Math.Clamp(stateOfChargePercent, 0m, batteryConfiguration.PlanningMaximumStateOfChargePercent), 4, MidpointRounding.AwayFromZero);
     }
 
     private sealed record SimulatedSlot(BatteryForecastEntry Entry, decimal BatteryEnergyAfterKwh);
-
-    private sealed class GridChargeLimit
-    {
-        public required BatteryConfiguration BatteryConfiguration { get; init; }
-
-        public decimal BatteryEnergyBeforeKwh { get; init; }
-
-        public decimal CurrentPricePerKwh { get; init; }
-
-        public decimal FeedInCompensationPricePerKwh { get; init; }
-
-        public bool IsPlanningMaximumApplied => CurrentPricePerKwh >= FeedInCompensationPricePerKwh;
-    }
 
     private sealed class GridChargeSlotInput
     {

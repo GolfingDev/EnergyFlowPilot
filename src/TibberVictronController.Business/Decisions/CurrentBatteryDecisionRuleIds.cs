@@ -17,4 +17,6 @@ public static class CurrentBatteryDecisionRuleIds
     public const string ChargePowerLimitedBySettings = "CHARGE_POWER_LIMITED_BY_SETTINGS";
     public const string NoGridImportForDischarge = "NO_GRID_IMPORT_FOR_DISCHARGE";
     public const string BatteryFull = "BATTERY_FULL";
+    public const string ForecastAllowsLoadCoverageDischarge = "FORECAST_ALLOWS_LOAD_COVERAGE_DISCHARGE";
+    public const string ForecastKeepsDischargeReserve = "FORECAST_KEEPS_DISCHARGE_RESERVE";
 }
