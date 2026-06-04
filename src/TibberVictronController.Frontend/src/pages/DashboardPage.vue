@@ -60,6 +60,11 @@ let isSavingsLoading = false;
 let lastForecastUrl: string | null = null;
 let lastSavingsUrl: string | null = null;
 let liveConnection: HubConnection | null = null;
+let liveReconnectTimer: ReturnType<typeof window.setTimeout> | null = null;
+let liveTelemetryPollTimer: ReturnType<typeof window.setInterval> | null = null;
+let isStoppingLiveUpdates = false;
+let hasReportedLiveUpdateError = false;
+let hasReportedLiveTelemetryPollError = false;
 
 const savingsPeriodOptions: readonly SavingsPeriodOption[] = [
   { label: 'Tag', value: 'day' },
@@ -520,11 +525,14 @@ async function startLiveUpdates(): Promise<void> {
     return;
   }
 
+  clearLiveReconnectTimer();
+  isStoppingLiveUpdates = false;
+
   liveConnection = new HubConnectionBuilder()
     .withUrl('/api/hubs/dashboard', {
       transport: HttpTransportType.ServerSentEvents | HttpTransportType.LongPolling
     })
-    .withAutomaticReconnect()
+    .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
     .configureLogging(LogLevel.Warning)
     .build();
 
@@ -537,21 +545,38 @@ async function startLiveUpdates(): Promise<void> {
   });
 
   liveConnection.onreconnected(() => {
+    hasReportedLiveUpdateError = false;
     void loadDashboard();
+  });
+
+  liveConnection.onclose(() => {
+    liveConnection = null;
+
+    if (!isStoppingLiveUpdates) {
+      scheduleLiveReconnect();
+    }
   });
 
   try {
     await liveConnection.start();
+    hasReportedLiveUpdateError = false;
   } catch (error) {
-    loadErrors.value.push({
-      source: 'Live-Daten',
-      ...createLoadError(error)
-    });
+    if (!hasReportedLiveUpdateError) {
+      hasReportedLiveUpdateError = true;
+      loadErrors.value.push({
+        source: 'Live-Daten',
+        ...createLoadError(error)
+      });
+    }
+
     liveConnection = null;
+    scheduleLiveReconnect();
   }
 }
 
 async function stopLiveUpdates(): Promise<void> {
+  isStoppingLiveUpdates = true;
+  clearLiveReconnectTimer();
   const connection = liveConnection;
   liveConnection = null;
 
@@ -560,6 +585,61 @@ async function stopLiveUpdates(): Promise<void> {
   }
 
   await connection.stop();
+}
+
+function scheduleLiveReconnect(): void {
+  if (liveReconnectTimer !== null || isStoppingLiveUpdates) {
+    return;
+  }
+
+  liveReconnectTimer = window.setTimeout(() => {
+    liveReconnectTimer = null;
+    void startLiveUpdates();
+  }, 5000);
+}
+
+function clearLiveReconnectTimer(): void {
+  if (liveReconnectTimer === null) {
+    return;
+  }
+
+  window.clearTimeout(liveReconnectTimer);
+  liveReconnectTimer = null;
+}
+
+function startLiveTelemetryPolling(): void {
+  stopLiveTelemetryPolling();
+  void loadLiveTelemetrySnapshot();
+  liveTelemetryPollTimer = window.setInterval(() => {
+    void loadLiveTelemetrySnapshot();
+  }, 5000);
+}
+
+function stopLiveTelemetryPolling(): void {
+  if (liveTelemetryPollTimer === null) {
+    return;
+  }
+
+  window.clearInterval(liveTelemetryPollTimer);
+  liveTelemetryPollTimer = null;
+}
+
+async function loadLiveTelemetrySnapshot(): Promise<void> {
+  try {
+    const telemetry = await fetchJson<DashboardTelemetryUpdateDto>('/api/dashboard/telemetry');
+    hasReportedLiveTelemetryPollError = false;
+    applyLiveTelemetry(telemetry);
+  } catch (error) {
+    if (hasReportedLiveTelemetryPollError) {
+      return;
+    }
+
+    hasReportedLiveTelemetryPollError = true;
+    loadErrors.value.push({
+      source: 'Live-Telemetrie',
+      ...createLoadError(error)
+    });
+  }
 }
 
 function applyLiveTelemetry(telemetry: DashboardTelemetryUpdateDto): void {
@@ -620,10 +700,12 @@ async function stopManualCharge(): Promise<void> {
 onMounted(() => {
   void loadDashboard();
   void startLiveUpdates();
+  startLiveTelemetryPolling();
 });
 
 onBeforeUnmount(() => {
   clearAutoRefresh();
+  stopLiveTelemetryPolling();
   void stopLiveUpdates();
 });
 </script>

@@ -111,6 +111,9 @@ public sealed class ControllerSettingDefaultsTests
         var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);
 
         Assert.Equal("30", GetSettingValue(settings, ControllerSettingDefaults.TelemetryGridPowerDeadbandWattsKey));
+        Assert.Equal("2", GetSettingValue(settings, ControllerSettingDefaults.DecisionDirectionChangeHoldCyclesKey));
+        Assert.Equal("1000", GetSettingValue(settings, ControllerSettingDefaults.DecisionDirectionChangeMinimumPreviousPowerWattsKey));
+        Assert.Equal("500", GetSettingValue(settings, ControllerSettingDefaults.DecisionDirectionChangeMaximumNewPowerWattsKey));
     }
 
     [Fact]

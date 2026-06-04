@@ -13,28 +13,21 @@ const props = defineProps<{
 
 const gridWatts = computed(() => props.liveTelemetry?.currentGridImportWatts ?? props.decision?.currentGridImportWatts ?? 0);
 const houseWatts = computed(() => Math.max(0, props.liveTelemetry?.currentHouseConsumptionWatts ?? props.currentConsumptionWatts ?? 0));
-const batteryWatts = computed(() => {
+const batteryWatts = computed<number | null>(() => {
   if (props.liveTelemetry?.currentBatteryPowerWatts !== null && props.liveTelemetry?.currentBatteryPowerWatts !== undefined) {
     return props.liveTelemetry.currentBatteryPowerWatts;
   }
 
-  if (!props.decision) {
-    return 0;
-  }
-
-  if (props.decision.decisionState === 'Charge') {
-    return props.decision.targetPowerWatts;
-  }
-
-  if (props.decision.decisionState === 'Discharge') {
-    return -props.decision.targetPowerWatts;
-  }
-
-  return 0;
+  return null;
 });
-const pvWatts = computed(() => Math.max(0, houseWatts.value + batteryWatts.value - gridWatts.value));
+const effectiveBatteryWatts = computed(() => batteryWatts.value ?? 0);
+const pvWatts = computed(() => Math.max(0, houseWatts.value + effectiveBatteryWatts.value - gridWatts.value));
 const batterySoc = computed(() => props.liveTelemetry?.stateOfChargePercent ?? props.decision?.stateOfChargePercent ?? null);
 const batterySubtitle = computed(() => {
+  if (batteryWatts.value === null) {
+    return 'Leistung nicht verfuegbar';
+  }
+
   if (batteryWatts.value > 0) {
     return `Lädt mit ${formatPower(batteryWatts.value)}`;
   }
@@ -78,8 +71,8 @@ const nodes = computed<EnergyFlowNode[]>(() => [
     label: 'Batteriespeicher',
     value: batterySoc.value === null ? 'Nicht verfügbar' : formatPercent(batterySoc.value),
     subtitle: batterySubtitle.value,
-    icon: batteryWatts.value > 0 ? 'mdi-battery-charging-medium' : 'mdi-battery-medium',
-    tone: batteryWatts.value < 0 ? 'batteryDischarge' : 'batteryCharge'
+    icon: effectiveBatteryWatts.value > 0 ? 'mdi-battery-charging-medium' : 'mdi-battery-medium',
+    tone: effectiveBatteryWatts.value < 0 ? 'batteryDischarge' : 'batteryCharge'
   },
   {
     id: 'hub',
@@ -128,7 +121,7 @@ const flows = computed<EnergyFlow[]>(() => [
     from: 'battery',
     to: 'hub',
     label: 'Akku -> Hub',
-    watts: Math.max(0, -batteryWatts.value),
+    watts: Math.max(0, -effectiveBatteryWatts.value),
     tone: 'batteryDischarge'
   },
   {
@@ -136,7 +129,7 @@ const flows = computed<EnergyFlow[]>(() => [
     from: 'hub',
     to: 'battery',
     label: 'Hub -> Akku',
-    watts: Math.max(0, batteryWatts.value),
+    watts: Math.max(0, effectiveBatteryWatts.value),
     tone: 'batteryCharge'
   },
   {

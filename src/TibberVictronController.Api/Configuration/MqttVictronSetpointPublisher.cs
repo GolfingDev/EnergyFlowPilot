@@ -33,22 +33,40 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
         var settings = await settingsProvider.GetSettingsAsync(cancellationToken);
         var topics = VictronMqttTopicFactory.Create(settings);
         var effectiveTargetPowerWatts = CalculateEffectiveTargetPowerWatts(decisionResult, mqttControlClient, topics, logger);
-        var gridSetpointWatts = CalculateGridSetpointWatts(decisionResult, effectiveTargetPowerWatts);
+        var desiredSignedBatteryTargetWatts = CalculateDesiredSignedBatteryTargetWatts(decisionResult, effectiveTargetPowerWatts);
+        var previousSnapshot = refreshState.TryGetLatest(out var latestSnapshot)
+            ? latestSnapshot
+            : null;
+        var signedBatteryTargetWatts = MoveToward(
+            previousSnapshot?.SignedBatteryTargetWatts ?? 0,
+            desiredSignedBatteryTargetWatts,
+            SetpointRampStepWatts);
+        var gridSetpointWatts = CalculateGridSetpointWattsFromSignedBatteryTarget(decisionResult, signedBatteryTargetWatts);
 
         await PublishHub4ModeAsync(mqttControlClient, settings, topics, logger, cancellationToken);
-        var desiredSetpoints = CreateSetpoints(settings, topics, gridSetpointWatts, decisionResult, effectiveTargetPowerWatts);
+        var desiredGridSetpointWatts = CalculateGridSetpointWattsFromSignedBatteryTarget(decisionResult, desiredSignedBatteryTargetWatts);
+        var desiredSetpoints = CreateSetpoints(settings, topics, desiredGridSetpointWatts, desiredSignedBatteryTargetWatts);
+        var rampedSetpoints = CreateSetpoints(settings, topics, gridSetpointWatts, signedBatteryTargetWatts);
         var setpoints = ApplySetpointRamp(
-            refreshState.TryGetLatest(out var previousSnapshot)
-                ? previousSnapshot.Setpoints
-                : Array.Empty<VictronSetpointValue>(),
-            desiredSetpoints,
+            previousSnapshot?.Setpoints ?? Array.Empty<VictronSetpointValue>(),
+            rampedSetpoints,
             SetpointRampStepWatts);
+        var rampedSignedBatteryTargetWatts = CalculateSignedBatteryTargetWatts(
+            settings,
+            setpoints,
+            decisionResult,
+            signedBatteryTargetWatts);
         var hub4Control = CalculateHub4ControlFromSignedBatteryTarget(
-            CalculateSignedBatteryTargetWatts(settings, setpoints, decisionResult, effectiveTargetPowerWatts),
+            rampedSignedBatteryTargetWatts,
             settings.BatteryIdleThresholdWatts);
         await PublishHub4ControlAsync(mqttControlClient, settings, topics, logger, hub4Control, cancellationToken);
         await PublishSetpointsAsync(mqttControlClient, setpoints, cancellationToken);
-        refreshState.Update(new VictronSetpointRefreshSnapshot(decisionResult.ValidToUtc, setpoints, desiredSetpoints));
+        refreshState.Update(new VictronSetpointRefreshSnapshot(
+            decisionResult.ValidToUtc,
+            setpoints,
+            desiredSetpoints,
+            rampedSignedBatteryTargetWatts,
+            desiredSignedBatteryTargetWatts));
 
         logger.LogInformation(
             "Victron-Setpoint per MQTT veröffentlicht. ControlMode={ControlMode}, GridSetpointW={GridSetpointWatts}, ExternalSetpointW={ExternalSetpointWatts}, EffectiveTargetPowerW={EffectiveTargetPowerWatts}, DisableCharge={DisableCharge}, DisableFeedIn={DisableFeedIn}",
@@ -67,28 +85,25 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
 
     private static int CalculateGridSetpointWatts(CurrentBatteryDecisionResult decisionResult, int targetPowerWatts)
     {
-        var desiredBatteryPowerWatts = decisionResult.Decision.Instruction.DecisionState switch
-        {
-            BatteryDecisionState.Charge => targetPowerWatts,
-            BatteryDecisionState.Discharge => -targetPowerWatts,
-            _ => 0
-        };
+        var desiredBatteryPowerWatts = CalculateDesiredSignedBatteryTargetWatts(decisionResult, targetPowerWatts);
 
+        return CalculateGridSetpointWattsFromSignedBatteryTarget(decisionResult, desiredBatteryPowerWatts);
+    }
+
+    public static int CalculateGridSetpointWattsFromSignedBatteryTarget(
+        CurrentBatteryDecisionResult decisionResult,
+        int signedBatteryTargetWatts)
+    {
         if (decisionResult.SiteTelemetry.CurrentBatteryPowerWatts is null)
         {
-            return decisionResult.Decision.Instruction.DecisionState switch
-            {
-                BatteryDecisionState.Charge => decisionResult.SiteTelemetry.CurrentGridImportWatts + targetPowerWatts,
-                BatteryDecisionState.Discharge => decisionResult.SiteTelemetry.CurrentGridImportWatts - targetPowerWatts,
-                _ => decisionResult.SiteTelemetry.CurrentGridImportWatts
-            };
+            return decisionResult.SiteTelemetry.CurrentGridImportWatts + signedBatteryTargetWatts;
         }
 
         var gridPowerWithoutBatteryActionWatts =
             decisionResult.SiteTelemetry.CurrentGridImportWatts -
             decisionResult.SiteTelemetry.CurrentBatteryPowerWatts.Value;
 
-        return gridPowerWithoutBatteryActionWatts + desiredBatteryPowerWatts;
+        return gridPowerWithoutBatteryActionWatts + signedBatteryTargetWatts;
     }
 
     public static Hub4Control CalculateHub4Control(
@@ -133,13 +148,35 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
         VictronMqttSettings settings,
         IReadOnlyList<VictronSetpointValue> setpoints,
         CurrentBatteryDecisionResult decisionResult,
-        int targetPowerWatts)
+        int fallbackSignedBatteryTargetWatts)
     {
         if (settings.ControlMode == VictronControlMode.ExternalEss)
         {
             return setpoints.Sum(setpoint => setpoint.Value);
         }
 
+        var setpoint = setpoints.FirstOrDefault();
+        if (setpoint is null)
+        {
+            return fallbackSignedBatteryTargetWatts;
+        }
+
+        if (decisionResult.SiteTelemetry.CurrentBatteryPowerWatts is null)
+        {
+            return setpoint.Value - decisionResult.SiteTelemetry.CurrentGridImportWatts;
+        }
+
+        var gridPowerWithoutBatteryActionWatts =
+            decisionResult.SiteTelemetry.CurrentGridImportWatts -
+            decisionResult.SiteTelemetry.CurrentBatteryPowerWatts.Value;
+
+        return setpoint.Value - gridPowerWithoutBatteryActionWatts;
+    }
+
+    private static int CalculateDesiredSignedBatteryTargetWatts(
+        CurrentBatteryDecisionResult decisionResult,
+        int targetPowerWatts)
+    {
         return decisionResult.Decision.Instruction.DecisionState switch
         {
             BatteryDecisionState.Charge => targetPowerWatts,
@@ -161,8 +198,7 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
         VictronMqttSettings settings,
         VictronMqttTopics topics,
         int gridSetpointWatts,
-        CurrentBatteryDecisionResult decisionResult,
-        int effectiveTargetPowerWatts)
+        int signedBatteryTargetWatts)
     {
         if (settings.ControlMode == VictronControlMode.NormalEss)
         {
@@ -172,8 +208,7 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
             };
         }
 
-        var externalSetpointWatts = CalculateExternalEssSetpointWatts(decisionResult, effectiveTargetPowerWatts);
-        var phaseSetpoints = SplitSetpointAcrossPhases(externalSetpointWatts, topics.ExternalEssAcPowerSetpointTopics.Count);
+        var phaseSetpoints = SplitSetpointAcrossPhases(signedBatteryTargetWatts, topics.ExternalEssAcPowerSetpointTopics.Count);
         var setpoints = new List<VictronSetpointValue>(phaseSetpoints.Count);
 
         for (var index = 0; index < phaseSetpoints.Count; index++)

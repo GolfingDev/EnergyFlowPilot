@@ -24,6 +24,9 @@ public static class ControllerSettingDefaults
     public const string ConsumptionForecastTimeZoneKey = "consumptionForecast.timeZone";
     public const string DecisionLogRetentionDaysKey = "decisionLog.retentionDays";
     public const string DecisionWorkerIntervalSecondsKey = "decisionWorker.intervalSeconds";
+    public const string DecisionDirectionChangeHoldCyclesKey = "decision.directionChangeHoldCycles";
+    public const string DecisionDirectionChangeMinimumPreviousPowerWattsKey = "decision.directionChangeMinimumPreviousPowerWatts";
+    public const string DecisionDirectionChangeMaximumNewPowerWattsKey = "decision.directionChangeMaximumNewPowerWatts";
     public const string ManualChargePowerWattsKey = "manualCharge.powerWatts";
     public const string ManualChargeExpiresAtUtcKey = "manualCharge.expiresAtUtc";
     public const string WorkerFailureEmailEnabledKey = "notifications.workerFailureEmail.enabled";
@@ -113,6 +116,9 @@ public static class ControllerSettingDefaults
         new(ConsumptionForecastTimeZoneKey, "Europe/Berlin", ControllerSettingSensitivity.Normal),
         new(DecisionLogRetentionDaysKey, "90", ControllerSettingSensitivity.Normal),
         new(DecisionWorkerIntervalSecondsKey, "60", ControllerSettingSensitivity.Normal),
+        new(DecisionDirectionChangeHoldCyclesKey, "2", ControllerSettingSensitivity.Normal),
+        new(DecisionDirectionChangeMinimumPreviousPowerWattsKey, "1000", ControllerSettingSensitivity.Normal),
+        new(DecisionDirectionChangeMaximumNewPowerWattsKey, "500", ControllerSettingSensitivity.Normal),
         new(ManualChargePowerWattsKey, "0", ControllerSettingSensitivity.Normal),
         new(ManualChargeExpiresAtUtcKey, "1970-01-01T00:00:00.0000000+00:00", ControllerSettingSensitivity.Normal),
         new(WorkerFailureEmailEnabledKey, "false", ControllerSettingSensitivity.Normal),

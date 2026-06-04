@@ -438,6 +438,78 @@ public sealed class CurrentBatteryDecisionServiceTests
         Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.GridPowerDeadband);
     }
 
+    [Fact]
+    public async Task CalculateCurrentDecisionAsyncHoldsSmallPvChargeAfterStrongDischarge()
+    {
+        var decisionLogRepository = new FakeDecisionLogRepository();
+        decisionLogRepository.SavedEntries.Add(CreateDecisionLogEntry(
+            decidedAtUtc: NowUtc.AddMinutes(-1),
+            validFromUtc: NowUtc.AddMinutes(-1),
+            validToUtc: NowUtc.AddMinutes(14),
+            decisionState: BatteryDecisionState.Discharge,
+            chargeSource: null,
+            targetPowerWatts: 2500));
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(69m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m, maximumChargePowerWatts: 5000)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(-190, 0, NowUtc)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.30m, 0.18m, 0.15m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = decisionLogRepository
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Idle, result.Decision.Instruction.DecisionState);
+        Assert.Equal(0, result.Decision.TargetPowerWatts);
+        Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.DirectionChangeHold);
+    }
+
+    [Fact]
+    public async Task CalculateCurrentDecisionAsyncAllowsSmallPvChargeAfterConfiguredHoldCycles()
+    {
+        var decisionLogRepository = new FakeDecisionLogRepository();
+        decisionLogRepository.SavedEntries.Add(CreateDecisionLogEntry(
+            decidedAtUtc: NowUtc.AddMinutes(-1),
+            validFromUtc: NowUtc.AddMinutes(-1),
+            validToUtc: NowUtc.AddMinutes(14),
+            decisionState: BatteryDecisionState.Idle,
+            chargeSource: null,
+            targetPowerWatts: 0));
+        decisionLogRepository.SavedEntries.Add(CreateDecisionLogEntry(
+            decidedAtUtc: NowUtc.AddMinutes(-2),
+            validFromUtc: NowUtc.AddMinutes(-2),
+            validToUtc: NowUtc.AddMinutes(13),
+            decisionState: BatteryDecisionState.Idle,
+            chargeSource: null,
+            targetPowerWatts: 0));
+        decisionLogRepository.SavedEntries.Add(CreateDecisionLogEntry(
+            decidedAtUtc: NowUtc.AddMinutes(-3),
+            validFromUtc: NowUtc.AddMinutes(-3),
+            validToUtc: NowUtc.AddMinutes(12),
+            decisionState: BatteryDecisionState.Discharge,
+            chargeSource: null,
+            targetPowerWatts: 2500));
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(69m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m, maximumChargePowerWatts: 5000)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(-190, 0, NowUtc)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.30m, 0.18m, 0.15m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = decisionLogRepository
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Charge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(BatteryChargeSource.PV, result.Decision.Instruction.ChargeSource);
+        Assert.Equal(190, result.Decision.TargetPowerWatts);
+    }
+
     private static CurrentBatteryDecisionService CreateService(CurrentBatteryDecisionServiceDependencies dependencies)
     {
         return new CurrentBatteryDecisionService(dependencies);
@@ -456,6 +528,21 @@ public sealed class CurrentBatteryDecisionServiceTests
         settingsStore.SaveSettingAsync(new ControllerSetting(
             ControllerSettingDefaults.TelemetryGridPowerDeadbandWattsKey,
             "30",
+            ControllerSettingSensitivity.Normal,
+            NowUtc)).GetAwaiter().GetResult();
+        settingsStore.SaveSettingAsync(new ControllerSetting(
+            ControllerSettingDefaults.DecisionDirectionChangeHoldCyclesKey,
+            "2",
+            ControllerSettingSensitivity.Normal,
+            NowUtc)).GetAwaiter().GetResult();
+        settingsStore.SaveSettingAsync(new ControllerSetting(
+            ControllerSettingDefaults.DecisionDirectionChangeMinimumPreviousPowerWattsKey,
+            "1000",
+            ControllerSettingSensitivity.Normal,
+            NowUtc)).GetAwaiter().GetResult();
+        settingsStore.SaveSettingAsync(new ControllerSetting(
+            ControllerSettingDefaults.DecisionDirectionChangeMaximumNewPowerWattsKey,
+            "500",
             ControllerSettingSensitivity.Normal,
             NowUtc)).GetAwaiter().GetResult();
         settingsStore.SaveSettingAsync(new ControllerSetting(

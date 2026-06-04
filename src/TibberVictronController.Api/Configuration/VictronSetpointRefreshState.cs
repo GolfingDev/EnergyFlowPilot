@@ -58,6 +58,8 @@ public sealed class VictronSetpointRefreshState
 public sealed record VictronSetpointRefreshSnapshot(
     DateTimeOffset ValidToUtc,
     IReadOnlyList<VictronSetpointValue> Setpoints,
-    IReadOnlyList<VictronSetpointValue> DesiredSetpoints);
+    IReadOnlyList<VictronSetpointValue> DesiredSetpoints,
+    int SignedBatteryTargetWatts,
+    int DesiredSignedBatteryTargetWatts);
 
 public sealed record VictronSetpointValue(string Topic, int Value);

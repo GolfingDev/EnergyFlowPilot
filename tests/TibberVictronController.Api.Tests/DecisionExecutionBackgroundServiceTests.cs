@@ -181,6 +181,31 @@ public sealed class DecisionExecutionBackgroundServiceTests
     }
 
     [Fact]
+    public void CalculateGridSetpointWattsFromSignedBatteryTargetRampsIdleWithoutBlockingBattery()
+    {
+        var decisionResult = CreateDecisionResult(
+            new CurrentBatteryDecision(
+                new BatteryDecisionInstruction(BatteryDecisionState.Idle, chargeSource: null),
+                targetPowerWatts: 0),
+            new CurrentSiteTelemetry(
+                currentGridImportWatts: 1200,
+                currentPvProductionWatts: 0,
+                measuredAtUtc: NowUtc,
+                currentBatteryPowerWatts: -2000));
+
+        var gridSetpointWatts = MqttVictronSetpointPublisher.CalculateGridSetpointWattsFromSignedBatteryTarget(
+            decisionResult,
+            signedBatteryTargetWatts: -1750);
+        var control = MqttVictronSetpointPublisher.CalculateHub4ControlFromSignedBatteryTarget(
+            signedBatteryTargetWatts: -1750,
+            batteryIdleThresholdWatts: 100);
+
+        Assert.Equal(1450, gridSetpointWatts);
+        Assert.True(control.DisableCharge);
+        Assert.False(control.DisableFeedIn);
+    }
+
+    [Fact]
     public void CalculateGridSetpointWattsKeepsTargetChargePowerRelativeToCurrentBatteryPower()
     {
         var decisionResult = CreateDecisionResult(

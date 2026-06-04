@@ -81,7 +81,11 @@ public sealed class VictronSetpointRefreshBackgroundService : BackgroundService
             await mqttControlClient.PublishValueAsync(setpoint.Topic, setpoint.Value, cancellationToken);
         }
 
-        refreshState.Update(snapshot with { Setpoints = setpoints });
+        refreshState.Update(snapshot with
+        {
+            Setpoints = setpoints,
+            SignedBatteryTargetWatts = setpoints.Sum(setpoint => setpoint.Value)
+        });
 
         logger.LogDebug(
             "Victron-Setpoint refreshed. Count={SetpointCount}, ValidToUtc={ValidToUtc}",

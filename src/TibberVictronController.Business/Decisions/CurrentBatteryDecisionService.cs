@@ -663,6 +663,16 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         IReadOnlyList<BatteryDecisionReason> reasons,
         CancellationToken cancellationToken)
     {
+        var stabilizedDecision = await TryCreateDirectionChangeHoldDecisionAsync(
+            decidedAtUtc,
+            decision,
+            cancellationToken);
+        if (stabilizedDecision is not null)
+        {
+            decision = stabilizedDecision.Decision;
+            reasons = stabilizedDecision.Reasons;
+        }
+
         var inputSummaryJson = JsonSerializer.Serialize(new
         {
             BatteryStateOfChargePercent = batteryState.StateOfChargePercent,
@@ -704,6 +714,77 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             cancellationToken);
 
         return result;
+    }
+
+    private async Task<StabilizedDecision?> TryCreateDirectionChangeHoldDecisionAsync(
+        DateTimeOffset decidedAtUtc,
+        CurrentBatteryDecision proposedDecision,
+        CancellationToken cancellationToken)
+    {
+        if (!CanHoldDirectionChange(proposedDecision))
+        {
+            return null;
+        }
+
+        var settings = await GetDirectionChangeHoldSettingsAsync(cancellationToken);
+        if (settings.HoldCycles <= 0 ||
+            proposedDecision.TargetPowerWatts > settings.MaximumNewPowerWatts)
+        {
+            return null;
+        }
+
+        var recentDecisions = await dependencies.DecisionLogRepository.GetRecentDecisionsAsync(
+            settings.HoldCycles + 1,
+            cancellationToken);
+        var lastDirectionalDecision = recentDecisions
+            .Select((entry, index) => new { Entry = entry, CyclesSince = index })
+            .FirstOrDefault(item => item.Entry.Decision.Instruction.DecisionState != BatteryDecisionState.Idle);
+
+        if (lastDirectionalDecision is null ||
+            lastDirectionalDecision.CyclesSince >= settings.HoldCycles ||
+            lastDirectionalDecision.Entry.Decision.TargetPowerWatts < settings.MinimumPreviousPowerWatts ||
+            !IsOppositeDirection(lastDirectionalDecision.Entry.Decision, proposedDecision))
+        {
+            return null;
+        }
+
+        var previousState = lastDirectionalDecision.Entry.Decision.Instruction.DecisionState == BatteryDecisionState.Charge
+            ? "Laden"
+            : "Entladen";
+        var proposedState = proposedDecision.Instruction.DecisionState == BatteryDecisionState.Charge
+            ? "Laden"
+            : "Entladen";
+
+        return new StabilizedDecision(
+            new CurrentBatteryDecision(
+                new BatteryDecisionInstruction(BatteryDecisionState.Idle, chargeSource: null),
+                targetPowerWatts: 0),
+            new[]
+            {
+                new BatteryDecisionReason(
+                    CurrentBatteryDecisionRuleIds.DirectionChangeHold,
+                    $"Kleine Gegenentscheidung wird geglaettet: vorher {previousState} mit {lastDirectionalDecision.Entry.Decision.TargetPowerWatts} Watt, jetzt {proposedState} mit {proposedDecision.TargetPowerWatts} Watt. Die Decision Engine wartet Zyklus {lastDirectionalDecision.CyclesSince + 1} von {settings.HoldCycles}, bevor sie die Richtung wechselt.")
+            });
+    }
+
+    private static bool CanHoldDirectionChange(CurrentBatteryDecision proposedDecision)
+    {
+        return proposedDecision.Instruction.DecisionState == BatteryDecisionState.Discharge ||
+            proposedDecision.Instruction is { DecisionState: BatteryDecisionState.Charge, ChargeSource: BatteryChargeSource.PV };
+    }
+
+    private static bool IsOppositeDirection(
+        CurrentBatteryDecision previousDecision,
+        CurrentBatteryDecision proposedDecision)
+    {
+        return previousDecision.Instruction.DecisionState switch
+        {
+            BatteryDecisionState.Discharge => proposedDecision.Instruction is
+                { DecisionState: BatteryDecisionState.Charge, ChargeSource: BatteryChargeSource.PV },
+            BatteryDecisionState.Charge when previousDecision.Instruction.ChargeSource == BatteryChargeSource.PV =>
+                proposedDecision.Instruction.DecisionState == BatteryDecisionState.Discharge,
+            _ => false
+        };
     }
 
     private async Task<decimal> GetFeedInCompensationPricePerKwhAsync(CancellationToken cancellationToken)
@@ -752,6 +833,47 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         }
 
         return deadbandWatts;
+    }
+
+    private async Task<DirectionChangeHoldSettings> GetDirectionChangeHoldSettingsAsync(CancellationToken cancellationToken)
+    {
+        return new DirectionChangeHoldSettings(
+            await GetRequiredNonNegativeIntegerSettingAsync(
+                ControllerSettingDefaults.DecisionDirectionChangeHoldCyclesKey,
+                "Die Richtungswechsel-Wartezyklen",
+                cancellationToken),
+            await GetRequiredNonNegativeIntegerSettingAsync(
+                ControllerSettingDefaults.DecisionDirectionChangeMinimumPreviousPowerWattsKey,
+                "Die Richtungswechsel-Altleistung",
+                cancellationToken),
+            await GetRequiredNonNegativeIntegerSettingAsync(
+                ControllerSettingDefaults.DecisionDirectionChangeMaximumNewPowerWattsKey,
+                "Die Richtungswechsel-Neuleistung",
+                cancellationToken));
+    }
+
+    private async Task<int> GetRequiredNonNegativeIntegerSettingAsync(
+        string key,
+        string displayName,
+        CancellationToken cancellationToken)
+    {
+        var setting = await dependencies.ControllerSettingStore.GetSettingAsync(key, cancellationToken);
+        if (setting is null || !setting.IsConfigured)
+        {
+            throw new InvalidOperationException($"{displayName} sind nicht konfiguriert.");
+        }
+
+        if (!int.TryParse(setting.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+        {
+            throw new InvalidOperationException($"{displayName} muessen als ganze Zahl konfiguriert sein.");
+        }
+
+        if (value < 0)
+        {
+            throw new InvalidOperationException($"{displayName} duerfen nicht negativ sein.");
+        }
+
+        return value;
     }
 
     private static decimal CalculateSingleDirectionEfficiency(BatteryConfiguration batteryConfiguration)
@@ -821,4 +943,13 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         int TargetPowerWatts,
         DateTimeOffset ExpiresAtUtc,
         string Message);
+
+    private sealed record DirectionChangeHoldSettings(
+        int HoldCycles,
+        int MinimumPreviousPowerWatts,
+        int MaximumNewPowerWatts);
+
+    private sealed record StabilizedDecision(
+        CurrentBatteryDecision Decision,
+        IReadOnlyList<BatteryDecisionReason> Reasons);
 }

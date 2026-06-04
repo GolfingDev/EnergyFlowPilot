@@ -29,6 +29,7 @@ app.MapManualChargeEndpoints();
 app.MapSavingsEndpoints();
 app.MapGuiMetadataEndpoints();
 app.MapHagerEnergyOAuthEndpoints();
+app.MapDashboardTelemetryEndpoints();
 app.MapDashboardHub();
 
 app.Run();
