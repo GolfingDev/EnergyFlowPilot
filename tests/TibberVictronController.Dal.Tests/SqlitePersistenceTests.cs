@@ -147,6 +147,93 @@ public sealed class SqlitePersistenceTests : IDisposable
         Assert.Equal(1.10m, aggregate.DischargeAvoidedCost);
     }
 
+    [Fact]
+    public async Task LiveConsumptionRepositoryPersistsMeasuredEnergyValues()
+    {
+        await using var dbContext = CreateDbContext();
+        await new ControllerDbInitializer(dbContext).InitializeAsync(SeededAtUtc);
+        var repository = new EfLiveConsumptionRepository(dbContext);
+        var sample = new LiveConsumptionSample(
+            houseConsumptionWatts: 1800m,
+            measuredAtUtc: SeededAtUtc.AddMinutes(15),
+            gridPowerWatts: 1200m,
+            batteryPowerWatts: -600m,
+            batterySocPercent: 68.5m,
+            pvProductionWatts: 0m);
+
+        await repository.SaveSampleAsync(sample);
+
+        var entity = await dbContext.LiveConsumptionSamples.SingleAsync();
+        Assert.Equal(1800m, entity.HouseConsumptionWatts);
+        Assert.Equal(1200m, entity.GridPowerWatts);
+        Assert.Equal(-600m, entity.BatteryPowerWatts);
+        Assert.Equal(68.5m, entity.BatterySocPercent);
+        Assert.Equal(0m, entity.PvProductionWatts);
+    }
+
+    [Fact]
+    public async Task LiveConsumptionRepositoryDeletesSamplesOlderThanThreshold()
+    {
+        await using var dbContext = CreateDbContext();
+        await new ControllerDbInitializer(dbContext).InitializeAsync(SeededAtUtc);
+        var repository = new EfLiveConsumptionRepository(dbContext);
+
+        await repository.SaveSampleAsync(new LiveConsumptionSample(
+            houseConsumptionWatts: 1000m,
+            measuredAtUtc: SeededAtUtc.AddDays(-15),
+            gridPowerWatts: 1000m,
+            batteryPowerWatts: 0m,
+            batterySocPercent: 50m,
+            pvProductionWatts: 0m));
+        await repository.SaveSampleAsync(new LiveConsumptionSample(
+            houseConsumptionWatts: 1200m,
+            measuredAtUtc: SeededAtUtc.AddDays(-1),
+            gridPowerWatts: 1200m,
+            batteryPowerWatts: -200m,
+            batterySocPercent: 55m,
+            pvProductionWatts: 0m));
+
+        var deletedCount = await repository.DeleteSamplesOlderThanAsync(SeededAtUtc.AddDays(-14));
+
+        Assert.Equal(1, deletedCount);
+        var remainingSample = await dbContext.LiveConsumptionSamples.SingleAsync();
+        Assert.Equal(SeededAtUtc.AddDays(-1), remainingSample.MeasuredAtUtc);
+    }
+
+    [Fact]
+    public async Task LiveConsumptionRepositoryLoadsSamplesInUtcRange()
+    {
+        await using var dbContext = CreateDbContext();
+        await new ControllerDbInitializer(dbContext).InitializeAsync(SeededAtUtc);
+        var repository = new EfLiveConsumptionRepository(dbContext);
+
+        await repository.SaveSampleAsync(new LiveConsumptionSample(
+            100m,
+            SeededAtUtc.AddMinutes(-10),
+            gridPowerWatts: 100m,
+            batteryPowerWatts: null,
+            batterySocPercent: null,
+            pvProductionWatts: null));
+        await repository.SaveSampleAsync(new LiveConsumptionSample(
+            200m,
+            SeededAtUtc,
+            gridPowerWatts: 200m,
+            batteryPowerWatts: 50m,
+            batterySocPercent: 70m,
+            pvProductionWatts: 300m));
+
+        var samples = await repository.GetSamplesAsync(
+            SeededAtUtc.AddMinutes(-1),
+            SeededAtUtc.AddMinutes(1));
+
+        var sample = Assert.Single(samples);
+        Assert.Equal(200m, sample.HouseConsumptionWatts);
+        Assert.Equal(200m, sample.GridPowerWatts);
+        Assert.Equal(50m, sample.BatteryPowerWatts);
+        Assert.Equal(70m, sample.BatterySocPercent);
+        Assert.Equal(300m, sample.PvProductionWatts);
+    }
+
     public void Dispose()
     {
         sqliteConnection.Dispose();

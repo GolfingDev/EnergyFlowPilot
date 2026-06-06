@@ -17,6 +17,7 @@ public static class ControllerSettingDefaults
     public const string TelemetryTemporaryGridImportWattsKey = "telemetry.temporaryGridImportWatts";
     public const string TelemetryTemporaryPvProductionWattsKey = "telemetry.temporaryPvProductionWatts";
     public const string TelemetryGridPowerDeadbandWattsKey = "telemetry.gridPowerDeadbandWatts";
+    public const string TelemetryLiveSampleRetentionDaysKey = "telemetry.liveSampleRetentionDays";
     public const string TelemetryGridImportSourceKey = "telemetry.sources.gridImportWatts";
     public const string TelemetryPvProductionSourceKey = "telemetry.sources.pvProductionWatts";
     public const string TelemetryBatterySocSourceKey = "telemetry.sources.batterySocPercent";
@@ -109,6 +110,7 @@ public static class ControllerSettingDefaults
         new(TelemetryTemporaryGridImportWattsKey, "0", ControllerSettingSensitivity.Normal),
         new(TelemetryTemporaryPvProductionWattsKey, "0", ControllerSettingSensitivity.Normal),
         new(TelemetryGridPowerDeadbandWattsKey, "30", ControllerSettingSensitivity.Normal),
+        new(TelemetryLiveSampleRetentionDaysKey, "14", ControllerSettingSensitivity.Normal),
         new(TelemetryGridImportSourceKey, "victronMqtt", ControllerSettingSensitivity.Normal),
         new(TelemetryPvProductionSourceKey, "victronMqtt", ControllerSettingSensitivity.Normal),
         new(TelemetryBatterySocSourceKey, "victronMqtt", ControllerSettingSensitivity.Normal),

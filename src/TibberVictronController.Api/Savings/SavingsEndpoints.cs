@@ -41,6 +41,8 @@ public static class SavingsEndpoints
         string? currency,
         [FromServices]
         IBatterySavingsRepository batterySavingsRepository,
+        [FromServices]
+        IBatterySavingsAccountingService batterySavingsAccountingService,
         CancellationToken cancellationToken)
     {
         if (!SupportedPeriods.Contains(period))
@@ -65,6 +67,19 @@ public static class SavingsEndpoints
             ReferenceDate = referenceDate,
             Currency = string.IsNullOrWhiteSpace(currency) ? "EUR" : currency
         });
+
+        if (!string.Equals(period, "total", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                await batterySavingsAccountingService.RefreshAsync(query, cancellationToken);
+            }
+            catch
+            {
+                // Reporting must still return the latest persisted summaries when live accounting cannot refresh.
+            }
+        }
+
         var dailySummaries = await batterySavingsRepository.GetDailySummariesAsync(query, cancellationToken);
         var aggregate = BatterySavingsAggregate.FromDailySummaries(dailySummaries);
         var response = BatterySavingsDtoMapper.Map(new BatterySavingsDtoMappingInput

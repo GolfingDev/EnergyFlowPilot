@@ -25,6 +25,7 @@ public sealed class ControllerDbInitializer
 
         await dbContext.Database.EnsureCreatedAsync(cancellationToken);
         await EnsureMissingTablesAsync(cancellationToken);
+        await EnsureLiveConsumptionSampleColumnsAsync(cancellationToken);
         await SeedMissingDefaultSettingsAsync(initializedAtUtc, cancellationToken);
     }
 
@@ -81,6 +82,67 @@ public sealed class ControllerDbInitializer
         }
     }
 
+    private async Task EnsureLiveConsumptionSampleColumnsAsync(CancellationToken cancellationToken)
+    {
+        if (!await TableExistsAsync("LiveConsumptionSamples", cancellationToken))
+        {
+            return;
+        }
+
+        var existingColumns = await GetColumnNamesAsync("LiveConsumptionSamples", cancellationToken);
+        var columnsToAdd = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["GridPowerWatts"] = "REAL NULL",
+            ["BatteryPowerWatts"] = "REAL NULL",
+            ["BatterySocPercent"] = "REAL NULL",
+            ["PvProductionWatts"] = "REAL NULL"
+        };
+
+        foreach (var column in columnsToAdd)
+        {
+            if (existingColumns.Contains(column.Key))
+            {
+                continue;
+            }
+
+            var alterTableSql = $"""ALTER TABLE "LiveConsumptionSamples" ADD COLUMN "{column.Key}" {column.Value};""";
+            await dbContext.Database.ExecuteSqlRawAsync(alterTableSql, cancellationToken);
+        }
+    }
+
+    private async Task<HashSet<string>> GetColumnNamesAsync(string tableName, CancellationToken cancellationToken)
+    {
+        var connection = dbContext.Database.GetDbConnection();
+        var closeConnectionAfterQuery = connection.State != System.Data.ConnectionState.Open;
+
+        if (closeConnectionAfterQuery)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"PRAGMA table_info(\"{tableName}\")";
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                result.Add(reader.GetString(1));
+            }
+
+            return result;
+        }
+        finally
+        {
+            if (closeConnectionAfterQuery)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
     private static string CreateTableScript(string tableName)
     {
         if (!string.Equals(tableName, "BatterySavingsDailySummaries", StringComparison.OrdinalIgnoreCase))
@@ -109,7 +171,11 @@ CREATE INDEX IF NOT EXISTS "IX_ConsumptionDayProfiles_UpdatedAtUtc" ON "Consumpt
 CREATE TABLE IF NOT EXISTS "LiveConsumptionSamples" (
     "Id" INTEGER NOT NULL CONSTRAINT "PK_LiveConsumptionSamples" PRIMARY KEY AUTOINCREMENT,
     "MeasuredAtUtc" INTEGER NOT NULL,
-    "HouseConsumptionWatts" REAL NOT NULL
+    "HouseConsumptionWatts" REAL NOT NULL,
+    "GridPowerWatts" REAL NULL,
+    "BatteryPowerWatts" REAL NULL,
+    "BatterySocPercent" REAL NULL,
+    "PvProductionWatts" REAL NULL
 );
 CREATE INDEX IF NOT EXISTS "IX_LiveConsumptionSamples_MeasuredAtUtc" ON "LiveConsumptionSamples" ("MeasuredAtUtc");
 """;

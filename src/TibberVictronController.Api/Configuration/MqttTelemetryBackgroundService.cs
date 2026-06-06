@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
 using MQTTnet;
 using MQTTnet.Protocol;
@@ -16,11 +17,14 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan LoopDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan MinimumVictronKeepAliveInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan LiveSampleCleanupInterval = TimeSpan.FromHours(1);
+    private const int DefaultLiveSampleRetentionDays = 14;
 
     private readonly IServiceProvider serviceProvider;
     private readonly ILogger<MqttTelemetryBackgroundService> logger;
     private readonly VictronMqttRuntimeStatus runtimeStatus;
     private IMqttClient? mqttClient;
+    private DateTimeOffset nextLiveSampleCleanupAtUtc = DateTimeOffset.MinValue;
     private long receivedTelemetryMessageCount;
 
     public MqttTelemetryBackgroundService(
@@ -95,7 +99,7 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         if (shouldPersistConsumptionSample)
         {
             var persistedHouseConsumptionWatts = GetPersistedHouseConsumptionWatts(snapshotStore, value);
-            await PersistLiveConsumptionSampleAsync(persistedHouseConsumptionWatts, measuredAtUtc);
+            await PersistLiveConsumptionSampleAsync(snapshotStore, persistedHouseConsumptionWatts, measuredAtUtc);
         }
     }
 
@@ -262,13 +266,65 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         await mqttClient.PublishAsync(message, cancellationToken);
     }
 
-    private async Task PersistLiveConsumptionSampleAsync(decimal houseConsumptionWatts, DateTimeOffset measuredAtUtc)
+    private async Task PersistLiveConsumptionSampleAsync(
+        MqttTelemetrySnapshotStore snapshotStore,
+        decimal houseConsumptionWatts,
+        DateTimeOffset measuredAtUtc)
     {
         await using var scope = serviceProvider.CreateAsyncScope();
         var liveConsumptionRepository = scope.ServiceProvider.GetRequiredService<ILiveConsumptionRepository>();
+        var snapshot = snapshotStore.GetSnapshot();
 
         await liveConsumptionRepository.SaveSampleAsync(
-            new LiveConsumptionSample(houseConsumptionWatts, measuredAtUtc));
+            new LiveConsumptionSample(
+                houseConsumptionWatts,
+                measuredAtUtc,
+                snapshot.GridPowerWatts,
+                snapshot.BatteryPowerWatts,
+                snapshot.BatterySocPercent,
+                GetPersistedPvProductionWatts(snapshot, houseConsumptionWatts)));
+
+        await CleanupOldLiveSamplesIfDueAsync(scope.ServiceProvider, measuredAtUtc);
+    }
+
+    private async Task CleanupOldLiveSamplesIfDueAsync(
+        IServiceProvider scopedServiceProvider,
+        DateTimeOffset measuredAtUtc)
+    {
+        if (measuredAtUtc < nextLiveSampleCleanupAtUtc)
+        {
+            return;
+        }
+
+        nextLiveSampleCleanupAtUtc = measuredAtUtc.Add(LiveSampleCleanupInterval);
+        var settingsStore = scopedServiceProvider.GetRequiredService<IControllerSettingStore>();
+        var retentionDays = await GetLiveSampleRetentionDaysAsync(settingsStore);
+        var thresholdUtc = measuredAtUtc.AddDays(-retentionDays);
+        var repository = scopedServiceProvider.GetRequiredService<ILiveConsumptionRepository>();
+        var deletedCount = await repository.DeleteSamplesOlderThanAsync(thresholdUtc);
+
+        if (deletedCount > 0)
+        {
+            logger.LogInformation(
+                "Alte Live-Messwerte bereinigt. RetentionDays={RetentionDays}, ThresholdUtc={ThresholdUtc}, DeletedCount={DeletedCount}",
+                retentionDays,
+                thresholdUtc,
+                deletedCount);
+        }
+    }
+
+    private static async Task<int> GetLiveSampleRetentionDaysAsync(IControllerSettingStore settingsStore)
+    {
+        var setting = await settingsStore.GetSettingAsync(ControllerSettingDefaults.TelemetryLiveSampleRetentionDaysKey);
+        if (setting is null ||
+            !setting.IsConfigured ||
+            !int.TryParse(setting.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var retentionDays) ||
+            retentionDays < 1)
+        {
+            return DefaultLiveSampleRetentionDays;
+        }
+
+        return retentionDays;
     }
 
     private static decimal GetPersistedHouseConsumptionWatts(MqttTelemetrySnapshotStore snapshotStore, decimal houseConsumptionWatts)
@@ -281,6 +337,15 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
         var snapshot = snapshotStore.GetSnapshot();
 
         return snapshot.GridPowerWatts ?? 0m;
+    }
+
+    private static decimal? GetPersistedPvProductionWatts(
+        MqttTelemetrySnapshot snapshot,
+        decimal persistedHouseConsumptionWatts)
+    {
+        var sourceWatts = snapshot.HouseConsumptionWatts ?? persistedHouseConsumptionWatts;
+
+        return sourceWatts < 0m ? Math.Abs(sourceWatts) : null;
     }
 
     private async Task DisconnectClientAsync(CancellationToken cancellationToken)

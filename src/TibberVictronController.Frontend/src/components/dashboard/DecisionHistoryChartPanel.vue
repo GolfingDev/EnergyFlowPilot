@@ -1,11 +1,23 @@
 <script setup lang="ts">
 import Chart from 'chart.js/auto';
-import type { ChartConfiguration, ChartTypeRegistry, TooltipItem } from 'chart.js';
+import type { ChartConfiguration, ChartTypeRegistry, Plugin, TooltipItem } from 'chart.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { DecisionLogEntryResponseDto } from './dashboardTypes';
 import { formatDateTime, formatPercent, formatPower, getDecisionLabel } from './dashboardFormatters';
 
-type HistorySeriesKey = 'target' | 'soc' | 'battery' | 'grid';
+type HistorySeriesKey = 'battery' | 'grid' | 'target';
+type DecisionMode = 'Charge' | 'Discharge' | 'Idle';
+
+interface AggregatedHistoryEntry {
+  decidedAtUtc: string;
+  stateOfChargePercent: number | null;
+  batteryPowerWatts: number | null;
+  gridPowerWatts: number | null;
+  signedTargetPowerWatts: number;
+  decisionState: string;
+  chargeSource: string | null;
+  reasons: DecisionLogEntryResponseDto['reasons'];
+}
 
 const props = defineProps<{
   entries: DecisionLogEntryResponseDto[];
@@ -16,15 +28,18 @@ const emit = defineEmits<{
   changeHours: [hours: number];
 }>();
 
-const chartCanvas = ref<HTMLCanvasElement | null>(null);
-const chartEntries = computed(() => props.entries);
+const socCanvas = ref<HTMLCanvasElement | null>(null);
+const powerCanvas = ref<HTMLCanvasElement | null>(null);
+const decisionCanvas = ref<HTMLCanvasElement | null>(null);
 const visibleSeries = ref<Record<HistorySeriesKey, boolean>>({
-  target: true,
-  soc: true,
   battery: true,
-  grid: true
+  grid: true,
+  target: true
 });
-let chart: Chart | null = null;
+
+let socChart: Chart | null = null;
+let powerChart: Chart | null = null;
+let decisionChart: Chart | null = null;
 
 const hourOptions = [
   { label: '12 h', value: 12 },
@@ -34,11 +49,19 @@ const hourOptions = [
 ];
 
 const seriesOptions: { key: HistorySeriesKey; label: string; color: string }[] = [
-  { key: 'soc', label: 'SoC', color: '#f8fafc' },
-  { key: 'battery', label: 'Akku Ist', color: '#e11d48' },
-  { key: 'grid', label: 'Netz', color: '#4f46e5' },
-  { key: 'target', label: 'Zielleistung', color: '#f59e0b' }
+  { key: 'battery', label: 'Akku Ist', color: '#f59e0b' },
+  { key: 'grid', label: 'Netz', color: '#6366f1' },
+  { key: 'target', label: 'Zielspur', color: '#22c55e' }
 ];
+
+const aggregationLabel = computed(() => {
+  const minutes = getAggregationMinutes(props.hours);
+
+  return minutes <= 1 ? '1-Min-Mittel' : `${minutes}-Min-Mittel`;
+});
+
+const chartEntries = computed(() => aggregateEntries(props.entries, props.hours));
+const latestEntry = computed(() => chartEntries.value.at(-1) ?? null);
 
 function getSignedTargetPowerWatts(entry: DecisionLogEntryResponseDto): number {
   if (entry.decisionState === 'Discharge') {
@@ -52,55 +75,127 @@ function getSignedTargetPowerWatts(entry: DecisionLogEntryResponseDto): number {
   return 0;
 }
 
-function getDecisionColor(entry: DecisionLogEntryResponseDto): string {
-  if (entry.decisionState === 'Charge' && entry.chargeSource === 'PV') {
-    return '#16834a';
+function getGridPowerWatts(entry: DecisionLogEntryResponseDto): number | null {
+  if (entry.gridImportWatts === null && entry.gridExportWatts === null) {
+    return null;
   }
 
+  return (entry.gridImportWatts ?? 0) - (entry.gridExportWatts ?? 0);
+}
+
+function getAggregationMinutes(hours: number): number {
+  if (hours <= 12) {
+    return 1;
+  }
+
+  if (hours <= 24) {
+    return 5;
+  }
+
+  if (hours <= 72) {
+    return 15;
+  }
+
+  return 60;
+}
+
+function aggregateEntries(entries: DecisionLogEntryResponseDto[], hours: number): AggregatedHistoryEntry[] {
+  const bucketMs = getAggregationMinutes(hours) * 60 * 1000;
+  const buckets = new Map<number, DecisionLogEntryResponseDto[]>();
+
+  for (const entry of entries) {
+    const timestamp = new Date(entry.decidedAtUtc).getTime();
+    const bucketStart = Math.floor(timestamp / bucketMs) * bucketMs;
+    const bucketEntries = buckets.get(bucketStart) ?? [];
+
+    bucketEntries.push(entry);
+    buckets.set(bucketStart, bucketEntries);
+  }
+
+  return Array.from(buckets.entries())
+    .sort(([left], [right]) => left - right)
+    .map(([bucketStart, bucketEntries]) => {
+      const lastEntry = bucketEntries[bucketEntries.length - 1];
+
+      return {
+        decidedAtUtc: new Date(bucketStart).toISOString(),
+        stateOfChargePercent: average(bucketEntries.map((entry) => entry.stateOfChargePercent)),
+        batteryPowerWatts: average(bucketEntries.map((entry) => entry.batteryPowerWatts)),
+        gridPowerWatts: average(bucketEntries.map(getGridPowerWatts)),
+        signedTargetPowerWatts: averageRequired(bucketEntries.map(getSignedTargetPowerWatts)),
+        decisionState: getDominantDecisionState(bucketEntries),
+        chargeSource: lastEntry.chargeSource,
+        reasons: lastEntry.reasons
+      };
+    });
+}
+
+function average(values: (number | null)[]): number | null {
+  const numericValues = values.filter((value): value is number => typeof value === 'number');
+
+  if (numericValues.length === 0) {
+    return null;
+  }
+
+  return averageRequired(numericValues);
+}
+
+function averageRequired(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function getDominantDecisionState(entries: DecisionLogEntryResponseDto[]): DecisionMode {
+  const counts = new Map<DecisionMode, number>();
+
+  for (const entry of entries) {
+    const mode = normalizeDecisionMode(entry.decisionState);
+    counts.set(mode, (counts.get(mode) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries()).sort((left, right) => right[1] - left[1])[0]?.[0] ?? 'Idle';
+}
+
+function normalizeDecisionMode(decisionState: string): DecisionMode {
+  if (decisionState === 'Charge') {
+    return 'Charge';
+  }
+
+  if (decisionState === 'Discharge') {
+    return 'Discharge';
+  }
+
+  return 'Idle';
+}
+
+function getModeLane(entry: AggregatedHistoryEntry): number {
+  const targetPower = Math.abs(entry.signedTargetPowerWatts);
+  const normalizedPower = Math.min(0.36, targetPower / 8000 * 0.36);
+
   if (entry.decisionState === 'Charge') {
-    return '#0f7a8a';
+    return 0.58 + normalizedPower;
   }
 
   if (entry.decisionState === 'Discharge') {
-    return '#b7791f';
+    return -0.58 - normalizedPower;
   }
 
-  return '#94a3b8';
+  return 0;
 }
 
-function createSmoothedSocSeries(entries: DecisionLogEntryResponseDto[]): (number | null)[] {
-  let lastKnownSoc: number | null = null;
+function getModeColor(entry: AggregatedHistoryEntry, alpha = 1): string {
+  if (entry.decisionState === 'Charge' && entry.chargeSource === 'PV') {
+    return `rgba(34, 197, 94, ${alpha})`;
+  }
 
-  return entries.map((entry) => {
-    if (typeof entry.stateOfChargePercent === 'number' && entry.stateOfChargePercent > 0) {
-      lastKnownSoc = entry.stateOfChargePercent;
-      return entry.stateOfChargePercent;
-    }
+  if (entry.decisionState === 'Charge') {
+    return `rgba(20, 184, 166, ${alpha})`;
+  }
 
-    return lastKnownSoc;
-  });
-}
+  if (entry.decisionState === 'Discharge') {
+    return `rgba(249, 115, 22, ${alpha})`;
+  }
 
-function createSparsePowerSeries(
-  entries: DecisionLogEntryResponseDto[],
-  selector: (entry: DecisionLogEntryResponseDto) => number | null): (number | null)[] {
-  let lastValue: number | null = null;
-
-  return entries.map((entry) => {
-    const value = selector(entry);
-
-    if (value === null) {
-      lastValue = null;
-      return null;
-    }
-
-    if (lastValue === value) {
-      return null;
-    }
-
-    lastValue = value;
-    return value;
-  });
+  return `rgba(148, 163, 184, ${alpha})`;
 }
 
 function toggleSeries(seriesKey: HistorySeriesKey): void {
@@ -110,164 +205,230 @@ function toggleSeries(seriesKey: HistorySeriesKey): void {
   };
 }
 
-async function renderChart(): Promise<void> {
+function getCssVariable(name: string, fallback: string): string {
+  const themeElement = socCanvas.value?.closest('.v-application') ?? document.documentElement;
+  const variableValue = getComputedStyle(themeElement).getPropertyValue(name).trim();
+
+  return variableValue || fallback;
+}
+
+function getSharedOptions(entries: AggregatedHistoryEntry[]) {
+  const mutedColor = getCssVariable('--efp-muted', '#64748b');
+  const borderColor = getCssVariable('--efp-border-soft', '#e8eef4');
+
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      intersect: false,
+      mode: 'index' as const
+    },
+    plugins: {
+      legend: {
+        display: false
+      },
+      tooltip: {
+        callbacks: {
+          title: (items: TooltipItem<keyof ChartTypeRegistry>[]) => {
+            const entry = entries[items[0]?.dataIndex ?? 0];
+
+            return entry ? formatDateTime(entry.decidedAtUtc) : '';
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: {
+          display: false
+        },
+        ticks: {
+          color: mutedColor,
+          maxRotation: 0,
+          minRotation: 0,
+          maxTicksLimit: 9,
+          callback: function (this: { getLabelForValue(value: number): string }, value: string | number): string {
+            const label: string = this.getLabelForValue(typeof value === 'number' ? value : Number(value));
+            const date: Date = new Date(label);
+
+            return props.hours > 24
+              ? date.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit' })
+              : date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+          }
+        }
+      },
+      y: {
+        grid: {
+          color: borderColor
+        },
+        ticks: {
+          color: mutedColor
+        }
+      }
+    }
+  };
+}
+
+async function renderCharts(): Promise<void> {
   await nextTick();
 
-  if (chartCanvas.value === null || chartEntries.value.length === 0) {
-    destroyChart();
+  if (
+    socCanvas.value === null ||
+    powerCanvas.value === null ||
+    decisionCanvas.value === null ||
+    chartEntries.value.length === 0
+  ) {
+    destroyCharts();
     return;
   }
 
-  destroyChart();
+  destroyCharts();
 
   const entries = chartEntries.value;
   const textColor = getCssVariable('--efp-text', '#172026');
   const mutedColor = getCssVariable('--efp-muted', '#64748b');
   const borderColor = getCssVariable('--efp-border-soft', '#e8eef4');
-  const smoothedSocValues = createSmoothedSocSeries(entries);
-  const targetPowerValues = createSparsePowerSeries(entries, getSignedTargetPowerWatts);
-  const batteryPowerValues = entries.map((entry) => entry.batteryPowerWatts);
-  const gridPowerValues = entries.map((entry) => (entry.gridImportWatts ?? 0) - (entry.gridExportWatts ?? 0));
-  const configuration: ChartConfiguration = {
+  const labels = entries.map((entry) => entry.decidedAtUtc);
+  const sharedOptions = getSharedOptions(entries);
+
+  socChart = new Chart(socCanvas.value, createSocConfiguration(entries, labels, sharedOptions, textColor, mutedColor));
+  powerChart = new Chart(powerCanvas.value, createPowerConfiguration(entries, labels, sharedOptions, mutedColor, borderColor));
+  decisionChart = new Chart(
+    decisionCanvas.value,
+    createDecisionConfiguration(entries, labels, sharedOptions, mutedColor, borderColor));
+}
+
+function createSocConfiguration(
+  entries: AggregatedHistoryEntry[],
+  labels: string[],
+  sharedOptions: ReturnType<typeof getSharedOptions>,
+  textColor: string,
+  mutedColor: string): ChartConfiguration {
+  return {
     type: 'line',
     data: {
-      labels: entries.map((entry) => entry.decidedAtUtc),
+      labels,
       datasets: [
         {
-          type: 'line',
-          label: 'Zielleistung',
-          data: targetPowerValues,
-          hidden: !visibleSeries.value.target,
-          yAxisID: 'power',
-          borderColor: '#f59e0b',
-          backgroundColor: '#f59e0b',
-          borderWidth: 2,
-          pointRadius: entries.map((entry) => Math.abs(getSignedTargetPowerWatts(entry)) > 0 ? 2.5 : 1.5),
-          pointBackgroundColor: entries.map(getDecisionColor),
-          pointBorderColor: entries.map(getDecisionColor),
-          stepped: true,
-          spanGaps: true,
-          order: 3
-        },
-        {
-          type: 'line',
           label: 'SoC',
-          data: smoothedSocValues,
-          hidden: !visibleSeries.value.soc,
-          yAxisID: 'soc',
+          data: entries.map((entry) => entry.stateOfChargePercent),
           borderColor: textColor,
-          backgroundColor: textColor,
-          borderWidth: 1.8,
+          backgroundColor: 'rgba(248, 250, 252, 0.18)',
+          fill: true,
+          borderWidth: 1.6,
           pointRadius: 0,
           tension: 0.18,
-          spanGaps: true,
-          order: 1
-        },
-        {
-          type: 'line',
-          label: 'Akku Ist',
-          data: batteryPowerValues,
-          hidden: !visibleSeries.value.battery,
-          yAxisID: 'power',
-          borderColor: '#e11d48',
-          backgroundColor: '#e11d48',
-          borderWidth: 2,
-          pointRadius: 0,
-          tension: 0.25,
-          spanGaps: true,
-          order: 2
-        },
-        {
-          type: 'line',
-          label: 'Netz',
-          data: gridPowerValues,
-          hidden: !visibleSeries.value.grid,
-          yAxisID: 'power',
-          borderColor: '#4f46e5',
-          backgroundColor: '#4f46e5',
-          borderDash: [6, 4],
-          borderWidth: 2,
-          pointRadius: 0,
-          tension: 0.2,
-          order: 2
+          spanGaps: true
         }
       ]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: {
-        intersect: false,
-        mode: 'index'
-      },
+      ...sharedOptions,
       plugins: {
-        legend: {
-          display: false
-        },
+        ...sharedOptions.plugins,
         tooltip: {
           callbacks: {
-            title: (items: TooltipItem<keyof ChartTypeRegistry>[]) => formatDateTime(entries[items[0]?.dataIndex ?? 0].decidedAtUtc),
+            ...sharedOptions.plugins.tooltip.callbacks,
+            label: (item) => `SoC: ${formatPercent(item.parsed.y)}`
+          }
+        }
+      },
+      scales: {
+        ...sharedOptions.scales,
+        y: {
+          min: 0,
+          max: 100,
+          position: 'right',
+          grid: {
+            color: 'rgba(148, 163, 184, 0.16)'
+          },
+          ticks: {
+            color: mutedColor,
+            callback: (value) => `${value} %`
+          }
+        }
+      }
+    }
+  };
+}
+
+function createPowerConfiguration(
+  entries: AggregatedHistoryEntry[],
+  labels: string[],
+  sharedOptions: ReturnType<typeof getSharedOptions>,
+  mutedColor: string,
+  borderColor: string): ChartConfiguration {
+  const maxPowerKw = Math.max(
+    1,
+    ...entries.flatMap((entry) => [
+      Math.abs((entry.batteryPowerWatts ?? 0) / 1000),
+      Math.abs((entry.gridPowerWatts ?? 0) / 1000)
+    ]));
+  const axisLimit = Math.ceil(maxPowerKw * 1.15);
+
+  return {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Akku Ist',
+          data: entries.map((entry) => wattsToKw(entry.batteryPowerWatts)),
+          hidden: !visibleSeries.value.battery,
+          borderColor: '#f59e0b',
+          backgroundColor: '#f59e0b',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.18,
+          spanGaps: true
+        },
+        {
+          label: 'Netz',
+          data: entries.map((entry) => wattsToKw(entry.gridPowerWatts)),
+          hidden: !visibleSeries.value.grid,
+          borderColor: 'rgba(99, 102, 241, 0.82)',
+          backgroundColor: 'rgba(99, 102, 241, 0.82)',
+          borderWidth: 1.8,
+          pointRadius: 0,
+          tension: 0.16,
+          spanGaps: true
+        }
+      ]
+    },
+    options: {
+      ...sharedOptions,
+      plugins: {
+        ...sharedOptions.plugins,
+        tooltip: {
+          callbacks: {
+            ...sharedOptions.plugins.tooltip.callbacks,
             afterBody: (items: TooltipItem<keyof ChartTypeRegistry>[]) => {
               const entry = entries[items[0]?.dataIndex ?? 0];
 
-              return [
-                `Entscheidung: ${getDecisionLabel(entry.decisionState, entry.chargeSource)}`,
-                `Ziel: ${formatPower(getSignedTargetPowerWatts(entry))}`,
-                `Akku Ist: ${formatPower(batteryPowerValues[items[0]?.dataIndex ?? 0])}`,
-                `Netz: ${formatPower(gridPowerValues[items[0]?.dataIndex ?? 0])}`,
-                `SoC: ${formatPercent(smoothedSocValues[items[0]?.dataIndex ?? 0])}`,
-                `Grund: ${entry.reasons[0]?.ruleId ?? 'Unbekannt'}`
-              ];
+              return entry
+                ? [
+                    `Akku Ist: ${formatPower(entry.batteryPowerWatts)}`,
+                    `Netz: ${formatPower(entry.gridPowerWatts)}`
+                  ]
+                : [];
             }
           }
         }
       },
       scales: {
-        x: {
+        ...sharedOptions.scales,
+        y: {
+          min: -axisLimit,
+          max: axisLimit,
           grid: {
-            display: false
-          },
-          ticks: {
-            color: mutedColor,
-            maxRotation: 45,
-            minRotation: 45,
-            maxTicksLimit: 12,
-            callback: function (value) {
-              const label = this.getLabelForValue(typeof value === 'number' ? value : Number(value));
-              return new Date(label).toLocaleString('de-DE', {
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit'
-              });
-            }
-          }
-        },
-        power: {
-          display: visibleSeries.value.target || visibleSeries.value.battery || visibleSeries.value.grid,
-          position: 'left',
-          grid: {
-            color: borderColor
+            color: (context: any) => Number(context.tick.value) === 0
+              ? 'rgba(226, 232, 240, 0.72)'
+              : borderColor,
+            lineWidth: (context: any) => Number(context.tick.value) === 0 ? 2 : 1
           },
           title: {
             display: true,
-            text: 'Leistung W',
-            color: mutedColor
-          },
-          ticks: {
-            color: mutedColor
-          }
-        },
-        soc: {
-          display: visibleSeries.value.soc,
-          position: 'right',
-          min: 0,
-          max: 100,
-          grid: {
-            drawOnChartArea: false
-          },
-          title: {
-            display: true,
-            text: 'SoC %',
+            text: 'kW',
             color: mutedColor
           },
           ticks: {
@@ -277,42 +438,154 @@ async function renderChart(): Promise<void> {
       }
     }
   };
-
-  chart = new Chart(chartCanvas.value, configuration);
 }
 
-function getCssVariable(name: string, fallback: string): string {
-  const themeElement = chartCanvas.value?.closest('.v-application') ?? document.documentElement;
-  const variableValue = getComputedStyle(themeElement).getPropertyValue(name).trim();
+function createDecisionConfiguration(
+  entries: AggregatedHistoryEntry[],
+  labels: string[],
+  sharedOptions: ReturnType<typeof getSharedOptions>,
+  mutedColor: string,
+  borderColor: string): ChartConfiguration {
+  return {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Zielleistung',
+          data: entries.map(getModeLane),
+          hidden: !visibleSeries.value.target,
+          borderColor: '#22c55e',
+          backgroundColor: '#22c55e',
+          segment: {
+            borderColor: (context) => getModeColor(entries[context.p0DataIndex] ?? entries[0], 1)
+          },
+          borderWidth: 2,
+          pointRadius: 0,
+          stepped: true
+        }
+      ]
+    },
+    options: {
+      ...sharedOptions,
+      plugins: {
+        ...sharedOptions.plugins,
+        tooltip: {
+          callbacks: {
+            ...sharedOptions.plugins.tooltip.callbacks,
+            afterBody: (items: TooltipItem<keyof ChartTypeRegistry>[]) => {
+              const entry = entries[items[0]?.dataIndex ?? 0];
 
-  return variableValue || fallback;
+              return entry
+                ? [
+                    `Modus: ${getDecisionLabel(entry.decisionState, entry.chargeSource)}`,
+                    `Ziel: ${formatPower(entry.signedTargetPowerWatts)}`,
+                    `Grund: ${entry.reasons[0]?.ruleId ?? 'Unbekannt'}`
+                  ]
+                : [];
+            }
+          }
+        }
+      },
+      scales: {
+        ...sharedOptions.scales,
+        y: {
+          min: -1,
+          max: 1,
+          grid: {
+            color: (context: any) => Number(context.tick.value) === 0
+              ? 'rgba(226, 232, 240, 0.72)'
+              : borderColor
+          },
+          ticks: {
+            color: mutedColor,
+            stepSize: 1,
+            callback: (value) => {
+              if (value === 1) {
+                return 'Laden';
+              }
+
+              if (value === -1) {
+                return 'Entladen';
+              }
+
+              return 'Idle';
+            }
+          }
+        }
+      }
+    },
+    plugins: [decisionBandPlugin(entries)]
+  };
 }
 
-function destroyChart(): void {
-  chart?.destroy();
-  chart = null;
+function decisionBandPlugin(entries: AggregatedHistoryEntry[]): Plugin {
+  return {
+    id: 'decision-history-bands',
+    beforeDatasetsDraw(chart) {
+      const { ctx, chartArea, scales } = chart;
+      const xScale = scales.x;
+
+      if (!chartArea || !xScale) {
+        return;
+      }
+
+      ctx.save();
+
+      for (let index = 0; index < entries.length; index++) {
+        const entry = entries[index];
+        const x = xScale.getPixelForValue(index);
+        const nextX = index < entries.length - 1
+          ? xScale.getPixelForValue(index + 1)
+          : chartArea.right;
+        const previousX = index > 0
+          ? xScale.getPixelForValue(index - 1)
+          : chartArea.left;
+        const left = index === 0 ? chartArea.left : (previousX + x) / 2;
+        const right = index === entries.length - 1 ? chartArea.right : (x + nextX) / 2;
+
+        ctx.fillStyle = getModeColor(entry, entry.decisionState === 'Idle' ? 0.08 : 0.14);
+        ctx.fillRect(left, chartArea.top, Math.max(0, right - left), chartArea.bottom - chartArea.top);
+      }
+
+      ctx.restore();
+    }
+  };
+}
+
+function wattsToKw(value: number | null): number | null {
+  return typeof value === 'number' ? value / 1000 : null;
+}
+
+function destroyCharts(): void {
+  socChart?.destroy();
+  powerChart?.destroy();
+  decisionChart?.destroy();
+  socChart = null;
+  powerChart = null;
+  decisionChart = null;
 }
 
 function refreshChartTheme(): void {
-  void renderChart();
+  void renderCharts();
 }
 
 onMounted(() => {
   window.addEventListener('energyflowpilot-theme-changed', refreshChartTheme);
-  void renderChart();
+  void renderCharts();
 });
 
 watch(chartEntries, () => {
-  void renderChart();
+  void renderCharts();
 });
 
 watch(visibleSeries, () => {
-  void renderChart();
+  void renderCharts();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('energyflowpilot-theme-changed', refreshChartTheme);
-  destroyChart();
+  destroyCharts();
 });
 </script>
 
@@ -321,7 +594,7 @@ onBeforeUnmount(() => {
     <div class="panel__header">
       <div>
         <h2>Entscheidungshistorie</h2>
-        <p>Historische Ziel-Leistung, Netzleistung und SoC aus den gespeicherten Entscheidungen.</p>
+        <p>Ist-Leistung, SoC und Steuerungsabsicht aus den gespeicherten Entscheidungen.</p>
       </div>
 
       <div class="decision-history-panel__controls">
@@ -334,6 +607,29 @@ onBeforeUnmount(() => {
         >
           {{ option.label }}
         </button>
+      </div>
+    </div>
+
+    <div v-if="entries.length" class="decision-history-panel__summary">
+      <div>
+        <span>SoC</span>
+        <strong>{{ formatPercent(latestEntry?.stateOfChargePercent ?? null) }}</strong>
+      </div>
+      <div>
+        <span>Akku Ist</span>
+        <strong>{{ formatPower(latestEntry?.batteryPowerWatts ?? null) }}</strong>
+      </div>
+      <div>
+        <span>Netz</span>
+        <strong>{{ formatPower(latestEntry?.gridPowerWatts ?? null) }}</strong>
+      </div>
+      <div>
+        <span>Ziel</span>
+        <strong>{{ formatPower(latestEntry?.signedTargetPowerWatts ?? null) }}</strong>
+      </div>
+      <div>
+        <span>Modus</span>
+        <strong>{{ latestEntry ? getDecisionLabel(latestEntry.decisionState, latestEntry.chargeSource) : 'Nicht verfügbar' }}</strong>
       </div>
     </div>
 
@@ -350,18 +646,38 @@ onBeforeUnmount(() => {
         <span class="decision-history-panel__series-dot" :style="{ backgroundColor: series.color }"></span>
         <span>{{ series.label }}</span>
       </button>
+      <span class="decision-history-panel__aggregation">{{ aggregationLabel }}</span>
     </div>
 
-    <div class="decision-history-chart">
-      <canvas
-        v-if="entries.length"
-        ref="chartCanvas"
-        aria-label="Historische Batterieentscheidungen">
-      </canvas>
-      <div v-else class="decision-history-chart__empty">
-        <strong>Noch keine Historie fuer den Zeitraum</strong>
-        <span>Wenn der Worker Entscheidungen schreibt, erscheinen sie hier als Verlauf.</span>
-      </div>
+    <div v-if="entries.length" class="decision-history-stack">
+      <section class="decision-history-chart decision-history-chart--soc">
+        <div class="decision-history-chart__title">
+          <span>1</span>
+          <strong>SoC (%)</strong>
+        </div>
+        <canvas ref="socCanvas" aria-label="Historischer Akku-SoC"></canvas>
+      </section>
+
+      <section class="decision-history-chart decision-history-chart--power">
+        <div class="decision-history-chart__title">
+          <span>2</span>
+          <strong>Leistung (kW)</strong>
+        </div>
+        <canvas ref="powerCanvas" aria-label="Historische Akku- und Netzleistung"></canvas>
+      </section>
+
+      <section class="decision-history-chart decision-history-chart--decision">
+        <div class="decision-history-chart__title">
+          <span>3</span>
+          <strong>Entscheidung</strong>
+        </div>
+        <canvas ref="decisionCanvas" aria-label="Historische Zielleistung und Entscheidungsmodus"></canvas>
+      </section>
+    </div>
+
+    <div v-else class="decision-history-chart__empty">
+      <strong>Noch keine Historie fuer den Zeitraum</strong>
+      <span>Wenn der Worker Entscheidungen schreibt, erscheinen sie hier als Verlauf.</span>
     </div>
   </section>
 </template>

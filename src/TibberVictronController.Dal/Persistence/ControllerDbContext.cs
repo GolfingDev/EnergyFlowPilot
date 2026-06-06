@@ -132,6 +132,10 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(sample => sample.MeasuredAtUtc)
                 .HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
             entity.Property(sample => sample.HouseConsumptionWatts);
+            entity.Property(sample => sample.GridPowerWatts);
+            entity.Property(sample => sample.BatteryPowerWatts);
+            entity.Property(sample => sample.BatterySocPercent);
+            entity.Property(sample => sample.PvProductionWatts);
             entity.HasIndex(sample => sample.MeasuredAtUtc);
         });
     }

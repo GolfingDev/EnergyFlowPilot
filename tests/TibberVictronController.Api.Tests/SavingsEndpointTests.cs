@@ -23,6 +23,7 @@ public sealed class SavingsEndpointTests
             referenceDate: new DateOnly(2026, 5, 15),
             currency: "EUR",
             repository,
+            new NoopBatterySavingsAccountingService(),
             CancellationToken.None);
 
         var okResult = Assert.IsType<Ok<BatterySavingsResponseDto>>(result);
@@ -42,6 +43,7 @@ public sealed class SavingsEndpointTests
             referenceDate: new DateOnly(2026, 5, 15),
             currency: "EUR",
             repository,
+            new NoopBatterySavingsAccountingService(),
             CancellationToken.None);
 
         var badRequest = Assert.IsType<BadRequest<BatterySavingsErrorDto>>(result);
@@ -58,6 +60,7 @@ public sealed class SavingsEndpointTests
             referenceDate: null,
             currency: "EUR",
             repository,
+            new NoopBatterySavingsAccountingService(),
             CancellationToken.None);
 
         var badRequest = Assert.IsType<BadRequest<BatterySavingsErrorDto>>(result);
@@ -77,6 +80,7 @@ public sealed class SavingsEndpointTests
             referenceDate: null,
             currency: null,
             repository,
+            new NoopBatterySavingsAccountingService(),
             CancellationToken.None);
 
         var okResult = Assert.IsType<Ok<BatterySavingsResponseDto>>(result);
@@ -145,6 +149,23 @@ public sealed class SavingsEndpointTests
             cancellationToken.ThrowIfCancellationRequested();
 
             return Task.FromResult(BatterySavingsAggregate.FromDailySummaries(dailySummaries));
+        }
+    }
+
+    private sealed class NoopBatterySavingsAccountingService : IBatterySavingsAccountingService
+    {
+        public Task RefreshAsync(BatterySavingsQuery query, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.CompletedTask;
+        }
+
+        public Task RefreshRecentDaysAsync(int dayCount, string currency, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.CompletedTask;
         }
     }
 }
