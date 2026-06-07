@@ -48,6 +48,46 @@ public sealed class TibberPriceForecastProviderTests
     }
 
     [Fact]
+    public async Task GetPriceForecastAsyncUsesCachedPricesForRepeatedCalls()
+    {
+        var httpHandler = new RecordingHttpMessageHandler(CreateSuccessfulResponse());
+        var httpClient = new HttpClient(httpHandler);
+        var settingsStore = CreateSettingsStore(accessToken: "test-token");
+        var provider = new TibberPriceForecastProvider(httpClient, settingsStore);
+        var startsAtUtc = new DateTimeOffset(2026, 5, 1, 8, 0, 0, TimeSpan.Zero);
+
+        var firstSlots = await provider.GetPriceForecastAsync(startsAtUtc, startsAtUtc.AddMinutes(15));
+        var secondSlots = await provider.GetPriceForecastAsync(startsAtUtc.AddMinutes(15), startsAtUtc.AddMinutes(30));
+
+        Assert.Single(firstSlots);
+        Assert.Single(secondSlots);
+        Assert.Equal(1, httpHandler.RequestCount);
+        Assert.Equal(0.22m, secondSlots[0].TotalPricePerKwh);
+    }
+
+    [Fact]
+    public async Task GetPriceForecastAsyncUsesLastGoodPricesWhenRefreshFails()
+    {
+        var httpHandler = new SequencedHttpMessageHandler(
+            new SequencedHttpResponse(HttpStatusCode.OK, CreateSuccessfulResponse()),
+            new SequencedHttpResponse(HttpStatusCode.TooManyRequests, "{}"));
+        var httpClient = new HttpClient(httpHandler);
+        var settingsStore = CreateSettingsStore(accessToken: "test-token");
+        var forecastCache = new TibberPriceForecastCache();
+        var firstProvider = new TibberPriceForecastProvider(httpClient, settingsStore, forecastCache, TimeSpan.FromMinutes(30));
+        var secondProvider = new TibberPriceForecastProvider(httpClient, settingsStore, forecastCache, TimeSpan.Zero);
+        var startsAtUtc = new DateTimeOffset(2026, 5, 1, 8, 0, 0, TimeSpan.Zero);
+
+        var firstSlots = await firstProvider.GetPriceForecastAsync(startsAtUtc, startsAtUtc.AddMinutes(15));
+        var secondSlots = await secondProvider.GetPriceForecastAsync(startsAtUtc.AddMinutes(15), startsAtUtc.AddMinutes(30));
+
+        Assert.Single(firstSlots);
+        Assert.Single(secondSlots);
+        Assert.Equal(2, httpHandler.RequestCount);
+        Assert.Equal(0.22m, secondSlots[0].TotalPricePerKwh);
+    }
+
+    [Fact]
     public async Task GetPriceForecastAsyncRejectsMissingAccessToken()
     {
         var httpHandler = new RecordingHttpMessageHandler(CreateSuccessfulResponse());
@@ -212,4 +252,33 @@ public sealed class TibberPriceForecastProviderTests
             }
             """;
     }
+
+    private sealed class SequencedHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly Queue<SequencedHttpResponse> responses;
+
+        public SequencedHttpMessageHandler(params SequencedHttpResponse[] responses)
+        {
+            this.responses = new Queue<SequencedHttpResponse>(responses);
+        }
+
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            var response = responses.Count > 0
+                ? responses.Dequeue()
+                : throw new InvalidOperationException("Es ist keine weitere HTTP-Testantwort konfiguriert.");
+
+            return Task.FromResult(new HttpResponseMessage(response.StatusCode)
+            {
+                Content = new StringContent(response.ResponseBody)
+            });
+        }
+    }
+
+    private sealed record SequencedHttpResponse(HttpStatusCode StatusCode, string ResponseBody);
 }

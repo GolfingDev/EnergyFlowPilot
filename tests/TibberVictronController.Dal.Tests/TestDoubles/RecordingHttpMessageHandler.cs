@@ -18,10 +18,13 @@ internal sealed class RecordingHttpMessageHandler : HttpMessageHandler
 
     public string? LastRequestBody { get; private set; }
 
+    public int RequestCount { get; private set; }
+
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
+        RequestCount++;
         LastRequest = request;
         LastRequestBody = request.Content is null
             ? null

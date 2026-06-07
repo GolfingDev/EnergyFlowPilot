@@ -88,6 +88,7 @@ public static class ControllerServiceCollectionExtensions
             DecisionLogRepository = serviceProvider.GetRequiredService<IDecisionLogRepository>()
         });
         services.AddScoped<ICurrentBatteryDecisionService, CurrentBatteryDecisionService>();
+        services.AddSingleton<TibberPriceForecastCache>();
         services.AddHttpClient<ITibberPriceForecastProvider, TibberPriceForecastProvider>();
         services.AddSingleton<ForecastSolarPvForecastCache>();
         services.AddHttpClient<ForecastSolarPvForecastProvider>();

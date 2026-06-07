@@ -13,6 +13,7 @@ namespace TibberVictronController.Dal.Tibber;
 public sealed class TibberPriceForecastProvider : ITibberPriceForecastProvider
 {
     private const string FirstHomeSelection = "first";
+    private static readonly TimeSpan DefaultCacheDuration = TimeSpan.FromMinutes(30);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -22,13 +23,34 @@ public sealed class TibberPriceForecastProvider : ITibberPriceForecastProvider
 
     private readonly HttpClient httpClient;
     private readonly IControllerSettingStore controllerSettingStore;
+    private readonly TibberPriceForecastCache forecastCache;
+    private readonly TimeSpan cacheDuration;
 
     public TibberPriceForecastProvider(
         HttpClient httpClient,
         IControllerSettingStore controllerSettingStore)
+        : this(httpClient, controllerSettingStore, new TibberPriceForecastCache())
+    {
+    }
+
+    public TibberPriceForecastProvider(
+        HttpClient httpClient,
+        IControllerSettingStore controllerSettingStore,
+        TibberPriceForecastCache forecastCache)
+        : this(httpClient, controllerSettingStore, forecastCache, DefaultCacheDuration)
+    {
+    }
+
+    public TibberPriceForecastProvider(
+        HttpClient httpClient,
+        IControllerSettingStore controllerSettingStore,
+        TibberPriceForecastCache forecastCache,
+        TimeSpan cacheDuration)
     {
         this.httpClient = httpClient;
         this.controllerSettingStore = controllerSettingStore;
+        this.forecastCache = forecastCache;
+        this.cacheDuration = cacheDuration;
     }
 
     /// <summary>
@@ -54,11 +76,25 @@ public sealed class TibberPriceForecastProvider : ITibberPriceForecastProvider
             "Die Tibber Home-Auswahl ist nicht konfiguriert.",
             cancellationToken);
 
-        var response = await ExecuteGraphQlRequestAsync(apiEndpoint, accessToken, cancellationToken);
-        var home = SelectHome(response, homeSelection);
-        var priceEntries = CollectPriceEntries(home);
+        var cacheKey = $"{apiEndpoint}|{accessToken}|{homeSelection}";
+        var availableForecastSlots = await forecastCache.GetOrCreateAsync(
+            cacheKey,
+            DateTimeOffset.UtcNow,
+            cacheDuration,
+            async loadCancellationToken =>
+            {
+                var response = await ExecuteGraphQlRequestAsync(apiEndpoint, accessToken, loadCancellationToken);
+                var home = SelectHome(response, homeSelection);
+                var priceEntries = CollectPriceEntries(home);
+                return MapAllForecastSlots(priceEntries);
+            },
+            cancellationToken);
 
-        return MapToForecastSlots(priceEntries, startsAtUtc, endsAtUtc);
+        return availableForecastSlots
+            .Where(priceSlot =>
+                priceSlot.TimeSlot.StartsAtUtc < endsAtUtc &&
+                priceSlot.TimeSlot.EndsAtUtc > startsAtUtc)
+            .ToArray();
     }
 
     private async Task<string> GetRequiredSettingValueAsync(
@@ -213,6 +249,26 @@ public sealed class TibberPriceForecastProvider : ITibberPriceForecastProvider
         }
 
         return forecastSlots;
+    }
+
+    private static IReadOnlyList<TibberPriceForecastSlot> MapAllForecastSlots(
+        IReadOnlyList<TibberPriceEntry> priceEntries)
+    {
+        var orderedEntries = priceEntries
+            .GroupBy(priceEntry => priceEntry.StartsAt.ToUniversalTime())
+            .Select(group => group.First())
+            .OrderBy(priceEntry => priceEntry.StartsAt)
+            .ToArray();
+
+        if (orderedEntries.Length == 0)
+        {
+            return Array.Empty<TibberPriceForecastSlot>();
+        }
+
+        var startsAtUtc = orderedEntries[0].StartsAt.ToUniversalTime();
+        var endsAtUtc = orderedEntries[^1].StartsAt.ToUniversalTime().AddMinutes(15);
+
+        return MapToForecastSlots(orderedEntries, startsAtUtc, endsAtUtc);
     }
 
     private static void ValidateUtcRange(DateTimeOffset startsAtUtc, DateTimeOffset endsAtUtc)

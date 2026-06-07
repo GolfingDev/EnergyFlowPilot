@@ -175,14 +175,16 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
         if (missingCurrentPriceReason is not null)
         {
-            return await SaveIdleDecisionAsync(
+            return await CreateDischargeDecisionAsync(
                 decidedAtUtc,
-                decidedAtUtc.AddMinutes(15),
                 batteryState,
+                batteryConfiguration,
                 decisionSiteTelemetry,
-                tibberPricePerKwh: null,
-                tibberPriceCurrency: null,
-                missingCurrentPriceReason,
+                currentPriceSlot: null,
+                new BatteryDecisionReason(
+                    CurrentBatteryDecisionRuleIds.CoverCurrentGridImport,
+                    $"Aktueller Netzbezug von {decisionSiteTelemetry.CurrentGridImportWatts} Watt wird aus dem Akku gedeckt. Der Tibber-Preis ist in diesem Zyklus nicht verfuegbar; die Decision Engine startet deshalb keine preisbasierte Netzladung."),
+                batteryConfiguration.MinimumStateOfChargePercent,
                 cancellationToken);
         }
 
@@ -568,11 +570,15 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         BatteryState batteryState,
         BatteryConfiguration batteryConfiguration,
         CurrentSiteTelemetry siteTelemetry,
-        TibberPriceForecastSlot currentPriceSlot,
+        TibberPriceForecastSlot? currentPriceSlot,
         BatteryDecisionReason baseReason,
         decimal reserveStateOfChargePercent,
         CancellationToken cancellationToken)
     {
+        var validToUtc = currentPriceSlot?.TimeSlot.EndsAtUtc ?? decidedAtUtc.AddMinutes(15);
+        var slotDuration = currentPriceSlot?.TimeSlot.Duration ?? TimeSpan.FromMinutes(15);
+        var tibberPricePerKwh = currentPriceSlot?.TotalPricePerKwh;
+        var tibberPriceCurrency = currentPriceSlot?.Currency;
         var powerLimitedTargetWatts = dischargePowerLimiter.CalculateTargetPowerWatts(
             siteTelemetry.CurrentGridImportWatts,
             batteryConfiguration);
@@ -581,11 +587,11 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         {
             return await SaveIdleDecisionAsync(
                 decidedAtUtc,
-                currentPriceSlot.TimeSlot.EndsAtUtc,
+                validToUtc,
                 batteryState,
                 siteTelemetry,
-                currentPriceSlot.TotalPricePerKwh,
-                currentPriceSlot.Currency,
+                tibberPricePerKwh,
+                tibberPriceCurrency,
                 new BatteryDecisionReason(
                     CurrentBatteryDecisionRuleIds.NoGridImportForDischarge,
                     "Ohne aktuellen Netzbezug wird nicht entladen, damit keine Einspeisung ins Netz entsteht."),
@@ -596,18 +602,18 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         var minimumBatteryEnergyKwh = batteryConfiguration.TotalCapacityKwh * reserveStateOfChargePercent / 100m;
         var singleDirectionEfficiency = CalculateSingleDirectionEfficiency(batteryConfiguration);
         var availableLoadCoverageKwh = Math.Max(0m, (currentBatteryEnergyKwh - minimumBatteryEnergyKwh) * singleDirectionEfficiency);
-        var maximumEnergyLimitedWatts = CalculatePowerWatts(availableLoadCoverageKwh, currentPriceSlot.TimeSlot.Duration);
+        var maximumEnergyLimitedWatts = CalculatePowerWatts(availableLoadCoverageKwh, slotDuration);
         var targetPowerWatts = Math.Min(powerLimitedTargetWatts, maximumEnergyLimitedWatts);
 
         if (targetPowerWatts <= 0)
         {
             return await SaveIdleDecisionAsync(
                 decidedAtUtc,
-                currentPriceSlot.TimeSlot.EndsAtUtc,
+                validToUtc,
                 batteryState,
                 siteTelemetry,
-                currentPriceSlot.TotalPricePerKwh,
-                currentPriceSlot.Currency,
+                tibberPricePerKwh,
+                tibberPriceCurrency,
                 new BatteryDecisionReason(
                     BatteryForecastRuleIds.MinimumSocReserve,
                     $"Die Entlade-Reserve von {reserveStateOfChargePercent:0.#} Prozent ist erreicht. Die Decision Engine entlädt deshalb nicht weiter."),
@@ -616,14 +622,14 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
         return await SaveDecisionAsync(
             decidedAtUtc,
-            currentPriceSlot.TimeSlot.EndsAtUtc,
+            validToUtc,
             new CurrentBatteryDecision(
                 new BatteryDecisionInstruction(BatteryDecisionState.Discharge, chargeSource: null),
                 targetPowerWatts),
             batteryState,
             siteTelemetry,
-            currentPriceSlot.TotalPricePerKwh,
-            currentPriceSlot.Currency,
+            tibberPricePerKwh,
+            tibberPriceCurrency,
             new[] { baseReason },
             cancellationToken);
     }

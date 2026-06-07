@@ -71,13 +71,13 @@ public sealed class CurrentBatteryDecisionServiceTests
     }
 
     [Fact]
-    public async Task CalculateCurrentDecisionAsyncReturnsIdleWhenPriceLookupFails()
+    public async Task CalculateCurrentDecisionAsyncCoversCurrentGridImportWhenPriceLookupFails()
     {
         var service = CreateService(new CurrentBatteryDecisionServiceDependencies
         {
             UtcClock = new FixedUtcClock(NowUtc),
             BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(55m, NowUtc)),
-            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(12m, maximumDischargePowerWatts: 3000)),
             CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(500, 0, NowUtc)),
             TibberPriceForecastProvider = new ThrowingTibberPriceForecastProvider("Tibber API ist derzeit nicht erreichbar."),
             ControllerSettingStore = CreateSettingsStore(),
@@ -86,8 +86,10 @@ public sealed class CurrentBatteryDecisionServiceTests
 
         var result = await service.CalculateCurrentDecisionAsync();
 
-        Assert.Equal(BatteryDecisionState.Idle, result.Decision.Instruction.DecisionState);
-        Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.MissingCurrentPrice);
+        Assert.Equal(BatteryDecisionState.Discharge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(500, result.Decision.TargetPowerWatts);
+        Assert.Null(result.TibberPricePerKwh);
+        Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.CoverCurrentGridImport);
     }
 
     [Fact]
