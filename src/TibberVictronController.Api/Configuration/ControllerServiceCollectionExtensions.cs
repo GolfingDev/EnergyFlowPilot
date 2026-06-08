@@ -89,7 +89,16 @@ public static class ControllerServiceCollectionExtensions
         });
         services.AddScoped<ICurrentBatteryDecisionService, CurrentBatteryDecisionService>();
         services.AddSingleton<TibberPriceForecastCache>();
-        services.AddHttpClient<ITibberPriceForecastProvider, TibberPriceForecastProvider>();
+        services.AddHttpClient(nameof(TibberPriceForecastProvider));
+        services.AddScoped<ITibberPriceForecastProvider>(serviceProvider =>
+        {
+            var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
+
+            return new TibberPriceForecastProvider(
+                httpClientFactory.CreateClient(nameof(TibberPriceForecastProvider)),
+                serviceProvider.GetRequiredService<IControllerSettingStore>(),
+                serviceProvider.GetRequiredService<TibberPriceForecastCache>());
+        });
         services.AddSingleton<ForecastSolarPvForecastCache>();
         services.AddHttpClient<ForecastSolarPvForecastProvider>();
         services.AddScoped<IWeatherForecastProvider, CachedWeatherForecastProvider>();
