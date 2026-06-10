@@ -51,6 +51,48 @@
   box-shadow: 0 1px 4px rgba(23, 32, 38, 0.12);
 }
 
+.decision-history-panel__range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  padding: 12px 18px 0;
+}
+
+.decision-history-panel__range label {
+  display: grid;
+  gap: 5px;
+  color: var(--efp-muted);
+  font-size: 0.78rem;
+}
+
+.decision-history-panel__range input {
+  width: 190px;
+  min-height: 34px;
+  border: 1px solid var(--efp-border);
+  border-radius: 8px;
+  background: var(--efp-surface-muted);
+  color: var(--efp-text);
+  font: inherit;
+  padding: 6px 9px;
+}
+
+.decision-history-panel__range button {
+  min-height: 34px;
+  border: 1px solid var(--efp-border);
+  border-radius: 8px;
+  background: var(--efp-surface-muted);
+  color: var(--efp-text);
+  cursor: pointer;
+  font-size: 0.84rem;
+  padding: 6px 10px;
+}
+
+.decision-history-panel__range button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .decision-history-panel__summary {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -216,6 +258,7 @@
   }
 
   .decision-history-panel__series,
+  .decision-history-panel__range,
   .decision-history-panel__summary,
   .decision-history-stack {
     padding-inline: 16px;
@@ -234,6 +277,12 @@
 @media (max-width: 520px) {
   .decision-history-panel__summary {
     grid-template-columns: 1fr;
+  }
+
+  .decision-history-panel__range label,
+  .decision-history-panel__range input,
+  .decision-history-panel__range button {
+    width: 100%;
   }
 
   .decision-history-chart--soc {

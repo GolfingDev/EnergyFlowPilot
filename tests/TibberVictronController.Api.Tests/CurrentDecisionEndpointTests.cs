@@ -88,13 +88,76 @@ public sealed class CurrentDecisionEndpointTests
         var newEntry = CreateLogEntry(nowUtc.AddHours(-1));
         var logRepository = new FakeDecisionLogRepository(new[] { newEntry, oldEntry });
 
-        var result = await CurrentDecisionEndpoints.GetDecisionHistoryAsync(logRepository, 24, 200, CancellationToken.None);
+        var result = await CurrentDecisionEndpoints.GetDecisionHistoryAsync(
+            logRepository,
+            24,
+            200,
+            null,
+            null,
+            null,
+            CancellationToken.None);
 
         var okResult = Assert.IsType<Ok<DecisionLogEntryResponseDto[]>>(result);
         var value = Assert.IsType<DecisionLogEntryResponseDto[]>(okResult.Value);
         Assert.Equal(2, value.Length);
         Assert.Equal(oldEntry.DecidedAtUtc, value[0].DecidedAtUtc);
         Assert.Equal(newEntry.DecidedAtUtc, value[1].DecidedAtUtc);
+    }
+
+    [Fact]
+    public async Task GetDecisionHistoryAsyncUsesExplicitUtcRange()
+    {
+        var fromUtc = new DateTimeOffset(2026, 6, 9, 1, 0, 0, TimeSpan.Zero);
+        var toUtc = fromUtc.AddHours(2);
+        var insideEntry = CreateLogEntry(fromUtc.AddMinutes(30));
+        var outsideEntry = CreateLogEntry(fromUtc.AddHours(-1));
+        var logRepository = new FakeDecisionLogRepository(new[] { outsideEntry, insideEntry });
+
+        var result = await CurrentDecisionEndpoints.GetDecisionHistoryAsync(
+            logRepository,
+            null,
+            200,
+            fromUtc,
+            toUtc,
+            null,
+            CancellationToken.None);
+
+        var okResult = Assert.IsType<Ok<DecisionLogEntryResponseDto[]>>(result);
+        var value = Assert.IsType<DecisionLogEntryResponseDto[]>(okResult.Value);
+        var entry = Assert.Single(value);
+        Assert.Equal(insideEntry.DecidedAtUtc, entry.DecidedAtUtc);
+    }
+
+    [Fact]
+    public async Task GetDecisionHistoryAsyncAggregatesBucketsOldestFirst()
+    {
+        var fromUtc = new DateTimeOffset(2026, 6, 9, 1, 0, 0, TimeSpan.Zero);
+        var firstEntry = CreateLogEntry(fromUtc.AddMinutes(1), BatteryDecisionState.Discharge, 1000, 80m, 1200, 0);
+        var secondEntry = CreateLogEntry(fromUtc.AddMinutes(5), BatteryDecisionState.Discharge, 3000, 70m, 1800, 0);
+        var thirdEntry = CreateLogEntry(fromUtc.AddMinutes(16), BatteryDecisionState.Idle, 0, 60m, 0, 100);
+        var logRepository = new FakeDecisionLogRepository(new[] { thirdEntry, secondEntry, firstEntry });
+
+        var result = await CurrentDecisionEndpoints.GetDecisionHistoryAsync(
+            logRepository,
+            null,
+            200,
+            fromUtc,
+            fromUtc.AddMinutes(30),
+            15,
+            CancellationToken.None);
+
+        var okResult = Assert.IsType<Ok<DecisionLogEntryResponseDto[]>>(result);
+        var value = Assert.IsType<DecisionLogEntryResponseDto[]>(okResult.Value);
+        Assert.Equal(2, value.Length);
+        Assert.Equal(fromUtc, value[0].DecidedAtUtc);
+        Assert.Equal("Discharge", value[0].DecisionState);
+        Assert.Equal(2000, value[0].TargetPowerWatts);
+        Assert.Equal(75m, value[0].StateOfChargePercent);
+        Assert.Equal(1500, value[0].GridImportWatts);
+        Assert.Equal(fromUtc.AddMinutes(15), value[1].DecidedAtUtc);
+        Assert.Equal("Idle", value[1].DecisionState);
+        Assert.Equal(0, value[1].GridImportWatts);
+        Assert.Equal(100, value[1].GridExportWatts);
     }
 
     private sealed class FakeDecisionLogRepository : IDecisionLogRepository
@@ -139,19 +202,30 @@ public sealed class CurrentDecisionEndpointTests
 
     private static DecisionLogEntry CreateLogEntry(DateTimeOffset decidedAtUtc)
     {
+        return CreateLogEntry(decidedAtUtc, BatteryDecisionState.Charge, 1200, 55m, 800, 0);
+    }
+
+    private static DecisionLogEntry CreateLogEntry(
+        DateTimeOffset decidedAtUtc,
+        BatteryDecisionState decisionState,
+        int targetPowerWatts,
+        decimal stateOfChargePercent,
+        int gridImportWatts,
+        int gridExportWatts)
+    {
         return new DecisionLogEntry(
             Guid.NewGuid(),
             decidedAtUtc,
             decidedAtUtc,
             decidedAtUtc.AddMinutes(15),
             new CurrentBatteryDecision(
-                new BatteryDecisionInstruction(BatteryDecisionState.Charge, BatteryChargeSource.Grid),
-                1200),
-            55m,
+                new BatteryDecisionInstruction(decisionState, decisionState == BatteryDecisionState.Charge ? BatteryChargeSource.Grid : null),
+                targetPowerWatts),
+            stateOfChargePercent,
             0.18m,
             "EUR",
-            800,
-            0,
+            gridImportWatts,
+            gridExportWatts,
             "{}",
             new[] { new BatteryDecisionReason("Rule", "Begruendung") });
     }

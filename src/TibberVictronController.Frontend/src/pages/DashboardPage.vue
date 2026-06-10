@@ -49,6 +49,8 @@ const manualChargePowerKw = ref(2.5);
 const autoRefreshIntervalSeconds = ref(60);
 const savingsPeriod = ref<SavingsPeriod>('day');
 const decisionHistoryHours = ref(24);
+const decisionHistoryFromLocal = ref('');
+const decisionHistoryToLocal = ref('');
 const storedDashboardViewMode = localStorage.getItem('energyFlowPilotDashboardViewMode');
 const dashboardViewMode = ref<DashboardViewMode>(
   storedDashboardViewMode === 'metrics' || storedDashboardViewMode === 'visual'
@@ -503,16 +505,75 @@ function createSavingsUrl(): string {
 
 function createDecisionHistoryUrl(): string {
   const parameters = new URLSearchParams({
-    hours: String(decisionHistoryHours.value),
-    maxCount: '5000'
+    maxCount: '5000',
+    aggregateMinutes: String(getDecisionHistoryAggregationMinutes())
   });
+
+  if (decisionHistoryFromLocal.value && decisionHistoryToLocal.value) {
+    parameters.set('fromUtc', new Date(decisionHistoryFromLocal.value).toISOString());
+    parameters.set('toUtc', new Date(decisionHistoryToLocal.value).toISOString());
+  } else {
+    parameters.set('hours', String(decisionHistoryHours.value));
+  }
 
   return `/api/decision/history?${parameters.toString()}`;
 }
 
 async function changeDecisionHistoryHours(hours: number): Promise<void> {
   decisionHistoryHours.value = hours;
+  decisionHistoryFromLocal.value = '';
+  decisionHistoryToLocal.value = '';
   await loadDecisionHistory(true);
+}
+
+async function changeDecisionHistoryRange(fromLocal: string, toLocal: string): Promise<void> {
+  decisionHistoryFromLocal.value = fromLocal;
+  decisionHistoryToLocal.value = toLocal;
+
+  if (!fromLocal || !toLocal) {
+    return;
+  }
+
+  await loadDecisionHistory(true);
+}
+
+async function resetDecisionHistoryRange(): Promise<void> {
+  decisionHistoryFromLocal.value = '';
+  decisionHistoryToLocal.value = '';
+  await loadDecisionHistory(true);
+}
+
+function getDecisionHistoryAggregationMinutes(): number {
+  const hours = getDecisionHistoryVisibleHours();
+
+  if (hours <= 12) {
+    return 1;
+  }
+
+  if (hours <= 24) {
+    return 5;
+  }
+
+  if (hours <= 72) {
+    return 15;
+  }
+
+  return 60;
+}
+
+function getDecisionHistoryVisibleHours(): number {
+  if (!decisionHistoryFromLocal.value || !decisionHistoryToLocal.value) {
+    return decisionHistoryHours.value;
+  }
+
+  const fromMs = new Date(decisionHistoryFromLocal.value).getTime();
+  const toMs = new Date(decisionHistoryToLocal.value).getTime();
+
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) {
+    return decisionHistoryHours.value;
+  }
+
+  return (toMs - fromMs) / 60 / 60 / 1000;
 }
 
 async function changeSavingsPeriod(period: SavingsPeriod): Promise<void> {
@@ -777,7 +838,11 @@ onBeforeUnmount(() => {
           <DecisionHistoryChartPanel
             :entries="decisionHistoryEntries"
             :hours="decisionHistoryHours"
+            :range-from-local="decisionHistoryFromLocal"
+            :range-to-local="decisionHistoryToLocal"
             @change-hours="changeDecisionHistoryHours"
+            @change-range="changeDecisionHistoryRange"
+            @reset-range="resetDecisionHistoryRange"
           />
         </article>
 
@@ -969,7 +1034,11 @@ onBeforeUnmount(() => {
           class="dashboard-section dashboard-section--history"
           :entries="decisionHistoryEntries"
           :hours="decisionHistoryHours"
+          :range-from-local="decisionHistoryFromLocal"
+          :range-to-local="decisionHistoryToLocal"
           @change-hours="changeDecisionHistoryHours"
+          @change-range="changeDecisionHistoryRange"
+          @reset-range="resetDecisionHistoryRange"
         />
 
         <div id="dashboard-details" class="dashboard-layout dashboard-section dashboard-section--details">

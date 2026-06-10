@@ -4,6 +4,9 @@ param(
     [int]$DecisionLogCount = 500,
     [int]$HistoryHours = 24,
     [int]$HistoryLogCount = 5000,
+    [string]$HistoryFromUtc = "",
+    [string]$HistoryToUtc = "",
+    [int]$HistoryAggregateMinutes = 0,
     [int]$MonitorMinutes = 0,
     [int]$PollSeconds = 10,
     [switch]$IncludeForecast,
@@ -84,6 +87,9 @@ $metadata = [pscustomobject]@{
     decisionLogCount = $DecisionLogCount
     historyHours = $HistoryHours
     historyLogCount = $HistoryLogCount
+    historyFromUtc = $HistoryFromUtc
+    historyToUtc = $HistoryToUtc
+    historyAggregateMinutes = $HistoryAggregateMinutes
     monitorMinutes = $MonitorMinutes
     pollSeconds = $PollSeconds
     machine = $env:COMPUTERNAME
@@ -96,10 +102,20 @@ Try-SaveEndpoint -Name "status.json" -Path "/api/status"
 Try-SaveEndpoint -Name "settings.json" -Path "/api/settings"
 Try-SaveEndpoint -Name "decision-current.json" -Path "/api/decision/current"
 Try-SaveEndpoint -Name "decision-logs.json" -Path "/api/decision/logs" -Query @{ maxCount = $DecisionLogCount }
-Try-SaveEndpoint -Name "decision-history.json" -Path "/api/decision/history" -Query @{
+$historyQuery = @{
     hours = $HistoryHours
     maxCount = $HistoryLogCount
 }
+if (-not [string]::IsNullOrWhiteSpace($HistoryFromUtc)) {
+    $historyQuery.fromUtc = $HistoryFromUtc
+}
+if (-not [string]::IsNullOrWhiteSpace($HistoryToUtc)) {
+    $historyQuery.toUtc = $HistoryToUtc
+}
+if ($HistoryAggregateMinutes -gt 0) {
+    $historyQuery.aggregateMinutes = $HistoryAggregateMinutes
+}
+Try-SaveEndpoint -Name "decision-history.json" -Path "/api/decision/history" -Query $historyQuery
 
 $today = Get-Date -Format "yyyy-MM-dd"
 Try-SaveEndpoint -Name "savings-day.json" -Path "/api/savings" -Query @{

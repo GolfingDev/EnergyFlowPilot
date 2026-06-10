@@ -22,10 +22,14 @@ interface AggregatedHistoryEntry {
 const props = defineProps<{
   entries: DecisionLogEntryResponseDto[];
   hours: number;
+  rangeFromLocal?: string;
+  rangeToLocal?: string;
 }>();
 
 const emit = defineEmits<{
   changeHours: [hours: number];
+  changeRange: [fromLocal: string, toLocal: string];
+  resetRange: [];
 }>();
 
 const socCanvas = ref<HTMLCanvasElement | null>(null);
@@ -54,14 +58,30 @@ const seriesOptions: { key: HistorySeriesKey; label: string; color: string }[] =
   { key: 'target', label: 'Zielspur', color: '#22c55e' }
 ];
 
+const visibleHours = computed(() => {
+  if (!props.rangeFromLocal || !props.rangeToLocal) {
+    return props.hours;
+  }
+
+  const fromMs = new Date(props.rangeFromLocal).getTime();
+  const toMs = new Date(props.rangeToLocal).getTime();
+
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) {
+    return props.hours;
+  }
+
+  return (toMs - fromMs) / 60 / 60 / 1000;
+});
+
 const aggregationLabel = computed(() => {
-  const minutes = getAggregationMinutes(props.hours);
+  const minutes = getAggregationMinutes(visibleHours.value);
 
   return minutes <= 1 ? '1-Min-Mittel' : `${minutes}-Min-Mittel`;
 });
 
-const chartEntries = computed(() => aggregateEntries(props.entries, props.hours));
+const chartEntries = computed(() => aggregateEntries(props.entries, visibleHours.value));
 const latestEntry = computed(() => chartEntries.value.at(-1) ?? null);
+const hasCustomRange = computed(() => Boolean(props.rangeFromLocal && props.rangeToLocal));
 
 function getSignedTargetPowerWatts(entry: DecisionLogEntryResponseDto): number {
   if (entry.decisionState === 'Discharge') {
@@ -203,6 +223,15 @@ function toggleSeries(seriesKey: HistorySeriesKey): void {
     ...visibleSeries.value,
     [seriesKey]: !visibleSeries.value[seriesKey]
   };
+}
+
+function changeRangeBoundary(boundary: 'from' | 'to', event: Event): void {
+  const value = event.target instanceof HTMLInputElement ? event.target.value : '';
+
+  emit(
+    'changeRange',
+    boundary === 'from' ? value : props.rangeFromLocal ?? '',
+    boundary === 'to' ? value : props.rangeToLocal ?? '');
 }
 
 function getCssVariable(name: string, fallback: string): string {
@@ -602,12 +631,34 @@ onBeforeUnmount(() => {
           v-for="option in hourOptions"
           :key="option.value"
           type="button"
-          :class="{ 'decision-history-panel__button--active': hours === option.value }"
+          :class="{ 'decision-history-panel__button--active': hours === option.value && !hasCustomRange }"
           @click="emit('changeHours', option.value)"
         >
           {{ option.label }}
         </button>
       </div>
+    </div>
+
+    <div class="decision-history-panel__range" aria-label="Zeitraum">
+      <label>
+        <span>Von</span>
+        <input
+          type="datetime-local"
+          :value="rangeFromLocal ?? ''"
+          @change="changeRangeBoundary('from', $event)"
+        />
+      </label>
+      <label>
+        <span>Bis</span>
+        <input
+          type="datetime-local"
+          :value="rangeToLocal ?? ''"
+          @change="changeRangeBoundary('to', $event)"
+        />
+      </label>
+      <button type="button" :disabled="!hasCustomRange" @click="emit('resetRange')">
+        Zurücksetzen
+      </button>
     </div>
 
     <div v-if="entries.length" class="decision-history-panel__summary">
