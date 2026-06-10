@@ -42,7 +42,11 @@ public sealed class SelectedCurrentSiteTelemetryProvider : ICurrentSiteTelemetry
         var pvProductionWatts = SelectPvProductionWatts(pvProductionSource, victronTelemetry, hagerPvProduction);
         var measuredAtUtc = SelectMeasuredAtUtc(gridImportSource, pvProductionSource, victronTelemetry, hagerGridImport, hagerPvProduction);
 
-        return new CurrentSiteTelemetry(gridImportWatts, pvProductionWatts, measuredAtUtc);
+        return new CurrentSiteTelemetry(
+            gridImportWatts,
+            pvProductionWatts,
+            measuredAtUtc,
+            victronTelemetry?.CurrentBatteryPowerWatts);
     }
 
     private static int SelectGridImportWatts(

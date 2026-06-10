@@ -132,8 +132,8 @@ public sealed class CurrentDecisionEndpointTests
     public async Task GetDecisionHistoryAsyncAggregatesBucketsOldestFirst()
     {
         var fromUtc = new DateTimeOffset(2026, 6, 9, 1, 0, 0, TimeSpan.Zero);
-        var firstEntry = CreateLogEntry(fromUtc.AddMinutes(1), BatteryDecisionState.Discharge, 1000, 80m, 1200, 0);
-        var secondEntry = CreateLogEntry(fromUtc.AddMinutes(5), BatteryDecisionState.Discharge, 3000, 70m, 1800, 0);
+        var firstEntry = CreateLogEntry(fromUtc.AddMinutes(1), BatteryDecisionState.Discharge, 1000, 80m, 1200, 0, "FORECAST_ALLOWS_LOAD_COVERAGE_DISCHARGE");
+        var secondEntry = CreateLogEntry(fromUtc.AddMinutes(5), BatteryDecisionState.Discharge, 3000, 70m, 1800, 0, "FORECAST_ALLOWS_LOAD_COVERAGE_DISCHARGE");
         var thirdEntry = CreateLogEntry(fromUtc.AddMinutes(16), BatteryDecisionState.Idle, 0, 60m, 0, 100);
         var logRepository = new FakeDecisionLogRepository(new[] { thirdEntry, secondEntry, firstEntry });
 
@@ -154,6 +154,7 @@ public sealed class CurrentDecisionEndpointTests
         Assert.Equal(2000, value[0].TargetPowerWatts);
         Assert.Equal(75m, value[0].StateOfChargePercent);
         Assert.Equal(1500, value[0].GridImportWatts);
+        Assert.Equal("FORECAST_ALLOWS_LOAD_COVERAGE_DISCHARGE", value[0].Reasons[0].RuleId);
         Assert.Equal(fromUtc.AddMinutes(15), value[1].DecidedAtUtc);
         Assert.Equal("Idle", value[1].DecisionState);
         Assert.Equal(0, value[1].GridImportWatts);
@@ -211,7 +212,8 @@ public sealed class CurrentDecisionEndpointTests
         int targetPowerWatts,
         decimal stateOfChargePercent,
         int gridImportWatts,
-        int gridExportWatts)
+        int gridExportWatts,
+        string ruleName = "Rule")
     {
         return new DecisionLogEntry(
             Guid.NewGuid(),
@@ -227,6 +229,6 @@ public sealed class CurrentDecisionEndpointTests
             gridImportWatts,
             gridExportWatts,
             "{}",
-            new[] { new BatteryDecisionReason("Rule", "Begruendung") });
+            new[] { new BatteryDecisionReason(ruleName, "Begruendung") });
     }
 }

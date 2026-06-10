@@ -154,7 +154,21 @@ public static class CurrentDecisionEndpoints
             signedGridPowerWatts is null ? null : Math.Max(0, (int)Math.Round((double)signedGridPowerWatts.Value, MidpointRounding.AwayFromZero)),
             signedGridPowerWatts is null ? null : Math.Max(0, (int)Math.Round((double)-signedGridPowerWatts.Value, MidpointRounding.AwayFromZero)),
             AverageNullable(entries.Select(entry => entry.BatteryPowerWatts)),
-            lastEntry.Reasons);
+            GetAggregatedReasons(entries, dominantState));
+    }
+
+    private static IReadOnlyList<CurrentBatteryDecisionReasonDto> GetAggregatedReasons(
+        IReadOnlyList<DecisionLogEntryResponseDto> entries,
+        string dominantState)
+    {
+        return entries
+            .Where(entry => entry.DecisionState == dominantState)
+            .SelectMany(entry => entry.Reasons)
+            .GroupBy(reason => reason.RuleId)
+            .OrderByDescending(group => group.Count())
+            .Select(group => group.Last())
+            .Take(1)
+            .ToArray();
     }
 
     private static int GetAggregatedTargetPowerWatts(IReadOnlyList<DecisionLogEntryResponseDto> entries, string dominantState)
