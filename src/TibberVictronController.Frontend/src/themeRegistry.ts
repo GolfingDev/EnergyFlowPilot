@@ -4,7 +4,9 @@ export type EnergyFlowThemeName =
   | 'controlCenterLight'
   | 'flowCenterLight'
   | 'executiveDark'
-  | 'mobileFocusDark';
+  | 'mobileFocusDark'
+  | 'neonGridDark'
+  | 'missionDark';
 
 export interface EnergyFlowThemeDefinition {
   name: EnergyFlowThemeName;
@@ -56,6 +58,20 @@ export const energyFlowThemes: EnergyFlowThemeDefinition[] = [
     description: 'Kompakte dunkle Oberfläche mit kräftigen Touch-Akzenten.',
     dark: true,
     icon: 'mdi-cellphone'
+  },
+  {
+    name: 'neonGridDark',
+    label: 'Neon Grid',
+    description: 'Modernes Dark-Theme mit Glassmorphism, Teal-Akzent und Energiefluss im Mittelpunkt.',
+    dark: true,
+    icon: 'mdi-lightning-bolt-outline'
+  },
+  {
+    name: 'missionDark',
+    label: 'Mission Control',
+    description: 'Dreispalten-Cockpit mit SOC-Gauge, Amber-Akzent und Scan-Linien-Textur.',
+    dark: true,
+    icon: 'mdi-radar'
   }
 ];
 

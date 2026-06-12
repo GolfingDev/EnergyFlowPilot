@@ -82,6 +82,30 @@ export const vuetify = createVuetify({
           warning: '#facc15',
           error: '#fb7185'
         }
+      },
+      neonGridDark: {
+        dark: true,
+        colors: {
+          background: '#07090f',
+          surface: '#0d1322',
+          primary: '#00d4aa',
+          secondary: '#9bbfb8',
+          success: '#00e47a',
+          warning: '#ffb020',
+          error: '#ff4d6d'
+        }
+      },
+      missionDark: {
+        dark: true,
+        colors: {
+          background: '#020406',
+          surface: '#0a0e14',
+          primary: '#f59e0b',
+          secondary: '#b8a888',
+          success: '#00b894',
+          warning: '#fd9644',
+          error: '#ff6b6b'
+        }
       }
     }
   }

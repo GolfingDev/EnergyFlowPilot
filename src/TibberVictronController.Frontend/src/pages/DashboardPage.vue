@@ -99,16 +99,22 @@ const currentConsumptionWatts = computed(() => {
   return liveTelemetry.value?.currentHouseConsumptionWatts ?? null;
 });
 const activeTheme = computed(() => getEnergyFlowTheme(theme.global.name.value));
+const usesMissionDashboard = computed(() => activeTheme.value.name === 'missionDark');
 const usesPresetDashboard = computed(() =>
   activeTheme.value.name === 'controlCenterLight' ||
   activeTheme.value.name === 'flowCenterLight' ||
   activeTheme.value.name === 'executiveDark' ||
-  activeTheme.value.name === 'mobileFocusDark');
+  activeTheme.value.name === 'mobileFocusDark' ||
+  activeTheme.value.name === 'neonGridDark' ||
+  activeTheme.value.name === 'missionDark');
 const usesControlCenterDashboard = computed(() =>
   activeTheme.value.name === 'controlCenterLight' ||
-  activeTheme.value.name === 'flowCenterLight');
+  activeTheme.value.name === 'flowCenterLight' ||
+  activeTheme.value.name === 'neonGridDark');
 const usesControlChartsDashboard = computed(() => activeTheme.value.name === 'controlCenterLight');
-const usesFlowCenterDashboard = computed(() => activeTheme.value.name === 'flowCenterLight');
+const usesFlowCenterDashboard = computed(() =>
+  activeTheme.value.name === 'flowCenterLight' ||
+  activeTheme.value.name === 'neonGridDark');
 const dashboardLayoutClass = computed(() => `dashboard-page--${activeTheme.value.name}`);
 const signedGridPowerWatts = computed(() => decision.value?.currentGridImportWatts ?? null);
 const signedBatteryPowerWatts = computed(() => {
@@ -211,6 +217,90 @@ const controlCenterWarnings = computed(() => {
     icon: 'mdi-information-outline'
   }];
 });
+
+const pvWatts = computed(() => liveTelemetry.value ? null : (decision.value?.currentPvProductionWatts ?? 0));
+const gridWatts = computed(() => liveTelemetry.value?.currentGridImportWatts ?? decision.value?.currentGridImportWatts ?? 0);
+const batteryWatts = computed(() => liveTelemetry.value?.currentBatteryPowerWatts ?? 0);
+const socPct = computed(() => liveTelemetry.value?.stateOfChargePercent ?? decision.value?.stateOfChargePercent ?? 0);
+const pvProductionWatts = computed(() => decision.value?.currentPvProductionWatts ?? 0);
+
+const missionSchemes = [
+  { id: 'amber',  label: 'Amber',  color: '#f59e0b' },
+  { id: 'ocean',  label: 'Ocean',  color: '#22d3ee' },
+  { id: 'steel',  label: 'Steel',  color: '#94a3b8' }
+] as const;
+type MissionScheme = 'amber' | 'ocean' | 'steel';
+const missionScheme = ref<MissionScheme>(
+  (['amber', 'ocean', 'steel'].includes(localStorage.getItem('efp-mission-scheme') ?? '')
+    ? localStorage.getItem('efp-mission-scheme') as MissionScheme
+    : 'amber')
+);
+function setMissionScheme(s: MissionScheme): void {
+  missionScheme.value = s;
+  localStorage.setItem('efp-mission-scheme', s);
+}
+
+const forecastSocPoints = computed(() => {
+  const entries = forecast.value?.entries?.slice(0, 24);
+  if (!entries || entries.length < 2) return '';
+  return entries.map((e, i, arr) => {
+    const x = (i / (arr.length - 1)) * 100;
+    const y = 56 - (e.stateOfChargeAfterPercent / 100) * 52;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+});
+
+const forecastSocAreaPoints = computed(() => {
+  const line = forecastSocPoints.value;
+  if (!line) return '';
+  return `0,58 ${line} 100,58`;
+});
+
+const historyTimeLabels = computed(() => {
+  const entries = decisionHistoryEntries.value;
+  if (!entries.length) return { from: '', mid: '', to: '' };
+  const fmt = (s: string) => new Date(s).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return {
+    from: fmt(entries[entries.length - 1].decidedAtUtc),
+    mid: fmt(entries[Math.floor(entries.length / 2)].decidedAtUtc),
+    to: fmt(entries[0].decidedAtUtc)
+  };
+});
+
+const historyBatteryPoints = computed(() => {
+  const entries = decisionHistoryEntries.value.slice(0, 96);
+  if (entries.length < 2) return '';
+  const maxW = Math.max(...entries.map(e => Math.abs(e.batteryPowerWatts ?? 0)), 200);
+  return entries.map((e, i, arr) => {
+    const x = (i / (arr.length - 1)) * 100;
+    const w = e.batteryPowerWatts ?? 0;
+    const y = 25 - (w / maxW) * 22;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+});
+
+const historyBatteryAreaPoints = computed(() => {
+  const line = historyBatteryPoints.value;
+  if (!line) return '';
+  return `0,25 ${line} 100,25`;
+});
+
+function missionPriceBarHeight(pricePerKwh: number, maxPrice: number): string {
+  if (maxPrice <= 0) return '10%';
+  return `${Math.max(6, Math.round((pricePerKwh / maxPrice) * 100))}%`;
+}
+
+function missionPriceBarClass(decisionState: string): string {
+  if (decisionState === 'Charge') return 'qm-price-bar--charge';
+  if (decisionState === 'Discharge') return 'qm-price-bar--discharge';
+  return 'qm-price-bar--idle';
+}
+
+function missionHistoryDotClass(decisionState: string): string {
+  if (decisionState === 'Charge') return 'qm-dot--charge';
+  if (decisionState === 'Discharge') return 'qm-dot--discharge';
+  return 'qm-dot--idle';
+}
 
 function changeDashboardViewMode(mode: DashboardViewMode): void {
   dashboardViewMode.value = mode;
@@ -776,12 +866,418 @@ onBeforeUnmount(() => {
     <EnergyLoadingOverlay :model-value="showLoadingOverlay" title="Loading forecast"
       subtitle="Calculating price, PV and battery plan..." :size="200" />
 
-    <DashboardHeader v-if="!usesControlCenterDashboard" :status="status" :is-loading="isLoading" :auto-refresh-label="autoRefreshLabel"
+    <DashboardHeader v-if="!usesControlCenterDashboard && !usesMissionDashboard" :status="status" :is-loading="isLoading" :auto-refresh-label="autoRefreshLabel"
       @refresh="loadDashboard" />
 
     <DashboardErrorPanels :errors="loadErrors" />
 
-    <template v-if="usesControlCenterDashboard">
+    <template v-if="usesMissionDashboard">
+      <!-- Status header strip -->
+      <div class="qm-header">
+        <div class="qm-header__left">
+          <span class="qm-dot" :class="status?.status === 'Healthy' ? 'qm-dot--ok' : 'qm-dot--warn'" />
+          <span class="qm-header__app">EFP</span>
+          <span class="qm-header__sep" />
+          <span class="qm-header__chip" :class="decision?.decisionState === 'Charge' ? 'qm-header__chip--charge' : decision?.decisionState === 'Discharge' ? 'qm-header__chip--discharge' : 'qm-header__chip--idle'">
+            {{ currentDecisionLabel }}
+          </span>
+          <span class="qm-header__sep" />
+          <span class="qm-header__kv"><em>MQTT</em>{{ status?.victronMqttStatus ?? '—' }}</span>
+          <span class="qm-header__kv"><em>TIBBER</em>{{ formatPrice(decision?.tibberPricePerKwh, decision?.tibberPriceCurrency) }}/kWh</span>
+        </div>
+        <div class="qm-header__right">
+          <span class="qm-header__refresh-hint">{{ autoRefreshLabel }}</span>
+          <!-- Color scheme picker -->
+          <div class="qm-scheme-picker" role="group" aria-label="Farbschema">
+            <button
+              v-for="s in missionSchemes" :key="s.id"
+              class="qm-scheme-dot"
+              :class="{ 'qm-scheme-dot--active': missionScheme === s.id }"
+              :style="{ '--dot-c': s.color }"
+              :title="s.label"
+              @click="setMissionScheme(s.id)"
+            />
+          </div>
+          <button class="qm-header__refresh-btn" :class="{ 'qm-header__refresh-btn--spinning': isLoading }" :disabled="isLoading" @click="loadDashboard" title="Aktualisieren">↻</button>
+        </div>
+      </div>
+
+      <!-- Main body: live readings | SVG flow | decision context -->
+      <div class="qm-body" :class="`qm-scheme--${missionScheme}`">
+
+        <!-- Left: Live power readings -->
+        <aside class="qm-readings">
+          <div class="qm-reading qm-reading--solar" :class="{ 'qm-reading--dim': pvProductionWatts <= 0 }">
+            <span class="qm-reading__icon">☀</span>
+            <div class="qm-reading__info">
+              <span class="qm-reading__label">Solar</span>
+              <strong class="qm-reading__val">{{ formatPower(pvProductionWatts) }}</strong>
+            </div>
+            <div class="qm-reading__bar-wrap">
+              <div class="qm-reading__bar qm-reading__bar--solar" :style="{ height: pvProductionWatts > 0 ? `${Math.min(100, pvProductionWatts / 60)}%` : '0%' }" />
+            </div>
+          </div>
+
+          <div class="qm-reading" :class="gridWatts < 0 ? 'qm-reading--export' : gridWatts > 50 ? 'qm-reading--import' : 'qm-reading--dim'">
+            <span class="qm-reading__icon">⚡</span>
+            <div class="qm-reading__info">
+              <span class="qm-reading__label">Netz</span>
+              <strong class="qm-reading__val">{{ formatPower(Math.abs(gridWatts)) }}</strong>
+              <span class="qm-reading__sub">{{ gridWatts < 0 ? 'Einspeisung' : gridWatts > 50 ? 'Bezug' : 'Ausgeglichen' }}</span>
+            </div>
+          </div>
+
+          <div class="qm-reading" :class="batteryWatts > 0 ? 'qm-reading--charge' : batteryWatts < 0 ? 'qm-reading--discharge' : 'qm-reading--dim'">
+            <span class="qm-reading__icon">▣</span>
+            <div class="qm-reading__info">
+              <span class="qm-reading__label">Batterie</span>
+              <strong class="qm-reading__val">{{ formatPower(Math.abs(batteryWatts ?? 0)) }}</strong>
+              <span class="qm-reading__sub">{{ batteryWatts > 0 ? 'Lädt' : batteryWatts < 0 ? 'Entlädt' : 'Standby' }}</span>
+            </div>
+          </div>
+
+          <div class="qm-reading" :class="(currentConsumptionWatts ?? 0) > 0 ? 'qm-reading--house' : 'qm-reading--dim'">
+            <span class="qm-reading__icon">⌂</span>
+            <div class="qm-reading__info">
+              <span class="qm-reading__label">Verbrauch</span>
+              <strong class="qm-reading__val">{{ formatPower(currentConsumptionWatts) }}</strong>
+              <span class="qm-reading__sub">Haus gesamt</span>
+            </div>
+          </div>
+
+          <div v-if="savings" class="qm-reading qm-reading--savings">
+            <span class="qm-reading__icon">€</span>
+            <div class="qm-reading__info">
+              <span class="qm-reading__label">Ersparnis</span>
+              <strong class="qm-reading__val qm-reading__val--savings">{{ formatCurrency(savings.aggregate.netSavings, savingsCurrency) }}</strong>
+              <div class="qm-savings__tabs">
+                <button v-for="opt in savingsPeriodOptions" :key="opt.value"
+                  :class="['qm-tab', savingsPeriod === opt.value ? 'qm-tab--active' : '']"
+                  @click="changeSavingsPeriod(opt.value)">{{ opt.label }}</button>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Center: SVG energy flow -->
+        <main class="qm-flow">
+          <svg viewBox="0 0 700 300" class="qm-svg" preserveAspectRatio="xMidYMid meet" aria-label="Energiefluss">
+            <defs>
+              <!-- Primary direction marker (picks up currentColor = --qm-p) -->
+              <marker id="qm-arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" />
+              </marker>
+              <!-- Export / green marker -->
+              <marker id="qm-arr-g" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6 Z" fill="#00b894" />
+              </marker>
+              <!-- House / neutral marker -->
+              <marker id="qm-arr-d" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6 Z" fill="rgba(148,163,184,0.7)" />
+              </marker>
+            </defs>
+
+            <!-- ── SOLAR node (top-left) ── -->
+            <g :class="['qm-node', pvProductionWatts > 0 ? 'qm-node--active qm-node--solar' : '']">
+              <rect x="10" y="18" width="155" height="90" rx="8" class="qm-node__rect" />
+              <text x="88" y="50" class="qm-node__icon">☀</text>
+              <text x="88" y="69" class="qm-node__lbl">SOLAR</text>
+              <text x="88" y="92" :class="['qm-node__val', pvProductionWatts > 0 ? 'qm-node__val--solar' : 'qm-node__val--zero']">
+                {{ formatPower(pvProductionWatts) }}
+              </text>
+            </g>
+
+            <!-- ── GRID node (bottom-left) ── -->
+            <g :class="['qm-node', Math.abs(gridWatts) > 20 ? 'qm-node--active' : '']">
+              <rect x="10" y="192" width="155" height="90" rx="8" class="qm-node__rect" />
+              <text x="88" y="224" class="qm-node__icon">⚡</text>
+              <text x="88" y="243" class="qm-node__lbl">NETZ</text>
+              <text x="88" y="266" :class="['qm-node__val', gridWatts < -20 ? 'qm-node__val--export' : gridWatts > 20 ? 'qm-node__val--import' : 'qm-node__val--zero']">
+                {{ gridWatts < -20 ? '↑' : gridWatts > 20 ? '↓' : '~' }} {{ formatPower(Math.abs(gridWatts)) }}
+              </text>
+            </g>
+
+            <!-- ── HOUSE node (right) ── -->
+            <g :class="['qm-node', (currentConsumptionWatts ?? 0) > 0 ? 'qm-node--active qm-node--house' : '']">
+              <rect x="535" y="100" width="155" height="100" rx="8" class="qm-node__rect" />
+              <text x="613" y="133" class="qm-node__icon">⌂</text>
+              <text x="613" y="152" class="qm-node__lbl">VERBRAUCH</text>
+              <text x="613" y="175" class="qm-node__val">{{ formatPower(currentConsumptionWatts) }}</text>
+              <text x="613" y="191" class="qm-node__sub">Haus gesamt</text>
+            </g>
+
+            <!-- ── Flow lines ── -->
+            <!-- Solar → Battery -->
+            <path v-if="pvProductionWatts > 0"
+              d="M 165,63 C 255,63 265,140 265,150"
+              class="qm-line qm-line--solar" marker-end="url(#qm-arr)" />
+            <!-- Idle PV (dashed, no flow) -->
+            <path v-else
+              d="M 165,63 C 255,63 265,140 265,150"
+              class="qm-line qm-line--idle" />
+
+            <!-- Grid → Battery (import) -->
+            <path v-if="gridWatts > 20"
+              d="M 165,237 C 255,237 265,160 265,150"
+              class="qm-line qm-line--import" marker-end="url(#qm-arr)" />
+            <!-- Battery → Grid (export) -->
+            <path v-else-if="gridWatts < -20"
+              d="M 265,150 C 265,160 255,237 165,237"
+              class="qm-line qm-line--export" marker-end="url(#qm-arr-g)" />
+            <!-- Grid balanced (dim) -->
+            <path v-else
+              d="M 165,237 C 255,237 265,160 265,150"
+              class="qm-line qm-line--idle" />
+
+            <!-- Battery → House -->
+            <path v-if="(currentConsumptionWatts ?? 0) > 0"
+              d="M 435,150 L 535,150"
+              class="qm-line qm-line--house" marker-end="url(#qm-arr-d)" />
+            <path v-else d="M 435,150 L 535,150" class="qm-line qm-line--idle" />
+
+            <!-- ── Battery ring (center 350,150 r=85) ── -->
+            <circle cx="350" cy="150" r="85" class="qm-battery__track" />
+            <circle cx="350" cy="150" r="85" class="qm-battery__arc"
+              transform="rotate(-90 350 150)"
+              :style="{ strokeDashoffset: 534 - (534 * socPct / 100) }" />
+            <circle cx="350" cy="150" r="69" class="qm-battery__disc" />
+
+            <text x="350" y="138" class="qm-battery__pct">
+              {{ Math.round(socPct) }}<tspan class="qm-battery__pct-unit">%</tspan>
+            </text>
+            <text x="350" y="158" class="qm-battery__mode">{{ currentDecisionLabel.toUpperCase() }}</text>
+            <text v-if="(batteryWatts ?? 0) !== 0" x="350" y="175" class="qm-battery__power">
+              {{ batteryWatts > 0 ? '+' : '' }}{{ formatPower(Math.abs(batteryWatts ?? 0)) }}
+            </text>
+
+            <text v-if="liveTelemetry" x="350" y="290" class="qm-svg__timestamp">
+              LIVE · {{ new Date(liveTelemetry.measuredAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }}
+            </text>
+          </svg>
+        </main>
+
+        <!-- Right: Decision context + system status + log -->
+        <aside class="qm-context">
+          <!-- Current decision -->
+          <div class="qm-ctx-block">
+            <span class="qm-ctx-label">ENTSCHEIDUNG</span>
+            <strong class="qm-ctx-state" :class="decision?.decisionState === 'Charge' ? 'qm-ctx-state--charge' : decision?.decisionState === 'Discharge' ? 'qm-ctx-state--discharge' : ''">
+              {{ currentDecisionLabel }}
+            </strong>
+            <p v-if="currentDecisionReason" class="qm-ctx-reason">{{ currentDecisionReason.message }}</p>
+            <p v-if="decision?.targetPowerWatts" class="qm-ctx-sub">Zielleistung: {{ formatPower(decision.targetPowerWatts) }}</p>
+          </div>
+
+          <!-- System status -->
+          <div class="qm-ctx-block">
+            <span class="qm-ctx-label">SYSTEMSTATUS</span>
+            <div class="qm-ctx-row">
+              <span>Controller</span>
+              <strong :class="status?.status === 'Healthy' ? 'qm-ctx-ok' : 'qm-ctx-warn'">{{ status?.status ?? '—' }}</strong>
+            </div>
+            <div class="qm-ctx-row">
+              <span>MQTT</span>
+              <strong :class="status?.victronMqttStatus === 'Connected' ? 'qm-ctx-ok' : 'qm-ctx-warn'">{{ status?.victronMqttStatus ?? '—' }}</strong>
+            </div>
+            <div class="qm-ctx-row" v-if="status?.victronMqttLastSuccessfulMessageAtUtc">
+              <span>Letzte Nachricht</span>
+              <strong>{{ new Date(status.victronMqttLastSuccessfulMessageAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}</strong>
+            </div>
+          </div>
+
+          <!-- Recent decision log -->
+          <div class="qm-ctx-block qm-ctx-block--log">
+            <span class="qm-ctx-label">LETZTE AKTIONEN</span>
+            <div v-for="entry in decisionLogEntries.slice(0, 6)" :key="entry.id" class="qm-log-row">
+              <span class="qm-log-row__time">{{ new Date(entry.decidedAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}</span>
+              <span class="qm-log-row__dot" :class="missionHistoryDotClass(entry.decisionState)" />
+              <span class="qm-log-row__state">{{ getDecisionLabel(entry.decisionState, entry.chargeSource) }}</span>
+              <span class="qm-log-row__power">{{ formatPower(entry.targetPowerWatts) }}</span>
+            </div>
+          </div>
+
+          <!-- Manual charge -->
+          <div class="qm-ctx-block">
+            <span class="qm-ctx-label">MANUELLE LADUNG</span>
+            <div class="qm-charge__status" :class="manualCharge?.isActive ? 'qm-charge__status--active' : ''">
+              {{ manualChargeRemainingLabel }}
+            </div>
+            <div class="qm-charge__row">
+              <label class="qm-charge__field"><span>Min</span>
+                <input v-model.number="manualChargeDurationMinutes" type="number" min="1" max="1440" class="qm-input" />
+              </label>
+              <label class="qm-charge__field"><span>kW</span>
+                <input v-model.number="manualChargePowerKw" type="number" min="0.1" max="50" step="0.1" class="qm-input" />
+              </label>
+              <button class="qm-btn qm-btn--start" :disabled="isManualChargeBusy" @click="startManualCharge">▶</button>
+              <button class="qm-btn qm-btn--stop" :disabled="!manualCharge?.isActive || isManualChargeBusy" @click="stopManualCharge">■</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <!-- Bottom data zone: price forecast + history with SoC sparkline -->
+      <div class="qm-data-zone">
+        <!-- Price forecast bars with hour axis -->
+        <div class="qm-section">
+          <div class="qm-section__head">
+            <span>PREISPROGNOSE</span>
+            <span class="qm-section__head-val" v-if="decision?.tibberPricePerKwh">
+              Jetzt {{ formatPrice(decision.tibberPricePerKwh, decision.tibberPriceCurrency) }} ·
+              <span v-if="forecast?.entries?.length">
+                Min {{ formatPrice(Math.min(...forecast.entries.slice(0,24).map(e => e.tibberPricePerKwh)), forecast.entries[0].tibberPriceCurrency) }} ·
+                Max {{ formatPrice(Math.max(...forecast.entries.slice(0,24).map(e => e.tibberPricePerKwh)), forecast.entries[0].tibberPriceCurrency) }}
+              </span>
+            </span>
+          </div>
+          <div v-if="forecast?.entries?.length" class="qm-price-chart">
+            <div class="qm-price-chart-inner">
+              <!-- Price bars column -->
+              <div>
+                <div class="qm-section__head" style="margin-bottom:4px;font-size:0.55rem;">STROMPREIS (€/kWh)</div>
+                <div class="qm-price-bars">
+                  <template v-for="(entry, i) in forecast.entries.slice(0, 24)" :key="entry.startsAtUtc">
+                    <div class="qm-price-col">
+                      <div
+                        class="qm-price-bar"
+                        :class="[missionPriceBarClass(entry.decisionState), i === 0 ? 'qm-price-bar--now' : '']"
+                        :style="{ height: missionPriceBarHeight(entry.tibberPricePerKwh, Math.max(...forecast.entries.slice(0,24).map(e => e.tibberPricePerKwh))) }"
+                        :title="`${new Date(entry.startsAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} · ${formatPrice(entry.tibberPricePerKwh, entry.tibberPriceCurrency)}`"
+                      />
+                      <span v-if="i % 4 === 0" class="qm-price-hour">
+                        {{ new Date(entry.startsAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}
+                      </span>
+                    </div>
+                  </template>
+                </div>
+                <div class="qm-price-legend">
+                  <span class="qm-price-legend__dot qm-price-bar--charge" /> Laden
+                  <span class="qm-price-legend__dot qm-price-bar--discharge" /> Entladen
+                  <span class="qm-price-legend__dot qm-price-bar--idle" /> Idle
+                </div>
+              </div>
+              <!-- SoC forecast line -->
+              <div>
+                <div class="qm-section__head" style="margin-bottom:4px;font-size:0.55rem;">AKKU-SOC PROGNOSE</div>
+                <div class="qm-forecast-soc">
+                  <svg viewBox="0 0 100 60" preserveAspectRatio="none" class="qm-forecast-soc__svg">
+                    <!-- reference lines at 80%, 50%, 20% -->
+                    <line x1="0" y1="14" x2="100" y2="14" class="qm-sparkline__ref" />
+                    <line x1="0" y1="30" x2="100" y2="30" class="qm-sparkline__ref" />
+                    <line x1="0" y1="46" x2="100" y2="46" class="qm-sparkline__ref" />
+                    <text x="1" y="13" class="qm-forecast-soc__lbl">80%</text>
+                    <text x="1" y="29" class="qm-forecast-soc__lbl">50%</text>
+                    <text x="1" y="45" class="qm-forecast-soc__lbl">20%</text>
+                    <polygon v-if="forecastSocAreaPoints" :points="forecastSocAreaPoints" class="qm-forecast-soc__area" />
+                    <polyline v-if="forecastSocPoints" :points="forecastSocPoints" class="qm-forecast-soc__line" />
+                  </svg>
+                </div>
+                <div class="qm-time-axis">
+                  <span>{{ forecast.entries.length ? new Date(forecast.entries[0].startsAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '' }}</span>
+                  <span>+12h</span>
+                  <span>{{ forecast.entries.length ? new Date(forecast.entries[Math.min(23, forecast.entries.length-1)].startsAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '' }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="qm-section__empty">Kein Forecast verfügbar</div>
+        </div>
+
+        <!-- History: SoC sparkline + decision heatmap -->
+        <div class="qm-section">
+          <div class="qm-section__head">
+            <span>VERLAUF</span>
+            <span class="qm-section__head-val">{{ decisionHistoryEntries.length }} Einträge · letzte 24h</span>
+          </div>
+          <template v-if="decisionHistoryEntries.length">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+              <!-- Left: SoC sparkline -->
+              <div>
+                <div class="qm-section__head" style="margin-bottom:4px;font-size:0.55rem;">LADESTAND (SoC)</div>
+                <div class="qm-soc-sparkline">
+                  <svg viewBox="0 0 100 60" preserveAspectRatio="none" class="qm-sparkline-svg">
+                    <line x1="0" y1="4" x2="100" y2="4" class="qm-sparkline__ref" />
+                    <line x1="0" y1="30" x2="100" y2="30" class="qm-sparkline__ref" />
+                    <line x1="0" y1="56" x2="100" y2="56" class="qm-sparkline__ref" />
+                    <text x="1" y="13" class="qm-sparkline__lbl">100%</text>
+                    <text x="1" y="39" class="qm-sparkline__lbl">50%</text>
+                    <text x="1" y="58" class="qm-sparkline__lbl">0%</text>
+                    <polygon
+                      v-if="decisionHistoryEntries.filter(e => e.stateOfChargePercent !== null).length > 1"
+                      :points="[
+                        '0,56',
+                        ...decisionHistoryEntries.slice(0, 96).filter(e => e.stateOfChargePercent !== null)
+                          .map((e, i, arr) => `${(i / (arr.length - 1)) * 100},${56 - ((e.stateOfChargePercent ?? 0) / 100) * 52}`),
+                        '100,56'
+                      ].join(' ')"
+                      class="qm-sparkline__area"
+                    />
+                    <polyline
+                      v-if="decisionHistoryEntries.filter(e => e.stateOfChargePercent !== null).length > 1"
+                      :points="decisionHistoryEntries.slice(0, 96).filter(e => e.stateOfChargePercent !== null)
+                        .map((e, i, arr) => `${(i / (arr.length - 1)) * 100},${56 - ((e.stateOfChargePercent ?? 0) / 100) * 52}`)
+                        .join(' ')"
+                      class="qm-sparkline__line"
+                    />
+                  </svg>
+                </div>
+                <div class="qm-time-axis">
+                  <span>{{ historyTimeLabels.from }}</span>
+                  <span>{{ historyTimeLabels.mid }}</span>
+                  <span>{{ historyTimeLabels.to }}</span>
+                </div>
+              </div>
+              <!-- Right: battery power sparkline -->
+              <div>
+                <div class="qm-section__head" style="margin-bottom:4px;font-size:0.55rem;">AKKULEISTUNG (W)</div>
+                <div class="qm-batt-sparkline">
+                  <svg viewBox="0 0 100 50" preserveAspectRatio="none" class="qm-batt-sparkline__svg">
+                    <!-- zero line -->
+                    <line x1="0" y1="25" x2="100" y2="25" class="qm-batt-sparkline__zero" />
+                    <text x="1" y="10" class="qm-batt-sparkline__lbl">Laden ↑</text>
+                    <text x="1" y="46" class="qm-batt-sparkline__lbl">Entl. ↓</text>
+                    <polygon v-if="historyBatteryAreaPoints" :points="historyBatteryAreaPoints" class="qm-batt-sparkline__area" />
+                    <polyline v-if="historyBatteryPoints" :points="historyBatteryPoints" class="qm-batt-sparkline__line" />
+                  </svg>
+                </div>
+                <div class="qm-time-axis">
+                  <span>{{ historyTimeLabels.from }}</span>
+                  <span>{{ historyTimeLabels.mid }}</span>
+                  <span>{{ historyTimeLabels.to }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Decision heatmap with time axis -->
+            <div class="qm-section__head" style="font-size:0.55rem;margin-top:4px;">ENTSCHEIDUNGSHISTORIE</div>
+            <div class="qm-history-grid">
+              <div
+                v-for="entry in decisionHistoryEntries.slice(0, 96)"
+                :key="entry.id"
+                class="qm-history-cell"
+                :class="missionHistoryDotClass(entry.decisionState)"
+                :title="`${new Date(entry.decidedAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} · ${getDecisionLabel(entry.decisionState, entry.chargeSource)} · ${formatPercent(entry.stateOfChargePercent)}`"
+              />
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div class="qm-legend">
+                <span class="qm-legend__dot qm-dot--charge" /> Laden
+                <span class="qm-legend__dot qm-dot--discharge" /> Entladen
+                <span class="qm-legend__dot qm-dot--idle" /> Idle
+              </div>
+              <div class="qm-time-axis" style="margin:0;">
+                <span>{{ historyTimeLabels.from }}</span>
+                <span style="margin:0 8px;">→</span>
+                <span>{{ historyTimeLabels.to }}</span>
+              </div>
+            </div>
+          </template>
+          <div v-else class="qm-section__empty">Noch kein Verlauf</div>
+        </div>
+      </div>
+    </template>
+
+    <template v-else-if="usesControlCenterDashboard">
       <header class="control-center-header">
         <div>
           <span class="control-center-header__eyebrow">{{ usesFlowCenterDashboard ? 'Flow Center' : 'Control Charts' }}</span>
