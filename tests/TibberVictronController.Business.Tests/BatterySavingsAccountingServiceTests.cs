@@ -50,6 +50,40 @@ public sealed class BatterySavingsAccountingServiceTests
     }
 
     [Fact]
+    public async Task RefreshAsyncAccountsForTransitionsThroughZeroBatteryPower()
+    {
+        // Battery charges from grid, then a telemetry sample arrives at exactly 0 W (idle
+        // transition), then it discharges. Before the fix, Math.Sign(0)==0 caused every pair
+        // that touched a 0 W sample to be discarded, leaving net savings at zero.
+        var liveRepository = new FakeLiveConsumptionRepository(new[]
+        {
+            CreateSample(0,  houseConsumptionWatts: 0m,    gridPowerWatts: 1000m, batteryPowerWatts: 1000m,  pvProductionWatts: 0m),
+            CreateSample(5,  houseConsumptionWatts: 0m,    gridPowerWatts: 0m,    batteryPowerWatts: 0m,     pvProductionWatts: 0m),
+            CreateSample(10, houseConsumptionWatts: 2000m, gridPowerWatts: 0m,    batteryPowerWatts: -2000m, pvProductionWatts: 0m),
+            CreateSample(15, houseConsumptionWatts: 2000m, gridPowerWatts: 0m,    batteryPowerWatts: -2000m, pvProductionWatts: 0m)
+        });
+        var savingsRepository = new FakeBatterySavingsRepository();
+        var service = CreateService(
+            liveRepository,
+            savingsRepository,
+            new FakeTibberPriceForecastProvider(new[] { CreatePriceSlot(0, 30, 0.30m) }));
+
+        await service.RefreshAsync(new BatterySavingsQuery
+        {
+            StartDate = new DateOnly(2026, 6, 4),
+            EndDate = new DateOnly(2026, 6, 4),
+            Currency = "EUR"
+        });
+
+        var summary = Assert.Single(savingsRepository.Summaries);
+        Assert.Equal(0.0417m, summary.GridChargedEnergyKwh);
+        Assert.Equal(0.0125m, summary.GridChargeCost);
+        Assert.Equal(0.2500m, summary.DischargedEnergyKwh);
+        Assert.Equal(0.0750m, summary.DischargeAvoidedCost);
+        Assert.Equal(0.0625m, summary.NetSavings);
+    }
+
+    [Fact]
     public async Task RefreshAsyncSkipsTelemetryGaps()
     {
         var liveRepository = new FakeLiveConsumptionRepository(new[]

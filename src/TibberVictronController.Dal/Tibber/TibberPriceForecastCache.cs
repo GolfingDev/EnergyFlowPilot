@@ -31,10 +31,14 @@ public sealed class TibberPriceForecastCache
                     return cacheEntry.ForecastSlots;
                 }
 
-                if (cacheEntry.ForecastSlots is null &&
-                    cacheEntry.ErrorMessage is not null &&
+                if (cacheEntry.ErrorMessage is not null &&
                     nowUtc - cacheEntry.CreatedAtUtc < ErrorRetryDelay)
                 {
+                    if (cacheEntry.ForecastSlots is not null)
+                    {
+                        return cacheEntry.ForecastSlots;
+                    }
+
                     throw new TibberApiException(cacheEntry.ErrorMessage);
                 }
             }
@@ -45,8 +49,9 @@ public sealed class TibberPriceForecastCache
                 entries[cacheKey] = TibberPriceForecastCacheEntry.FromForecast(nowUtc, forecastSlots);
                 return forecastSlots;
             }
-            catch (Exception) when (cacheEntry?.ForecastSlots is not null)
+            catch (Exception exception) when (cacheEntry?.ForecastSlots is not null)
             {
+                entries[cacheKey] = TibberPriceForecastCacheEntry.FromErrorWithStale(nowUtc, cacheEntry.ForecastSlots, exception.Message);
                 return cacheEntry.ForecastSlots;
             }
             catch (Exception exception)
@@ -91,6 +96,14 @@ public sealed class TibberPriceForecastCache
             string errorMessage)
         {
             return new TibberPriceForecastCacheEntry(createdAtUtc, null, errorMessage);
+        }
+
+        public static TibberPriceForecastCacheEntry FromErrorWithStale(
+            DateTimeOffset createdAtUtc,
+            IReadOnlyList<TibberPriceForecastSlot> staleForecastSlots,
+            string errorMessage)
+        {
+            return new TibberPriceForecastCacheEntry(createdAtUtc, staleForecastSlots, errorMessage);
         }
     }
 }

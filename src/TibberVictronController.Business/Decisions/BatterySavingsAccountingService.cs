@@ -136,7 +136,10 @@ public sealed class BatterySavingsAccountingService : IBatterySavingsAccountingS
                 continue;
             }
 
-            if (Math.Sign(previous.BatteryPowerWatts.Value) != Math.Sign(current.BatteryPowerWatts.Value))
+            // Skip only a genuine direction reversal (positive ↔ negative).
+            // Multiplying the two values gives a negative product only when they have opposite signs.
+            // Math.Sign(0)==0 would otherwise incorrectly reject transitions to/from idle.
+            if (previous.BatteryPowerWatts.Value * current.BatteryPowerWatts.Value < 0)
             {
                 continue;
             }
