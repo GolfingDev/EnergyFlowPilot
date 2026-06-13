@@ -18,6 +18,8 @@ dist/
 *.suo
 *.rsuser
 
+**/logs/**/*.log
+
 appsettings.*.local.json
 *.db
 *.db-shm
