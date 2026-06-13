@@ -254,6 +254,11 @@ function setMissionScheme(s: MissionScheme): void {
   localStorage.setItem('efp-mission-scheme', s);
 }
 
+function setMissionTab(tab: MissionTab): void {
+  missionActiveTab.value = tab;
+  localStorage.setItem('efp-mission-tab', tab);
+}
+
 const forecastSocPoints = computed(() => {
   const entries = forecast.value?.entries?.slice(0, 24);
   if (!entries || entries.length < 2) return '';
@@ -1142,13 +1147,13 @@ onBeforeUnmount(() => {
         <nav class="qm-tab-bar" role="tablist">
           <button role="tab" :aria-selected="missionActiveTab === 'forecast'"
             :class="{ 'qm-tab-bar__btn--active': missionActiveTab === 'forecast' }"
-            @click="missionActiveTab = 'forecast'; localStorage.setItem('efp-mission-tab', 'forecast')">Forecast</button>
+            @click="setMissionTab('forecast')">Forecast</button>
           <button role="tab" :aria-selected="missionActiveTab === 'history'"
             :class="{ 'qm-tab-bar__btn--active': missionActiveTab === 'history' }"
-            @click="missionActiveTab = 'history'; localStorage.setItem('efp-mission-tab', 'history')">Entscheidungshistorie</button>
+            @click="setMissionTab('history')">Entscheidungshistorie</button>
           <button role="tab" :aria-selected="missionActiveTab === 'energy'"
             :class="{ 'qm-tab-bar__btn--active': missionActiveTab === 'energy' }"
-            @click="missionActiveTab = 'energy'; localStorage.setItem('efp-mission-tab', 'energy')">Energiebilanz</button>
+            @click="setMissionTab('energy')">Energiebilanz</button>
         </nav>
 
         <div class="qm-tab-panel">
