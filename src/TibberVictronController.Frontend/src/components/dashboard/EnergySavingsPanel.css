@@ -56,6 +56,83 @@
   color: var(--efp-muted);
 }
 
+.savings-period-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-self: flex-start;
+}
+
+.savings-period-tabs button {
+  border: 1px solid var(--efp-border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--efp-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 4px 9px;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.savings-period-tabs button:hover {
+  border-color: var(--efp-primary);
+  color: var(--efp-text);
+}
+
+.savings-period-tabs__btn--active {
+  border-color: var(--efp-primary) !important;
+  background: color-mix(in srgb, var(--efp-primary) 10%, transparent) !important;
+  color: var(--efp-primary) !important;
+  font-weight: 600;
+}
+
+.energy-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--efp-border-soft);
+}
+
+.energy-bar-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 140px) 1fr 66px;
+  align-items: center;
+  gap: 10px;
+}
+
+.energy-bar-row__label {
+  font-size: 0.72rem;
+  color: var(--efp-muted);
+}
+
+.energy-bar-row__track {
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--efp-muted) 15%, transparent);
+  overflow: hidden;
+}
+
+.energy-bar-row__fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+  min-width: 0;
+}
+
+.energy-bar-row__fill--pv       { background: #22c55e; }
+.energy-bar-row__fill--grid     { background: var(--efp-primary, #f59e0b); }
+.energy-bar-row__fill--discharge { background: #6366f1; }
+
+.energy-bar-row__val {
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--efp-text);
+  text-align: right;
+}
+
 @media (max-width: 760px) {
   .panel__header {
     flex-direction: column;

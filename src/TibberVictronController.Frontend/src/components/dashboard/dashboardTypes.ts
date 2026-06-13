@@ -138,7 +138,7 @@ export interface ApiErrorDto {
   TraceId?: string;
 }
 
-export type SavingsPeriod = 'day' | 'week' | 'month' | 'year';
+export type SavingsPeriod = 'day' | 'yesterday' | 'week' | 'month' | 'year';
 
 export interface SavingsPeriodOption {
   label: string;

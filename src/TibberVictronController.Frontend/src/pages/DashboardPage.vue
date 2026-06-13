@@ -47,7 +47,13 @@ const isManualChargeBusy = ref(false);
 const manualChargeDurationMinutes = ref(30);
 const manualChargePowerKw = ref(2.5);
 const autoRefreshIntervalSeconds = ref(60);
-const savingsPeriod = ref<SavingsPeriod>('day');
+const storedSavingsPeriod = localStorage.getItem('efp-savings-period');
+const savingsPeriod = ref<SavingsPeriod>(
+  storedSavingsPeriod === 'day' || storedSavingsPeriod === 'yesterday' ||
+  storedSavingsPeriod === 'week' || storedSavingsPeriod === 'month' || storedSavingsPeriod === 'year'
+    ? storedSavingsPeriod
+    : 'day'
+);
 const decisionHistoryHours = ref(24);
 const decisionHistoryFromLocal = ref('');
 const decisionHistoryToLocal = ref('');
@@ -69,7 +75,8 @@ let hasReportedLiveUpdateError = false;
 let hasReportedLiveTelemetryPollError = false;
 
 const savingsPeriodOptions: readonly SavingsPeriodOption[] = [
-  { label: 'Tag', value: 'day' },
+  { label: 'Heute', value: 'day' },
+  { label: 'Gestern', value: 'yesterday' },
   { label: 'Woche', value: 'week' },
   { label: 'Monat', value: 'month' },
   { label: 'Jahr', value: 'year' }
@@ -218,7 +225,6 @@ const controlCenterWarnings = computed(() => {
   }];
 });
 
-const pvWatts = computed(() => liveTelemetry.value ? null : (decision.value?.currentPvProductionWatts ?? 0));
 const gridWatts = computed(() => liveTelemetry.value?.currentGridImportWatts ?? decision.value?.currentGridImportWatts ?? 0);
 const batteryWatts = computed(() => liveTelemetry.value?.currentBatteryPowerWatts ?? 0);
 const socPct = computed(() => liveTelemetry.value?.stateOfChargePercent ?? decision.value?.stateOfChargePercent ?? 0);
@@ -230,6 +236,14 @@ const missionSchemes = [
   { id: 'steel',  label: 'Steel',  color: '#94a3b8' }
 ] as const;
 type MissionScheme = 'amber' | 'ocean' | 'steel';
+type MissionTab = 'forecast' | 'history' | 'energy';
+const storedMissionTab = localStorage.getItem('efp-mission-tab');
+const missionActiveTab = ref<MissionTab>(
+  storedMissionTab === 'history' || storedMissionTab === 'energy' || storedMissionTab === 'forecast'
+    ? storedMissionTab
+    : 'forecast'
+);
+
 const missionScheme = ref<MissionScheme>(
   (['amber', 'ocean', 'steel'].includes(localStorage.getItem('efp-mission-scheme') ?? '')
     ? localStorage.getItem('efp-mission-scheme') as MissionScheme
@@ -584,9 +598,15 @@ function roundUpToNextQuarterHourUtc(value: Date): Date {
 }
 
 function createSavingsUrl(): string {
+  const today = new Date();
+  const apiPeriod = savingsPeriod.value === 'yesterday' ? 'day' : savingsPeriod.value;
+  const referenceDate = savingsPeriod.value === 'yesterday'
+    ? new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1).toISOString().slice(0, 10)
+    : today.toISOString().slice(0, 10);
+
   const parameters = new URLSearchParams({
-    period: savingsPeriod.value,
-    referenceDate: new Date().toISOString().slice(0, 10),
+    period: apiPeriod,
+    referenceDate,
     currency: 'EUR'
   });
 
@@ -668,6 +688,7 @@ function getDecisionHistoryVisibleHours(): number {
 
 async function changeSavingsPeriod(period: SavingsPeriod): Promise<void> {
   savingsPeriod.value = period;
+  localStorage.setItem('efp-savings-period', period);
   await loadSavings(true);
 }
 
@@ -1116,163 +1137,40 @@ onBeforeUnmount(() => {
         </aside>
       </div>
 
-      <!-- Bottom data zone: price forecast + history with SoC sparkline -->
-      <div class="qm-data-zone">
-        <!-- Price forecast bars with hour axis -->
-        <div class="qm-section">
-          <div class="qm-section__head">
-            <span>PREISPROGNOSE</span>
-            <span class="qm-section__head-val" v-if="decision?.tibberPricePerKwh">
-              Jetzt {{ formatPrice(decision.tibberPricePerKwh, decision.tibberPriceCurrency) }} ·
-              <span v-if="forecast?.entries?.length">
-                Min {{ formatPrice(Math.min(...forecast.entries.slice(0,24).map(e => e.tibberPricePerKwh)), forecast.entries[0].tibberPriceCurrency) }} ·
-                Max {{ formatPrice(Math.max(...forecast.entries.slice(0,24).map(e => e.tibberPricePerKwh)), forecast.entries[0].tibberPriceCurrency) }}
-              </span>
-            </span>
-          </div>
-          <div v-if="forecast?.entries?.length" class="qm-price-chart">
-            <div class="qm-price-chart-inner">
-              <!-- Price bars column -->
-              <div>
-                <div class="qm-section__head" style="margin-bottom:4px;font-size:0.55rem;">STROMPREIS (€/kWh)</div>
-                <div class="qm-price-bars">
-                  <template v-for="(entry, i) in forecast.entries.slice(0, 24)" :key="entry.startsAtUtc">
-                    <div class="qm-price-col">
-                      <div
-                        class="qm-price-bar"
-                        :class="[missionPriceBarClass(entry.decisionState), i === 0 ? 'qm-price-bar--now' : '']"
-                        :style="{ height: missionPriceBarHeight(entry.tibberPricePerKwh, Math.max(...forecast.entries.slice(0,24).map(e => e.tibberPricePerKwh))) }"
-                        :title="`${new Date(entry.startsAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} · ${formatPrice(entry.tibberPricePerKwh, entry.tibberPriceCurrency)}`"
-                      />
-                      <span v-if="i % 4 === 0" class="qm-price-hour">
-                        {{ new Date(entry.startsAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) }}
-                      </span>
-                    </div>
-                  </template>
-                </div>
-                <div class="qm-price-legend">
-                  <span class="qm-price-legend__dot qm-price-bar--charge" /> Laden
-                  <span class="qm-price-legend__dot qm-price-bar--discharge" /> Entladen
-                  <span class="qm-price-legend__dot qm-price-bar--idle" /> Idle
-                </div>
-              </div>
-              <!-- SoC forecast line -->
-              <div>
-                <div class="qm-section__head" style="margin-bottom:4px;font-size:0.55rem;">AKKU-SOC PROGNOSE</div>
-                <div class="qm-forecast-soc">
-                  <svg viewBox="0 0 100 60" preserveAspectRatio="none" class="qm-forecast-soc__svg">
-                    <!-- reference lines at 80%, 50%, 20% -->
-                    <line x1="0" y1="14" x2="100" y2="14" class="qm-sparkline__ref" />
-                    <line x1="0" y1="30" x2="100" y2="30" class="qm-sparkline__ref" />
-                    <line x1="0" y1="46" x2="100" y2="46" class="qm-sparkline__ref" />
-                    <text x="1" y="13" class="qm-forecast-soc__lbl">80%</text>
-                    <text x="1" y="29" class="qm-forecast-soc__lbl">50%</text>
-                    <text x="1" y="45" class="qm-forecast-soc__lbl">20%</text>
-                    <polygon v-if="forecastSocAreaPoints" :points="forecastSocAreaPoints" class="qm-forecast-soc__area" />
-                    <polyline v-if="forecastSocPoints" :points="forecastSocPoints" class="qm-forecast-soc__line" />
-                  </svg>
-                </div>
-                <div class="qm-time-axis">
-                  <span>{{ forecast.entries.length ? new Date(forecast.entries[0].startsAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '' }}</span>
-                  <span>+12h</span>
-                  <span>{{ forecast.entries.length ? new Date(forecast.entries[Math.min(23, forecast.entries.length-1)].startsAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '' }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div v-else class="qm-section__empty">Kein Forecast verfügbar</div>
-        </div>
+      <!-- Bottom data zone: tabbed panels -->
+      <div class="qm-data-zone qm-data-zone--tabs">
+        <nav class="qm-tab-bar" role="tablist">
+          <button role="tab" :aria-selected="missionActiveTab === 'forecast'"
+            :class="{ 'qm-tab-bar__btn--active': missionActiveTab === 'forecast' }"
+            @click="missionActiveTab = 'forecast'; localStorage.setItem('efp-mission-tab', 'forecast')">Forecast</button>
+          <button role="tab" :aria-selected="missionActiveTab === 'history'"
+            :class="{ 'qm-tab-bar__btn--active': missionActiveTab === 'history' }"
+            @click="missionActiveTab = 'history'; localStorage.setItem('efp-mission-tab', 'history')">Entscheidungshistorie</button>
+          <button role="tab" :aria-selected="missionActiveTab === 'energy'"
+            :class="{ 'qm-tab-bar__btn--active': missionActiveTab === 'energy' }"
+            @click="missionActiveTab = 'energy'; localStorage.setItem('efp-mission-tab', 'energy')">Energiebilanz</button>
+        </nav>
 
-        <!-- History: SoC sparkline + decision heatmap -->
-        <div class="qm-section">
-          <div class="qm-section__head">
-            <span>VERLAUF</span>
-            <span class="qm-section__head-val">{{ decisionHistoryEntries.length }} Einträge · letzte 24h</span>
-          </div>
-          <template v-if="decisionHistoryEntries.length">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-              <!-- Left: SoC sparkline -->
-              <div>
-                <div class="qm-section__head" style="margin-bottom:4px;font-size:0.55rem;">LADESTAND (SoC)</div>
-                <div class="qm-soc-sparkline">
-                  <svg viewBox="0 0 100 60" preserveAspectRatio="none" class="qm-sparkline-svg">
-                    <line x1="0" y1="4" x2="100" y2="4" class="qm-sparkline__ref" />
-                    <line x1="0" y1="30" x2="100" y2="30" class="qm-sparkline__ref" />
-                    <line x1="0" y1="56" x2="100" y2="56" class="qm-sparkline__ref" />
-                    <text x="1" y="13" class="qm-sparkline__lbl">100%</text>
-                    <text x="1" y="39" class="qm-sparkline__lbl">50%</text>
-                    <text x="1" y="58" class="qm-sparkline__lbl">0%</text>
-                    <polygon
-                      v-if="decisionHistoryEntries.filter(e => e.stateOfChargePercent !== null).length > 1"
-                      :points="[
-                        '0,56',
-                        ...decisionHistoryEntries.slice(0, 96).filter(e => e.stateOfChargePercent !== null)
-                          .map((e, i, arr) => `${(i / (arr.length - 1)) * 100},${56 - ((e.stateOfChargePercent ?? 0) / 100) * 52}`),
-                        '100,56'
-                      ].join(' ')"
-                      class="qm-sparkline__area"
-                    />
-                    <polyline
-                      v-if="decisionHistoryEntries.filter(e => e.stateOfChargePercent !== null).length > 1"
-                      :points="decisionHistoryEntries.slice(0, 96).filter(e => e.stateOfChargePercent !== null)
-                        .map((e, i, arr) => `${(i / (arr.length - 1)) * 100},${56 - ((e.stateOfChargePercent ?? 0) / 100) * 52}`)
-                        .join(' ')"
-                      class="qm-sparkline__line"
-                    />
-                  </svg>
-                </div>
-                <div class="qm-time-axis">
-                  <span>{{ historyTimeLabels.from }}</span>
-                  <span>{{ historyTimeLabels.mid }}</span>
-                  <span>{{ historyTimeLabels.to }}</span>
-                </div>
-              </div>
-              <!-- Right: battery power sparkline -->
-              <div>
-                <div class="qm-section__head" style="margin-bottom:4px;font-size:0.55rem;">AKKULEISTUNG (W)</div>
-                <div class="qm-batt-sparkline">
-                  <svg viewBox="0 0 100 50" preserveAspectRatio="none" class="qm-batt-sparkline__svg">
-                    <!-- zero line -->
-                    <line x1="0" y1="25" x2="100" y2="25" class="qm-batt-sparkline__zero" />
-                    <text x="1" y="10" class="qm-batt-sparkline__lbl">Laden ↑</text>
-                    <text x="1" y="46" class="qm-batt-sparkline__lbl">Entl. ↓</text>
-                    <polygon v-if="historyBatteryAreaPoints" :points="historyBatteryAreaPoints" class="qm-batt-sparkline__area" />
-                    <polyline v-if="historyBatteryPoints" :points="historyBatteryPoints" class="qm-batt-sparkline__line" />
-                  </svg>
-                </div>
-                <div class="qm-time-axis">
-                  <span>{{ historyTimeLabels.from }}</span>
-                  <span>{{ historyTimeLabels.mid }}</span>
-                  <span>{{ historyTimeLabels.to }}</span>
-                </div>
-              </div>
-            </div>
+        <div class="qm-tab-panel">
+          <ForecastChartPanel v-if="missionActiveTab === 'forecast'"
+            :forecast="forecast" :forecast-load-error="forecastLoadError" />
 
-            <!-- Decision heatmap with time axis -->
-            <div class="qm-section__head" style="font-size:0.55rem;margin-top:4px;">ENTSCHEIDUNGSHISTORIE</div>
-            <div class="qm-history-grid">
-              <div
-                v-for="entry in decisionHistoryEntries.slice(0, 96)"
-                :key="entry.id"
-                class="qm-history-cell"
-                :class="missionHistoryDotClass(entry.decisionState)"
-                :title="`${new Date(entry.decidedAtUtc).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} · ${getDecisionLabel(entry.decisionState, entry.chargeSource)} · ${formatPercent(entry.stateOfChargePercent)}`"
-              />
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <div class="qm-legend">
-                <span class="qm-legend__dot qm-dot--charge" /> Laden
-                <span class="qm-legend__dot qm-dot--discharge" /> Entladen
-                <span class="qm-legend__dot qm-dot--idle" /> Idle
-              </div>
-              <div class="qm-time-axis" style="margin:0;">
-                <span>{{ historyTimeLabels.from }}</span>
-                <span style="margin:0 8px;">→</span>
-                <span>{{ historyTimeLabels.to }}</span>
-              </div>
-            </div>
-          </template>
-          <div v-else class="qm-section__empty">Noch kein Verlauf</div>
+          <DecisionHistoryChartPanel v-else-if="missionActiveTab === 'history'"
+            :entries="decisionHistoryEntries"
+            :hours="decisionHistoryHours"
+            :range-from-local="decisionHistoryFromLocal"
+            :range-to-local="decisionHistoryToLocal"
+            @change-hours="changeDecisionHistoryHours"
+            @change-range="changeDecisionHistoryRange"
+            @reset-range="resetDecisionHistoryRange"
+          />
+
+          <EnergySavingsPanel v-else-if="missionActiveTab === 'energy'"
+            :savings="savings"
+            :period="savingsPeriod"
+            :period-options="savingsPeriodOptions"
+            @change-period="changeSavingsPeriod"
+          />
         </div>
       </div>
     </template>
@@ -1543,7 +1441,12 @@ onBeforeUnmount(() => {
           </main>
 
           <aside class="dashboard-side">
-            <EnergySavingsPanel :savings="savings" />
+            <EnergySavingsPanel
+              :savings="savings"
+              :period="savingsPeriod"
+              :period-options="savingsPeriodOptions"
+              @change-period="changeSavingsPeriod"
+            />
           </aside>
         </div>
       </div>

@@ -832,7 +832,7 @@
 
 .qm-line--solar  { stroke: rgba(251, 191, 36, 0.8); }
 .qm-line--import { stroke: rgba(245, 158, 11, 0.7); }
-.qm-line--export { stroke: rgba(0, 184, 148, 0.8); animation-name: qm-dash-rev; }
+.qm-line--export { stroke: rgba(0, 184, 148, 0.8); }
 .qm-line--house  { stroke: rgba(148, 163, 184, 0.7); }
 
 /* Nodes */
@@ -1818,4 +1818,50 @@
 
 @media (max-width: 700px) {
   .qm-price-chart-inner { grid-template-columns: 1fr; }
+}
+
+/* ── Tabbed bottom zone ──────────────────────────────────────────────── */
+
+.qm-data-zone--tabs {
+  border-top: 1px solid color-mix(in srgb, var(--qm-p, #f59e0b) 18%, transparent);
+}
+
+.qm-tab-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--qm-p, #f59e0b) 14%, transparent);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.qm-tab-bar button {
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--efp-muted, #888);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 10px 18px;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  margin-bottom: -1px;
+}
+
+.qm-tab-bar button:hover {
+  color: var(--efp-text, #e8e0d0);
+}
+
+.qm-tab-bar__btn--active {
+  color: var(--qm-p, #f59e0b) !important;
+  border-bottom-color: var(--qm-p, #f59e0b) !important;
+}
+
+.qm-tab-panel {
+  min-height: 420px;
+  overflow: hidden;
+}
+
+.qm-tab-panel > * {
+  height: 100%;
 }

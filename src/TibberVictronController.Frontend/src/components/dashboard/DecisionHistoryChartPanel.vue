@@ -703,7 +703,6 @@ onBeforeUnmount(() => {
     <div v-if="entries.length" class="decision-history-stack">
       <section class="decision-history-chart decision-history-chart--soc">
         <div class="decision-history-chart__title">
-          <span>1</span>
           <strong>SoC (%)</strong>
         </div>
         <canvas ref="socCanvas" aria-label="Historischer Akku-SoC"></canvas>
@@ -711,7 +710,6 @@ onBeforeUnmount(() => {
 
       <section class="decision-history-chart decision-history-chart--power">
         <div class="decision-history-chart__title">
-          <span>2</span>
           <strong>Leistung (kW)</strong>
         </div>
         <canvas ref="powerCanvas" aria-label="Historische Akku- und Netzleistung"></canvas>
@@ -719,7 +717,6 @@ onBeforeUnmount(() => {
 
       <section class="decision-history-chart decision-history-chart--decision">
         <div class="decision-history-chart__title">
-          <span>3</span>
           <strong>Entscheidung</strong>
         </div>
         <canvas ref="decisionCanvas" aria-label="Historische Zielleistung und Entscheidungsmodus"></canvas>

@@ -318,14 +318,6 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div v-if="nextForecastEntries.length" class="forecast-list">
-      <div v-for="entry in nextForecastEntries" :key="entry.startsAtUtc" class="forecast-row">
-        <span>{{ formatDateTime(entry.startsAtUtc) }}</span>
-        <strong>{{ translateDecisionState(entry.decisionState) }}</strong>
-        <span>{{ formatPercent(entry.stateOfChargeAfterPercent) }}</span>
-        <span>{{ formatPrice(entry.tibberPricePerKwh, entry.tibberPriceCurrency) }}</span>
-      </div>
-    </div>
   </section>
 </template>
 
