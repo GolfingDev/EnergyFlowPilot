@@ -125,6 +125,35 @@
 .energy-bar-row__fill--grid     { background: var(--efp-primary, #f59e0b); }
 .energy-bar-row__fill--discharge { background: #6366f1; }
 
+.energy-bars--loading {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.energy-bars__spinner {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 0 2px;
+}
+
+.energy-bars__dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--efp-primary, #f59e0b);
+  animation: efp-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.energy-bars__dot:nth-child(2) { animation-delay: 0.2s; }
+.energy-bars__dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes efp-dot-pulse {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40%            { transform: scale(1);   opacity: 1;   }
+}
+
 .energy-bar-row__val {
   font-size: 0.72rem;
   font-weight: 600;

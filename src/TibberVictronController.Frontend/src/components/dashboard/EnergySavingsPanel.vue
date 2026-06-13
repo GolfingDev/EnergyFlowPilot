@@ -7,6 +7,7 @@ const props = defineProps<{
   savings: BatterySavingsResponseDto | null;
   period?: SavingsPeriod;
   periodOptions?: readonly SavingsPeriodOption[];
+  loading?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -43,34 +44,40 @@ function barPct(value: number): string {
       </div>
     </div>
 
-    <div v-if="savings" class="energy-bars">
-      <div class="energy-bar-row">
-        <span class="energy-bar-row__label">Aus PV geladen</span>
-        <div class="energy-bar-row__track">
-          <div class="energy-bar-row__fill energy-bar-row__fill--pv"
-               :style="{ width: barPct(savings.aggregate.pvChargedEnergyKwh) }" />
+    <div :class="['energy-bars', { 'energy-bars--loading': loading }]">
+      <template v-if="loading || savings">
+        <div class="energy-bar-row">
+          <span class="energy-bar-row__label">Aus PV geladen</span>
+          <div class="energy-bar-row__track">
+            <div class="energy-bar-row__fill energy-bar-row__fill--pv"
+                 :style="{ width: savings ? barPct(savings.aggregate.pvChargedEnergyKwh) : '0%' }" />
+          </div>
+          <span class="energy-bar-row__val">{{ savings ? `${formatNumber(savings.aggregate.pvChargedEnergyKwh, 2)} kWh` : '–' }}</span>
         </div>
-        <span class="energy-bar-row__val">{{ formatNumber(savings.aggregate.pvChargedEnergyKwh, 2) }} kWh</span>
-      </div>
-      <div class="energy-bar-row">
-        <span class="energy-bar-row__label">Aus Netz geladen</span>
-        <div class="energy-bar-row__track">
-          <div class="energy-bar-row__fill energy-bar-row__fill--grid"
-               :style="{ width: barPct(savings.aggregate.gridChargedEnergyKwh) }" />
+        <div class="energy-bar-row">
+          <span class="energy-bar-row__label">Aus Netz geladen</span>
+          <div class="energy-bar-row__track">
+            <div class="energy-bar-row__fill energy-bar-row__fill--grid"
+                 :style="{ width: savings ? barPct(savings.aggregate.gridChargedEnergyKwh) : '0%' }" />
+          </div>
+          <span class="energy-bar-row__val">{{ savings ? `${formatNumber(savings.aggregate.gridChargedEnergyKwh, 2)} kWh` : '–' }}</span>
         </div>
-        <span class="energy-bar-row__val">{{ formatNumber(savings.aggregate.gridChargedEnergyKwh, 2) }} kWh</span>
-      </div>
-      <div class="energy-bar-row">
-        <span class="energy-bar-row__label">Entladen</span>
-        <div class="energy-bar-row__track">
-          <div class="energy-bar-row__fill energy-bar-row__fill--discharge"
-               :style="{ width: barPct(savings.aggregate.dischargedEnergyKwh) }" />
+        <div class="energy-bar-row">
+          <span class="energy-bar-row__label">Entladen</span>
+          <div class="energy-bar-row__track">
+            <div class="energy-bar-row__fill energy-bar-row__fill--discharge"
+                 :style="{ width: savings ? barPct(savings.aggregate.dischargedEnergyKwh) : '0%' }" />
+          </div>
+          <span class="energy-bar-row__val">{{ savings ? `${formatNumber(savings.aggregate.dischargedEnergyKwh, 2)} kWh` : '–' }}</span>
         </div>
-        <span class="energy-bar-row__val">{{ formatNumber(savings.aggregate.dischargedEnergyKwh, 2) }} kWh</span>
-      </div>
+        <div v-if="loading" class="energy-bars__spinner" aria-label="Lade Daten…">
+          <span class="energy-bars__dot" />
+          <span class="energy-bars__dot" />
+          <span class="energy-bars__dot" />
+        </div>
+      </template>
+      <p v-else class="empty-state">Noch keine Ersparnisdaten verfügbar.</p>
     </div>
-
-    <p v-else class="empty-state">Noch keine Ersparnisdaten verfuegbar.</p>
   </section>
 </template>
 

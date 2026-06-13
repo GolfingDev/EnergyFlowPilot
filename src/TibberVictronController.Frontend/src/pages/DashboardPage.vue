@@ -64,7 +64,7 @@ const dashboardViewMode = ref<DashboardViewMode>(
     : 'visual');
 let autoRefreshTimer: ReturnType<typeof window.setInterval> | null = null;
 let isForecastLoading = false;
-let isSavingsLoading = false;
+const isSavingsLoading = ref(false);
 let lastForecastUrl: string | null = null;
 let lastSavingsUrl: string | null = null;
 let liveConnection: HubConnection | null = null;
@@ -562,7 +562,7 @@ async function loadForecast(force = false): Promise<void> {
 }
 
 async function loadSavings(force = false): Promise<void> {
-  if (isSavingsLoading) {
+  if (isSavingsLoading.value) {
     return;
   }
 
@@ -571,7 +571,7 @@ async function loadSavings(force = false): Promise<void> {
     return;
   }
 
-  isSavingsLoading = true;
+  isSavingsLoading.value = true;
   try {
     savings.value = await fetchJson<BatterySavingsResponseDto>(savingsUrl);
     lastSavingsUrl = savingsUrl;
@@ -582,7 +582,7 @@ async function loadSavings(force = false): Promise<void> {
       ...createLoadError(error)
     });
   } finally {
-    isSavingsLoading = false;
+    isSavingsLoading.value = false;
   }
 }
 
@@ -1174,6 +1174,7 @@ onBeforeUnmount(() => {
             :savings="savings"
             :period="savingsPeriod"
             :period-options="savingsPeriodOptions"
+            :loading="isSavingsLoading"
             @change-period="changeSavingsPeriod"
           />
         </div>
@@ -1450,6 +1451,7 @@ onBeforeUnmount(() => {
               :savings="savings"
               :period="savingsPeriod"
               :period-options="savingsPeriodOptions"
+              :loading="isSavingsLoading"
               @change-period="changeSavingsPeriod"
             />
           </aside>
