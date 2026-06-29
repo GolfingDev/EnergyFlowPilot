@@ -916,7 +916,7 @@ onBeforeUnmount(() => {
           </span>
           <span class="qm-header__sep" />
           <span class="qm-header__kv"><em>MQTT</em>{{ status?.victronMqttStatus ?? '—' }}</span>
-          <span class="qm-header__kv"><em>TIBBER</em>{{ formatPrice(decision?.tibberPricePerKwh, decision?.tibberPriceCurrency) }}/kWh</span>
+          <span class="qm-header__kv"><em>TIBBER</em>{{ formatPrice(decision?.tibberPricePerKwh, decision?.tibberPriceCurrency) }}</span>
         </div>
         <div class="qm-header__right">
           <span class="qm-header__refresh-hint">{{ autoRefreshLabel }}</span>
