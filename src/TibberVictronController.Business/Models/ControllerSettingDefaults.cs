@@ -151,7 +151,7 @@ public static class ControllerSettingDefaults
         new(MqttPortKey, "1883", ControllerSettingSensitivity.Normal),
         new(MqttUsernameKey, null, ControllerSettingSensitivity.Sensitive),
         new(MqttPasswordKey, null, ControllerSettingSensitivity.Sensitive),
-        new(VictronHostKey, "192.168.69.92", ControllerSettingSensitivity.Normal),
+        new(VictronHostKey, "192.168.x.x", ControllerSettingSensitivity.Normal),
         new(VictronPortKey, "1883", ControllerSettingSensitivity.Normal),
         new(VictronPortalIdKey, "portal-id", ControllerSettingSensitivity.Normal),
         new(VictronKeepAliveSecondsKey, "15", ControllerSettingSensitivity.Normal),

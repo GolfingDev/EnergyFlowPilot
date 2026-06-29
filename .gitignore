@@ -23,6 +23,7 @@ dist/
 appsettings.*.local.json
 appsettings.json.bak
 /appsettings.json
+/AI-FIRST/
 *.db
 *.db-shm
 *.db-wal
