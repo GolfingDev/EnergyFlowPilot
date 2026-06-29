@@ -43,7 +43,7 @@ appsettings.json.bak
 /appsettings.json
 /appsettings.Production.json
 
-# Legacy root-level directories from old architecture
+# Legacy root-level files and directories from old architecture
 /AI-FIRST/
 /Controllers/
 /Data/
@@ -52,3 +52,9 @@ appsettings.json.bak
 /Properties/
 /Services/
 /wwwroot/
+/Program.cs
+/package.json
+/package-lock.json
+/*.csproj
+/*.sln
+/*.slnx
