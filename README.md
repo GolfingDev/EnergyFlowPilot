@@ -1,160 +1,208 @@
-# Tibber Victron Controller
+<p align="center">
+  <img src="src/TibberVictronController.Frontend/public/Main.png" alt="EnergyFlowPilot" width="100%" />
+</p>
 
-Smart battery controller for a Victron-based home energy system with Tibber dynamic electricity prices, battery forecast simulation, decision logging and a Vue dashboard.
+<p align="center">
+  <img src="https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white" alt=".NET 10" />
+  <img src="https://img.shields.io/badge/Vue-3-42B883?logo=vue.js&logoColor=white" alt="Vue 3" />
+  <img src="https://img.shields.io/badge/Vuetify-4-1867C0?logo=vuetify&logoColor=white" alt="Vuetify 4" />
+  <img src="https://img.shields.io/badge/SQLite-EF_Core-003B57?logo=sqlite&logoColor=white" alt="SQLite" />
+  <img src="https://img.shields.io/badge/MQTT-Victron-FF6B35?logo=eclipsemosquitto&logoColor=white" alt="MQTT" />
+  <img src="https://img.shields.io/badge/Tibber-GraphQL-1DA462?logoColor=white" alt="Tibber" />
+  <img src="https://img.shields.io/badge/target-Raspberry_Pi-C51A4A?logo=raspberrypi&logoColor=white" alt="Raspberry Pi" />
+</p>
 
-The project is built for private residential energy optimization: it combines dynamic electricity tariffs, battery state of charge, grid import, configurable battery limits and forecast data to decide when a home battery should charge, discharge or stay idle.
+<h1 align="center">EnergyFlowPilot</h1>
 
-## GitHub Description
+<p align="center">
+  Smart home battery controller that optimizes charging and discharging against Tibber dynamic electricity prices using Victron hardware telemetry.<br/>
+  Built for residential use on a Raspberry Pi — fully explainable decisions, live dashboard, forecast simulation and savings tracking.
+</p>
 
-ASP.NET Core and Vue home battery controller for Tibber dynamic prices, Victron energy systems, Pylontech storage, MQTT telemetry and forecast-based battery optimization.
+---
 
-## Topics
+## Table of Contents
 
-`tibber`, `victron`, `pylontech`, `cerbo-gx`, `multiplus-ii`, `home-energy-management`, `battery-storage`, `dynamic-electricity-prices`, `mqtt`, `aspnetcore`, `dotnet`, `vue`, `sqlite`, `raspberry-pi`, `energy-automation`, `solar-battery`
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Architecture](#architecture)
+- [Hardware](#hardware)
+- [Dashboard](#dashboard)
+- [Getting Started](#getting-started)
+- [Deployment](#deployment)
+- [Security](#security)
 
-## Project Goals
-
-- Optimize battery charging and discharging around Tibber spot prices.
-- Keep every decision explainable with rule IDs and structured reasons.
-- Use live Victron telemetry before any real control decision.
-- Avoid battery feed-in into the grid.
-- Provide a clear dashboard for current decisions, forecasts, savings and settings.
-- Run as a production-oriented service on a Raspberry Pi.
-
-## Current Hardware Context
-
-This project is designed around a Victron/Pylontech installation with:
-
-- 4x Pylontech US5000 LiFePO4 48 V battery modules
-- 19.2 kWh battery storage package
-- Pylontech brackets and connection cables
-- Victron Cerbo GX MK2 for system monitoring
-- Victron MultiPlus-II 48/5000/70-50 inverter/charger
-- Victron ET340 three-phase energy meter, max. 65 A per phase
-- VE.Can to CAN-bus BMS Type B cable, 1.8 m
-
-The first live integration focuses on Victron MQTT telemetry. A later expansion is planned for E3/DC integration to provide reliable live PV production values.
+---
 
 ## Features
 
-- Battery decision engine for `Charge`, `Discharge` and `Idle`
-- Tibber price forecast integration
-- Forecast-based state-of-charge simulation
-- Charge-window planning for low or negative electricity price slots
-- Configurable battery capacity, charge limits, discharge limits and reserves
-- SQLite-backed controller settings
-- Sensitive setting metadata so secrets are not exposed through frontend DTOs
-- Decision logging with structured reasons
-- Savings accounting for daily, weekly, monthly and yearly views
-- Vue dashboard with forecast chart, decision details, savings and configurable live energy view
-- Health/status endpoints
-- Background worker structure for scheduled decision execution
-- Raspberry Pi deployment scripts and documentation
+- **Price-aware battery control** — charges during cheap Tibber slots, discharges during expensive ones
+- **Explainable decisions** — every action is logged with a structured rule ID and human-readable reason
+- **15-minute forecast simulation** — state-of-charge projection over 24 hours, aligned with the live decision rules
+- **Live Victron telemetry** — real-time grid, battery and PV data via MQTT (Cerbo GX)
+- **Grid export protection** — never discharges more than the current measured import
+- **Savings accounting** — daily, weekly, monthly and yearly savings tracked against a baseline
+- **Configurable limits** — battery capacity, charge/discharge thresholds, minimum SoC reserve, planning profile
+- **Multi-theme Vue dashboard** — light and dark themes, live energy flow visualization
+- **Secure settings model** — sensitive values (API tokens, credentials) stored encrypted, never returned to the frontend
+- **Raspberry Pi ready** — systemd service, deployment scripts, optional nginx reverse proxy
+
+---
+
+## How It Works
+
+EnergyFlowPilot runs a decision loop on a configurable interval. Each cycle it:
+
+1. Reads live battery state and site telemetry from Victron via MQTT
+2. Fetches the current Tibber price forecast (cached, quarter-hourly resolution)
+3. Evaluates the price rule against configurable cheap/expensive thresholds
+4. Issues a `Charge`, `Discharge` or `Idle` command — with a structured reason
+5. Logs the full decision for the history view and savings accounting
+
+The same rule set drives the 24-hour forecast chart, so what the dashboard predicts matches what the engine actually does.
+
+```
+Cheap slot  →  Charge from grid
+Expensive slot + battery has energy  →  Discharge to cover house load
+No clear signal / stale data  →  Idle (safe default)
+```
+
+---
 
 ## Architecture
 
-The solution is split into clear layers:
+```
+┌────────────────────────────────────────────────────┐
+│                    Frontend (Vue 3)                │
+│         Dashboard · Forecast · Settings            │
+└──────────────────────┬─────────────────────────────┘
+                       │ REST + SignalR
+┌──────────────────────▼─────────────────────────────┐
+│                    Api (ASP.NET Core)              │
+│   Endpoints · Background Services · DI Composition │
+└──────┬───────────────────────────────┬─────────────┘
+       │                               │
+┌──────▼──────┐                ┌───────▼──────┐
+│  Business   │◄───interfaces──│     Dal      │
+│  Decision   │                │  Tibber API  │
+│  Engine     │                │  MQTT/Victron│
+│  Forecast   │                │  EF/SQLite   │
+│  Savings    │                └──────────────┘
+└─────────────┘
+```
 
-- `src/TibberVictronController.Api`  
-  ASP.NET Core host, API endpoints, background services and dependency composition.
+| Layer | Responsibility |
+|---|---|
+| `Api` | ASP.NET Core host, HTTP endpoints, SignalR hub, background workers |
+| `Business` | Framework-independent domain logic, decision rules, all interfaces |
+| `Dal` | EF Core/SQLite repositories, Tibber GraphQL client, Victron MQTT adapter |
+| `Frontend` | Vue 3 + Vuetify 4 dashboard, API-backed, no business logic |
 
-- `src/TibberVictronController.Business`  
-  Domain models, decision rules, forecast simulation, savings calculation and interfaces.
+Business logic is fully isolated behind interfaces — local development and tests work without real Tibber credentials or Victron hardware.
 
-- `src/TibberVictronController.Dal`  
-  EF Core, SQLite persistence, repositories, Tibber access, weather/PV forecast providers and Victron/MQTT telemetry providers.
+---
 
-- `src/TibberVictronController.Frontend`  
-  Vue/Vuetify dashboard for status, settings, forecasts, savings and live energy visualization.
+## Hardware
 
-- `tests/`  
-  Unit and integration tests for business rules, API contracts and DAL behavior.
+Designed around a Victron/Pylontech residential installation:
 
-Business logic is kept behind interfaces so local development and tests do not require real Tibber, MQTT or Victron hardware.
+| Component | Model |
+|---|---|
+| Battery modules | 4× Pylontech US5000 LiFePO4 48 V |
+| Total storage | 19.2 kWh |
+| Inverter/charger | Victron MultiPlus-II 48/5000/70-50 |
+| System monitor | Victron Cerbo GX MK2 |
+| Energy meter | Victron ET340 three-phase, max. 65 A/phase |
+| BMS cable | VE.Can to CAN-bus BMS Type B, 1.8 m |
 
-## Decision Engine
+Telemetry is read from the Cerbo GX over MQTT. No direct hardware access or Victron API keys are required — only local network MQTT access to the Cerbo GX.
 
-The battery strategy is intentionally conservative:
+> A planned E3/DC integration will add reliable live PV production values in a later stage.
 
-- Charge during cheap or negative Tibber price windows.
-- Discharge during expensive price windows when enough battery energy is available.
-- Stay idle when required live data is missing, stale or unsafe.
-- Never discharge more than the current measured grid import.
-- Preserve minimum state of charge and configured planning reserves.
-- Record the rule and reason behind every decision.
-
-Forecast decisions run in 15-minute slots and simulate state of charge over time. This makes the dashboard forecast explainable and keeps it close to the same rules used by the live decision path.
+---
 
 ## Dashboard
 
-The frontend includes:
+The Vue dashboard provides:
 
-- current controller status
-- current battery decision
-- forecast chart
-- decision history
-- savings overview
-- settings page for controller configuration
-- optional live energy flow visualization with light and dark theme assets
+- **Live status bar** — controller state, MQTT connection, Tibber price, last telemetry timestamp (updates live via SignalR)
+- **Current decision panel** — active state (Charge / Discharge / Idle), reason, Tibber price, battery SoC
+- **Forecast chart** — 24-hour price forecast colored by planned decision, with expected SoC curve
+- **Decision history** — aggregated time series with filtering by time range
+- **Live energy flow** — animated grid / battery / PV / house schematic (light and dark scene)
+- **Savings overview** — daily, weekly, monthly and yearly savings breakdown
+- **Settings page** — all controller parameters configurable from the UI
 
-PV production is currently hidden from live views until a reliable source is integrated. The planned E3/DC integration should provide this in a later stage.
+Multiple themes are available including a dark mission dashboard, a control-center layout and a mobile-focused dark theme.
 
-## Development
+<p align="center">
+  <img src="src/TibberVictronController.Frontend/public/live-energy-scene-dark.png" alt="Live energy flow" width="80%" />
+</p>
 
-Requirements:
+---
 
-- .NET SDK matching `global.json`
-- Node.js and npm for the Vue frontend
-- SQLite for local persistence
+## Getting Started
 
-Build frontend:
+### Requirements
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- Node.js 20+ and npm
+- A Tibber account with API access
+- A Victron system with Cerbo GX reachable on the local network via MQTT
+
+### Backend
+
+```powershell
+dotnet build
+dotnet run --project src/TibberVictronController.Api
+```
+
+The API starts on `http://localhost:5000`. On first run it creates a local SQLite database and seeds default settings. Configure Tibber token, MQTT host and battery parameters through the Settings page.
+
+### Frontend (dev server)
 
 ```powershell
 cd src/TibberVictronController.Frontend
 npm install
-npm run build
+npm run dev        # Vite dev server on :5173, proxies /api to backend
 ```
 
-Run backend tests:
+### Tests
 
 ```powershell
 dotnet test
+dotnet test tests/TibberVictronController.Business.Tests   # single project
 ```
 
-Start frontend dev server:
+---
+
+## Deployment
+
+The intended production setup is a Raspberry Pi running the backend as a systemd service with the frontend served as static files from the ASP.NET Core host.
 
 ```powershell
+# Build frontend assets into the API publish output
 cd src/TibberVictronController.Frontend
-npm run dev
+npm run build
+
+# Publish backend
+dotnet publish src/TibberVictronController.Api -c Release -o publish/
 ```
+
+Helper scripts for Raspberry Pi setup, service installation and auto-update are in [`scripts/deploy/`](scripts/deploy/).
+
+---
 
 ## Security
 
-- Do not commit real Tibber tokens, MQTT credentials or production secrets.
-- Runtime settings and access data are persisted through the application settings model.
-- Sensitive values must not be returned to the frontend in plain text.
-- Production SQLite database files should be protected by OS-level permissions.
+- Runtime secrets (Tibber token, MQTT password) are stored in SQLite via the settings model — not in `appsettings.json`
+- Sensitive values are never returned to the frontend in plain text
+- The SQLite database file should be protected by OS-level file permissions on the Pi
+- `appsettings.*.local.json` and `*.db` files are excluded from version control via `.gitignore`
+- Do not commit real tokens or credentials to this repository
 
-## Deployment Target
+---
 
-The intended production setup is a Raspberry Pi running:
+## Topics
 
-- ASP.NET Core service
-- SQLite database
-- MQTT-based Victron telemetry access
-- Tibber API integration
-- systemd service
-- optional nginx reverse proxy
-
-Deployment helper scripts live in `scripts/deploy/`.
-
-## Status
-
-This is an active private energy-management project. The current focus is:
-
-- improving the dashboard experience
-- tightening live telemetry handling
-- expanding hardware integrations
-- preparing reliable control behavior for production use
-
-The project is not a generic plug-and-play product yet. It is tailored to the hardware and operational assumptions documented in this repository, but the architecture is intended to keep additional providers and hardware integrations replaceable.
+`tibber` · `victron` · `pylontech` · `cerbo-gx` · `multiplus-ii` · `home-energy-management` · `battery-storage` · `dynamic-electricity-prices` · `mqtt` · `aspnetcore` · `dotnet` · `vue` · `sqlite` · `raspberry-pi` · `energy-automation` · `solar-battery`

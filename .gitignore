@@ -21,6 +21,8 @@ dist/
 **/logs/**/*.log
 
 appsettings.*.local.json
+appsettings.json.bak
+/appsettings.json
 *.db
 *.db-shm
 *.db-wal
