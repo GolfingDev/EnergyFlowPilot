@@ -822,6 +822,13 @@ async function loadLiveTelemetrySnapshot(): Promise<void> {
 function applyLiveTelemetry(telemetry: DashboardTelemetryUpdateDto): void {
   liveTelemetry.value = telemetry;
 
+  if (status.value !== null) {
+    status.value = {
+      ...status.value,
+      victronMqttLastSuccessfulMessageAtUtc: telemetry.measuredAtUtc
+    };
+  }
+
   if (decision.value === null) {
     return;
   }

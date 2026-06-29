@@ -124,21 +124,6 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 siteTelemetry.CurrentBatteryPowerWatts)
             : siteTelemetry;
 
-        if (Math.Abs(decisionSiteTelemetry.CurrentGridImportWatts) <= gridPowerDeadbandWatts)
-        {
-            return await SaveIdleDecisionAsync(
-                decidedAtUtc,
-                decidedAtUtc.AddMinutes(15),
-                batteryState,
-                decisionSiteTelemetry,
-                tibberPricePerKwh: null,
-                tibberPriceCurrency: null,
-                new BatteryDecisionReason(
-                    CurrentBatteryDecisionRuleIds.GridPowerDeadband,
-                    $"Die aktuelle Netzleistung von {decisionSiteTelemetry.CurrentGridImportWatts} Watt liegt innerhalb des konfigurierten Puffers von +/- {gridPowerDeadbandWatts} Watt. Die Decision Engine ignoriert diese kleine Abweichung und bleibt im Idle-Zustand."),
-                cancellationToken);
-        }
-
         IReadOnlyList<TibberPriceForecastSlot>? priceForecast = null;
         TibberPriceForecastSlot? currentPriceSlot = null;
         BatteryDecisionReason? missingCurrentPriceReason = null;
@@ -158,6 +143,21 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             missingCurrentPriceReason = new BatteryDecisionReason(
                 CurrentBatteryDecisionRuleIds.MissingCurrentPrice,
                 $"Die aktuellen Tibber-Preise konnten nicht geladen werden ({exception.Message}). Die Decision Engine bleibt deshalb im Idle-Zustand.");
+        }
+
+        if (Math.Abs(decisionSiteTelemetry.CurrentGridImportWatts) <= gridPowerDeadbandWatts)
+        {
+            return await SaveIdleDecisionAsync(
+                decidedAtUtc,
+                decidedAtUtc.AddMinutes(15),
+                batteryState,
+                decisionSiteTelemetry,
+                tibberPricePerKwh: currentPriceSlot?.TotalPricePerKwh,
+                tibberPriceCurrency: currentPriceSlot?.Currency,
+                new BatteryDecisionReason(
+                    CurrentBatteryDecisionRuleIds.GridPowerDeadband,
+                    $"Die aktuelle Netzleistung von {decisionSiteTelemetry.CurrentGridImportWatts} Watt liegt innerhalb des konfigurierten Puffers von +/- {gridPowerDeadbandWatts} Watt. Die Decision Engine ignoriert diese kleine Abweichung und bleibt im Idle-Zustand."),
+                cancellationToken);
         }
 
         if (decisionSiteTelemetry.CurrentGridImportWatts < 0)
