@@ -28,67 +28,39 @@ public sealed class SelectedCurrentSiteTelemetryProvider : ICurrentSiteTelemetry
     {
         var gridImportSource = await sourceSelector.GetGridImportSourceAsync(cancellationToken);
         var pvProductionSource = await sourceSelector.GetPvProductionSourceAsync(cancellationToken);
-        var victronTelemetry = gridImportSource == TelemetrySourceSelector.VictronMqttProvider ||
-            pvProductionSource == TelemetrySourceSelector.VictronMqttProvider
+
+        var needsVictron = gridImportSource == TelemetrySourceSelector.VictronMqttProvider
+            || pvProductionSource == TelemetrySourceSelector.VictronMqttProvider;
+        var needsHager = gridImportSource == TelemetrySourceSelector.HagerEnergyApiProvider
+            || pvProductionSource == TelemetrySourceSelector.HagerEnergyApiProvider;
+
+        var victronTelemetry = needsVictron
             ? await victronCurrentSiteTelemetryProvider.GetCurrentSiteTelemetryAsync(cancellationToken)
             : null;
-        var hagerGridImport = gridImportSource == TelemetrySourceSelector.HagerEnergyApiProvider
-            ? await hagerEnergyCurrentSiteTelemetryProvider.GetGridImportWattsAsync(cancellationToken)
-            : ((int GridImportWatts, DateTimeOffset MeasuredAtUtc)?)null;
-        var hagerPvProduction = pvProductionSource == TelemetrySourceSelector.HagerEnergyApiProvider
-            ? await hagerEnergyCurrentSiteTelemetryProvider.GetPvProductionWattsAsync(cancellationToken)
-            : ((int PvProductionWatts, DateTimeOffset MeasuredAtUtc)?)null;
-        var gridImportWatts = SelectGridImportWatts(gridImportSource, victronTelemetry, hagerGridImport);
-        var pvProductionWatts = SelectPvProductionWatts(pvProductionSource, victronTelemetry, hagerPvProduction);
-        var measuredAtUtc = SelectMeasuredAtUtc(gridImportSource, pvProductionSource, victronTelemetry, hagerGridImport, hagerPvProduction);
+        var hagerTelemetry = needsHager
+            ? await hagerEnergyCurrentSiteTelemetryProvider.GetCurrentSiteTelemetryAsync(cancellationToken)
+            : null;
+
+        var gridImportWatts = gridImportSource switch
+        {
+            TelemetrySourceSelector.HagerEnergyApiProvider => hagerTelemetry!.CurrentGridImportWatts,
+            TelemetrySourceSelector.VictronMqttProvider => victronTelemetry!.CurrentGridImportWatts,
+            _ => throw new InvalidOperationException($"Die Telemetriequelle '{gridImportSource}' fuer den Netzbezug ist nicht bekannt.")
+        };
+        var pvProductionWatts = pvProductionSource switch
+        {
+            TelemetrySourceSelector.HagerEnergyApiProvider => hagerTelemetry!.CurrentPvProductionWatts,
+            TelemetrySourceSelector.VictronMqttProvider => victronTelemetry!.CurrentPvProductionWatts,
+            _ => throw new InvalidOperationException($"Die Telemetriequelle '{pvProductionSource}' fuer die PV-Leistung ist nicht bekannt.")
+        };
+        var measuredAtUtc = gridImportSource == TelemetrySourceSelector.HagerEnergyApiProvider
+            ? hagerTelemetry!.MeasuredAtUtc
+            : victronTelemetry!.MeasuredAtUtc;
 
         return new CurrentSiteTelemetry(
             gridImportWatts,
             pvProductionWatts,
             measuredAtUtc,
             victronTelemetry?.CurrentBatteryPowerWatts);
-    }
-
-    private static int SelectGridImportWatts(
-        string source,
-        CurrentSiteTelemetry? victronTelemetry,
-        (int GridImportWatts, DateTimeOffset MeasuredAtUtc)? hagerGridImport)
-    {
-        return source switch
-        {
-            TelemetrySourceSelector.HagerEnergyApiProvider => hagerGridImport!.Value.GridImportWatts,
-            TelemetrySourceSelector.VictronMqttProvider => victronTelemetry!.CurrentGridImportWatts,
-            _ => throw new InvalidOperationException($"Die Telemetriequelle '{source}' fuer den Netzbezug ist nicht bekannt.")
-        };
-    }
-
-    private static int SelectPvProductionWatts(
-        string source,
-        CurrentSiteTelemetry? victronTelemetry,
-        (int PvProductionWatts, DateTimeOffset MeasuredAtUtc)? hagerPvProduction)
-    {
-        return source switch
-        {
-            TelemetrySourceSelector.HagerEnergyApiProvider => hagerPvProduction!.Value.PvProductionWatts,
-            TelemetrySourceSelector.VictronMqttProvider => victronTelemetry!.CurrentPvProductionWatts,
-            _ => throw new InvalidOperationException($"Die Telemetriequelle '{source}' fuer die PV-Leistung ist nicht bekannt.")
-        };
-    }
-
-    private static DateTimeOffset SelectMeasuredAtUtc(
-        string gridImportSource,
-        string pvProductionSource,
-        CurrentSiteTelemetry? victronTelemetry,
-        (int GridImportWatts, DateTimeOffset MeasuredAtUtc)? hagerGridImport,
-        (int PvProductionWatts, DateTimeOffset MeasuredAtUtc)? hagerPvProduction)
-    {
-        var gridMeasuredAtUtc = gridImportSource == TelemetrySourceSelector.HagerEnergyApiProvider
-            ? hagerGridImport!.Value.MeasuredAtUtc
-            : victronTelemetry!.MeasuredAtUtc;
-        var pvMeasuredAtUtc = pvProductionSource == TelemetrySourceSelector.HagerEnergyApiProvider
-            ? hagerPvProduction!.Value.MeasuredAtUtc
-            : victronTelemetry!.MeasuredAtUtc;
-
-        return gridMeasuredAtUtc <= pvMeasuredAtUtc ? gridMeasuredAtUtc : pvMeasuredAtUtc;
     }
 }

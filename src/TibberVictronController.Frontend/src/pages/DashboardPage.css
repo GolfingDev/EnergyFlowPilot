@@ -174,9 +174,14 @@
   min-height: 420px;
 }
 
+.control-center-grid--flow .control-center-section--e3dc {
+  grid-column: 2;
+  grid-row: 3;
+}
+
 .control-center-grid--flow .control-center-section--price {
   grid-column: 1 / -1;
-  grid-row: 3;
+  grid-row: 4;
 }
 
 .control-center-grid--flow .control-center-section--status {
@@ -662,6 +667,7 @@
   .control-center-section--flow,
   .control-center-section--manual,
   .control-center-section--price,
+  .control-center-section--e3dc,
   .control-center-section--history-list,
   .control-center-section--status,
   .control-center-section--warnings {

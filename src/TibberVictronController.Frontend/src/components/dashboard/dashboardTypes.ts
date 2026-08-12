@@ -138,6 +138,14 @@ export interface ApiErrorDto {
   TraceId?: string;
 }
 
+export interface E3dcTelemetryResponseDto {
+  gridImportWatts: number | null;
+  pvProductionWatts: number | null;
+  batterySocPercent: number | null;
+  measuredAtUtc: string | null;
+  lastSuccessfulPollAtUtc: string | null;
+}
+
 export type SavingsPeriod = 'day' | 'yesterday' | 'week' | 'month' | 'year';
 
 export interface SavingsPeriodOption {

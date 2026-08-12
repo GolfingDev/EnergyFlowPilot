@@ -69,6 +69,8 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<MqttCurrentSiteTelemetryProvider>();
         services.AddScoped<ResilientBatteryStateProvider>();
         services.AddScoped<ResilientCurrentSiteTelemetryProvider>();
+        services.AddSingleton<HagerEnergyTokenCache>();
+        services.AddSingleton<HagerEnergyTelemetrySnapshotStore>();
         services.AddHttpClient<HagerEnergyApiClient>();
         services.AddScoped<HagerEnergyBatteryStateProvider>();
         services.AddScoped<HagerEnergyCurrentSiteTelemetryProvider>();
@@ -104,6 +106,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IWeatherForecastProvider, CachedWeatherForecastProvider>();
         services.AddHostedService<DecisionExecutionBackgroundService>();
         services.AddHostedService<BatterySavingsAccountingBackgroundService>();
+        services.AddHostedService<HagerEnergyPollingBackgroundService>();
         services.AddHostedService<VictronSetpointRefreshBackgroundService>();
         services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<VictronMqttClientService>());
 

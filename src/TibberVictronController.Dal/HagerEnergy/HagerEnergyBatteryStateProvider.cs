@@ -3,9 +3,6 @@ using TibberVictronController.Business.Models;
 
 namespace TibberVictronController.Dal.HagerEnergy;
 
-/// <summary>
-/// Provides battery state of charge from the Hager Energy API.
-/// </summary>
 public sealed class HagerEnergyBatteryStateProvider : IBatteryStateProvider
 {
     private readonly HagerEnergyApiClient apiClient;
@@ -17,10 +14,8 @@ public sealed class HagerEnergyBatteryStateProvider : IBatteryStateProvider
 
     public async Task<BatteryState> GetCurrentBatteryStateAsync(CancellationToken cancellationToken = default)
     {
-        var stateOfCharge = await apiClient.GetBatterySocPercentAsync(cancellationToken);
+        var values = await apiClient.GetCurrentValuesAsync(cancellationToken);
 
-        return new BatteryState(
-            stateOfCharge.Value,
-            stateOfCharge.MeasuredAtUtc);
+        return new BatteryState(values.BatterySocPercent, values.MeasuredAtUtc);
     }
 }

@@ -4,7 +4,7 @@ using TibberVictronController.Business.Models;
 namespace TibberVictronController.Dal.HagerEnergy;
 
 /// <summary>
-/// Reads Hager Energy API settings from persisted controller settings.
+/// Reads E3/DC (Hager Energy) API settings from persisted controller settings.
 /// </summary>
 public sealed class DatabaseHagerEnergySettingsProvider
 {
@@ -19,22 +19,14 @@ public sealed class DatabaseHagerEnergySettingsProvider
     {
         return new HagerEnergySettings
         {
-            ApiBaseUrl = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyApiBaseUrlKey, "Die Hager-Energy-API-Basis-URL ist nicht konfiguriert.", cancellationToken),
-            AuthorizationEndpoint = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyAuthorizationEndpointKey, "Der Hager-Energy-Authorization-Endpunkt ist nicht konfiguriert.", cancellationToken),
-            TokenEndpoint = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyTokenEndpointKey, "Der Hager-Energy-Token-Endpunkt ist nicht konfiguriert.", cancellationToken),
-            RedirectUri = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyRedirectUriKey, "Die Hager-Energy-Redirect-URI ist nicht konfiguriert.", cancellationToken),
-            PostLoginRedirectUrl = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyPostLoginRedirectUrlKey, "Die Hager-Energy-Weiterleitungs-URL nach dem Login ist nicht konfiguriert.", cancellationToken),
-            Scope = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyScopeKey, "Der Hager-Energy-OAuth-Scope ist nicht konfiguriert.", cancellationToken),
-            OAuthState = await GetOptionalSettingAsync(ControllerSettingDefaults.HagerEnergyOAuthStateKey, cancellationToken),
-            ApiKey = await GetOptionalSettingAsync(ControllerSettingDefaults.HagerEnergyApiKeyKey, cancellationToken),
+            ApiBaseUrl = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyApiBaseUrlKey, "Die E3/DC-API-Basis-URL ist nicht konfiguriert.", cancellationToken),
+            TokenEndpoint = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyTokenEndpointKey, "Der E3/DC-Token-Endpunkt ist nicht konfiguriert.", cancellationToken),
             ClientId = await GetOptionalSettingAsync(ControllerSettingDefaults.HagerEnergyClientIdKey, cancellationToken),
             ClientSecret = await GetOptionalSettingAsync(ControllerSettingDefaults.HagerEnergyClientSecretKey, cancellationToken),
-            RefreshToken = await GetOptionalSettingAsync(ControllerSettingDefaults.HagerEnergyRefreshTokenKey, cancellationToken),
-            AccessToken = await GetOptionalSettingAsync(ControllerSettingDefaults.HagerEnergyAccessTokenKey, cancellationToken),
-            InstallationId = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyInstallationIdKey, "Die Hager-Energy-Installation-ID ist nicht konfiguriert.", cancellationToken),
-            GridImportJsonPath = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyGridImportJsonPathKey, "Der JSON-Pfad fuer Hager-Energy-Netzbezug ist nicht konfiguriert.", cancellationToken),
-            PvProductionJsonPath = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyPvProductionJsonPathKey, "Der JSON-Pfad fuer Hager-Energy-PV-Leistung ist nicht konfiguriert.", cancellationToken),
-            BatterySocJsonPath = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyBatterySocJsonPathKey, "Der JSON-Pfad fuer Hager-Energy-SoC ist nicht konfiguriert.", cancellationToken)
+            InstallationId = await GetOptionalSettingAsync(ControllerSettingDefaults.HagerEnergyInstallationIdKey, cancellationToken),
+            GridImportJsonPath = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyGridImportJsonPathKey, "Der JSON-Pfad fuer E3/DC-Netzbezug ist nicht konfiguriert.", cancellationToken),
+            PvProductionJsonPath = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyPvProductionJsonPathKey, "Der JSON-Pfad fuer E3/DC-PV-Leistung ist nicht konfiguriert.", cancellationToken),
+            BatterySocJsonPath = await GetRequiredSettingAsync(ControllerSettingDefaults.HagerEnergyBatterySocJsonPathKey, "Der JSON-Pfad fuer E3/DC-SoC ist nicht konfiguriert.", cancellationToken)
         };
     }
 

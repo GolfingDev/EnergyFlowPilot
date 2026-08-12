@@ -95,6 +95,7 @@ public static class ControllerSettingDefaults
     public const string HagerEnergyGridImportJsonPathKey = "hagerEnergy.jsonPaths.gridImportWatts";
     public const string HagerEnergyPvProductionJsonPathKey = "hagerEnergy.jsonPaths.pvProductionWatts";
     public const string HagerEnergyBatterySocJsonPathKey = "hagerEnergy.jsonPaths.batterySocPercent";
+    public const string HagerEnergyPollingIntervalSecondsKey = "hagerEnergy.pollingIntervalSeconds";
 
     private static readonly ControllerSettingDefinition[] Definitions =
     {
@@ -173,21 +174,14 @@ public static class ControllerSettingDefaults
         new(VictronWriteTopicDisableFeedInKey, "W/{portalId}/vebus/276/Hub4/DisableFeedIn", ControllerSettingSensitivity.Normal),
         new(VictronBatteryIdleThresholdWattsKey, "100", ControllerSettingSensitivity.Normal),
         new(HagerEnergyApiBaseUrlKey, "https://api.hagerenergy.com", ControllerSettingSensitivity.Normal),
-        new(HagerEnergyAuthorizationEndpointKey, "https://auth.hagerenergy.com/realms/customer/.well-known/uma2-configuration", ControllerSettingSensitivity.Normal),
         new(HagerEnergyTokenEndpointKey, "https://auth.hagerenergy.com/realms/customer/protocol/openid-connect/token", ControllerSettingSensitivity.Normal),
-        new(HagerEnergyRedirectUriKey, "http://localhost:5094/api/hager-energy/oauth/callback", ControllerSettingSensitivity.Normal),
-        new(HagerEnergyPostLoginRedirectUrlKey, "http://localhost:5173/settings?section=system", ControllerSettingSensitivity.Normal),
-        new(HagerEnergyScopeKey, "read:storage", ControllerSettingSensitivity.Normal),
-        new(HagerEnergyOAuthStateKey, null, ControllerSettingSensitivity.Sensitive),
-        new(HagerEnergyApiKeyKey, null, ControllerSettingSensitivity.Sensitive),
         new(HagerEnergyClientIdKey, null, ControllerSettingSensitivity.Sensitive),
         new(HagerEnergyClientSecretKey, null, ControllerSettingSensitivity.Sensitive),
-        new(HagerEnergyRefreshTokenKey, null, ControllerSettingSensitivity.Sensitive),
-        new(HagerEnergyAccessTokenKey, null, ControllerSettingSensitivity.Sensitive),
-        new(HagerEnergyInstallationIdKey, null, ControllerSettingSensitivity.Sensitive),
-        new(HagerEnergyGridImportJsonPathKey, "data.gridPower", ControllerSettingSensitivity.Normal),
-        new(HagerEnergyPvProductionJsonPathKey, "data.pvProduction", ControllerSettingSensitivity.Normal),
-        new(HagerEnergyBatterySocJsonPathKey, "data.batteryStateOfCharge", ControllerSettingSensitivity.Normal)
+        new(HagerEnergyInstallationIdKey, null, ControllerSettingSensitivity.Normal),
+        new(HagerEnergyGridImportJsonPathKey, "", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyPvProductionJsonPathKey, "", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyBatterySocJsonPathKey, "", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyPollingIntervalSecondsKey, "60", ControllerSettingSensitivity.Normal)
     };
 
     /// <summary>

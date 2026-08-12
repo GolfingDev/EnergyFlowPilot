@@ -12,6 +12,7 @@ import EnergyLoadingOverlay from '../components/EnergyLoadingOverlay.vue';
 import ForecastChartPanel from '../components/dashboard/ForecastChartPanel.vue';
 import LiveEnergyFlowPanel from '../components/dashboard/LiveEnergyFlowPanel.vue';
 import SchematicEnergyFlowPanel from '../components/dashboard/SchematicEnergyFlowPanel.vue';
+import E3dcSupplementPanel from '../components/dashboard/E3dcSupplementPanel.vue';
 import { formatCurrency, formatDateTime, formatNumber, formatPercent, formatPower, formatPrice, getDecisionLabel } from '../components/dashboard/dashboardFormatters';
 import { getEnergyFlowTheme } from '../themeRegistry';
 import type {
@@ -24,6 +25,7 @@ import type {
   DashboardTelemetryUpdateDto,
   DecisionLogEntryResponseDto,
   DashboardLoadError,
+  E3dcTelemetryResponseDto,
   ManualChargeStatusResponseDto,
   SavingsPeriod,
   SavingsPeriodOption
@@ -41,6 +43,7 @@ const decisionHistoryEntries = ref<DecisionLogEntryResponseDto[]>([]);
 const forecast = ref<BatteryForecastResponseDto | null>(null);
 const savings = ref<BatterySavingsResponseDto | null>(null);
 const manualCharge = ref<ManualChargeStatusResponseDto | null>(null);
+const e3dcTelemetry = ref<E3dcTelemetryResponseDto | null>(null);
 const loadErrors = ref<DashboardLoadError[]>([]);
 const isLoading = ref(false);
 const isManualChargeBusy = ref(false);
@@ -517,8 +520,21 @@ async function loadSlowDashboardData(force = false): Promise<void> {
   await Promise.allSettled([
     loadForecast(force),
     loadSavings(force),
-    loadDecisionHistory(force)
+    loadDecisionHistory(force),
+    loadE3dcTelemetry()
   ]);
+}
+
+async function loadE3dcTelemetry(): Promise<void> {
+  try {
+    const data = await fetchJson<E3dcTelemetryResponseDto>('/api/e3dc/telemetry');
+    e3dcTelemetry.value = data.pvProductionWatts !== null || data.gridImportWatts !== null || data.batterySocPercent !== null
+      ? data
+      : null;
+  } catch {
+    // E3/DC ist optional — kein Fehler anzeigen, wenn nicht konfiguriert
+    e3dcTelemetry.value = null;
+  }
 }
 
 async function loadDecisionHistory(force = false): Promise<void> {
@@ -1359,6 +1375,16 @@ onBeforeUnmount(() => {
               <em>{{ formatPower(entry.targetPowerWatts) }}</em>
             </div>
           </div>
+        </article>
+
+        <article v-if="e3dcTelemetry" class="panel control-center-section control-center-section--e3dc">
+          <div class="panel__header control-center-panel-header">
+            <div>
+              <h2>E3/DC</h2>
+              <p>Ergänzende Telemetrie</p>
+            </div>
+          </div>
+          <E3dcSupplementPanel :telemetry="e3dcTelemetry" />
         </article>
 
         <article id="dashboard-forecast" class="panel control-center-section control-center-section--price">
