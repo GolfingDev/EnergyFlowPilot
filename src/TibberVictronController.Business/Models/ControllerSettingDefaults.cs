@@ -177,10 +177,10 @@ public static class ControllerSettingDefaults
         new(HagerEnergyTokenEndpointKey, "https://auth.hagerenergy.com/realms/customer/protocol/openid-connect/token", ControllerSettingSensitivity.Normal),
         new(HagerEnergyClientIdKey, null, ControllerSettingSensitivity.Sensitive),
         new(HagerEnergyClientSecretKey, null, ControllerSettingSensitivity.Sensitive),
-        new(HagerEnergyInstallationIdKey, null, ControllerSettingSensitivity.Normal),
-        new(HagerEnergyGridImportJsonPathKey, "", ControllerSettingSensitivity.Normal),
-        new(HagerEnergyPvProductionJsonPathKey, "", ControllerSettingSensitivity.Normal),
-        new(HagerEnergyBatterySocJsonPathKey, "", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyInstallationIdKey, null, ControllerSettingSensitivity.Sensitive),
+        new(HagerEnergyGridImportJsonPathKey, "auto", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyPvProductionJsonPathKey, "auto", ControllerSettingSensitivity.Normal),
+        new(HagerEnergyBatterySocJsonPathKey, "auto", ControllerSettingSensitivity.Normal),
         new(HagerEnergyPollingIntervalSecondsKey, "60", ControllerSettingSensitivity.Normal)
     };
 
