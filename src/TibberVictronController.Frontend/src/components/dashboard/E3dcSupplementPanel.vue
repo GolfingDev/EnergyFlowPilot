@@ -2,25 +2,53 @@
 import type { E3dcTelemetryResponseDto } from './dashboardTypes';
 import { formatDateTime, formatPower, formatPercent } from './dashboardFormatters';
 
-defineProps<{
-  telemetry: E3dcTelemetryResponseDto | null;
+const props = defineProps<{
+  telemetry: E3dcTelemetryResponseDto;
 }>();
+
+function gridLabel(watts: number): string {
+  if (watts > 0) return 'Netzbezug';
+  if (watts < 0) return 'Einspeisung';
+  return 'Ausgeglichen';
+}
+
+function batteryLabel(watts: number | null): string {
+  if (watts === null) return '';
+  if (watts > 0) return 'Laden';
+  if (watts < 0) return 'Entladen';
+  return 'Standby';
+}
+
+function formatAbsPower(watts: number): string {
+  return formatPower(Math.abs(watts));
+}
 </script>
 
 <template>
-  <div v-if="telemetry" class="e3dc-metrics">
+  <div class="e3dc-metrics">
     <div v-if="telemetry.pvProductionWatts !== null" class="e3dc-metric">
       <span class="e3dc-metric__label">PV</span>
       <span class="e3dc-metric__value e3dc-metric__value--pv">{{ formatPower(telemetry.pvProductionWatts) }}</span>
     </div>
+
     <div v-if="telemetry.gridImportWatts !== null" class="e3dc-metric">
-      <span class="e3dc-metric__label">Netz</span>
-      <span class="e3dc-metric__value">{{ formatPower(telemetry.gridImportWatts) }}</span>
+      <span class="e3dc-metric__label">{{ gridLabel(telemetry.gridImportWatts) }}</span>
+      <span class="e3dc-metric__value">{{ formatAbsPower(telemetry.gridImportWatts) }}</span>
     </div>
+
+    <div v-if="telemetry.batteryPowerWatts !== null" class="e3dc-metric">
+      <span class="e3dc-metric__label">Batterie ({{ batteryLabel(telemetry.batteryPowerWatts) }})</span>
+      <span
+        class="e3dc-metric__value"
+        :class="telemetry.batteryPowerWatts < 0 ? 'e3dc-metric__value--discharging' : 'e3dc-metric__value--charging'"
+      >{{ formatAbsPower(telemetry.batteryPowerWatts) }}</span>
+    </div>
+
     <div v-if="telemetry.batterySocPercent !== null" class="e3dc-metric">
-      <span class="e3dc-metric__label">Batterie SoC</span>
+      <span class="e3dc-metric__label">SoC</span>
       <span class="e3dc-metric__value">{{ formatPercent(telemetry.batterySocPercent) }}</span>
     </div>
+
     <div v-if="telemetry.lastSuccessfulPollAtUtc" class="e3dc-timestamp">
       Zuletzt: {{ formatDateTime(telemetry.lastSuccessfulPollAtUtc) }}
     </div>
@@ -56,6 +84,14 @@ defineProps<{
 
 .e3dc-metric__value--pv {
   color: #F9A825;
+}
+
+.e3dc-metric__value--discharging {
+  color: #26C6DA;
+}
+
+.e3dc-metric__value--charging {
+  color: #66BB6A;
 }
 
 .e3dc-timestamp {

@@ -27,13 +27,14 @@ public static class E3dcEndpoints
 
         if (snapshot is null)
         {
-            return TypedResults.Ok(new E3dcTelemetryResponseDto(null, null, null, null, null));
+            return TypedResults.Ok(new E3dcTelemetryResponseDto(null, null, null, null, null, null));
         }
 
         return TypedResults.Ok(new E3dcTelemetryResponseDto(
             snapshot.GridImportWatts,
             snapshot.PvProductionWatts,
             snapshot.BatterySocPercent,
+            snapshot.BatteryPowerWatts,
             snapshot.MeasuredAtUtc,
             snapshot.LastSuccessfulPollAtUtc));
     }
@@ -62,5 +63,6 @@ public sealed record E3dcTelemetryResponseDto(
     int? GridImportWatts,
     int? PvProductionWatts,
     int? BatterySocPercent,
+    int? BatteryPowerWatts,
     DateTimeOffset? MeasuredAtUtc,
     DateTimeOffset? LastSuccessfulPollAtUtc);

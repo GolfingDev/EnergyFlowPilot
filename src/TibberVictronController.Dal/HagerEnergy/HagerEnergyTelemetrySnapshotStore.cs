@@ -16,6 +16,9 @@ public sealed class HagerEnergyTelemetrySnapshotStore
             GridImportWatts: (int)Math.Round(values.GridImportWatts, MidpointRounding.AwayFromZero),
             PvProductionWatts: (int)Math.Round(values.PvProductionWatts, MidpointRounding.AwayFromZero),
             BatterySocPercent: (int)Math.Round(values.BatterySocPercent, MidpointRounding.AwayFromZero),
+            BatteryPowerWatts: values.BatteryPowerWatts.HasValue
+                ? (int)Math.Round(values.BatteryPowerWatts.Value, MidpointRounding.AwayFromZero)
+                : null,
             MeasuredAtUtc: values.MeasuredAtUtc,
             LastSuccessfulPollAtUtc: DateTimeOffset.UtcNow);
     }
@@ -25,5 +28,6 @@ public sealed record HagerEnergyTelemetrySnapshot(
     int GridImportWatts,
     int PvProductionWatts,
     int BatterySocPercent,
+    int? BatteryPowerWatts,
     DateTimeOffset MeasuredAtUtc,
     DateTimeOffset LastSuccessfulPollAtUtc);

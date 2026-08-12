@@ -71,11 +71,15 @@ public sealed class HagerEnergyApiClient
                 settings.BatterySocJsonPath,
                 HagerEnergyJsonValueReader.BatterySocAliases,
                 "Akku-SoC");
+            var batteryPowerWatts = HagerEnergyJsonValueReader.TryGetDecimal(
+                document.RootElement,
+                HagerEnergyJsonValueReader.BatteryPowerAliases);
 
             return new HagerEnergyCurrentValues(
                 gridImportWatts,
                 Math.Max(0m, pvProductionWatts),
                 batterySocPercent,
+                batteryPowerWatts,
                 DateTimeOffset.UtcNow);
         }
         catch (JsonException exception)

@@ -36,6 +36,17 @@ internal static class HagerEnergyJsonValueReader
         "soc"
     };
 
+    public static readonly IReadOnlySet<string> BatteryPowerAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "batteryPowerWatts",
+        "batteryPower",
+        "batteryChargePower",
+        "batteryDischargePower",
+        "storageChargePower",
+        "storageDischargePower",
+        "storagePower"
+    };
+
     public static decimal GetRequiredDecimal(
         JsonElement root,
         string configuredPath,
@@ -53,6 +64,11 @@ internal static class HagerEnergyJsonValueReader
         }
 
         throw new HagerEnergyApiException($"Die Hager-Energy-Antwort enthaelt keinen verwendbaren Wert fuer {displayName}. Bitte JSON-Pfad in den Einstellungen anpassen.");
+    }
+
+    public static decimal? TryGetDecimal(JsonElement root, IReadOnlySet<string> aliases)
+    {
+        return TryFindDecimalByPropertyName(root, aliases, out var value) ? value : null;
     }
 
     private static bool TryReadDecimalAtPath(JsonElement root, string path, out decimal value)

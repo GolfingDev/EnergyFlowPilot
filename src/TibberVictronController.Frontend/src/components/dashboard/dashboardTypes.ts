@@ -142,6 +142,7 @@ export interface E3dcTelemetryResponseDto {
   gridImportWatts: number | null;
   pvProductionWatts: number | null;
   batterySocPercent: number | null;
+  batteryPowerWatts: number | null;
   measuredAtUtc: string | null;
   lastSuccessfulPollAtUtc: string | null;
 }

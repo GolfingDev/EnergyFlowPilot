@@ -1145,6 +1145,12 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
+          <!-- E3/DC supplementary telemetry -->
+          <div v-if="e3dcTelemetry" class="qm-ctx-block">
+            <span class="qm-ctx-label">E3/DC</span>
+            <E3dcSupplementPanel :telemetry="e3dcTelemetry" />
+          </div>
+
           <!-- Manual charge -->
           <div class="qm-ctx-block">
             <span class="qm-ctx-label">MANUELLE LADUNG</span>
