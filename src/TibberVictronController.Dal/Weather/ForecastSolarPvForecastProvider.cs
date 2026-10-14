@@ -38,10 +38,21 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
         ValidateUtcRange(startsAtUtc, endsAtUtc);
 
         var configuration = await LoadConfigurationAsync(cancellationToken);
-        var requestUri = BuildRequestUri(configuration);
-        var response = await ExecuteRequestAsync(requestUri, cancellationToken);
+        var planeForecasts = new List<IReadOnlyList<PvYieldForecastSlot>>();
 
-        return MapToForecastSlots(response, configuration.TimeZone, startsAtUtc, endsAtUtc);
+        // Forecast.Solar describes one roof plane per request; east/west roofs need one request per plane and the yields add up.
+        foreach (var plane in configuration.Planes)
+        {
+            var requestUri = BuildRequestUri(configuration, plane);
+            var response = await ExecuteRequestAsync(requestUri, cancellationToken);
+            planeForecasts.Add(MapToForecastSlots(response, configuration.TimeZone, startsAtUtc, endsAtUtc));
+        }
+
+        return planeForecasts[0]
+            .Select((slot, index) => new PvYieldForecastSlot(
+                slot.TimeSlot,
+                planeForecasts.Sum(planeForecast => planeForecast[index].ExpectedPvYieldKwh)))
+            .ToArray();
     }
 
     private async Task<ForecastSolarConfiguration> LoadConfigurationAsync(CancellationToken cancellationToken)
@@ -63,30 +74,25 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
             "Die PV-Standort-Laengengrad-Einstellung ist nicht konfiguriert.",
             "Die PV-Standort-Laengengrad-Einstellung muss als Dezimalzahl konfiguriert sein.",
             cancellationToken);
-        var peakPowerKwp = await GetRequiredDecimalSettingAsync(
+        var peakPowerKwpValues = await GetRequiredDecimalListSettingAsync(
             ControllerSettingDefaults.PvForecastPeakPowerKwpKey,
             "Die PV-Anlagenleistung ist nicht konfiguriert.",
-            "Die PV-Anlagenleistung muss als Dezimalzahl konfiguriert sein.",
+            "Die PV-Anlagenleistung muss als Dezimalzahl oder kommagetrennte Liste konfiguriert sein.",
             cancellationToken);
-        var declinationDegrees = await GetRequiredDecimalSettingAsync(
+        var declinationDegreesValues = await GetRequiredDecimalListSettingAsync(
             ControllerSettingDefaults.PvForecastDeclinationDegreesKey,
             "Die PV-Modulneigung ist nicht konfiguriert.",
-            "Die PV-Modulneigung muss als Dezimalzahl konfiguriert sein.",
+            "Die PV-Modulneigung muss als Dezimalzahl oder kommagetrennte Liste konfiguriert sein.",
             cancellationToken);
-        var azimuthDegrees = await GetRequiredDecimalSettingAsync(
+        var azimuthDegreesValues = await GetRequiredDecimalListSettingAsync(
             ControllerSettingDefaults.PvForecastAzimuthDegreesKey,
             "Die PV-Modulausrichtung ist nicht konfiguriert.",
-            "Die PV-Modulausrichtung muss als Dezimalzahl konfiguriert sein.",
+            "Die PV-Modulausrichtung muss als Dezimalzahl oder kommagetrennte Liste konfiguriert sein.",
             cancellationToken);
         var timeZoneId = await GetRequiredSettingValueAsync(
             ControllerSettingDefaults.PvForecastTimeZoneKey,
             "Die PV-Forecast-Zeitzone ist nicht konfiguriert.",
             cancellationToken);
-
-        if (peakPowerKwp <= 0m)
-        {
-            throw new InvalidOperationException("Die PV-Anlagenleistung muss groesser als 0 kWp sein.");
-        }
 
         return new ForecastSolarConfiguration
         {
@@ -94,11 +100,66 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
             ApiKey = apiKey,
             Latitude = latitude,
             Longitude = longitude,
-            DeclinationDegrees = declinationDegrees,
-            AzimuthDegrees = azimuthDegrees,
-            PeakPowerKwp = peakPowerKwp,
+            Planes = CreatePlanes(peakPowerKwpValues, declinationDegreesValues, azimuthDegreesValues),
             TimeZone = ResolveTimeZone(timeZoneId)
         };
+    }
+
+    /// <summary>
+    /// Combines the per-plane setting lists; a single value applies to every plane, e.g. one tilt for an east/west roof.
+    /// </summary>
+    private static IReadOnlyList<ForecastSolarPlane> CreatePlanes(
+        IReadOnlyList<decimal> peakPowerKwpValues,
+        IReadOnlyList<decimal> declinationDegreesValues,
+        IReadOnlyList<decimal> azimuthDegreesValues)
+    {
+        var planeCount = new[] { peakPowerKwpValues.Count, declinationDegreesValues.Count, azimuthDegreesValues.Count }.Max();
+
+        if (new[] { peakPowerKwpValues, declinationDegreesValues, azimuthDegreesValues }.Any(values => values.Count != 1 && values.Count != planeCount))
+        {
+            throw new InvalidOperationException("PV-Anlagenleistung, Modulneigung und Modulausrichtung muessen je einen Wert oder gleich viele Werte pro Dachflaeche enthalten.");
+        }
+
+        var planes = Enumerable.Range(0, planeCount)
+            .Select(index => new ForecastSolarPlane(
+                declinationDegreesValues[declinationDegreesValues.Count == 1 ? 0 : index],
+                azimuthDegreesValues[azimuthDegreesValues.Count == 1 ? 0 : index],
+                peakPowerKwpValues[peakPowerKwpValues.Count == 1 ? 0 : index]))
+            .ToArray();
+
+        if (planes.Any(plane => plane.PeakPowerKwp <= 0m))
+        {
+            throw new InvalidOperationException("Die PV-Anlagenleistung muss je Dachflaeche groesser als 0 kWp sein.");
+        }
+
+        return planes;
+    }
+
+    private async Task<IReadOnlyList<decimal>> GetRequiredDecimalListSettingAsync(
+        string settingKey,
+        string missingMessage,
+        string invalidMessage,
+        CancellationToken cancellationToken)
+    {
+        var settingValue = await GetRequiredSettingValueAsync(settingKey, missingMessage, cancellationToken);
+        var values = new List<decimal>();
+
+        foreach (var part in settingValue.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!decimal.TryParse(part, NumberStyles.Number, CultureInfo.InvariantCulture, out var value))
+            {
+                throw new InvalidOperationException(invalidMessage);
+            }
+
+            values.Add(value);
+        }
+
+        if (values.Count == 0)
+        {
+            throw new InvalidOperationException(missingMessage);
+        }
+
+        return values;
     }
 
     private async Task<string> GetRequiredSettingValueAsync(
@@ -143,7 +204,7 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
         return value;
     }
 
-    private static Uri BuildRequestUri(ForecastSolarConfiguration configuration)
+    private static Uri BuildRequestUri(ForecastSolarConfiguration configuration, ForecastSolarPlane plane)
     {
         var endpoint = AddApiKeyToEndpointIfConfigured(
             configuration.ApiEndpoint.TrimEnd('/'),
@@ -158,9 +219,9 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
             "/",
             FormatDecimal(configuration.Latitude),
             FormatDecimal(configuration.Longitude),
-            FormatDecimal(configuration.DeclinationDegrees),
-            FormatDecimal(NormalizeAzimuthForForecastSolar(configuration.AzimuthDegrees)),
-            FormatDecimal(configuration.PeakPowerKwp));
+            FormatDecimal(plane.DeclinationDegrees),
+            FormatDecimal(NormalizeAzimuthForForecastSolar(plane.AzimuthDegrees)),
+            FormatDecimal(plane.PeakPowerKwp));
 
         return new Uri(endpointUri, path);
     }
@@ -387,14 +448,12 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
 
         public decimal Longitude { get; init; }
 
-        public decimal DeclinationDegrees { get; init; }
-
-        public decimal AzimuthDegrees { get; init; }
-
-        public decimal PeakPowerKwp { get; init; }
+        public IReadOnlyList<ForecastSolarPlane> Planes { get; init; } = Array.Empty<ForecastSolarPlane>();
 
         public TimeZoneInfo TimeZone { get; init; } = TimeZoneInfo.Utc;
     }
+
+    private sealed record ForecastSolarPlane(decimal DeclinationDegrees, decimal AzimuthDegrees, decimal PeakPowerKwp);
 
     private sealed record ForecastSolarEnergyPoint(DateTimeOffset TimestampUtc, decimal CumulativeWattHours);
 

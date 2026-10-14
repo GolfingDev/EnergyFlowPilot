@@ -19,16 +19,33 @@ public sealed class CachedWeatherForecastProvider : IWeatherForecastProvider
         this.forecastCache = forecastCache;
     }
 
-    public Task<IReadOnlyList<PvYieldForecastSlot>> GetPvYieldForecastAsync(
+    private static readonly TimeSpan CanonicalWindowLength = TimeSpan.FromDays(3);
+
+    public async Task<IReadOnlyList<PvYieldForecastSlot>> GetPvYieldForecastAsync(
         DateTimeOffset startsAtUtc,
         DateTimeOffset endsAtUtc,
         CancellationToken cancellationToken = default)
     {
-        var cacheKey = $"{startsAtUtc:O}|{endsAtUtc:O}";
+        // Decision cycles request a window that moves every 15 minutes. Caching one fixed window per UTC day keeps the
+        // number of Forecast.Solar calls at one per roof plane and hour, well below the public rate limit.
+        var canonicalStartsAtUtc = new DateTimeOffset(startsAtUtc.UtcDateTime.Date, TimeSpan.Zero);
+        var canonicalEndsAtUtc = canonicalStartsAtUtc.Add(CanonicalWindowLength);
 
-        return forecastCache.GetOrCreateAsync(
-            cacheKey,
-            token => innerProvider.GetPvYieldForecastAsync(startsAtUtc, endsAtUtc, token),
+        var slotTicks = TimeSpan.FromMinutes(15).Ticks;
+        if (endsAtUtc > canonicalEndsAtUtc ||
+            startsAtUtc.UtcTicks % slotTicks != 0 ||
+            endsAtUtc.UtcTicks % slotTicks != 0)
+        {
+            return await innerProvider.GetPvYieldForecastAsync(startsAtUtc, endsAtUtc, cancellationToken);
+        }
+
+        var canonicalSlots = await forecastCache.GetOrCreateAsync(
+            $"{canonicalStartsAtUtc:O}",
+            token => innerProvider.GetPvYieldForecastAsync(canonicalStartsAtUtc, canonicalEndsAtUtc, token),
             cancellationToken);
+
+        return canonicalSlots
+            .Where(slot => slot.TimeSlot.StartsAtUtc >= startsAtUtc && slot.TimeSlot.EndsAtUtc <= endsAtUtc)
+            .ToArray();
     }
 }

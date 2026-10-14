@@ -98,6 +98,8 @@ The service must read the configured feed-in compensation from persisted setting
 
 The first real PV forecast provider uses Forecast.Solar Public API. It requires no API key, but it must read site and PV system settings from persisted controller settings. Because the public response is hourly, the provider maps each hourly energy delta evenly to four 15-minute Decision Engine forecast slots. This interpolation must be visible as a provider limitation and must be replaceable later, for example by Solcast or a paid Forecast.Solar tier with finer granularity.
 
+Roofs with several planes (e.g. east/west) are configured as comma-separated lists in `pvForecast.peakPowerKwp`, `pvForecast.declinationDegrees` and `pvForecast.azimuthDegrees`; a single value applies to all planes. The provider sends one request per plane and adds the yields. Because the direct decision requests a window that moves every 15 minutes, the cache stores one fixed three-day window per UTC day and slices the requested range from it, so the public rate limit (12 requests per hour) is never reached.
+
 The frontend-facing forecast API must expose DTOs only. Domain models must not be returned directly to the frontend. The first API endpoint delegates to `IBatteryForecastService` and maps the result to a DTO containing time slot, inputs, decision, target power, projected state of charge and structured reasons.
 
 The forecast is advisory for the user interface. It must not directly execute hardware commands.
