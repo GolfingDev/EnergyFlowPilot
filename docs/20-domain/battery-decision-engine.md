@@ -52,14 +52,20 @@ The forecast should contain:
 
 Each forecast entry must use the projected battery state of charge for its time slot once forecasted battery state calculation exists.
 
-Forecast charging decisions must consider how long the battery needs to charge:
+Forecast charging decisions are need-based (`BatteryGridChargeNeedPlanner`):
 
-- required charge energy is calculated from current or projected state of charge and configured total battery capacity
-- required charge duration is calculated from required charge energy and configured maximum charge power
-- planned grid charging must use the cheapest available 15-minute Tibber price slots needed to reach the target state of charge
-- the cheapest slots do not have to be contiguous because the best prices may be scattered across the forecast window
-- if multiple slots have the same price, earlier slots should be preferred so the forecast remains deterministic
-- if the available cheap or negative slots do not provide enough energy to reach the target state of charge, the Battery Decision Engine must clearly explain the remaining gap
+- by default the battery covers expected consumption in every slot down to the planning minimum state of charge (`SELF_CONSUMPTION_DISCHARGE`)
+- the planner first simulates the forecast without grid charging; grid import that only remains because the battery is empty is a shortage
+- shortages are closed in descending price order with the cheapest earlier source after the last slot in which the battery ran out of energy:
+  - holding battery energy in a cheaper slot (`HOLD_FOR_EXPENSIVE_SLOT`), cost = price of the holding slot
+  - grid charging (`PLANNED_GRID_CHARGE`), cost = charge price divided by the round-trip efficiency
+- a source is only used when its cost is at least 0.01 EUR/kWh below the price of the shortage slot
+- added energy must fit below the planning maximum in every slot until the shortage, so grid charging never displaces expected PV surplus
+- only the missing energy is charged, never a blanket fill to the planning maximum
+- if the forecast would end below the target end state of charge, the cheapest holds or charges keep that reserve (`END_SOC_RESERVE`); this reserve is not price-checked because prices after the horizon are unknown
+- if multiple sources have the same cost, holding is preferred over charging and earlier slots are preferred so the forecast remains deterministic
+- negative prices keep their own rules: the cheapest negative slots are planned for a full charge
+- there is no grid charging without an expected consumption shortage; energy that PV or the battery would provide anyway must not be bought
 - the projected state of charge must be updated slot by slot after every planned charge, discharge, PV surplus and consumption decision
 - the projected state of charge must apply configured round-trip efficiency physically, not only as an audit metric
 - the first efficiency model uses `sqrt(roundTripEfficiencyPercent / 100)` as single-direction efficiency for charging and discharging
@@ -134,9 +140,19 @@ If required live inputs are missing, stale, inconsistent or outside plausible ph
 
 Every direct decision must be logged with its input summary, result, target power, relevant time window and structured reasons. Decision log retention must be configurable through persisted settings and frontend-editable later.
 
-Grid feed-in from the battery is forbidden under all circumstances. For `Discharge`, the target power must be limited by the currently measured grid import at the grid connection point. If current grid import is `0` watts or negative, the direct decision must not discharge and must explain that discharging would risk grid feed-in.
+Grid feed-in from the battery is forbidden under all circumstances. For `Discharge`, the target power must be limited by the grid import the site would have without the running battery action. If that value is `0` watts or negative, the direct decision must not discharge and must explain that discharging would risk grid feed-in.
 
-Negative grid import means the site is currently exporting energy. The Battery Decision Engine should absorb this export by charging the battery while the battery is not full. The target charge power must be limited by the absolute current grid export and by the configured maximum charge power.
+The measured grid power already contains the running battery action. Direct decisions therefore use the grid power without battery action: measured grid power minus the battery power, converted from the DC side to the AC side with the single-direction efficiency. Using the residual grid import as next target would only cover about half of the load and make charging and discharging oscillate. Because inverter losses are only estimated, discharge keeps the grid power deadband as import margin.
+
+Negative grid import without battery action means the site is currently exporting energy. The Battery Decision Engine should absorb this export by charging the battery while the battery is not full. The target charge power must be limited by the absolute export without battery action and by the configured maximum charge power.
+
+The direct decision takes grid charging and holding from the forecast plan for the current slot, so forecast chart and real control follow the same rules:
+
+- planned grid charge: charge with the planned power, capped by settings and the planning maximum
+- planned hold (`HOLD_FOR_EXPENSIVE_SLOT`, `END_SOC_RESERVE`, waiting for a negative price window or a negative current price): stay idle
+- partial hold: discharge, but at most with the planned power
+- otherwise: cover the live demand down to the planning minimum state of charge
+- if the forecast is unavailable, the battery covers the live demand and no grid charging is started
 
 There is one economic exception: when future Tibber prices include negative grid-charging slots, the Battery Decision Engine may preserve battery headroom instead of absorbing current export. This decision must compare the future negative-price charging value against the configured feed-in compensation price per kWh. The configured feed-in compensation must be persisted and frontend-editable later.
 
@@ -206,10 +222,11 @@ The Battery Decision Engine must use future Tibber electricity prices to lower t
 
 The basic strategy is:
 
-- charge the battery during cheap Tibber price phases
-- discharge the battery during expensive Tibber price phases
-- stay idle during neutral phases
+- cover consumption from the battery by default
+- hold battery energy or charge from the grid only when a later, clearly more expensive slot would otherwise run out of battery energy (see need-based forecast charging above)
 - always use negative Tibber price phases for grid charging when the battery is not full
+
+The earlier classification into cheap, neutral and expensive thirds (`TibberPriceDecisionRule`) is no longer used for control decisions. It charged in every "cheap" third regardless of expected PV yield and consumption and therefore bought energy that PV would have provided anyway.
 
 The current or forecasted battery state of charge must influence the price strategy:
 
@@ -234,8 +251,7 @@ The current or forecasted battery state of charge must influence the price strat
 - if configured target end reserve prevents further discharge, the Decision Engine must use an explicit reserve rule and reason
 - Golden Scenario audits must report final state of charge and verify it remains at or above target end state of charge
 - Golden Scenario audits should use a planning reserve above the hard minimum so the forecast does not optimize exactly to the hardware protection boundary
-- a low battery state of charge makes charging easier, so neutral Tibber prices may still lead to charging
-- a high battery state of charge makes grid charging more restrictive, so only the cheapest Tibber prices should lead to charging
+- the state of charge influences grid charging only through the need-based plan: a full battery has no shortage to close, an almost empty battery reaches a shortage earlier
 - every state-of-charge override must be included in the structured reasons
 
 The total battery capacity must not be hardcoded. It must be configurable through the frontend in a future step, transported through DTOs at the API boundary and persisted in the database.
@@ -251,13 +267,7 @@ For a given 15-minute slot:
 - if the battery is already full, the Battery Decision Engine must choose `Idle` with a clear reason because the battery cannot be charged further
 - every PV surplus override must be included in the structured reasons
 
-The first implementation step may classify Tibber prices into cheap, neutral and expensive phases based on the relative price distribution inside the available forecast window:
-
-- cheap phase: lower price range, suitable for grid charging
-- neutral phase: middle price range, suitable for idle
-- expensive phase: upper price range, suitable for discharging
-
-Later optimization must include battery capacity, minimum state of charge, maximum charge/discharge power, efficiency losses, expected consumption and expected PV yield. Those parameters are required before the strategy can be considered a true cost optimizer.
+The need-based planner includes battery capacity, planning minimum and maximum, maximum charge/discharge power, efficiency losses, expected consumption and expected PV yield. Its quality depends on the consumption forecast: the house consumption must include all phases (the Victron house consumption topic setting accepts a comma-separated list of per-phase topics that are summed), otherwise loads like a three-phase heat pump are missing and the plan underestimates the need.
 
 ## Interfaces
 

@@ -15,7 +15,6 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
     private const int MaximumPlausiblePowerWatts = 100_000;
 
     private readonly CurrentBatteryDecisionServiceDependencies dependencies;
-    private readonly TibberPriceDecisionRule tibberPriceDecisionRule = new();
     private readonly BatteryDischargePowerLimiter dischargePowerLimiter = new();
     private readonly BatteryGridExportAbsorptionPolicy gridExportAbsorptionPolicy = new();
 
@@ -115,14 +114,11 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 cancellationToken);
         }
 
-        var activePvChargePowerWatts = await GetActivePvChargePowerWattsAsync(decidedAtUtc, cancellationToken);
-        var decisionSiteTelemetry = activePvChargePowerWatts > 0 && siteTelemetry.CurrentGridImportWatts < 0
-            ? new CurrentSiteTelemetry(
-                siteTelemetry.CurrentGridImportWatts - activePvChargePowerWatts,
-                siteTelemetry.CurrentPvProductionWatts,
-                siteTelemetry.MeasuredAtUtc,
-                siteTelemetry.CurrentBatteryPowerWatts)
+        // Without a measured battery power the previous PV charge target is the only hint how much export the battery already absorbs.
+        var decisionSiteTelemetry = siteTelemetry.CurrentBatteryPowerWatts is null
+            ? await CreateFallbackDecisionSiteTelemetryAsync(decidedAtUtc, siteTelemetry, cancellationToken)
             : siteTelemetry;
+        var gridPowerWithoutBatteryWatts = CalculateGridPowerWithoutBatteryWatts(decisionSiteTelemetry, batteryConfiguration);
 
         IReadOnlyList<TibberPriceForecastSlot>? priceForecast = null;
         TibberPriceForecastSlot? currentPriceSlot = null;
@@ -145,7 +141,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 $"Die aktuellen Tibber-Preise konnten nicht geladen werden ({exception.Message}). Die Decision Engine bleibt deshalb im Idle-Zustand.");
         }
 
-        if (Math.Abs(decisionSiteTelemetry.CurrentGridImportWatts) <= gridPowerDeadbandWatts)
+        if (Math.Abs(gridPowerWithoutBatteryWatts) <= gridPowerDeadbandWatts)
         {
             return await SaveIdleDecisionAsync(
                 decidedAtUtc,
@@ -156,22 +152,25 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 tibberPriceCurrency: currentPriceSlot?.Currency,
                 new BatteryDecisionReason(
                     CurrentBatteryDecisionRuleIds.GridPowerDeadband,
-                    $"Die aktuelle Netzleistung von {decisionSiteTelemetry.CurrentGridImportWatts} Watt liegt innerhalb des konfigurierten Puffers von +/- {gridPowerDeadbandWatts} Watt. Die Decision Engine ignoriert diese kleine Abweichung und bleibt im Idle-Zustand."),
+                    $"Die aktuelle Netzleistung ohne Akku von {gridPowerWithoutBatteryWatts} Watt liegt innerhalb des konfigurierten Puffers von +/- {gridPowerDeadbandWatts} Watt. Die Decision Engine ignoriert diese kleine Abweichung und bleibt im Idle-Zustand."),
                 cancellationToken);
         }
 
-        if (decisionSiteTelemetry.CurrentGridImportWatts < 0)
+        if (gridPowerWithoutBatteryWatts < 0)
         {
             return await CreateExportAbsorptionDecisionAsync(
                 decidedAtUtc,
                 batteryState,
                 batteryConfiguration,
                 decisionSiteTelemetry,
+                gridPowerWithoutBatteryWatts,
                 currentPriceSlot,
                 priceForecast ?? Array.Empty<TibberPriceForecastSlot>(),
                 feedInCompensationPricePerKwh,
                 cancellationToken);
         }
+
+        var dischargeDemandWatts = CalculateDischargeDemandWatts(gridPowerWithoutBatteryWatts, decisionSiteTelemetry, gridPowerDeadbandWatts);
 
         if (missingCurrentPriceReason is not null)
         {
@@ -180,10 +179,11 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 batteryState,
                 batteryConfiguration,
                 decisionSiteTelemetry,
+                dischargeDemandWatts,
                 currentPriceSlot: null,
                 new BatteryDecisionReason(
                     CurrentBatteryDecisionRuleIds.CoverCurrentGridImport,
-                    $"Aktueller Netzbezug von {decisionSiteTelemetry.CurrentGridImportWatts} Watt wird aus dem Akku gedeckt. Der Tibber-Preis ist in diesem Zyklus nicht verfuegbar; die Decision Engine startet deshalb keine preisbasierte Netzladung."),
+                    $"Aktueller Verbrauch ohne Akku von {gridPowerWithoutBatteryWatts} Watt wird aus dem Akku gedeckt. Der Tibber-Preis ist in diesem Zyklus nicht verfuegbar; die Decision Engine startet deshalb keine preisbasierte Netzladung."),
                 batteryConfiguration.MinimumStateOfChargePercent,
                 cancellationToken);
         }
@@ -208,35 +208,27 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 cancellationToken);
         }
 
-        var priceRuleResult = tibberPriceDecisionRule.Evaluate(decidedAtUtc, priceForecast, batteryState);
+        // The forecast plan decides grid charging and holding, so direct decision and forecast chart follow the same rules.
+        var plannedSlot = await TryGetPlannedForecastSlotAsync(decidedAtUtc, currentPriceSlot, cancellationToken);
+        var planEntry = plannedSlot.Entry;
 
-        return priceRuleResult.Instruction.DecisionState switch
+        if (planEntry?.Decision.Instruction is { DecisionState: BatteryDecisionState.Charge, ChargeSource: BatteryChargeSource.Grid })
         {
-            BatteryDecisionState.Charge => await CreateGridChargeDecisionAsync(
+            return await CreateGridChargeDecisionAsync(
                 decidedAtUtc,
                 batteryState,
                 batteryConfiguration,
                 decisionSiteTelemetry,
                 currentPriceSlot,
                 feedInCompensationPricePerKwh,
-                priceRuleResult.Reasons[0],
-                cancellationToken),
-            BatteryDecisionState.Discharge => await CreateDischargeDecisionAsync(
-                decidedAtUtc,
-                batteryState,
-                batteryConfiguration,
-                decisionSiteTelemetry,
-                currentPriceSlot,
-                priceRuleResult.Reasons[0],
-                batteryConfiguration.MinimumStateOfChargePercent,
-                cancellationToken),
-            _ => await TryCreateForecastBackedDischargeDecisionAsync(
-                decidedAtUtc,
-                batteryState,
-                batteryConfiguration,
-                decisionSiteTelemetry,
-                currentPriceSlot,
-                cancellationToken) ?? await SaveDecisionAsync(
+                planEntry.Reasons[0],
+                planEntry.Decision.TargetPowerWatts,
+                cancellationToken);
+        }
+
+        if (planEntry is not null && IsPlannedBatteryHold(planEntry))
+        {
+            return await SaveDecisionAsync(
                 decidedAtUtc,
                 currentPriceSlot.TimeSlot.EndsAtUtc,
                 new CurrentBatteryDecision(
@@ -246,87 +238,75 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 decisionSiteTelemetry,
                 currentPriceSlot.TotalPricePerKwh,
                 currentPriceSlot.Currency,
-                priceRuleResult.Reasons,
-                cancellationToken)
-        };
-    }
-
-    private async Task<CurrentBatteryDecisionResult?> TryCreateForecastBackedDischargeDecisionAsync(
-        DateTimeOffset decidedAtUtc,
-        BatteryState batteryState,
-        BatteryConfiguration batteryConfiguration,
-        CurrentSiteTelemetry siteTelemetry,
-        TibberPriceForecastSlot currentPriceSlot,
-        CancellationToken cancellationToken)
-    {
-        if (dependencies.BatteryForecastService is null ||
-            siteTelemetry.CurrentGridImportWatts <= 0)
-        {
-            return null;
-        }
-
-        BatteryForecastResult forecastResult;
-        try
-        {
-            forecastResult = await dependencies.BatteryForecastService.CalculateForecastAsync(
-                decidedAtUtc,
-                decidedAtUtc.Add(DecisionLookahead),
-                cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            return await SaveIdleDecisionAsync(
-                decidedAtUtc,
-                currentPriceSlot.TimeSlot.EndsAtUtc,
-                batteryState,
-                siteTelemetry,
-                currentPriceSlot.TotalPricePerKwh,
-                currentPriceSlot.Currency,
-                new BatteryDecisionReason(
-                    CurrentBatteryDecisionRuleIds.ForecastKeepsDischargeReserve,
-                    $"Der 24h-Forecast konnte nicht berechnet werden ({exception.Message}). Die Decision Engine entlädt bei neutralem Preis deshalb nicht."),
+                planEntry.Reasons,
                 cancellationToken);
         }
 
-        var futureEntries = forecastResult.Entries
-            .Where(entry => entry.TimeSlot.EndsAtUtc > decidedAtUtc)
-            .OrderBy(entry => entry.TimeSlot.StartsAtUtc)
-            .ToArray();
-        var finalStateOfChargePercent = futureEntries.Length == 0
-            ? batteryState.StateOfChargePercent
-            : futureEntries[^1].StateOfChargeAfterPercent;
-        var reservePercent = Math.Max(
-            batteryConfiguration.TargetEndStateOfChargePercent,
-            batteryConfiguration.PlanningMinimumStateOfChargePercent);
-
-        if (finalStateOfChargePercent <= reservePercent)
-        {
-            return await SaveIdleDecisionAsync(
-                decidedAtUtc,
-                currentPriceSlot.TimeSlot.EndsAtUtc,
-                batteryState,
-                siteTelemetry,
-                currentPriceSlot.TotalPricePerKwh,
-                currentPriceSlot.Currency,
-                new BatteryDecisionReason(
-                    CurrentBatteryDecisionRuleIds.ForecastKeepsDischargeReserve,
-                    $"Der 24h-Forecast endet bei {finalStateOfChargePercent:0.#} Prozent SoC und schützt damit die Reserve von {reservePercent:0.#} Prozent. Die Decision Engine entlädt bei neutralem Preis nicht."),
-                cancellationToken);
-        }
-
-        var reason = new BatteryDecisionReason(
-            CurrentBatteryDecisionRuleIds.ForecastAllowsLoadCoverageDischarge,
-            $"Aktueller Netzbezug von {siteTelemetry.CurrentGridImportWatts} Watt wird aus dem Akku gedeckt. Der 24h-Forecast endet trotz Verbrauch, günstiger Ladefenster und PV-Prognose bei {finalStateOfChargePercent:0.#} Prozent SoC und bleibt damit über der Reserve von {reservePercent:0.#} Prozent.");
+        // A partial hold caps the discharge at the planned power; otherwise the battery covers the live demand completely.
+        var isPartialHold = planEntry?.Decision.Instruction.DecisionState == BatteryDecisionState.Discharge &&
+            planEntry.Reasons[0].RuleName is BatteryForecastRuleIds.HoldForExpensiveSlot or BatteryForecastRuleIds.EndSocReserve;
+        var effectiveDischargeDemandWatts = isPartialHold
+            ? Math.Min(dischargeDemandWatts, planEntry!.Decision.TargetPowerWatts)
+            : dischargeDemandWatts;
+        var dischargeReason = isPartialHold
+            ? planEntry!.Reasons[0]
+            : new BatteryDecisionReason(
+                plannedSlot.FailureMessage is null && planEntry is not null
+                    ? CurrentBatteryDecisionRuleIds.ForecastAllowsLoadCoverageDischarge
+                    : CurrentBatteryDecisionRuleIds.CoverCurrentGridImport,
+                $"Aktueller Verbrauch ohne Akku von {gridPowerWithoutBatteryWatts} Watt wird aus dem Akku gedeckt. {plannedSlot.FailureMessage ?? "Der Forecast plant fuer diesen Slot weder Netzladung noch das Zurueckhalten von Akkuenergie."}");
 
         return await CreateDischargeDecisionAsync(
             decidedAtUtc,
             batteryState,
             batteryConfiguration,
-            siteTelemetry,
+            decisionSiteTelemetry,
+            effectiveDischargeDemandWatts,
             currentPriceSlot,
-            reason,
-            reservePercent,
+            dischargeReason,
+            batteryConfiguration.PlanningMinimumStateOfChargePercent,
             cancellationToken);
+    }
+
+    private async Task<PlannedForecastSlot> TryGetPlannedForecastSlotAsync(
+        DateTimeOffset decidedAtUtc,
+        TibberPriceForecastSlot currentPriceSlot,
+        CancellationToken cancellationToken)
+    {
+        if (dependencies.BatteryForecastService is null)
+        {
+            return new PlannedForecastSlot(null, "Es ist kein Forecast verfuegbar; die Decision Engine startet deshalb keine Netzladung.");
+        }
+
+        try
+        {
+            // The forecast starts at the current slot so the plan for "now" is part of the result.
+            var forecastResult = await dependencies.BatteryForecastService.CalculateForecastAsync(
+                currentPriceSlot.TimeSlot.StartsAtUtc,
+                decidedAtUtc.Add(DecisionLookahead),
+                cancellationToken);
+            var entry = forecastResult.Entries.FirstOrDefault(forecastEntry =>
+                forecastEntry.TimeSlot.StartsAtUtc <= decidedAtUtc &&
+                decidedAtUtc < forecastEntry.TimeSlot.EndsAtUtc);
+
+            return entry is null
+                ? new PlannedForecastSlot(null, "Der Forecast enthaelt keinen Eintrag fuer den aktuellen Slot; die Decision Engine startet deshalb keine Netzladung.")
+                : new PlannedForecastSlot(entry, null);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return new PlannedForecastSlot(null, $"Der Forecast konnte nicht berechnet werden ({exception.Message}); die Decision Engine startet deshalb keine Netzladung.");
+        }
+    }
+
+    private static bool IsPlannedBatteryHold(BatteryForecastEntry planEntry)
+    {
+        // These forecast rules intentionally keep battery energy or buy grid energy at a negative price instead of discharging.
+        return planEntry.Decision.Instruction.DecisionState == BatteryDecisionState.Idle &&
+            (planEntry.TibberPricePerKwh < 0m ||
+                planEntry.Reasons[0].RuleName is BatteryForecastRuleIds.HoldForExpensiveSlot
+                    or BatteryForecastRuleIds.EndSocReserve
+                    or BatteryForecastRuleIds.WaitForNegativePriceWindow);
     }
 
     private async Task<LiveBatteryStateReadResult> TryGetBatteryStateAsync(
@@ -377,6 +357,64 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                     $"Es liegen noch keine vollstaendigen Live-Telemetriedaten fuer Netzbezug, Hausverbrauch oder PV vor ({exception.Message}). Die Decision Engine bleibt deshalb im Idle-Zustand.")
             };
         }
+    }
+
+    private async Task<CurrentSiteTelemetry> CreateFallbackDecisionSiteTelemetryAsync(
+        DateTimeOffset decidedAtUtc,
+        CurrentSiteTelemetry siteTelemetry,
+        CancellationToken cancellationToken)
+    {
+        var activePvChargePowerWatts = await GetActivePvChargePowerWattsAsync(decidedAtUtc, cancellationToken);
+
+        return activePvChargePowerWatts > 0 && siteTelemetry.CurrentGridImportWatts < 0
+            ? new CurrentSiteTelemetry(
+                siteTelemetry.CurrentGridImportWatts - activePvChargePowerWatts,
+                siteTelemetry.CurrentPvProductionWatts,
+                siteTelemetry.MeasuredAtUtc,
+                siteTelemetry.CurrentBatteryPowerWatts)
+            : siteTelemetry;
+    }
+
+    /// <summary>
+    /// Calculates the site grid power the battery has to compensate, i.e. the measured grid power without the current battery action.
+    /// </summary>
+    /// <remarks>
+    /// The measured grid power already contains the running battery action. Using it directly as the next target lets the battery
+    /// cover only the residual import it leaves behind, so load coverage collapses to roughly half and charge/discharge oscillates.
+    /// The battery power is measured on the DC side, so it is converted to the AC side with the configured single-direction efficiency.
+    /// </remarks>
+    private static int CalculateGridPowerWithoutBatteryWatts(
+        CurrentSiteTelemetry siteTelemetry,
+        BatteryConfiguration batteryConfiguration)
+    {
+        if (siteTelemetry.CurrentBatteryPowerWatts is not { } batteryDcPowerWatts)
+        {
+            return siteTelemetry.CurrentGridImportWatts;
+        }
+
+        var singleDirectionEfficiency = CalculateSingleDirectionEfficiency(batteryConfiguration);
+        var batteryAcPowerWatts = batteryDcPowerWatts >= 0
+            ? batteryDcPowerWatts / singleDirectionEfficiency
+            : batteryDcPowerWatts * singleDirectionEfficiency;
+
+        return siteTelemetry.CurrentGridImportWatts - (int)Math.Round(batteryAcPowerWatts, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>
+    /// Calculates the discharge demand while keeping the grid power deadband as safety distance to battery feed-in.
+    /// </summary>
+    /// <remarks>
+    /// The DC-to-AC conversion only estimates inverter losses. Keeping the deadband as import margin prevents that an overestimated
+    /// demand turns into battery feed-in, which is forbidden. Without measured battery power the previous behavior is kept.
+    /// </remarks>
+    private static int CalculateDischargeDemandWatts(
+        int gridPowerWithoutBatteryWatts,
+        CurrentSiteTelemetry siteTelemetry,
+        int gridPowerDeadbandWatts)
+    {
+        return siteTelemetry.CurrentBatteryPowerWatts is null
+            ? gridPowerWithoutBatteryWatts
+            : Math.Max(0, gridPowerWithoutBatteryWatts - gridPowerDeadbandWatts);
     }
 
     private async Task<int> GetActivePvChargePowerWattsAsync(
@@ -443,13 +481,14 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         BatteryState batteryState,
         BatteryConfiguration batteryConfiguration,
         CurrentSiteTelemetry siteTelemetry,
+        int gridPowerWithoutBatteryWatts,
         TibberPriceForecastSlot? currentPriceSlot,
         IReadOnlyList<TibberPriceForecastSlot> priceForecast,
         decimal feedInCompensationPricePerKwh,
         CancellationToken cancellationToken)
     {
         var targetPowerWatts = gridExportAbsorptionPolicy.CalculateTargetPowerWatts(
-            siteTelemetry.CurrentGridImportWatts,
+            gridPowerWithoutBatteryWatts,
             batteryState,
             batteryConfiguration,
             priceForecast,
@@ -480,11 +519,11 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         {
             new(
                 CurrentBatteryDecisionRuleIds.AbsorbGridExport,
-                $"Aktueller Netzexport von {Math.Abs(siteTelemetry.CurrentGridImportWatts)} Watt wird in die Batterie geladen, damit keine Einspeisung stehen bleibt.")
+                $"Aktueller Überschuss ohne Akku von {Math.Abs(gridPowerWithoutBatteryWatts)} Watt wird in die Batterie geladen, damit keine Einspeisung stehen bleibt.")
         };
         AddChargePowerLimitReason(
             reasons,
-            calculatedTargetPowerWatts: Math.Abs(siteTelemetry.CurrentGridImportWatts),
+            calculatedTargetPowerWatts: Math.Abs(gridPowerWithoutBatteryWatts),
             limitedTargetPowerWatts: targetPowerWatts);
 
         return await SaveDecisionAsync(
@@ -509,6 +548,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         TibberPriceForecastSlot currentPriceSlot,
         decimal feedInCompensationPricePerKwh,
         BatteryDecisionReason baseReason,
+        int plannedTargetPowerWatts,
         CancellationToken cancellationToken)
     {
         var targetStateOfChargePercent = currentPriceSlot.TotalPricePerKwh < feedInCompensationPricePerKwh
@@ -519,7 +559,11 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         var availableStoredCapacityKwh = targetBatteryEnergyKwh - currentBatteryEnergyKwh;
         var singleDirectionEfficiency = CalculateSingleDirectionEfficiency(batteryConfiguration);
         var calculatedChargeInputEnergyKwh = Math.Max(0m, availableStoredCapacityKwh / singleDirectionEfficiency);
-        var calculatedTargetPowerWatts = CalculatePowerWatts(calculatedChargeInputEnergyKwh, currentPriceSlot.TimeSlot.Duration);
+
+        // The plan only charges the energy that is actually needed; the capacity limit still applies to the live state of charge.
+        var calculatedTargetPowerWatts = Math.Min(
+            plannedTargetPowerWatts,
+            CalculatePowerWatts(calculatedChargeInputEnergyKwh, currentPriceSlot.TimeSlot.Duration));
         var targetPowerWatts = LimitChargePowerBySettings(calculatedTargetPowerWatts, batteryConfiguration);
 
         if (targetPowerWatts <= 0)
@@ -541,7 +585,9 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 cancellationToken);
         }
 
-        var ruleId = targetStateOfChargePercent < 100m && targetPowerWatts < batteryConfiguration.MaximumChargePowerWatts
+        var ruleId = targetStateOfChargePercent < 100m &&
+            targetPowerWatts < batteryConfiguration.MaximumChargePowerWatts &&
+            targetPowerWatts < plannedTargetPowerWatts
             ? BatteryForecastRuleIds.PlanningMaximumGridChargeLimit
             : baseReason.RuleName;
         var reasonMessage = ruleId == BatteryForecastRuleIds.PlanningMaximumGridChargeLimit
@@ -570,6 +616,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         BatteryState batteryState,
         BatteryConfiguration batteryConfiguration,
         CurrentSiteTelemetry siteTelemetry,
+        int dischargeDemandWatts,
         TibberPriceForecastSlot? currentPriceSlot,
         BatteryDecisionReason baseReason,
         decimal reserveStateOfChargePercent,
@@ -580,7 +627,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         var tibberPricePerKwh = currentPriceSlot?.TotalPricePerKwh;
         var tibberPriceCurrency = currentPriceSlot?.Currency;
         var powerLimitedTargetWatts = dischargePowerLimiter.CalculateTargetPowerWatts(
-            siteTelemetry.CurrentGridImportWatts,
+            dischargeDemandWatts,
             batteryConfiguration);
 
         if (powerLimitedTargetWatts <= 0)
@@ -954,6 +1001,10 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         int HoldCycles,
         int MinimumPreviousPowerWatts,
         int MaximumNewPowerWatts);
+
+    private sealed record PlannedForecastSlot(
+        BatteryForecastEntry? Entry,
+        string? FailureMessage);
 
     private sealed record StabilizedDecision(
         CurrentBatteryDecision Decision,

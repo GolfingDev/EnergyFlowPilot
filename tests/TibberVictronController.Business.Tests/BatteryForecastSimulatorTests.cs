@@ -106,12 +106,12 @@ public sealed class BatteryForecastSimulatorTests
     }
 
     [Fact]
-    public void SimulateUsesForecastAverageInsteadOfFixedDischargePrice()
+    public void SimulateCoversConsumptionFromBatteryEvenBelowAveragePrice()
     {
         var simulator = new BatteryForecastSimulator();
         var batteryState = new BatteryState(80m, ForecastStartsAtUtc);
         var batteryConfiguration = new BatteryConfiguration(10m, maximumDischargePowerWatts: 3000, roundTripEfficiencyPercent: 100m);
-        var priceForecast = CreatePriceForecast(0.26m, 0.20m, 0.18m);
+        var priceForecast = CreatePriceForecast(0.18m, 0.26m, 0.30m);
         var pvForecast = CreatePvForecast(0m, 0m, 0m);
         var consumptionForecast = CreateConsumptionForecast(0.50m, 0m, 0m);
 
@@ -123,13 +123,94 @@ public sealed class BatteryForecastSimulatorTests
             batteryConfiguration,
             feedInCompensationPricePerKwh: 0.08m);
 
-        var aboveAverageEntry = result.Entries[0];
-        Assert.Equal(BatteryDecisionState.Discharge, aboveAverageEntry.Decision.Instruction.DecisionState);
-        Assert.Contains(aboveAverageEntry.Reasons, reason => reason.Message.Contains("Forecast-Durchschnitt"));
+        var entry = result.Entries[0];
+        Assert.Equal(BatteryDecisionState.Discharge, entry.Decision.Instruction.DecisionState);
+        Assert.Equal(2000, entry.Decision.TargetPowerWatts);
+        Assert.Contains(entry.Reasons, reason => reason.RuleName == BatteryForecastRuleIds.SelfConsumptionDischarge);
     }
 
     [Fact]
-    public void SimulateDischargesBelowAverageWhenFuturePvSurplusNeedsHeadroom()
+    public void SimulateHoldsBatteryEnergyForMoreExpensiveShortage()
+    {
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(20m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(10m, minimumStateOfChargePercent: 10m, maximumDischargePowerWatts: 3000, roundTripEfficiencyPercent: 100m);
+        var priceForecast = CreatePriceForecast(0.20m, 0.50m);
+        var pvForecast = CreatePvForecast(0m, 0m);
+        var consumptionForecast = CreateConsumptionForecast(0.75m, 0.75m);
+
+        var result = simulator.Simulate(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            batteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh: 0.08m);
+
+        Assert.Equal(BatteryDecisionState.Discharge, result.Entries[0].Decision.Instruction.DecisionState);
+        Assert.Equal(1000, result.Entries[0].Decision.TargetPowerWatts);
+        Assert.Contains(result.Entries[0].Reasons, reason => reason.RuleName == BatteryForecastRuleIds.HoldForExpensiveSlot);
+        Assert.Equal(BatteryDecisionState.Discharge, result.Entries[1].Decision.Instruction.DecisionState);
+        Assert.Equal(3000, result.Entries[1].Decision.TargetPowerWatts);
+        Assert.DoesNotContain(result.Entries, entry => entry.Decision.Instruction.DecisionState == BatteryDecisionState.Charge);
+    }
+
+    [Fact]
+    public void SimulateDoesNotGridChargeWhenShortageIsNotMoreExpensiveThanChargingIncludingLosses()
+    {
+        // Reproduces the night of 2026-10-14: charging at 0.29 EUR only to avoid 0.30 EUR import loses money through efficiency losses,
+        // and the expensive evening slot is covered by PV surplus anyway.
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(30m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(10m, minimumStateOfChargePercent: 15m, maximumChargePowerWatts: 5000, maximumDischargePowerWatts: 5000, roundTripEfficiencyPercent: 90m);
+        var priceForecast = CreatePriceForecast(0.29m, 0.29m, 0.30m, 0.30m, 0.25m, 0.45m);
+        var pvForecast = CreatePvForecast(0m, 0m, 0m, 0m, 3.00m, 0m);
+        var consumptionForecast = CreateConsumptionForecast(1.00m, 1.00m, 1.00m, 1.00m, 1.00m, 1.00m);
+
+        var result = simulator.Simulate(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            batteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh: 0.09m);
+
+        Assert.DoesNotContain(result.Entries, entry => entry.Decision.Instruction.ChargeSource == BatteryChargeSource.Grid);
+        Assert.Equal(BatteryDecisionState.Discharge, result.Entries[0].Decision.Instruction.DecisionState);
+        Assert.Equal(BatteryChargeSource.PV, result.Entries[4].Decision.Instruction.ChargeSource);
+        Assert.Equal(BatteryDecisionState.Discharge, result.Entries[5].Decision.Instruction.DecisionState);
+    }
+
+    [Fact]
+    public void SimulateGridChargesOnlyForClearlyMoreExpensiveShortage()
+    {
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(30m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(10m, minimumStateOfChargePercent: 15m, maximumChargePowerWatts: 5000, maximumDischargePowerWatts: 5000, roundTripEfficiencyPercent: 90m);
+        var priceForecast = CreatePriceForecast(0.29m, 0.29m, 0.30m, 0.30m, 0.25m, 0.45m);
+        var pvForecast = CreatePvForecast(0m, 0m, 0m, 0m, 0m, 0m);
+        var consumptionForecast = CreateConsumptionForecast(1.00m, 1.00m, 1.00m, 1.00m, 0m, 1.00m);
+
+        var result = simulator.Simulate(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            batteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh: 0.09m);
+
+        var gridChargeEntries = result.Entries
+            .Where(entry => entry.Decision.Instruction.ChargeSource == BatteryChargeSource.Grid)
+            .ToArray();
+        var gridChargeEntry = Assert.Single(gridChargeEntries);
+        Assert.Equal(result.Entries[4].TimeSlot, gridChargeEntry.TimeSlot);
+        Assert.Contains(gridChargeEntry.Reasons, reason => reason.RuleName == BatteryForecastRuleIds.PlannedGridCharge);
+        Assert.Equal(BatteryDecisionState.Discharge, result.Entries[5].Decision.Instruction.DecisionState);
+        Assert.Equal(4000, result.Entries[5].Decision.TargetPowerWatts);
+    }
+
+    [Fact]
+    public void SimulateDischargesBeforeFuturePvSurplus()
     {
         var simulator = new BatteryForecastSimulator();
         var batteryState = new BatteryState(95m, ForecastStartsAtUtc);
@@ -156,39 +237,7 @@ public sealed class BatteryForecastSimulatorTests
 
         var entry = result.Entries[0];
         Assert.Equal(BatteryDecisionState.Discharge, entry.Decision.Instruction.DecisionState);
-        Assert.Contains(entry.Reasons, reason => reason.RuleName == BatteryForecastRuleIds.DischargeForFuturePvHeadroom);
-        Assert.Contains(entry.Reasons, reason => reason.Message.Contains("PV-Puffer"));
-    }
-
-    [Fact]
-    public void SimulateDoesNotDischargeForFuturePvHeadroomBelowFeedInCompensation()
-    {
-        var simulator = new BatteryForecastSimulator();
-        var batteryState = new BatteryState(95m, ForecastStartsAtUtc);
-        var batteryConfiguration = new BatteryConfiguration(new BatteryConfigurationValues
-        {
-            TotalCapacityKwh = 10m,
-            MinimumStateOfChargePercent = 10m,
-            MaximumDischargePowerWatts = 3000,
-            RoundTripEfficiencyPercent = 100m,
-            TargetEndStateOfChargePercent = 25m,
-            PlanningMinimumStateOfChargePercent = 10m
-        });
-        var priceForecast = CreatePriceForecast(0.07m, 0.06m, 0.40m);
-        var pvForecast = CreatePvForecast(0m, 1.50m, 1.50m);
-        var consumptionForecast = CreateConsumptionForecast(0.50m, 0m, 0m);
-
-        var result = simulator.Simulate(
-            priceForecast,
-            pvForecast,
-            consumptionForecast,
-            batteryState,
-            batteryConfiguration,
-            feedInCompensationPricePerKwh: 0.09m);
-
-        var entry = result.Entries[0];
-        Assert.NotEqual(BatteryForecastRuleIds.DischargeForFuturePvHeadroom, entry.Reasons[0].RuleName);
-        Assert.NotEqual(BatteryDecisionState.Discharge, entry.Decision.Instruction.DecisionState);
+        Assert.Contains(entry.Reasons, reason => reason.RuleName == BatteryForecastRuleIds.SelfConsumptionDischarge);
     }
 
     [Fact]
@@ -370,20 +419,22 @@ public sealed class BatteryForecastSimulatorTests
     }
 
     [Fact]
-    public void SimulateLimitsGridChargingToPlanningMaximumWhenPriceIsAboveFeedInCompensation()
+    public void SimulateLimitsNeedBasedGridChargingToPlanningMaximum()
     {
         var simulator = new BatteryForecastSimulator();
-        var batteryState = new BatteryState(88m, ForecastStartsAtUtc);
+        var batteryState = new BatteryState(50m, ForecastStartsAtUtc);
         var batteryConfiguration = new BatteryConfiguration(new BatteryConfigurationValues
         {
-            TotalCapacityKwh = 12m,
-            MaximumChargePowerWatts = 3000,
+            TotalCapacityKwh = 2m,
+            MinimumStateOfChargePercent = 10m,
+            MaximumChargePowerWatts = 5000,
+            MaximumDischargePowerWatts = 3000,
             RoundTripEfficiencyPercent = 100m,
             PlanningMaximumStateOfChargePercent = 90m
         });
-        var priceForecast = CreatePriceForecast(0.10m, 0.30m, 0.50m);
-        var pvForecast = CreatePvForecast(0m, 0m, 0m);
-        var consumptionForecast = CreateConsumptionForecast(0m, 0m, 0m);
+        var priceForecast = CreatePriceForecast(0.10m, 0.30m, 0.50m, 0.50m, 0.50m);
+        var pvForecast = CreatePvForecast(0m, 0m, 0m, 0m, 0m);
+        var consumptionForecast = CreateConsumptionForecast(0m, 0m, 0.75m, 0.75m, 0.75m);
 
         var result = simulator.Simulate(
             priceForecast,
@@ -395,10 +446,11 @@ public sealed class BatteryForecastSimulatorTests
 
         var entry = result.Entries[0];
         Assert.Equal(BatteryDecisionState.Charge, entry.Decision.Instruction.DecisionState);
-        Assert.Equal(960, entry.Decision.TargetPowerWatts);
+        Assert.Equal(BatteryChargeSource.Grid, entry.Decision.Instruction.ChargeSource);
+        Assert.Equal(3200, entry.Decision.TargetPowerWatts);
         Assert.Equal(90m, entry.StateOfChargeAfterPercent);
-        Assert.Contains(entry.Reasons, reason => reason.RuleName == BatteryForecastRuleIds.PlanningMaximumGridChargeLimit);
-        Assert.Contains(entry.Reasons, reason => reason.Message.Contains("Planungs-Maximum"));
+        Assert.Contains(entry.Reasons, reason => reason.RuleName == BatteryForecastRuleIds.PlannedGridCharge);
+        Assert.All(result.Entries, forecastEntry => Assert.True(forecastEntry.StateOfChargeAfterPercent <= 90m));
     }
 
     [Fact]
@@ -463,17 +515,11 @@ public sealed class BatteryForecastSimulatorTests
     }
 
     [Fact]
-    public void SimulateDoesNotGridChargeAbovePlanningMaximumWhenPriceIsBelowFeedInCompensation()
+    public void SimulateDoesNotGridChargeWithoutConsumptionNeed()
     {
         var simulator = new BatteryForecastSimulator();
-        var batteryState = new BatteryState(88m, ForecastStartsAtUtc);
-        var batteryConfiguration = new BatteryConfiguration(new BatteryConfigurationValues
-        {
-            TotalCapacityKwh = 12m,
-            MaximumChargePowerWatts = 3000,
-            RoundTripEfficiencyPercent = 100m,
-            PlanningMaximumStateOfChargePercent = 90m
-        });
+        var batteryState = new BatteryState(40m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(12m, maximumChargePowerWatts: 3000, roundTripEfficiencyPercent: 100m);
         var priceForecast = CreatePriceForecast(0.05m, 0.30m, 0.50m);
         var pvForecast = CreatePvForecast(0m, 0m, 0m);
         var consumptionForecast = CreateConsumptionForecast(0m, 0m, 0m);
@@ -486,11 +532,8 @@ public sealed class BatteryForecastSimulatorTests
             batteryConfiguration,
             feedInCompensationPricePerKwh: 0.08m);
 
-        var entry = result.Entries[0];
-        Assert.Equal(BatteryDecisionState.Charge, entry.Decision.Instruction.DecisionState);
-        Assert.Equal(960, entry.Decision.TargetPowerWatts);
-        Assert.Equal(batteryConfiguration.PlanningMaximumStateOfChargePercent, entry.StateOfChargeAfterPercent);
-        Assert.Contains(entry.Reasons, reason => reason.RuleName == BatteryForecastRuleIds.PlanningMaximumGridChargeLimit);
+        Assert.All(result.Entries, entry => Assert.Equal(BatteryDecisionState.Idle, entry.Decision.Instruction.DecisionState));
+        Assert.All(result.Entries, entry => Assert.Equal(40m, entry.StateOfChargeAfterPercent));
     }
 
     private static IReadOnlyList<TibberPriceForecastSlot> CreatePriceForecast(params decimal[] prices)

@@ -7,8 +7,10 @@ namespace TibberVictronController.Business.Decisions;
 /// </summary>
 public sealed class BatteryForecastSimulator
 {
+    private const decimal EnergyToleranceKwh = 0.001m;
+
     private readonly BatteryChargeWindowPlanner chargeWindowPlanner = new();
-    private readonly TibberPriceDecisionRule tibberPriceDecisionRule = new();
+    private readonly BatteryGridChargeNeedPlanner gridChargeNeedPlanner = new();
 
     /// <summary>
     /// Calculates forecast entries by applying PV, Tibber price and battery capacity rules slot by slot.
@@ -23,10 +25,48 @@ public sealed class BatteryForecastSimulator
     {
         ValidateInputs(priceForecast, pvForecast, consumptionForecast, initialBatteryState, batteryConfiguration, feedInCompensationPricePerKwh);
 
-        var plannedGridChargeSlots = chargeWindowPlanner
-            .PlanCheapestSlotsForFullCharge(priceForecast, initialBatteryState, batteryConfiguration)
+        // Negative prices pay for every stored kWh, so the cheapest negative slots are still planned for a full charge.
+        var plannedNegativePriceChargeSlots = chargeWindowPlanner
+            .PlanCheapestSlotsForFullCharge(
+                priceForecast.Where(priceSlot => priceSlot.TotalPricePerKwh < 0m).ToArray(),
+                initialBatteryState,
+                batteryConfiguration)
             .PlannedChargeSlots
             .ToHashSet();
+        var needPlan = gridChargeNeedPlanner.Plan(
+            batteryConfiguration,
+            plan => SimulateEntries(
+                priceForecast,
+                pvForecast,
+                consumptionForecast,
+                initialBatteryState,
+                batteryConfiguration,
+                feedInCompensationPricePerKwh,
+                plannedNegativePriceChargeSlots,
+                plan));
+        var entries = SimulateEntries(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            initialBatteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh,
+            plannedNegativePriceChargeSlots,
+            needPlan);
+
+        return new BatteryForecastResult(initialBatteryState, batteryConfiguration, entries);
+    }
+
+    private IReadOnlyList<BatteryForecastEntry> SimulateEntries(
+        IReadOnlyList<TibberPriceForecastSlot> priceForecast,
+        IReadOnlyList<PvYieldForecastSlot> pvForecast,
+        IReadOnlyList<ConsumptionForecastSlot> consumptionForecast,
+        BatteryState initialBatteryState,
+        BatteryConfiguration batteryConfiguration,
+        decimal feedInCompensationPricePerKwh,
+        IReadOnlySet<ForecastTimeSlot> plannedNegativePriceChargeSlots,
+        BatteryGridChargeNeedPlan needPlan)
+    {
         var pvSlotsByTime = pvForecast.ToDictionary(pvSlot => pvSlot.TimeSlot);
         var consumptionSlotsByTime = consumptionForecast.ToDictionary(consumptionSlot => consumptionSlot.TimeSlot);
         var entries = new List<BatteryForecastEntry>();
@@ -45,10 +85,9 @@ public sealed class BatteryForecastSimulator
                 stateOfChargeBeforePercent,
                 currentBatteryEnergyKwh,
                 batteryConfiguration,
-                plannedGridChargeSlots.Contains(priceSlot.TimeSlot),
+                plannedNegativePriceChargeSlots.Contains(priceSlot.TimeSlot),
+                needPlan.Find(priceSlot.TimeSlot),
                 priceForecast,
-                pvForecast,
-                consumptionForecast,
                 averagePricePerKwh,
                 feedInCompensationPricePerKwh);
 
@@ -56,20 +95,19 @@ public sealed class BatteryForecastSimulator
             entries.Add(simulatedSlot.Entry);
         }
 
-        return new BatteryForecastResult(initialBatteryState, batteryConfiguration, entries);
+        return entries;
     }
 
-    private SimulatedSlot SimulateSlot(
+    private static SimulatedSlot SimulateSlot(
         TibberPriceForecastSlot priceSlot,
         PvYieldForecastSlot pvSlot,
         ConsumptionForecastSlot consumptionSlot,
         decimal stateOfChargeBeforePercent,
         decimal batteryEnergyBeforeKwh,
         BatteryConfiguration batteryConfiguration,
-        bool isPlannedGridChargeSlot,
+        bool isPlannedNegativePriceChargeSlot,
+        BatteryPlannedSlotAction? plannedAction,
         IReadOnlyList<TibberPriceForecastSlot> priceForecast,
-        IReadOnlyList<PvYieldForecastSlot> pvForecast,
-        IReadOnlyList<ConsumptionForecastSlot> consumptionForecast,
         decimal averagePricePerKwh,
         decimal feedInCompensationPricePerKwh)
     {
@@ -102,18 +140,17 @@ public sealed class BatteryForecastSimulator
             batteryEnergyBeforeKwh,
             batteryConfiguration,
             priceForecast,
-            pvForecast,
-            consumptionForecast,
             expectedGridImportBeforeBatteryKwh,
             maximumChargeInputEnergyKwh,
             maximumDischargeOutputEnergyKwh,
             singleDirectionEfficiency,
-            isPlannedGridChargeSlot,
+            isPlannedNegativePriceChargeSlot,
+            plannedAction,
             averagePricePerKwh,
             feedInCompensationPricePerKwh);
     }
 
-    private SimulatedSlot SimulatePvSurplusSlot(
+    private static SimulatedSlot SimulatePvSurplusSlot(
         TibberPriceForecastSlot priceSlot,
         PvYieldForecastSlot pvSlot,
         ConsumptionForecastSlot consumptionSlot,
@@ -176,7 +213,7 @@ public sealed class BatteryForecastSimulator
             $"Der erwartete Netzbezug ist negativ. Die Decision Engine nimmt {chargeInputEnergyKwh:0.0000} kWh PV-Ueberschuss auf und speichert nach Wirkungsgrad {storedEnergyKwh:0.0000} kWh im Akku.");
     }
 
-    private SimulatedSlot SimulateTibberPriceSlot(
+    private static SimulatedSlot SimulateTibberPriceSlot(
         TibberPriceForecastSlot priceSlot,
         PvYieldForecastSlot pvSlot,
         ConsumptionForecastSlot consumptionSlot,
@@ -184,19 +221,16 @@ public sealed class BatteryForecastSimulator
         decimal batteryEnergyBeforeKwh,
         BatteryConfiguration batteryConfiguration,
         IReadOnlyList<TibberPriceForecastSlot> priceForecast,
-        IReadOnlyList<PvYieldForecastSlot> pvForecast,
-        IReadOnlyList<ConsumptionForecastSlot> consumptionForecast,
         decimal expectedGridImportBeforeBatteryKwh,
         decimal maximumChargeInputEnergyKwh,
         decimal maximumDischargeOutputEnergyKwh,
         decimal singleDirectionEfficiency,
-        bool isPlannedGridChargeSlot,
+        bool isPlannedNegativePriceChargeSlot,
+        BatteryPlannedSlotAction? plannedAction,
         decimal averagePricePerKwh,
         decimal feedInCompensationPricePerKwh)
     {
         var planningMinimumBatteryEnergyKwh = CalculatePlanningMinimumBatteryEnergyKwh(batteryConfiguration);
-        var targetEndBatteryEnergyKwh = CalculateTargetEndBatteryEnergyKwh(batteryConfiguration);
-        var hasFutureNegativePriceWindow = HasFutureNegativePriceWindow(priceForecast, priceSlot.TimeSlot.StartsAtUtc);
 
         if (CanDischargeBeforeNegativePriceWindow(
             priceSlot,
@@ -239,7 +273,7 @@ public sealed class BatteryForecastSimulator
                     $"Der Tibber-Preis ist negativ, aber das Planungs-Maximum von {batteryConfiguration.PlanningMaximumStateOfChargePercent:0.#} Prozent ist erreicht. Die Decision Engine lädt nicht weiter.");
             }
 
-            if (isPlannedGridChargeSlot || !HasFutureCheaperNegativePrice(priceForecast, priceSlot))
+            if (isPlannedNegativePriceChargeSlot || !HasFutureCheaperNegativePrice(priceForecast, priceSlot))
             {
                 return CreateGridChargeSlot(new GridChargeSlotInput
                 {
@@ -270,57 +304,40 @@ public sealed class BatteryForecastSimulator
                 "Der Tibber-Preis ist negativ, aber ein noch guenstigerer geplanter Ladeslot bleibt frei. Die Decision Engine wartet auf das bessere Ladefenster.");
         }
 
-        if (ShouldDischargeForFuturePvHeadroom(
-            priceSlot,
-            pvForecast,
-            consumptionForecast,
-            expectedGridImportBeforeBatteryKwh,
-            batteryEnergyBeforeKwh,
-            batteryConfiguration,
-            planningMinimumBatteryEnergyKwh,
-            maximumDischargeOutputEnergyKwh,
-            singleDirectionEfficiency,
-            feedInCompensationPricePerKwh))
+        if (plannedAction is { ChargeInputKwh: > 0m })
         {
-            var futurePvSurplusInputKwh = CalculateFuturePvSurplusInputKwh(pvForecast, consumptionForecast, priceSlot.TimeSlot.StartsAtUtc);
-            var currentHeadroomInputKwh = CalculateAvailablePvInputHeadroomKwh(batteryConfiguration, batteryEnergyBeforeKwh, singleDirectionEfficiency);
+            return CreateGridChargeSlot(new GridChargeSlotInput
+            {
+                PriceSlot = priceSlot,
+                PvSlot = pvSlot,
+                ConsumptionSlot = consumptionSlot,
+                StateOfChargeBeforePercent = stateOfChargeBeforePercent,
+                BatteryEnergyBeforeKwh = batteryEnergyBeforeKwh,
+                BatteryConfiguration = batteryConfiguration,
+                ExpectedGridImportBeforeBatteryKwh = expectedGridImportBeforeBatteryKwh,
+                MaximumChargeInputEnergyKwh = Math.Min(maximumChargeInputEnergyKwh, plannedAction.ChargeInputKwh),
+                SingleDirectionEfficiency = singleDirectionEfficiency,
+                FeedInCompensationPricePerKwh = feedInCompensationPricePerKwh,
+                RuleId = plannedAction.RuleId,
+                ReasonMessage = $"Bedarfsgerechte Netzladung zu {priceSlot.TotalPricePerKwh:0.0000} EUR/kWh. {plannedAction.Explanation}"
+            });
+        }
 
-            return CreateDischargeSlot(
+        if (expectedGridImportBeforeBatteryKwh <= 0m)
+        {
+            return CreateIdleSlot(
                 priceSlot,
                 pvSlot,
                 consumptionSlot,
+                expectedGridImportBeforeBatteryKwh,
                 stateOfChargeBeforePercent,
                 batteryEnergyBeforeKwh,
                 batteryConfiguration,
-                expectedGridImportBeforeBatteryKwh,
-                planningMinimumBatteryEnergyKwh,
-                maximumDischargeOutputEnergyKwh,
-                singleDirectionEfficiency,
-                BatteryForecastRuleIds.DischargeForFuturePvHeadroom,
-                $"Es werden spaeter {futurePvSurplusInputKwh:0.0000} kWh PV-Ueberschuss erwartet, aber aktuell sind nur {currentHeadroomInputKwh:0.0000} kWh Ladepuffer frei. Weil der aktuelle Preis mit {priceSlot.TotalPricePerKwh:0.0000} EUR/kWh nicht unter der Einspeiseverguetung von {feedInCompensationPricePerKwh:0.0000} EUR/kWh liegt, deckt die Decision Engine jetzigen Netzbezug aus dem Akku und schafft PV-Puffer.");
+                BatteryForecastRuleIds.NeutralIdle,
+                "Es wird kein Netzbezug erwartet und es ist keine Netzladung noetig. Die Decision Engine bleibt idle.");
         }
 
-        if (ShouldDischargeAtCurrentPrice(priceSlot, expectedGridImportBeforeBatteryKwh, batteryEnergyBeforeKwh, targetEndBatteryEnergyKwh, averagePricePerKwh))
-        {
-            return CreateDischargeSlot(
-                priceSlot,
-                pvSlot,
-                consumptionSlot,
-                stateOfChargeBeforePercent,
-                batteryEnergyBeforeKwh,
-                batteryConfiguration,
-                expectedGridImportBeforeBatteryKwh,
-                targetEndBatteryEnergyKwh,
-                maximumDischargeOutputEnergyKwh,
-                singleDirectionEfficiency,
-                BatteryForecastRuleIds.ExpensivePriceDischarge,
-                $"Der aktuelle Tibber-Preis liegt mit {priceSlot.TotalPricePerKwh:0.0000} EUR/kWh mindestens auf dem Forecast-Durchschnitt von {averagePricePerKwh:0.0000} EUR/kWh. Die Decision Engine deckt erwarteten Netzbezug aus dem Akku; die konfigurierte Endreserve bleibt erhalten.");
-        }
-
-        if (expectedGridImportBeforeBatteryKwh > 0m &&
-            priceSlot.TotalPricePerKwh >= averagePricePerKwh &&
-            hasFutureNegativePriceWindow &&
-            batteryEnergyBeforeKwh <= planningMinimumBatteryEnergyKwh)
+        if (batteryEnergyBeforeKwh <= planningMinimumBatteryEnergyKwh)
         {
             return CreateIdleSlot(
                 priceSlot,
@@ -334,10 +351,13 @@ public sealed class BatteryForecastSimulator
                 "Akku wird nicht weiter entladen, weil die konfigurierte Planungsreserve erreicht ist.");
         }
 
-        if (expectedGridImportBeforeBatteryKwh > 0m &&
-            priceSlot.TotalPricePerKwh >= averagePricePerKwh &&
-            !hasFutureNegativePriceWindow &&
-            batteryEnergyBeforeKwh <= targetEndBatteryEnergyKwh)
+        // By default the battery covers consumption. A planned hold keeps part of that energy for a later, more expensive slot.
+        var holdOutputKwh = plannedAction?.HoldOutputKwh ?? 0m;
+        var allowedDischargeOutputKwh = Math.Max(
+            0m,
+            Math.Min(expectedGridImportBeforeBatteryKwh, maximumDischargeOutputEnergyKwh) - holdOutputKwh);
+
+        if (allowedDischargeOutputKwh <= EnergyToleranceKwh)
         {
             return CreateIdleSlot(
                 priceSlot,
@@ -347,51 +367,30 @@ public sealed class BatteryForecastSimulator
                 stateOfChargeBeforePercent,
                 batteryEnergyBeforeKwh,
                 batteryConfiguration,
-                BatteryForecastRuleIds.EndSocReserve,
-                "Akku wird wegen konfigurierter Endreserve nicht weiter entladen.");
+                plannedAction!.RuleId,
+                $"Der Akku haelt seine Energie zurueck; der Verbrauch wird zu {priceSlot.TotalPricePerKwh:0.0000} EUR/kWh aus dem Netz gedeckt. {plannedAction.Explanation}");
         }
 
-        var projectedBatteryState = new BatteryState(stateOfChargeBeforePercent, priceSlot.TimeSlot.StartsAtUtc);
-        var priceRuleResult = tibberPriceDecisionRule.Evaluate(priceSlot.TimeSlot.StartsAtUtc, priceForecast, projectedBatteryState);
+        var dischargeRuleId = holdOutputKwh > 0m
+            ? plannedAction!.RuleId
+            : BatteryForecastRuleIds.SelfConsumptionDischarge;
+        var dischargeReason = holdOutputKwh > 0m
+            ? $"Der Akku deckt den Verbrauch nur teilweise und haelt {holdOutputKwh:0.0000} kWh zurueck. {plannedAction!.Explanation}"
+            : "Der Akku deckt den erwarteten Verbrauch, damit kein Netzstrom gekauft werden muss.";
 
-        if (isPlannedGridChargeSlot &&
-            priceRuleResult.Instruction.DecisionState == BatteryDecisionState.Charge &&
-            batteryEnergyBeforeKwh < CalculatePlanningMaximumBatteryEnergyKwh(batteryConfiguration))
-        {
-            return CreateGridChargeSlot(new GridChargeSlotInput
-            {
-                PriceSlot = priceSlot,
-                PvSlot = pvSlot,
-                ConsumptionSlot = consumptionSlot,
-                StateOfChargeBeforePercent = stateOfChargeBeforePercent,
-                BatteryEnergyBeforeKwh = batteryEnergyBeforeKwh,
-                BatteryConfiguration = batteryConfiguration,
-                ExpectedGridImportBeforeBatteryKwh = expectedGridImportBeforeBatteryKwh,
-                MaximumChargeInputEnergyKwh = maximumChargeInputEnergyKwh,
-                SingleDirectionEfficiency = singleDirectionEfficiency,
-                FeedInCompensationPricePerKwh = feedInCompensationPricePerKwh,
-                RuleId = BatteryForecastRuleIds.PlannedGridCharge,
-                ReasonMessage = "Der Slot gehoert zu den guenstigsten geplanten Tibber-Ladeslots. Die Decision Engine laedt aus dem Netz."
-            });
-        }
-
-        var idleRuleId = hasFutureNegativePriceWindow
-            ? BatteryForecastRuleIds.WaitForNegativePriceWindow
-            : BatteryForecastRuleIds.NeutralIdle;
-        var idleReason = hasFutureNegativePriceWindow
-            ? "Aktueller Preis ist nicht attraktiv genug, weil spaeter ein negatives Preisfenster erwartet wird."
-            : "Der aktuelle Slot loest keine technisch oder wirtschaftlich bessere Batterieaktion aus. Die Decision Engine bleibt idle.";
-
-        return CreateIdleSlot(
+        return CreateDischargeSlot(
             priceSlot,
             pvSlot,
             consumptionSlot,
-            expectedGridImportBeforeBatteryKwh,
             stateOfChargeBeforePercent,
             batteryEnergyBeforeKwh,
             batteryConfiguration,
-            idleRuleId,
-            idleReason);
+            expectedGridImportBeforeBatteryKwh,
+            planningMinimumBatteryEnergyKwh,
+            allowedDischargeOutputKwh,
+            singleDirectionEfficiency,
+            dischargeRuleId,
+            dischargeReason);
     }
 
     private static SimulatedSlot CreateGridChargeSlot(GridChargeSlotInput input)
@@ -461,6 +460,21 @@ public sealed class BatteryForecastSimulator
         var removedBatteryEnergyKwh = dischargeOutputEnergyKwh / singleDirectionEfficiency;
         var targetPowerWatts = CalculatePowerWatts(dischargeOutputEnergyKwh, priceSlot.TimeSlot);
 
+        // A rest energy just above the reserve can round to 0 W, which is no valid discharge instruction.
+        if (targetPowerWatts <= 0)
+        {
+            return CreateIdleSlot(
+                priceSlot,
+                pvSlot,
+                consumptionSlot,
+                expectedGridImportBeforeBatteryKwh,
+                stateOfChargeBeforePercent,
+                batteryEnergyBeforeKwh,
+                batteryConfiguration,
+                BatteryForecastRuleIds.MinimumSocReserve,
+                "Akku wird nicht weiter entladen, weil die konfigurierte Planungsreserve erreicht ist.");
+        }
+
         return CreateSimulatedSlot(
             priceSlot,
             pvSlot,
@@ -506,71 +520,6 @@ public sealed class BatteryForecastSimulator
         var availableLoadCoverageKwh = (batteryEnergyBeforeKwh - minimumBatteryEnergyKwh) * singleDirectionEfficiency;
 
         return availableLoadCoverageKwh > 0m && maximumDischargeOutputEnergyKwh > 0m;
-    }
-
-    private static bool ShouldDischargeAtCurrentPrice(
-        TibberPriceForecastSlot priceSlot,
-        decimal expectedGridImportBeforeBatteryKwh,
-        decimal batteryEnergyBeforeKwh,
-        decimal reserveBatteryEnergyKwh,
-        decimal averagePricePerKwh)
-    {
-        return priceSlot.TotalPricePerKwh >= averagePricePerKwh &&
-            expectedGridImportBeforeBatteryKwh > 0m &&
-            batteryEnergyBeforeKwh > reserveBatteryEnergyKwh;
-    }
-
-    private static bool ShouldDischargeForFuturePvHeadroom(
-        TibberPriceForecastSlot priceSlot,
-        IReadOnlyList<PvYieldForecastSlot> pvForecast,
-        IReadOnlyList<ConsumptionForecastSlot> consumptionForecast,
-        decimal expectedGridImportBeforeBatteryKwh,
-        decimal batteryEnergyBeforeKwh,
-        BatteryConfiguration batteryConfiguration,
-        decimal planningMinimumBatteryEnergyKwh,
-        decimal maximumDischargeOutputEnergyKwh,
-        decimal singleDirectionEfficiency,
-        decimal feedInCompensationPricePerKwh)
-    {
-        if (priceSlot.TotalPricePerKwh < feedInCompensationPricePerKwh ||
-            expectedGridImportBeforeBatteryKwh <= 0m ||
-            batteryEnergyBeforeKwh <= planningMinimumBatteryEnergyKwh ||
-            maximumDischargeOutputEnergyKwh <= 0m)
-        {
-            return false;
-        }
-
-        var futurePvSurplusInputKwh = CalculateFuturePvSurplusInputKwh(pvForecast, consumptionForecast, priceSlot.TimeSlot.StartsAtUtc);
-        var currentHeadroomInputKwh = CalculateAvailablePvInputHeadroomKwh(batteryConfiguration, batteryEnergyBeforeKwh, singleDirectionEfficiency);
-
-        return futurePvSurplusInputKwh > currentHeadroomInputKwh;
-    }
-
-    private static decimal CalculateFuturePvSurplusInputKwh(
-        IReadOnlyList<PvYieldForecastSlot> pvForecast,
-        IReadOnlyList<ConsumptionForecastSlot> consumptionForecast,
-        DateTimeOffset currentSlotStartsAtUtc)
-    {
-        var consumptionByTimeSlot = consumptionForecast.ToDictionary(consumptionSlot => consumptionSlot.TimeSlot);
-
-        return pvForecast
-            .Where(pvSlot => pvSlot.TimeSlot.StartsAtUtc > currentSlotStartsAtUtc)
-            .Sum(pvSlot =>
-            {
-                var consumptionSlot = consumptionByTimeSlot[pvSlot.TimeSlot];
-
-                return Math.Max(0m, pvSlot.ExpectedPvYieldKwh - consumptionSlot.ExpectedConsumptionKwh);
-            });
-    }
-
-    private static decimal CalculateAvailablePvInputHeadroomKwh(
-        BatteryConfiguration batteryConfiguration,
-        decimal batteryEnergyBeforeKwh,
-        decimal singleDirectionEfficiency)
-    {
-        var availableStoredCapacityKwh = CalculatePlanningMaximumBatteryEnergyKwh(batteryConfiguration) - batteryEnergyBeforeKwh;
-
-        return Math.Max(0m, availableStoredCapacityKwh / singleDirectionEfficiency);
     }
 
     private static SimulatedSlot CreateIdleSlot(
@@ -704,15 +653,6 @@ public sealed class BatteryForecastSimulator
         return mostValuableFutureNegativePrice > feedInCompensationPricePerKwh;
     }
 
-    private static bool HasFutureNegativePriceWindow(
-        IReadOnlyList<TibberPriceForecastSlot> priceForecast,
-        DateTimeOffset currentSlotStartsAtUtc)
-    {
-        return priceForecast.Any(priceSlot =>
-            priceSlot.TimeSlot.StartsAtUtc > currentSlotStartsAtUtc &&
-            priceSlot.TotalPricePerKwh < 0m);
-    }
-
     private static bool HasFutureCheaperNegativePrice(
         IReadOnlyList<TibberPriceForecastSlot> priceForecast,
         TibberPriceForecastSlot currentPriceSlot)
@@ -755,11 +695,6 @@ public sealed class BatteryForecastSimulator
     private static decimal CalculatePlanningMinimumBatteryEnergyKwh(BatteryConfiguration batteryConfiguration)
     {
         return batteryConfiguration.TotalCapacityKwh * batteryConfiguration.PlanningMinimumStateOfChargePercent / 100m;
-    }
-
-    private static decimal CalculateTargetEndBatteryEnergyKwh(BatteryConfiguration batteryConfiguration)
-    {
-        return batteryConfiguration.TotalCapacityKwh * batteryConfiguration.TargetEndStateOfChargePercent / 100m;
     }
 
     private static decimal CalculatePlanningMaximumBatteryEnergyKwh(BatteryConfiguration batteryConfiguration)

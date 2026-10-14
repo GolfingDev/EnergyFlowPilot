@@ -275,7 +275,9 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             value,
             measuredAtUtc,
             topics,
-            snapshotStore);
+            snapshotStore,
+            latestValuesByTopic,
+            out var houseConsumptionWatts);
 
         if (signalKind is not null &&
             telemetryChangeDetector.ShouldTrigger(eventArguments.ApplicationMessage.Topic, value, signalKind.Value))
@@ -289,7 +291,7 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
 
         if (shouldPersistConsumptionSample)
         {
-            await PersistLiveConsumptionSampleAsync(snapshotStore, value, measuredAtUtc);
+            await PersistLiveConsumptionSampleAsync(snapshotStore, houseConsumptionWatts, measuredAtUtc);
         }
 
         var dashboardLiveUpdatePublisher = serviceProvider.GetService<IDashboardLiveUpdatePublisher>();
@@ -304,8 +306,12 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
         decimal value,
         DateTimeOffset measuredAtUtc,
         VictronMqttTopics topics,
-        MqttTelemetrySnapshotStore snapshotStore)
+        MqttTelemetrySnapshotStore snapshotStore,
+        IReadOnlyDictionary<string, decimal> latestValuesByTopic,
+        out decimal houseConsumptionWatts)
     {
+        houseConsumptionWatts = 0m;
+
         if (string.Equals(topic, topics.GridPowerTopic, StringComparison.Ordinal))
         {
             snapshotStore.UpdateGridPower(value, measuredAtUtc);
@@ -324,10 +330,15 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             return false;
         }
 
-        if (string.Equals(topic, topics.HouseConsumptionTopic, StringComparison.Ordinal))
+        if (topics.HouseConsumptionTopics.Contains(topic, StringComparer.Ordinal))
         {
-            snapshotStore.UpdateHouseConsumption(value, measuredAtUtc);
-            return true;
+            // Phases that have not reported yet count as 0 W so a single configured topic keeps its previous behavior.
+            houseConsumptionWatts = topics.HouseConsumptionTopics.Sum(houseTopic =>
+                latestValuesByTopic.TryGetValue(houseTopic, out var phaseWatts) ? phaseWatts : 0m);
+            snapshotStore.UpdateHouseConsumption(houseConsumptionWatts, measuredAtUtc);
+
+            // Only the leading topic persists a sample, so summing phases does not multiply the sample rate.
+            return string.Equals(topic, topics.HouseConsumptionTopic, StringComparison.Ordinal);
         }
 
         return false;
@@ -342,7 +353,7 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
 
         if (string.Equals(topic, topics.GridPowerTopic, StringComparison.Ordinal) ||
             string.Equals(topic, topics.BatteryPowerTopic, StringComparison.Ordinal) ||
-            string.Equals(topic, topics.HouseConsumptionTopic, StringComparison.Ordinal))
+            topics.HouseConsumptionTopics.Contains(topic, StringComparer.Ordinal))
         {
             return TelemetrySignalKind.Power;
         }

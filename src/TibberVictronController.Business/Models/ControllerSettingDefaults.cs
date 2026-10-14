@@ -162,7 +162,7 @@ public static class ControllerSettingDefaults
         new(VictronTopicGridPowerKey, "N/{portalId}/grid/30/Ac/Power", ControllerSettingSensitivity.Normal),
         new(VictronTopicBatterySocKey, "N/{portalId}/battery/512/Soc", ControllerSettingSensitivity.Normal),
         new(VictronTopicBatteryPowerKey, "N/{portalId}/battery/512/Dc/0/Power", ControllerSettingSensitivity.Normal),
-        new(VictronTopicHouseConsumptionKey, "N/{portalId}/system/0/Ac/Consumption/L1/Power", ControllerSettingSensitivity.Normal),
+        new(VictronTopicHouseConsumptionKey, "N/{portalId}/system/0/Ac/Consumption/L1/Power,N/{portalId}/system/0/Ac/Consumption/L2/Power,N/{portalId}/system/0/Ac/Consumption/L3/Power", ControllerSettingSensitivity.Normal),
         new(VictronWriteTopicChargeDischargeSetpointKey, "W/{portalId}/settings/0/Settings/CGwacs/AcPowerSetPoint", ControllerSettingSensitivity.Normal),
         new(VictronWriteTopicHub4ModeKey, "W/{portalId}/settings/0/Settings/CGwacs/Hub4Mode", ControllerSettingSensitivity.Normal),
         new(VictronExternalEssPhaseCountKey, "1", ControllerSettingSensitivity.Normal),

@@ -10,6 +10,8 @@ public static class BatteryForecastRuleIds
     public const string PreserveHeadroomForNegativePrice = "PRESERVE_HEADROOM_FOR_NEGATIVE_PRICE";
     public const string NegativePriceGridCharge = "NEGATIVE_PRICE_GRID_CHARGE";
     public const string PlannedGridCharge = "PLANNED_GRID_CHARGE";
+    public const string HoldForExpensiveSlot = "HOLD_FOR_EXPENSIVE_SLOT";
+    public const string SelfConsumptionDischarge = "SELF_CONSUMPTION_DISCHARGE";
     public const string DischargeBeforeNegativePriceWindow = "DISCHARGE_BEFORE_NEGATIVE_PRICE_WINDOW";
     public const string DischargeForFuturePvHeadroom = "DISCHARGE_FOR_FUTURE_PV_HEADROOM";
     public const string ExpensivePriceDischarge = "EXPENSIVE_PRICE_DISCHARGE";

@@ -12,7 +12,7 @@ public static class VictronMqttTopicFactory
             GridPowerTopic = Resolve(settings.GridPowerTopicTemplate, settings.PortalId),
             BatterySocTopic = Resolve(settings.BatterySocTopicTemplate, settings.PortalId),
             BatteryPowerTopic = Resolve(settings.BatteryPowerTopicTemplate, settings.PortalId),
-            HouseConsumptionTopic = Resolve(settings.HouseConsumptionTopicTemplate, settings.PortalId),
+            HouseConsumptionTopics = ResolveHouseConsumptionTopics(settings),
             ChargeDischargeSetpointTopic = Resolve(settings.ChargeDischargeSetpointTopic, settings.PortalId),
             Hub4ModeTopic = Resolve(settings.Hub4ModeTopic, settings.PortalId),
             Hub4ModeReadTopic = ToReadTopic(Resolve(settings.Hub4ModeTopic, settings.PortalId)),
@@ -24,6 +24,23 @@ public static class VictronMqttTopicFactory
             DisableFeedInTopic = Resolve(settings.DisableFeedInTopic, settings.PortalId),
             DisableFeedInReadTopic = ToReadTopic(Resolve(settings.DisableFeedInTopic, settings.PortalId))
         };
+    }
+
+    private static IReadOnlyList<string> ResolveHouseConsumptionTopics(VictronMqttSettings settings)
+    {
+        // A comma-separated list allows summing all phases; a single-phase topic misses loads like a three-phase heat pump.
+        var topics = settings.HouseConsumptionTopicTemplate
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(topicTemplate => Resolve(topicTemplate, settings.PortalId))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (topics.Length == 0)
+        {
+            throw new InvalidOperationException("Das Victron-Topic fuer Hausverbrauch ist nicht konfiguriert.");
+        }
+
+        return topics;
     }
 
     private static IReadOnlyList<string> ResolveExternalEssAcPowerSetpointTopics(VictronMqttSettings settings)

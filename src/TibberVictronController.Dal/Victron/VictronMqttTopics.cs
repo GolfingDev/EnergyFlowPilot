@@ -11,7 +11,15 @@ public sealed class VictronMqttTopics
 
     public required string BatteryPowerTopic { get; init; }
 
-    public required string HouseConsumptionTopic { get; init; }
+    /// <summary>
+    /// Gets all topics whose values are summed to the house consumption, e.g. one topic per phase.
+    /// </summary>
+    public required IReadOnlyList<string> HouseConsumptionTopics { get; init; }
+
+    /// <summary>
+    /// Gets the leading house consumption topic; its messages trigger persisting a live consumption sample.
+    /// </summary>
+    public string HouseConsumptionTopic => HouseConsumptionTopics[0];
 
     public required string ChargeDischargeSetpointTopic { get; init; }
 
@@ -34,15 +42,19 @@ public sealed class VictronMqttTopics
     public required string DisableFeedInReadTopic { get; init; }
 
     public IReadOnlyList<string> ReadTopics => new[]
-    {
-        GridPowerTopic,
-        BatterySocTopic,
-        BatteryPowerTopic,
-        HouseConsumptionTopic,
-        Hub4ModeReadTopic,
-        VebusMaxChargeCurrentTopic,
-        BatteryVoltageTopic,
-        DisableChargeReadTopic,
-        DisableFeedInReadTopic
-    };
+        {
+            GridPowerTopic,
+            BatterySocTopic,
+            BatteryPowerTopic
+        }
+        .Concat(HouseConsumptionTopics)
+        .Concat(new[]
+        {
+            Hub4ModeReadTopic,
+            VebusMaxChargeCurrentTopic,
+            BatteryVoltageTopic,
+            DisableChargeReadTopic,
+            DisableFeedInReadTopic
+        })
+        .ToArray();
 }

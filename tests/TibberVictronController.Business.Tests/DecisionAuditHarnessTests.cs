@@ -41,7 +41,7 @@ public sealed class DecisionAuditHarnessTests
         Assert.All(report.DecisionSlots, slot =>
             Assert.True(slot.ExpectedSocPercent <= report.Scenario.BatteryConfiguration.PlanningMaximumStateOfChargePercent));
         Assert.Contains(report.DecisionSlots, slot =>
-            slot.RuleId == BatteryForecastRuleIds.ExpensivePriceDischarge &&
+            slot.RuleId == BatteryForecastRuleIds.SelfConsumptionDischarge &&
             slot.StateOfChargeBeforePercent - slot.ExpectedSocPercent > slot.DischargedEnergyKwh / scenario.BatteryConfiguration.TotalCapacityKwh * 100m);
         Assert.Contains(report.DecisionSlots, slot =>
             slot.TimeSlot.StartsAtUtc.Hour >= 21 &&
@@ -162,6 +162,7 @@ public sealed class DecisionAuditHarnessTests
         var acceptedIdleRuleIds = new[]
         {
             BatteryForecastRuleIds.WaitForNegativePriceWindow,
+            BatteryForecastRuleIds.HoldForExpensiveSlot,
             BatteryForecastRuleIds.EndSocReserve,
             BatteryForecastRuleIds.MinimumSocReserve,
             BatteryForecastRuleIds.NeutralIdle,
@@ -177,8 +178,9 @@ public sealed class DecisionAuditHarnessTests
             BatteryForecastRuleIds.PlanningMaximumGridChargeLimit,
             BatteryForecastRuleIds.PvSurplusCharge,
             BatteryForecastRuleIds.DischargeBeforeNegativePriceWindow,
-            BatteryForecastRuleIds.DischargeForFuturePvHeadroom,
-            BatteryForecastRuleIds.ExpensivePriceDischarge
+            BatteryForecastRuleIds.SelfConsumptionDischarge,
+            BatteryForecastRuleIds.HoldForExpensiveSlot,
+            BatteryForecastRuleIds.EndSocReserve
         };
 
         Assert.False(string.IsNullOrWhiteSpace(slot.RuleId));

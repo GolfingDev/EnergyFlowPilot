@@ -22,6 +22,8 @@ public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsump
 
     private static readonly decimal BaseDailyConsumptionKwh = ThreePartyHouseholdHourlyConsumptionShare.Sum();
     private static readonly TimeSpan SlotDuration = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan ProfileRefreshInterval = TimeSpan.FromHours(1);
+    private static readonly TimeSpan ProfileHistoryWindow = TimeSpan.FromDays(14);
 
     private readonly IControllerSettingStore controllerSettingStore;
     private readonly ControllerDbContext dbContext;
@@ -98,14 +100,19 @@ public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsump
             .ThenBy(profile => profile.SlotIndex)
             .ToListAsync(cancellationToken);
 
+        // Samples arrive every few seconds, so rebuilding on every newer sample would reload the whole history on each decision cycle.
         if (existingProfiles.Count > 0 &&
-            existingProfiles.All(profile => profile.UpdatedAtUtc >= latestSampleMeasuredAtUtc.Value))
+            existingProfiles.All(profile => profile.UpdatedAtUtc >= latestSampleMeasuredAtUtc.Value.Subtract(ProfileRefreshInterval)))
         {
             return existingProfiles;
         }
 
+        // A short history window follows seasonal load changes such as a heat pump quickly.
+        var historyStartsAtUtc = latestSampleMeasuredAtUtc.Value.Subtract(ProfileHistoryWindow);
         var rawSamples = await dbContext.LiveConsumptionSamples
+            .Where(sample => sample.MeasuredAtUtc >= historyStartsAtUtc)
             .OrderBy(sample => sample.MeasuredAtUtc)
+            .Select(sample => new { sample.MeasuredAtUtc, sample.HouseConsumptionWatts })
             .ToArrayAsync(cancellationToken);
 
         var updatedAtUtc = latestSampleMeasuredAtUtc.Value;
