@@ -267,7 +267,9 @@ For a given 15-minute slot:
 - if the battery is already full, the Battery Decision Engine must choose `Idle` with a clear reason because the battery cannot be charged further
 - every PV surplus override must be included in the structured reasons
 
-The need-based planner includes battery capacity, planning minimum and maximum, maximum charge/discharge power, efficiency losses, expected consumption and expected PV yield. Its quality depends on the consumption forecast: the house consumption must include all phases (the Victron house consumption topic setting accepts a comma-separated list of per-phase topics that are summed), otherwise loads like a three-phase heat pump are missing and the plan underestimates the need.
+The need-based planner includes battery capacity, planning minimum and maximum, maximum charge/discharge power, efficiency losses, expected consumption and expected PV yield. Its quality depends on the consumption forecast: the house consumption must include all phases, otherwise loads like a three-phase heat pump are missing and the plan underestimates the need.
+
+The consumption profile learns from the gross site demand `grid power - Victron battery power + supplementary (E3/DC) PV production`. Victron's own AC consumption is not suitable for this site because it does not know the PV and battery behind the E3/DC system and clips each phase at 0 W. Grid power alone is not suitable either, because it already contains the Victron battery action and the profile would learn that covered load does not exist. Adding the E3/DC PV back lets the forecast subtract the PV forecast exactly once; the E3/DC battery effect stays in the profile because that energy is not available to the Victron battery. If no fresh E3/DC value is available, the summed Victron consumption topics (comma-separated list, default L1 to L3) are used as fallback.
 
 ## Interfaces
 

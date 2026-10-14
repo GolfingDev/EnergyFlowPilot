@@ -7,6 +7,7 @@ using MQTTnet.Protocol;
 using TibberVictronController.Api.Dashboard;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
+using TibberVictronController.Dal.HagerEnergy;
 using TibberVictronController.Dal.Mqtt;
 using TibberVictronController.Dal.Victron;
 
@@ -21,6 +22,7 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
     private static readonly TimeSpan LoopDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan MinimumVictronKeepAliveInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan LiveSampleCleanupInterval = TimeSpan.FromHours(1);
+    private static readonly TimeSpan SupplementaryPvMaxAge = TimeSpan.FromMinutes(5);
     private const int DefaultLiveSampleRetentionDays = 14;
     private const string SuppressedKeepAlivePayload = """{"keepalive-options":["suppress-republish"]}""";
 
@@ -397,7 +399,9 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
         await using var scope = serviceProvider.CreateAsyncScope();
         var liveConsumptionRepository = scope.ServiceProvider.GetRequiredService<ILiveConsumptionRepository>();
         var snapshot = snapshotStore.GetSnapshot();
-        var persistedHouseConsumptionWatts = GetPersistedHouseConsumptionWatts(snapshot, houseConsumptionWatts);
+        var supplementaryPvSnapshot = serviceProvider.GetService<HagerEnergyTelemetrySnapshotStore>()?.Current;
+        var persistedHouseConsumptionWatts = TryCalculateSiteConsumptionWatts(snapshot, supplementaryPvSnapshot, measuredAtUtc)
+            ?? GetPersistedHouseConsumptionWatts(snapshot, houseConsumptionWatts);
 
         await liveConsumptionRepository.SaveSampleAsync(
             new LiveConsumptionSample(
@@ -449,6 +453,32 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
         }
 
         return retentionDays;
+    }
+
+    /// <summary>
+    /// Calculates the site consumption that the consumption forecast learns from.
+    /// </summary>
+    /// <remarks>
+    /// Victron's AC consumption does not know the PV and battery behind the E3/DC system and is clipped per phase.
+    /// Grid power minus the Victron battery action plus the E3/DC PV production yields the gross site demand on all phases,
+    /// so the forecast can subtract the PV forecast exactly once. The E3/DC battery effect intentionally stays in the value,
+    /// because that energy is not available to the Victron battery. The DC battery power is used without loss correction;
+    /// the resulting error of a few percent is acceptable for an averaged profile.
+    /// </remarks>
+    public static decimal? TryCalculateSiteConsumptionWatts(
+        MqttTelemetrySnapshot snapshot,
+        HagerEnergyTelemetrySnapshot? supplementaryPvSnapshot,
+        DateTimeOffset measuredAtUtc)
+    {
+        if (snapshot.GridPowerWatts is not { } gridPowerWatts ||
+            snapshot.BatteryPowerWatts is not { } batteryPowerWatts ||
+            supplementaryPvSnapshot is null ||
+            measuredAtUtc - supplementaryPvSnapshot.LastSuccessfulPollAtUtc > SupplementaryPvMaxAge)
+        {
+            return null;
+        }
+
+        return Math.Max(0m, gridPowerWatts - batteryPowerWatts + supplementaryPvSnapshot.PvProductionWatts);
     }
 
     private static decimal GetPersistedHouseConsumptionWatts(MqttTelemetrySnapshot snapshot, decimal houseConsumptionWatts)
