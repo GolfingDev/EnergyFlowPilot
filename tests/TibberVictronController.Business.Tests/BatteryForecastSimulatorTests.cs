@@ -515,6 +515,29 @@ public sealed class BatteryForecastSimulatorTests
     }
 
     [Fact]
+    public void SimulateStaysIdleForNegligibleExpectedImport()
+    {
+        // Reproduces the NullReferenceException of 2026-10-15 22:30: a tiny import without any planned hold.
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(50m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(10m, roundTripEfficiencyPercent: 100m);
+        var priceForecast = CreatePriceForecast(0.30m, 0.30m);
+        var pvForecast = CreatePvForecast(0m, 0m);
+        var consumptionForecast = CreateConsumptionForecast(0.0005m, 0.0005m);
+
+        var result = simulator.Simulate(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            batteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh: 0.08m);
+
+        Assert.All(result.Entries, entry => Assert.Equal(BatteryDecisionState.Idle, entry.Decision.Instruction.DecisionState));
+        Assert.All(result.Entries, entry => Assert.Equal(BatteryForecastRuleIds.NeutralIdle, entry.Reasons[0].RuleName));
+    }
+
+    [Fact]
     public void SimulateDoesNotGridChargeWithoutConsumptionNeed()
     {
         var simulator = new BatteryForecastSimulator();

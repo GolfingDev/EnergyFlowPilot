@@ -359,22 +359,35 @@ public sealed class BatteryForecastSimulator
 
         if (allowedDischargeOutputKwh <= EnergyToleranceKwh)
         {
-            return CreateIdleSlot(
-                priceSlot,
-                pvSlot,
-                consumptionSlot,
-                expectedGridImportBeforeBatteryKwh,
-                stateOfChargeBeforePercent,
-                batteryEnergyBeforeKwh,
-                batteryConfiguration,
-                plannedAction!.RuleId,
-                $"Der Akku haelt seine Energie zurueck; der Verbrauch wird zu {priceSlot.TotalPricePerKwh:0.0000} EUR/kWh aus dem Netz gedeckt. {plannedAction.Explanation}");
+            // Without a planned hold this only happens for a negligible expected import, which needs no battery action.
+            return plannedAction is null
+                ? CreateIdleSlot(
+                    priceSlot,
+                    pvSlot,
+                    consumptionSlot,
+                    expectedGridImportBeforeBatteryKwh,
+                    stateOfChargeBeforePercent,
+                    batteryEnergyBeforeKwh,
+                    batteryConfiguration,
+                    BatteryForecastRuleIds.NeutralIdle,
+                    "Der erwartete Netzbezug ist vernachlaessigbar klein. Die Decision Engine bleibt idle.")
+                : CreateIdleSlot(
+                    priceSlot,
+                    pvSlot,
+                    consumptionSlot,
+                    expectedGridImportBeforeBatteryKwh,
+                    stateOfChargeBeforePercent,
+                    batteryEnergyBeforeKwh,
+                    batteryConfiguration,
+                    plannedAction.RuleId,
+                    $"Der Akku haelt seine Energie zurueck; der Verbrauch wird zu {priceSlot.TotalPricePerKwh:0.0000} EUR/kWh aus dem Netz gedeckt. {plannedAction.Explanation}");
         }
 
-        var dischargeRuleId = holdOutputKwh > 0m
+        var isPartialHold = plannedAction is not null && holdOutputKwh > 0m;
+        var dischargeRuleId = isPartialHold
             ? plannedAction!.RuleId
             : BatteryForecastRuleIds.SelfConsumptionDischarge;
-        var dischargeReason = holdOutputKwh > 0m
+        var dischargeReason = isPartialHold
             ? $"Der Akku deckt den Verbrauch nur teilweise und haelt {holdOutputKwh:0.0000} kWh zurueck. {plannedAction!.Explanation}"
             : "Der Akku deckt den erwarteten Verbrauch, damit kein Netzstrom gekauft werden muss.";
 
