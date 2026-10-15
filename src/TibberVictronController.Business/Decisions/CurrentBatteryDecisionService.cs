@@ -256,7 +256,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 plannedSlot.FailureMessage is null && planEntry is not null
                     ? CurrentBatteryDecisionRuleIds.ForecastAllowsLoadCoverageDischarge
                     : CurrentBatteryDecisionRuleIds.CoverCurrentGridImport,
-                $"Aktueller Verbrauch ohne Akku von {gridPowerWithoutBatteryWatts} Watt wird aus dem Akku gedeckt. {plannedSlot.FailureMessage ?? "Der Forecast plant fuer diesen Slot weder Netzladung noch das Zurueckhalten von Akkuenergie."}");
+                $"Aktueller Verbrauch ohne Akku von {gridPowerWithoutBatteryWatts} Watt wird aus dem Akku gedeckt. {plannedSlot.FailureMessage ?? "Der Forecast plant fuer diesen Slot weder Netzladung noch das Zurueckhalten von Akkuenergie."}{CreateSupplementaryChargeNote(decisionSiteTelemetry)}");
 
         return await CreateDischargeDecisionAsync(
             decidedAtUtc,
@@ -374,6 +374,9 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 siteTelemetry.CurrentPvProductionWatts,
                 siteTelemetry.MeasuredAtUtc,
                 siteTelemetry.CurrentBatteryPowerWatts)
+            {
+                SupplementaryBatteryChargeFromSiteWatts = siteTelemetry.SupplementaryBatteryChargeFromSiteWatts
+            }
             : siteTelemetry;
     }
 
@@ -411,6 +414,13 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         return siteTelemetry.CurrentGridImportWatts - (int)Math.Round(batteryAcPowerWatts, MidpointRounding.AwayFromZero);
     }
 
+    private static string CreateSupplementaryChargeNote(CurrentSiteTelemetry siteTelemetry)
+    {
+        return siteTelemetry.SupplementaryBatteryChargeFromSiteWatts > 0
+            ? $" Der Zweitspeicher laedt gerade mit {siteTelemetry.SupplementaryBatteryChargeFromSiteWatts} Watt aus dem Hausnetz; dieser Anteil wird nicht aus dem Akku gedeckt."
+            : string.Empty;
+    }
+
     private async Task<int?> GetActiveDischargeTargetWattsAsync(
         DateTimeOffset decidedAtUtc,
         CancellationToken cancellationToken)
@@ -439,9 +449,12 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         CurrentSiteTelemetry siteTelemetry,
         int gridPowerDeadbandWatts)
     {
+        // Charging of a supplementary storage from the site is never covered; otherwise both batteries pump energy into each other.
+        var demandWatts = gridPowerWithoutBatteryWatts - siteTelemetry.SupplementaryBatteryChargeFromSiteWatts;
+
         return siteTelemetry.CurrentBatteryPowerWatts is null
-            ? gridPowerWithoutBatteryWatts
-            : Math.Max(0, gridPowerWithoutBatteryWatts - gridPowerDeadbandWatts);
+            ? Math.Max(0, demandWatts)
+            : Math.Max(0, demandWatts - gridPowerDeadbandWatts);
     }
 
     private async Task<int> GetActivePvChargePowerWattsAsync(

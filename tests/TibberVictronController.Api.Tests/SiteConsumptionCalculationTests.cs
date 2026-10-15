@@ -43,6 +43,25 @@ public sealed class SiteConsumptionCalculationTests
     }
 
     [Fact]
+    public void TryCalculateSiteConsumptionWattsExcludesSupplementaryBatteryGridCharging()
+    {
+        // The E3/DC charges 2000 W from the grid in a cheap phase; the house itself only needs 500 W.
+        var snapshot = new MqttTelemetrySnapshot
+        {
+            GridPowerWatts = 2500m,
+            BatteryPowerWatts = 0m
+        };
+        var supplementarySnapshot = CreateSupplementaryPvSnapshot(pvProductionWatts: 0, lastSuccessfulPollAtUtc: NowUtc) with
+        {
+            BatteryPowerWatts = 2000
+        };
+
+        var consumptionWatts = VictronMqttClientService.TryCalculateSiteConsumptionWatts(snapshot, supplementarySnapshot, NowUtc);
+
+        Assert.Equal(500m, consumptionWatts);
+    }
+
+    [Fact]
     public void TryCalculateSiteConsumptionWattsFallsBackWhenSupplementaryPvIsStale()
     {
         var snapshot = new MqttTelemetrySnapshot

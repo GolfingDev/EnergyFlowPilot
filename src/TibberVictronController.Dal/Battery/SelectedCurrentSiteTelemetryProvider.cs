@@ -10,18 +10,23 @@ namespace TibberVictronController.Dal.Battery;
 /// </summary>
 public sealed class SelectedCurrentSiteTelemetryProvider : ICurrentSiteTelemetryProvider
 {
+    private static readonly TimeSpan SupplementarySnapshotMaxAge = TimeSpan.FromMinutes(3);
+
     private readonly TelemetrySourceSelector sourceSelector;
     private readonly ResilientCurrentSiteTelemetryProvider victronCurrentSiteTelemetryProvider;
     private readonly HagerEnergyCurrentSiteTelemetryProvider hagerEnergyCurrentSiteTelemetryProvider;
+    private readonly HagerEnergyTelemetrySnapshotStore supplementarySnapshotStore;
 
     public SelectedCurrentSiteTelemetryProvider(
         TelemetrySourceSelector sourceSelector,
         ResilientCurrentSiteTelemetryProvider victronCurrentSiteTelemetryProvider,
-        HagerEnergyCurrentSiteTelemetryProvider hagerEnergyCurrentSiteTelemetryProvider)
+        HagerEnergyCurrentSiteTelemetryProvider hagerEnergyCurrentSiteTelemetryProvider,
+        HagerEnergyTelemetrySnapshotStore supplementarySnapshotStore)
     {
         this.sourceSelector = sourceSelector;
         this.victronCurrentSiteTelemetryProvider = victronCurrentSiteTelemetryProvider;
         this.hagerEnergyCurrentSiteTelemetryProvider = hagerEnergyCurrentSiteTelemetryProvider;
+        this.supplementarySnapshotStore = supplementarySnapshotStore;
     }
 
     public async Task<CurrentSiteTelemetry> GetCurrentSiteTelemetryAsync(CancellationToken cancellationToken = default)
@@ -61,6 +66,28 @@ public sealed class SelectedCurrentSiteTelemetryProvider : ICurrentSiteTelemetry
             gridImportWatts,
             pvProductionWatts,
             measuredAtUtc,
-            victronTelemetry?.CurrentBatteryPowerWatts);
+            victronTelemetry?.CurrentBatteryPowerWatts)
+        {
+            SupplementaryBatteryChargeFromSiteWatts = CalculateSupplementaryBatteryChargeFromSiteWatts(
+                supplementarySnapshotStore.Current,
+                DateTimeOffset.UtcNow)
+        };
+    }
+
+    /// <summary>
+    /// Returns how much the supplementary storage charges beyond its own PV production, i.e. from the site or the controlled battery.
+    /// </summary>
+    public static int CalculateSupplementaryBatteryChargeFromSiteWatts(
+        HagerEnergyTelemetrySnapshot? snapshot,
+        DateTimeOffset nowUtc)
+    {
+        if (snapshot?.BatteryPowerWatts is not { } batteryPowerWatts ||
+            nowUtc - snapshot.LastSuccessfulPollAtUtc > SupplementarySnapshotMaxAge)
+        {
+            return 0;
+        }
+
+        // Positive E3/DC battery power means charging; charging covered by its own PV is not taken from the site.
+        return Math.Max(0, batteryPowerWatts - Math.Max(0, snapshot.PvProductionWatts));
     }
 }

@@ -7,6 +7,7 @@ using MQTTnet.Protocol;
 using TibberVictronController.Api.Dashboard;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
+using TibberVictronController.Dal.Battery;
 using TibberVictronController.Dal.HagerEnergy;
 using TibberVictronController.Dal.Mqtt;
 using TibberVictronController.Dal.Victron;
@@ -478,7 +479,13 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             return null;
         }
 
-        return Math.Max(0m, gridPowerWatts - batteryPowerWatts + supplementaryPvSnapshot.PvProductionWatts);
+        // The E3/DC charges from the grid in its own cheap price phases. That charging is no house demand the Victron battery
+        // will cover, so it must not inflate the learned consumption profile.
+        var supplementaryChargeFromSiteWatts = SelectedCurrentSiteTelemetryProvider.CalculateSupplementaryBatteryChargeFromSiteWatts(
+            supplementaryPvSnapshot,
+            measuredAtUtc);
+
+        return Math.Max(0m, gridPowerWatts - batteryPowerWatts + supplementaryPvSnapshot.PvProductionWatts - supplementaryChargeFromSiteWatts);
     }
 
     private static decimal GetPersistedHouseConsumptionWatts(MqttTelemetrySnapshot snapshot, decimal houseConsumptionWatts)

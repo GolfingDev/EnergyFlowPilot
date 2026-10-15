@@ -34,5 +34,14 @@ public sealed record CurrentSiteTelemetry
     /// </summary>
     public int? CurrentBatteryPowerWatts { get; }
 
+    /// <summary>
+    /// Gets the power with which a supplementary storage system (e.g. E3/DC) currently charges from the site instead of its own PV.
+    /// </summary>
+    /// <remarks>
+    /// To the controlled battery this charging looks like an ordinary load. Covering it would move energy from one battery into the
+    /// other with double conversion losses and can escalate, because both systems react to each other at the grid meter.
+    /// </remarks>
+    public int SupplementaryBatteryChargeFromSiteWatts { get; init; }
+
     public DateTimeOffset MeasuredAtUtc { get; }
 }

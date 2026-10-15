@@ -626,6 +626,39 @@ public sealed class CurrentBatteryDecisionServiceTests
     }
 
     [Fact]
+    public async Task CalculateCurrentDecisionAsyncDoesNotCoverSupplementaryBatteryChargingFromSite()
+    {
+        // Reproduces 2026-10-14 22:00: the E3/DC charged with about 2 kW from the site while the Victron battery discharged.
+        var decisionLogRepository = new FakeDecisionLogRepository();
+        decisionLogRepository.SavedEntries.Add(CreateDecisionLogEntry(
+            decidedAtUtc: NowUtc.AddSeconds(-20),
+            validFromUtc: NowUtc.AddSeconds(-20),
+            validToUtc: NowUtc.AddMinutes(10),
+            decisionState: BatteryDecisionState.Discharge,
+            chargeSource: null,
+            targetPowerWatts: 4600));
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(60m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(19.2m, maximumDischargePowerWatts: 5000, roundTripEfficiencyPercent: 90m)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(20, 0, NowUtc, currentBatteryPowerWatts: -4900)
+            {
+                SupplementaryBatteryChargeFromSiteWatts = 2000
+            }),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.40m, 0.30m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = decisionLogRepository
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Discharge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(4600 + 20 - 2000 - 30, result.Decision.TargetPowerWatts);
+        Assert.Contains(result.Reasons, reason => reason.Message.Contains("Zweitspeicher", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task CalculateCurrentDecisionAsyncGridChargesOnlyWithPlannedPower()
     {
         var batteryConfiguration = new BatteryConfiguration(12m, maximumChargePowerWatts: 5000, roundTripEfficiencyPercent: 100m);
