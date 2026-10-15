@@ -61,6 +61,55 @@
   --efp-strong-shadow: 0 10px 24px rgba(0, 0, 0, 0.32);
 }
 
+/* Leitstand themes use opaque surfaces only; the shell must stay readable over charts and menus. */
+.v-theme--leitstandLight {
+  --efp-background: #eef1f4;
+  --efp-background-art: #eef1f4;
+  --efp-surface: #ffffff;
+  --efp-panel-background: #ffffff;
+  --efp-surface-muted: #f5f7f9;
+  --efp-topbar-background: #ffffff;
+  --efp-nav-background: #ffffff;
+  --efp-border: #c9d1da;
+  --efp-border-soft: #dde3e9;
+  --efp-text: #1b2530;
+  --efp-muted: #4f5d6b;
+  --efp-secondary: #3d4b59;
+  --efp-primary: #1f6fb2;
+  --efp-success: #2e8540;
+  --efp-warning: #b26a00;
+  --efp-warning-text: #7a4a00;
+  --efp-error: #c0392b;
+  --efp-card-accent: #e6eef6;
+  --efp-page-glow: transparent;
+  --efp-shadow: 0 6px 18px rgba(27, 37, 48, 0.08);
+  --efp-strong-shadow: 0 12px 28px rgba(27, 37, 48, 0.18);
+}
+
+.v-theme--leitstandDark {
+  --efp-background: #11171d;
+  --efp-background-art: #11171d;
+  --efp-surface: #18212a;
+  --efp-panel-background: #18212a;
+  --efp-surface-muted: #1e2933;
+  --efp-topbar-background: #151d25;
+  --efp-nav-background: #18212a;
+  --efp-border: #2d3a46;
+  --efp-border-soft: #24303b;
+  --efp-text: #e4eaf0;
+  --efp-muted: #93a2b1;
+  --efp-secondary: #b4c1cd;
+  --efp-primary: #5aa7e6;
+  --efp-success: #5cc06f;
+  --efp-warning: #f0a33a;
+  --efp-warning-text: #f0a33a;
+  --efp-error: #ef6b5b;
+  --efp-card-accent: #1e2f3f;
+  --efp-page-glow: transparent;
+  --efp-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  --efp-strong-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
 .v-theme--controlCenterLight {
   --efp-background: #fbfdff;
   --efp-background-art:

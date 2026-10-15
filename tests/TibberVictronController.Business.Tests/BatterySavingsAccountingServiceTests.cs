@@ -84,6 +84,43 @@ public sealed class BatterySavingsAccountingServiceTests
     }
 
     [Fact]
+    public async Task RefreshAsyncDoesNotCountFeedInAndSupplementaryChargingAsSavings()
+    {
+        // 2000 W discharge, of which 500 W go into the grid and 1000 W charge the E3/DC battery without PV.
+        var liveRepository = new FakeLiveConsumptionRepository(new[]
+        {
+            CreateSample(0, houseConsumptionWatts: 500m, gridPowerWatts: -500m, batteryPowerWatts: -2000m, pvProductionWatts: 0m),
+            CreateSample(5, houseConsumptionWatts: 500m, gridPowerWatts: -500m, batteryPowerWatts: -2000m, pvProductionWatts: 0m)
+        }.Select(sample => new LiveConsumptionSample(
+            sample.HouseConsumptionWatts,
+            sample.MeasuredAtUtc,
+            sample.GridPowerWatts,
+            sample.BatteryPowerWatts,
+            sample.BatterySocPercent,
+            sample.PvProductionWatts)
+        {
+            SupplementaryBatteryPowerWatts = 1000m,
+            SupplementaryPvProductionWatts = 0m
+        }).ToArray());
+        var savingsRepository = new FakeBatterySavingsRepository();
+        var service = CreateService(
+            liveRepository,
+            savingsRepository,
+            new FakeTibberPriceForecastProvider(new[] { CreatePriceSlot(0, 15, 0.30m) }));
+
+        await service.RefreshAsync(new BatterySavingsQuery
+        {
+            StartDate = new DateOnly(2026, 6, 4),
+            EndDate = new DateOnly(2026, 6, 4),
+            Currency = "EUR"
+        });
+
+        var summary = Assert.Single(savingsRepository.Summaries);
+        Assert.Equal(0.0417m, summary.DischargedEnergyKwh);
+        Assert.Equal(0.0125m, summary.DischargeAvoidedCost);
+    }
+
+    [Fact]
     public async Task RefreshAsyncSkipsTelemetryGaps()
     {
         var liveRepository = new FakeLiveConsumptionRepository(new[]

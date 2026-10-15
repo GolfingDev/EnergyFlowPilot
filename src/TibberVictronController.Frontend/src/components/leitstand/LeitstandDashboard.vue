@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import type { ControllerStatusResponseDto, DecisionLogEntryResponseDto, ManualChargeStatusResponseDto } from '../dashboard/dashboardTypes';
+import type { BatterySavingsResponseDto, ControllerStatusResponseDto, DecisionLogEntryResponseDto, ManualChargeStatusResponseDto } from '../dashboard/dashboardTypes';
 import { getDecisionLabel } from '../dashboard/dashboardFormatters';
 import {
   leitstandCategoryLabels,
@@ -32,6 +32,17 @@ const review = ref<DashboardReviewDto | null>(null);
 const summaryError = ref<string | null>(null);
 const reviewError = ref<string | null>(null);
 const reviewHours = ref(24);
+type SavingsPeriod = 'day' | 'yesterday' | 'week' | 'month' | 'year';
+const savingsPeriods: ReadonlyArray<{ value: SavingsPeriod; label: string }> = [
+  { value: 'day', label: 'Heute' },
+  { value: 'yesterday', label: 'Gestern' },
+  { value: 'week', label: 'Woche' },
+  { value: 'month', label: 'Monat' },
+  { value: 'year', label: 'Jahr' }
+];
+const savingsPeriod = ref<SavingsPeriod>('day');
+const savings = ref<BatterySavingsResponseDto | null>(null);
+const savingsError = ref<string | null>(null);
 const loadedLogEntries = ref<DecisionLogEntryResponseDto[] | null>(null);
 const logEntries = computed({
   get: () => loadedLogEntries.value ?? props.decisionLogEntries,
@@ -334,6 +345,40 @@ async function loadReview(): Promise<void> {
   }
 }
 
+function localIsoDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+async function loadSavings(): Promise<void> {
+  const today = new Date();
+  const referenceDate = savingsPeriod.value === 'yesterday'
+    ? new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
+    : today;
+  const parameters = new URLSearchParams({
+    period: savingsPeriod.value === 'yesterday' ? 'day' : savingsPeriod.value,
+    referenceDate: localIsoDate(referenceDate),
+    currency: 'EUR'
+  });
+
+  try {
+    savings.value = await fetchJson<BatterySavingsResponseDto>(`/api/savings?${parameters.toString()}`);
+    savingsError.value = null;
+  } catch (error) {
+    savingsError.value = error instanceof Error ? error.message : 'Die Ersparnis konnte nicht geladen werden.';
+  }
+}
+
+async function changeSavingsPeriod(period: SavingsPeriod): Promise<void> {
+  savingsPeriod.value = period;
+  await loadSavings();
+}
+
+const currencyFormat = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+
+function money(value: number): string {
+  return currencyFormat.format(value);
+}
+
 async function changeReviewHours(hours: number): Promise<void> {
   reviewHours.value = hours;
   await loadReview();
@@ -342,8 +387,12 @@ async function changeReviewHours(hours: number): Promise<void> {
 onMounted(() => {
   void loadSummary();
   void loadReview();
+  void loadSavings();
   summaryTimer = window.setInterval(() => void loadSummary(), summaryRefreshMilliseconds);
-  reviewTimer = window.setInterval(() => void loadReview(), reviewRefreshMilliseconds);
+  reviewTimer = window.setInterval(() => {
+    void loadReview();
+    void loadSavings();
+  }, reviewRefreshMilliseconds);
 });
 
 onBeforeUnmount(() => {
@@ -498,6 +547,40 @@ onBeforeUnmount(() => {
           <span class="ls-kpi__label">{{ kpi.label }}</span>
           <span class="ls-kpi__value">{{ kpi.value }}</span>
           <span class="ls-kpi__hint">{{ kpi.hint }}</span>
+        </div>
+      </div>
+      <div class="ls-panel ls-savings">
+        <div class="ls-zone__head">
+          <h3>Ersparnis</h3>
+          <div class="ls-tabs" role="group" aria-label="Zeitraum der Ersparnis">
+            <button v-for="option in savingsPeriods" :key="option.value" type="button" class="ls-tab"
+              :class="{ 'ls-tab--active': savingsPeriod === option.value }" @click="changeSavingsPeriod(option.value)">{{ option.label }}</button>
+          </div>
+        </div>
+        <p v-if="savingsError" class="ls-error">{{ savingsError }}</p>
+        <div v-else-if="savings" class="ls-savings__body">
+          <div class="ls-savings__total">
+            <span class="ls-kpi__label">Netto gespart</span>
+            <span class="ls-savings__value" :class="{ 'ls-savings__value--negative': savings.aggregate.netSavings < 0 }">{{ money(savings.aggregate.netSavings) }}</span>
+          </div>
+          <dl class="ls-savings__rows">
+            <div>
+              <dt>Vermiedener Netzbezug</dt>
+              <dd><span class="ls-num">+{{ money(savings.aggregate.dischargeAvoidedCost) }}</span>
+                <small>{{ kwh(savings.aggregate.dischargedEnergyKwh) }}<template v-if="savings.aggregate.averageDischargePricePerKwh != null"> zu Ø {{ price(savings.aggregate.averageDischargePricePerKwh) }} €/kWh</template></small></dd>
+            </div>
+            <div>
+              <dt>Kosten Netzladung</dt>
+              <dd><span class="ls-num">−{{ money(savings.aggregate.gridChargeCost) }}</span>
+                <small>{{ kwh(savings.aggregate.gridChargedEnergyKwh) }}<template v-if="savings.aggregate.averageGridChargePricePerKwh != null"> zu Ø {{ price(savings.aggregate.averageGridChargePricePerKwh) }} €/kWh</template></small></dd>
+            </div>
+            <div>
+              <dt>Entgangene Einspeisevergütung</dt>
+              <dd><span class="ls-num">−{{ money(savings.aggregate.pvOpportunityCost) }}</span>
+                <small>{{ kwh(savings.aggregate.pvChargedEnergyKwh) }} PV statt Einspeisung</small></dd>
+            </div>
+          </dl>
+          <p class="ls-muted ls-savings__note">Energie, die aus dem Akku ins Netz oder in das E3/DC geflossen ist, zählt nicht als Ersparnis.</p>
         </div>
       </div>
       <div class="ls-panel ls-chart-panel">
@@ -701,6 +784,19 @@ h3 { font-size: 1.05rem; margin-bottom: 10px; }
 .ls-kpi__label { font-size: 0.85rem; color: var(--ls-muted); }
 .ls-kpi__value { font-family: var(--ls-font-display); font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .ls-kpi__hint { font-size: 0.8rem; color: var(--ls-muted); }
+
+.ls-savings { display: grid; gap: 12px; }
+.ls-savings__body { display: grid; grid-template-columns: minmax(160px, auto) minmax(0, 1fr); gap: 12px 24px; align-items: start; }
+@media (max-width: 700px) { .ls-savings__body { grid-template-columns: minmax(0, 1fr); } }
+.ls-savings__total { display: grid; gap: 2px; }
+.ls-savings__value { font-family: var(--ls-font-display); font-size: 2.2rem; font-weight: 600; color: var(--ls-ok); font-variant-numeric: tabular-nums; }
+.ls-savings__value--negative { color: var(--ls-critical); }
+.ls-savings__rows { display: grid; gap: 8px; margin: 0; }
+.ls-savings__rows div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--ls-line); padding-bottom: 6px; }
+.ls-savings__rows dt { color: var(--ls-muted); font-size: 0.9rem; }
+.ls-savings__rows dd { margin: 0; display: grid; justify-items: end; gap: 1px; }
+.ls-savings__rows small { color: var(--ls-muted); font-size: 0.78rem; }
+.ls-savings__note { grid-column: 1 / -1; font-size: 0.82rem; }
 
 details.ls-panel summary { cursor: pointer; font-family: var(--ls-font-display); font-weight: 600; font-size: 1.05rem; }
 .ls-log-wrap { overflow-x: auto; }

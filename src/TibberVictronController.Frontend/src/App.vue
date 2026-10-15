@@ -3,9 +3,9 @@ import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTheme } from 'vuetify';
 import GeneralOverlay from './components/GeneralOverlay.vue'
+import ThemeMenuPanel from './components/ThemeMenuPanel.vue';
 import {
   defaultEnergyFlowTheme,
-  energyFlowThemes,
   getEnergyFlowTheme,
   isEnergyFlowThemeName,
   type EnergyFlowThemeName
@@ -178,28 +178,7 @@ function toggleExecutiveSidebar(): void {
             </button>
           </template>
 
-          <div class="theme-menu">
-            <div class="theme-menu__header">
-              <strong>Design auswählen</strong>
-              <span>Layout, Kontrast und Stimmung der Oberfläche.</span>
-            </div>
-
-            <button
-              v-for="themeOption in energyFlowThemes"
-              :key="themeOption.name"
-              class="theme-menu__item"
-              :class="{ 'theme-menu__item--active': activeTheme.name === themeOption.name }"
-              type="button"
-              @click="changeTheme(themeOption.name)"
-            >
-              <v-icon :icon="themeOption.icon" size="20" />
-              <span>
-                <strong>{{ themeOption.label }}</strong>
-                <small>{{ themeOption.description }}</small>
-              </span>
-              <v-icon v-if="activeTheme.name === themeOption.name" icon="mdi-check" size="18" />
-            </button>
-          </div>
+          <ThemeMenuPanel :active-name="activeTheme.name" @select="changeTheme" />
         </v-menu>
       </div>
     </aside>
@@ -270,28 +249,7 @@ function toggleExecutiveSidebar(): void {
               </button>
             </template>
 
-            <div class="theme-menu">
-              <div class="theme-menu__header">
-                <strong>Design auswählen</strong>
-                <span>Farben, Kontrast und Stimmung der Oberfläche.</span>
-              </div>
-
-              <button
-                v-for="themeOption in energyFlowThemes"
-                :key="themeOption.name"
-                class="theme-menu__item"
-                :class="{ 'theme-menu__item--active': activeTheme.name === themeOption.name }"
-                type="button"
-                @click="changeTheme(themeOption.name)"
-              >
-                <v-icon :icon="themeOption.icon" size="20" />
-                <span>
-                  <strong>{{ themeOption.label }}</strong>
-                  <small>{{ themeOption.description }}</small>
-                </span>
-                <v-icon v-if="activeTheme.name === themeOption.name" icon="mdi-check" size="18" />
-              </button>
-            </div>
+            <ThemeMenuPanel :active-name="activeTheme.name" @select="changeTheme" />
           </v-menu>
         </div>
       </div>

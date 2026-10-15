@@ -159,11 +159,17 @@ public sealed class BatterySavingsAccountingService : IBatterySavingsAccountingS
             var timeSlot = new ForecastTimeSlot(previous.MeasuredAtUtc, current.MeasuredAtUtc);
             if (averageBatteryPowerWatts < 0m)
             {
+                var effectiveDischargePowerWatts = CalculateEffectiveDischargePowerWatts(previous, current, Math.Abs(averageBatteryPowerWatts));
+                if (effectiveDischargePowerWatts < MinimumAccountingPowerWatts)
+                {
+                    continue;
+                }
+
                 movements.Add(CreateMovement(
                     timeSlot,
                     BatteryDecisionState.Discharge,
                     chargeSource: null,
-                    Math.Abs(averageBatteryPowerWatts),
+                    effectiveDischargePowerWatts,
                     price.TotalPricePerKwh,
                     currency,
                     feedInCompensationPricePerKwh));
@@ -193,6 +199,35 @@ public sealed class BatterySavingsAccountingService : IBatterySavingsAccountingS
         }
 
         return movements;
+    }
+
+    /// <summary>
+    /// Returns the part of the discharge that really replaced grid import.
+    /// </summary>
+    /// <remarks>
+    /// Discharge that leaves the site as feed-in or charges the supplementary E3/DC battery avoids no grid purchase at the
+    /// current price, so it must not be counted as savings.
+    /// </remarks>
+    private static decimal CalculateEffectiveDischargePowerWatts(
+        LiveConsumptionSample previous,
+        LiveConsumptionSample current,
+        decimal dischargePowerWatts)
+    {
+        var averageGridPowerWatts = AverageNullable(previous.GridPowerWatts, current.GridPowerWatts) ?? 0m;
+        var feedInWatts = Math.Min(dischargePowerWatts, Math.Max(0m, -averageGridPowerWatts));
+        var supplementaryChargeFromSiteWatts = AverageNullable(
+            CalculateSupplementaryChargeFromSiteWatts(previous),
+            CalculateSupplementaryChargeFromSiteWatts(current)) ?? 0m;
+        var transferWatts = Math.Min(dischargePowerWatts - feedInWatts, supplementaryChargeFromSiteWatts);
+
+        return Math.Max(0m, dischargePowerWatts - feedInWatts - transferWatts);
+    }
+
+    private static decimal? CalculateSupplementaryChargeFromSiteWatts(LiveConsumptionSample sample)
+    {
+        return sample.SupplementaryBatteryPowerWatts is { } supplementaryBatteryPowerWatts
+            ? Math.Max(0m, supplementaryBatteryPowerWatts - Math.Max(0m, sample.SupplementaryPvProductionWatts ?? 0m))
+            : null;
     }
 
     private static decimal EstimatePvChargePowerWatts(
