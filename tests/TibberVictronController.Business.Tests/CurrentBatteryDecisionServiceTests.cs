@@ -659,6 +659,54 @@ public sealed class CurrentBatteryDecisionServiceTests
     }
 
     [Fact]
+    public async Task CalculateCurrentDecisionAsyncDoesNotAbsorbExportFromDischargingSupplementaryBattery()
+    {
+        // Reproduces 2026-10-15 19:54: no PV, the E3/DC discharged 1059 W and 735 W went into the grid.
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(41m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(19.2m, maximumChargePowerWatts: 5000, roundTripEfficiencyPercent: 100m)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(-735, 0, NowUtc, currentBatteryPowerWatts: 0)
+            {
+                SupplementaryBatteryDischargeWatts = 1059
+            }),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.45m, 0.40m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Idle, result.Decision.Instruction.DecisionState);
+        Assert.Contains(result.Reasons, reason => reason.RuleName == CurrentBatteryDecisionRuleIds.SupplementaryDischargeExport);
+    }
+
+    [Fact]
+    public async Task CalculateCurrentDecisionAsyncAbsorbsOnlyExportBeyondSupplementaryDischarge()
+    {
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(41m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(19.2m, maximumChargePowerWatts: 5000, roundTripEfficiencyPercent: 100m)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(-2000, 3000, NowUtc, currentBatteryPowerWatts: 0)
+            {
+                SupplementaryBatteryDischargeWatts = 500
+            }),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.30m, 0.40m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Charge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(BatteryChargeSource.PV, result.Decision.Instruction.ChargeSource);
+        Assert.Equal(1500, result.Decision.TargetPowerWatts);
+    }
+
+    [Fact]
     public async Task CalculateCurrentDecisionAsyncGridChargesOnlyWithPlannedPower()
     {
         var batteryConfiguration = new BatteryConfiguration(12m, maximumChargePowerWatts: 5000, roundTripEfficiencyPercent: 100m);

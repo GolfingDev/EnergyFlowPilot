@@ -188,10 +188,16 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
 
     private static DashboardLiveState CreateLiveState(LiveConsumptionSample sample)
     {
+        // The stored value is tailored to the consumption profile and leaves out what the E3/DC battery covers.
+        // The live view shows the real house demand instead: grid minus both batteries plus E3/DC PV.
+        var houseConsumptionWatts = sample is { GridPowerWatts: { } grid, BatteryPowerWatts: { } battery, SupplementaryBatteryPowerWatts: { } supplementaryBattery }
+            ? Math.Max(0m, grid - battery - supplementaryBattery + Math.Max(0m, sample.SupplementaryPvProductionWatts ?? 0m))
+            : sample.HouseConsumptionWatts;
+
         return new DashboardLiveState(
             sample.MeasuredAtUtc,
             sample.GridPowerWatts,
-            sample.HouseConsumptionWatts,
+            houseConsumptionWatts,
             sample.BatteryPowerWatts,
             sample.BatterySocPercent,
             sample.SupplementaryPvProductionWatts,

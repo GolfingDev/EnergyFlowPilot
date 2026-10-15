@@ -43,5 +43,14 @@ public sealed record CurrentSiteTelemetry
     /// </remarks>
     public int SupplementaryBatteryChargeFromSiteWatts { get; init; }
 
+    /// <summary>
+    /// Gets the power with which a supplementary storage system currently discharges.
+    /// </summary>
+    /// <remarks>
+    /// Grid export caused by this discharge is no PV surplus. Absorbing it would move energy from the E3/DC battery into the
+    /// controlled battery with double conversion losses.
+    /// </remarks>
+    public int SupplementaryBatteryDischargeWatts { get; init; }
+
     public DateTimeOffset MeasuredAtUtc { get; }
 }

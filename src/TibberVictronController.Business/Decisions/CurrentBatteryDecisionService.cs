@@ -160,12 +160,30 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
         if (gridPowerWithoutBatteryWatts < 0)
         {
+            // Export caused by the discharging E3/DC battery is no PV surplus; only the remaining export may be absorbed.
+            var absorbableGridPowerWatts = Math.Min(0, gridPowerWithoutBatteryWatts + decisionSiteTelemetry.SupplementaryBatteryDischargeWatts);
+
+            if (-absorbableGridPowerWatts <= gridPowerDeadbandWatts)
+            {
+                return await SaveIdleDecisionAsync(
+                    decidedAtUtc,
+                    decidedAtUtc.AddMinutes(15),
+                    batteryState,
+                    decisionSiteTelemetry,
+                    currentPriceSlot?.TotalPricePerKwh,
+                    currentPriceSlot?.Currency,
+                    new BatteryDecisionReason(
+                        CurrentBatteryDecisionRuleIds.SupplementaryDischargeExport,
+                        $"Die Einspeisung von {-gridPowerWithoutBatteryWatts} Watt stammt aus dem entladenden Zweitspeicher ({decisionSiteTelemetry.SupplementaryBatteryDischargeWatts} Watt). Sie wird nicht in den Akku geladen, damit keine Energie zwischen den Speichern verschoben wird."),
+                    cancellationToken);
+            }
+
             return await CreateExportAbsorptionDecisionAsync(
                 decidedAtUtc,
                 batteryState,
                 batteryConfiguration,
                 decisionSiteTelemetry,
-                gridPowerWithoutBatteryWatts,
+                absorbableGridPowerWatts,
                 currentPriceSlot,
                 priceForecast ?? Array.Empty<TibberPriceForecastSlot>(),
                 feedInCompensationPricePerKwh,
@@ -375,7 +393,8 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 siteTelemetry.MeasuredAtUtc,
                 siteTelemetry.CurrentBatteryPowerWatts)
             {
-                SupplementaryBatteryChargeFromSiteWatts = siteTelemetry.SupplementaryBatteryChargeFromSiteWatts
+                SupplementaryBatteryChargeFromSiteWatts = siteTelemetry.SupplementaryBatteryChargeFromSiteWatts,
+                SupplementaryBatteryDischargeWatts = siteTelemetry.SupplementaryBatteryDischargeWatts
             }
             : siteTelemetry;
     }

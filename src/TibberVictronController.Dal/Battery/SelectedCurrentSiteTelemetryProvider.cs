@@ -70,8 +70,27 @@ public sealed class SelectedCurrentSiteTelemetryProvider : ICurrentSiteTelemetry
         {
             SupplementaryBatteryChargeFromSiteWatts = CalculateSupplementaryBatteryChargeFromSiteWatts(
                 supplementarySnapshotStore.Current,
+                DateTimeOffset.UtcNow),
+            SupplementaryBatteryDischargeWatts = CalculateSupplementaryBatteryDischargeWatts(
+                supplementarySnapshotStore.Current,
                 DateTimeOffset.UtcNow)
         };
+    }
+
+    /// <summary>
+    /// Returns how much the supplementary storage currently discharges; 0 when no fresh value exists.
+    /// </summary>
+    public static int CalculateSupplementaryBatteryDischargeWatts(
+        HagerEnergyTelemetrySnapshot? snapshot,
+        DateTimeOffset nowUtc)
+    {
+        if (snapshot?.BatteryPowerWatts is not { } batteryPowerWatts ||
+            nowUtc - snapshot.LastSuccessfulPollAtUtc > SupplementarySnapshotMaxAge)
+        {
+            return 0;
+        }
+
+        return Math.Max(0, -batteryPowerWatts);
     }
 
     /// <summary>

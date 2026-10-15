@@ -132,6 +132,7 @@ public static class GuiMetadataCatalog
             CreateRule(CurrentBatteryDecisionRuleIds.MissingCurrentPrice, "Aktueller Preis fehlt", "Fuer den aktuellen Zeitpunkt liegt kein verwendbarer Tibber-Preis vor.", "Realtime"),
             CreateRule(CurrentBatteryDecisionRuleIds.GridPowerDeadband, "Netzleistung im Puffer", "Kleine Netzbezugs- oder Einspeisewerte werden ignoriert, damit die Regelung nicht wegen weniger Watt pendelt.", "Realtime"),
             CreateRule(CurrentBatteryDecisionRuleIds.AbsorbGridExport, "Netzexport aufnehmen", "Aktueller Export wird in die Batterie geladen, damit moeglichst nicht eingespeist wird.", "Realtime"),
+            CreateRule(CurrentBatteryDecisionRuleIds.SupplementaryDischargeExport, "Export aus Zweitspeicher ignorieren", "Einspeisung, die vom entladenden E3/DC-Akku stammt, wird nicht in den Victron-Akku geladen.", "Realtime"),
             CreateRule(CurrentBatteryDecisionRuleIds.NoGridImportForDischarge, "Kein Entladen ohne Netzbezug", "Ohne Netzbezug wird nicht entladen, um Einspeisung zu vermeiden.", "Realtime"),
             CreateRule(CurrentBatteryDecisionRuleIds.BatteryFull, "Akku voll", "Der Akku ist fuer die aktuelle Aktion bereits voll.", "Realtime")
         ];
