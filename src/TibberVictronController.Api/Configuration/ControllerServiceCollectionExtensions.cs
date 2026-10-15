@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TibberVictronController.Business.Abstractions;
+using TibberVictronController.Business.Dashboard;
 using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Services;
 using TibberVictronController.Api.Dashboard;
@@ -90,6 +91,15 @@ public static class ControllerServiceCollectionExtensions
             DecisionLogRepository = serviceProvider.GetRequiredService<IDecisionLogRepository>()
         });
         services.AddScoped<ICurrentBatteryDecisionService, CurrentBatteryDecisionService>();
+        services.AddScoped(serviceProvider => new DashboardSummaryServiceDependencies
+        {
+            UtcClock = serviceProvider.GetRequiredService<IUtcClock>(),
+            DecisionLogRepository = serviceProvider.GetRequiredService<IDecisionLogRepository>(),
+            LiveConsumptionRepository = serviceProvider.GetRequiredService<ILiveConsumptionRepository>(),
+            BatteryForecastService = serviceProvider.GetRequiredService<IBatteryForecastService>(),
+            BatteryConfigurationProvider = serviceProvider.GetRequiredService<IBatteryConfigurationProvider>()
+        });
+        services.AddScoped<IDashboardSummaryService, DashboardSummaryService>();
         services.AddSingleton<TibberPriceForecastCache>();
         services.AddHttpClient(nameof(TibberPriceForecastProvider));
         services.AddScoped<ITibberPriceForecastProvider>(serviceProvider =>

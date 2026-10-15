@@ -15,4 +15,10 @@ public sealed class LiveConsumptionSampleEntity
     public decimal? BatterySocPercent { get; set; }
 
     public decimal? PvProductionWatts { get; set; }
+
+    public decimal? SupplementaryBatteryPowerWatts { get; set; }
+
+    public decimal? SupplementaryBatterySocPercent { get; set; }
+
+    public decimal? SupplementaryPvProductionWatts { get; set; }
 }

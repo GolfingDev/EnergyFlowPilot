@@ -13,6 +13,7 @@ import ForecastChartPanel from '../components/dashboard/ForecastChartPanel.vue';
 import LiveEnergyFlowPanel from '../components/dashboard/LiveEnergyFlowPanel.vue';
 import SchematicEnergyFlowPanel from '../components/dashboard/SchematicEnergyFlowPanel.vue';
 import E3dcSupplementPanel from '../components/dashboard/E3dcSupplementPanel.vue';
+import LeitstandDashboard from '../components/leitstand/LeitstandDashboard.vue';
 import { formatCurrency, formatDateTime, formatNumber, formatPercent, formatPower, formatPrice, getDecisionLabel } from '../components/dashboard/dashboardFormatters';
 import { getEnergyFlowTheme } from '../themeRegistry';
 import type {
@@ -110,6 +111,9 @@ const currentConsumptionWatts = computed(() => {
 });
 const activeTheme = computed(() => getEnergyFlowTheme(theme.global.name.value));
 const usesMissionDashboard = computed(() => activeTheme.value.name === 'missionDark');
+const usesLeitstandDashboard = computed(() =>
+  activeTheme.value.name === 'leitstandLight' ||
+  activeTheme.value.name === 'leitstandDark');
 const usesPresetDashboard = computed(() =>
   activeTheme.value.name === 'controlCenterLight' ||
   activeTheme.value.name === 'flowCenterLight' ||
@@ -878,6 +882,12 @@ async function startManualCharge(): Promise<void> {
   }
 }
 
+async function startLeitstandManualCharge(durationMinutes: number, powerKw: number): Promise<void> {
+  manualChargeDurationMinutes.value = durationMinutes;
+  manualChargePowerKw.value = powerKw;
+  await startManualCharge();
+}
+
 async function stopManualCharge(): Promise<void> {
   if (isManualChargeBusy.value) {
     return;
@@ -915,12 +925,23 @@ onBeforeUnmount(() => {
     <EnergyLoadingOverlay :model-value="showLoadingOverlay" title="Loading forecast"
       subtitle="Calculating price, PV and battery plan..." :size="200" />
 
-    <DashboardHeader v-if="!usesControlCenterDashboard && !usesMissionDashboard" :status="status" :is-loading="isLoading" :auto-refresh-label="autoRefreshLabel"
+    <DashboardHeader v-if="!usesControlCenterDashboard && !usesMissionDashboard && !usesLeitstandDashboard" :status="status" :is-loading="isLoading" :auto-refresh-label="autoRefreshLabel"
       @refresh="loadDashboard" />
 
     <DashboardErrorPanels :errors="loadErrors" />
 
-    <template v-if="usesMissionDashboard">
+    <LeitstandDashboard
+      v-if="usesLeitstandDashboard"
+      :dark="activeTheme.dark"
+      :status="status"
+      :decision-log-entries="decisionLogEntries"
+      :manual-charge="manualCharge"
+      :is-manual-charge-busy="isManualChargeBusy"
+      @start-manual-charge="startLeitstandManualCharge"
+      @stop-manual-charge="stopManualCharge"
+    />
+
+    <template v-else-if="usesMissionDashboard">
       <!-- Status header strip -->
       <div class="qm-header">
         <div class="qm-header__left">

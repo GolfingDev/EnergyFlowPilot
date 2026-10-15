@@ -106,6 +106,30 @@ export const vuetify = createVuetify({
           warning: '#fd9644',
           error: '#ff6b6b'
         }
+      },
+      leitstandLight: {
+        dark: false,
+        colors: {
+          background: '#eef1f4',
+          surface: '#ffffff',
+          primary: '#1f6fb2',
+          secondary: '#5b6977',
+          success: '#2e8540',
+          warning: '#b26a00',
+          error: '#c0392b'
+        }
+      },
+      leitstandDark: {
+        dark: true,
+        colors: {
+          background: '#11171d',
+          surface: '#18212a',
+          primary: '#5aa7e6',
+          secondary: '#93a2b1',
+          success: '#5cc06f',
+          warning: '#f0a33a',
+          error: '#ef6b5b'
+        }
       }
     }
   }

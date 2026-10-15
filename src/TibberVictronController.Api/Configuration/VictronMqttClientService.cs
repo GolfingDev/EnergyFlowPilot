@@ -411,7 +411,12 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
                 snapshot.GridPowerWatts,
                 snapshot.BatteryPowerWatts,
                 snapshot.BatterySocPercent,
-                GetPersistedPvProductionWatts(snapshot, persistedHouseConsumptionWatts)));
+                GetPersistedPvProductionWatts(snapshot, persistedHouseConsumptionWatts))
+            {
+                SupplementaryBatteryPowerWatts = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.BatteryPowerWatts : null,
+                SupplementaryBatterySocPercent = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.BatterySocPercent : null,
+                SupplementaryPvProductionWatts = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.PvProductionWatts : null
+            });
 
         await CleanupOldLiveSamplesIfDueAsync(scope.ServiceProvider, measuredAtUtc);
     }
@@ -486,6 +491,11 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             measuredAtUtc);
 
         return Math.Max(0m, gridPowerWatts - batteryPowerWatts + supplementaryPvSnapshot.PvProductionWatts - supplementaryChargeFromSiteWatts);
+    }
+
+    private static bool IsFresh(HagerEnergyTelemetrySnapshot? snapshot, DateTimeOffset measuredAtUtc)
+    {
+        return snapshot is not null && measuredAtUtc - snapshot.LastSuccessfulPollAtUtc <= SupplementaryPvMaxAge;
     }
 
     private static decimal GetPersistedHouseConsumptionWatts(MqttTelemetrySnapshot snapshot, decimal houseConsumptionWatts)

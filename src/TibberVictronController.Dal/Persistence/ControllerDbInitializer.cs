@@ -95,7 +95,10 @@ public sealed class ControllerDbInitializer
             ["GridPowerWatts"] = "REAL NULL",
             ["BatteryPowerWatts"] = "REAL NULL",
             ["BatterySocPercent"] = "REAL NULL",
-            ["PvProductionWatts"] = "REAL NULL"
+            ["PvProductionWatts"] = "REAL NULL",
+            ["SupplementaryBatteryPowerWatts"] = "REAL NULL",
+            ["SupplementaryBatterySocPercent"] = "REAL NULL",
+            ["SupplementaryPvProductionWatts"] = "REAL NULL"
         };
 
         foreach (var column in columnsToAdd)
@@ -175,7 +178,10 @@ CREATE TABLE IF NOT EXISTS "LiveConsumptionSamples" (
     "GridPowerWatts" REAL NULL,
     "BatteryPowerWatts" REAL NULL,
     "BatterySocPercent" REAL NULL,
-    "PvProductionWatts" REAL NULL
+    "PvProductionWatts" REAL NULL,
+    "SupplementaryBatteryPowerWatts" REAL NULL,
+    "SupplementaryBatterySocPercent" REAL NULL,
+    "SupplementaryPvProductionWatts" REAL NULL
 );
 CREATE INDEX IF NOT EXISTS "IX_LiveConsumptionSamples_MeasuredAtUtc" ON "LiveConsumptionSamples" ("MeasuredAtUtc");
 """;

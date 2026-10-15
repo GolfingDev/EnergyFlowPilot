@@ -51,4 +51,13 @@ public sealed class LiveConsumptionSample
     public decimal? BatterySocPercent { get; }
 
     public decimal? PvProductionWatts { get; }
+
+    /// <summary>
+    /// Gets the supplementary storage (E3/DC) battery power in watts. Positive values mean charging.
+    /// </summary>
+    public decimal? SupplementaryBatteryPowerWatts { get; init; }
+
+    public decimal? SupplementaryBatterySocPercent { get; init; }
+
+    public decimal? SupplementaryPvProductionWatts { get; init; }
 }

@@ -30,6 +30,7 @@ app.MapSavingsEndpoints();
 app.MapGuiMetadataEndpoints();
 app.MapE3dcEndpoints();
 app.MapDashboardTelemetryEndpoints();
+app.MapDashboardSummaryEndpoints();
 app.MapDashboardHub();
 
 app.Run();

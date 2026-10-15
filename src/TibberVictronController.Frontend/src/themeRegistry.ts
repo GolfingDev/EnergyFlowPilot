@@ -6,7 +6,9 @@ export type EnergyFlowThemeName =
   | 'executiveDark'
   | 'mobileFocusDark'
   | 'neonGridDark'
-  | 'missionDark';
+  | 'missionDark'
+  | 'leitstandLight'
+  | 'leitstandDark';
 
 export interface EnergyFlowThemeDefinition {
   name: EnergyFlowThemeName;
@@ -72,6 +74,20 @@ export const energyFlowThemes: EnergyFlowThemeDefinition[] = [
     description: 'Dreispalten-Cockpit mit SOC-Gauge, Amber-Akzent und Scan-Linien-Textur.',
     dark: true,
     icon: 'mdi-radar'
+  },
+  {
+    name: 'leitstandLight',
+    label: 'Leitstand Hell',
+    description: 'Lage, Energiefluss beider Speicher, Plan mit Begründung und Rückblick mit Qualitätsprüfung.',
+    dark: false,
+    icon: 'mdi-monitor-dashboard'
+  },
+  {
+    name: 'leitstandDark',
+    label: 'Leitstand Dunkel',
+    description: 'Leitstand-Ansicht mit dunklem Hintergrund.',
+    dark: true,
+    icon: 'mdi-monitor-dashboard'
   }
 ];
 

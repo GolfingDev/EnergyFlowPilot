@@ -18,6 +18,12 @@ The frontend communicates with the backend only through DTO-based HTTP APIs.
 
 It must not contain Battery Decision Engine business logic.
 
+## Leitstand View
+
+The themes `leitstandLight` and `leitstandDark` render `LeitstandDashboard.vue` instead of the other dashboard layouts. The view has four zones: situation sentence, live flow of both storage systems (Victron and E3/DC) with live checks, 24 h plan with segments and reasons, and a measured review with quality figures.
+
+It reads `/api/dashboard/summary` (every 15 s) and `/api/dashboard/review?hours=12|24|48` (every 5 min). Categories, checks, plan segments and review energies are calculated in `DashboardSummaryService`; the frontend only formats them as German text and charts. All power values are measured samples, never requested decision targets. The review relies on E3/DC battery and PV values stored with every live sample.
+
 ## Local Development
 
 The Vite development server runs on port `5173`.
