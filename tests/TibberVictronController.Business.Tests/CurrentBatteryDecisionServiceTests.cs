@@ -596,6 +596,36 @@ public sealed class CurrentBatteryDecisionServiceTests
     }
 
     [Fact]
+    public async Task CalculateCurrentDecisionAsyncReducesDischargeByMeasuredFeedInBasedOnRequestedPower()
+    {
+        // Reproduces 2026-10-14 23:20: 4070 W were requested, the inverter drew 4854 W DC (AC-output loads and losses)
+        // and 380 W were fed into the grid. The next target must shrink by the measured feed-in plus the import margin.
+        var decisionLogRepository = new FakeDecisionLogRepository();
+        decisionLogRepository.SavedEntries.Add(CreateDecisionLogEntry(
+            decidedAtUtc: NowUtc.AddSeconds(-20),
+            validFromUtc: NowUtc.AddSeconds(-20),
+            validToUtc: NowUtc.AddMinutes(10),
+            decisionState: BatteryDecisionState.Discharge,
+            chargeSource: null,
+            targetPowerWatts: 4070));
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(60m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(new BatteryConfiguration(19.2m, maximumDischargePowerWatts: 5000, roundTripEfficiencyPercent: 90m)),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(-380, 0, NowUtc, currentBatteryPowerWatts: -4854)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.40m, 0.30m)),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = decisionLogRepository
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Discharge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(4070 - 380 - 30, result.Decision.TargetPowerWatts);
+    }
+
+    [Fact]
     public async Task CalculateCurrentDecisionAsyncGridChargesOnlyWithPlannedPower()
     {
         var batteryConfiguration = new BatteryConfiguration(12m, maximumChargePowerWatts: 5000, roundTripEfficiencyPercent: 100m);

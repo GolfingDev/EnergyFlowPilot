@@ -12,6 +12,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 {
     private static readonly TimeSpan SiteTelemetryMaxAge = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan DecisionLookahead = TimeSpan.FromHours(24);
+    private static readonly TimeSpan ActiveDischargeTargetMaxAge = TimeSpan.FromMinutes(2);
     private const int MaximumPlausiblePowerWatts = 100_000;
 
     private readonly CurrentBatteryDecisionServiceDependencies dependencies;
@@ -118,7 +119,8 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         var decisionSiteTelemetry = siteTelemetry.CurrentBatteryPowerWatts is null
             ? await CreateFallbackDecisionSiteTelemetryAsync(decidedAtUtc, siteTelemetry, cancellationToken)
             : siteTelemetry;
-        var gridPowerWithoutBatteryWatts = CalculateGridPowerWithoutBatteryWatts(decisionSiteTelemetry, batteryConfiguration);
+        var activeDischargeTargetWatts = await GetActiveDischargeTargetWattsAsync(decidedAtUtc, cancellationToken);
+        var gridPowerWithoutBatteryWatts = CalculateGridPowerWithoutBatteryWatts(decisionSiteTelemetry, batteryConfiguration, activeDischargeTargetWatts);
 
         IReadOnlyList<TibberPriceForecastSlot>? priceForecast = null;
         TibberPriceForecastSlot? currentPriceSlot = null;
@@ -382,10 +384,14 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
     /// The measured grid power already contains the running battery action. Using it directly as the next target lets the battery
     /// cover only the residual import it leaves behind, so load coverage collapses to roughly half and charge/discharge oscillates.
     /// The battery power is measured on the DC side, so it is converted to the AC side with the configured single-direction efficiency.
+    /// While discharging, the DC power also feeds loads on the inverter AC output and contains losses that grow with power; both are
+    /// invisible at the grid meter. The previously requested discharge power is what the inverter actually delivers towards the grid
+    /// connection, so the smaller of both values is used. This closes the loop on the measured grid power and prevents feed-in.
     /// </remarks>
     private static int CalculateGridPowerWithoutBatteryWatts(
         CurrentSiteTelemetry siteTelemetry,
-        BatteryConfiguration batteryConfiguration)
+        BatteryConfiguration batteryConfiguration,
+        int? activeDischargeTargetWatts)
     {
         if (siteTelemetry.CurrentBatteryPowerWatts is not { } batteryDcPowerWatts)
         {
@@ -397,7 +403,28 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             ? batteryDcPowerWatts / singleDirectionEfficiency
             : batteryDcPowerWatts * singleDirectionEfficiency;
 
+        if (batteryAcPowerWatts < 0m && activeDischargeTargetWatts is { } requestedDischargeWatts)
+        {
+            batteryAcPowerWatts = Math.Max(batteryAcPowerWatts, -requestedDischargeWatts);
+        }
+
         return siteTelemetry.CurrentGridImportWatts - (int)Math.Round(batteryAcPowerWatts, MidpointRounding.AwayFromZero);
+    }
+
+    private async Task<int?> GetActiveDischargeTargetWattsAsync(
+        DateTimeOffset decidedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var recentDecisions = await dependencies.DecisionLogRepository.GetRecentDecisionsAsync(1, cancellationToken);
+        var latestDecision = recentDecisions.FirstOrDefault();
+
+        return latestDecision is not null &&
+            latestDecision.ValidFromUtc <= decidedAtUtc &&
+            decidedAtUtc < latestDecision.ValidToUtc &&
+            decidedAtUtc - latestDecision.DecidedAtUtc <= ActiveDischargeTargetMaxAge &&
+            latestDecision.Decision.Instruction.DecisionState == BatteryDecisionState.Discharge
+            ? latestDecision.Decision.TargetPowerWatts
+            : null;
     }
 
     /// <summary>
