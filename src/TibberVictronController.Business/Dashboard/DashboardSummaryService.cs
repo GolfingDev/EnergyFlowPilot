@@ -89,7 +89,8 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
             Samples = samples,
             GetSlotPricePerKwh = slotStartsAtUtc => prices.TryGetValue(slotStartsAtUtc, out var price) ? price : null,
             BatteryConfiguration = configuration,
-            FeedInCompensationPricePerKwh = await GetFeedInCompensationPricePerKwhAsync(cancellationToken)
+            FeedInCompensationPricePerKwh = await GetDecimalSettingAsync(ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey, cancellationToken),
+            GridPowerDeadbandWatts = (int)await GetDecimalSettingAsync(ControllerSettingDefaults.TelemetryGridPowerDeadbandWattsKey, cancellationToken)
         });
 
         return review with
@@ -164,15 +165,13 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
         return prices;
     }
 
-    private async Task<decimal> GetFeedInCompensationPricePerKwhAsync(CancellationToken cancellationToken)
+    private async Task<decimal> GetDecimalSettingAsync(string settingKey, CancellationToken cancellationToken)
     {
-        var setting = await dependencies.ControllerSettingStore.GetSettingAsync(
-            ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey,
-            cancellationToken);
+        var setting = await dependencies.ControllerSettingStore.GetSettingAsync(settingKey, cancellationToken);
 
         return setting is { IsConfigured: true } &&
-               decimal.TryParse(setting.Value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var price)
-            ? price
+               decimal.TryParse(setting.Value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var value)
+            ? value
             : 0m;
     }
 

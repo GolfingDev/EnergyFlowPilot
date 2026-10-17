@@ -66,6 +66,27 @@ public sealed class StrategyComparisonCalculatorTests
     }
 
     [Fact]
+    public void BatteryFirstKeepsTheSameDeadbandMarginAsTheController()
+    {
+        // The controller covers 1 kW minus the 150 W margin; the baseline must not look better by regulating to 0 W.
+        var samples = Enumerable.Range(0, 61)
+            .Select(minute => CreateSample(minute, gridWatts: 150m, batteryWatts: -850m, socPercent: 50m))
+            .ToArray();
+
+        var costs = StrategyComparisonCalculator.Calculate(new StrategyComparisonInput
+        {
+            Samples = samples,
+            GetSlotPricePerKwh = _ => 0.40m,
+            BatteryConfiguration = Battery,
+            FeedInCompensationPricePerKwh = 0.08m,
+            GridPowerDeadbandWatts = 150
+        }).Total!;
+
+        Assert.Equal(0.06m, costs.ActualCost);
+        Assert.Equal(0.06m, costs.BaselineCost);
+    }
+
+    [Fact]
     public void MissingPricesReduceCoverageAndNoPricesGiveNoComparison()
     {
         var samples = Enumerable.Range(0, 61)

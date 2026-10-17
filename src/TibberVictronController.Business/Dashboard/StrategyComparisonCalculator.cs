@@ -17,6 +17,11 @@ public sealed class StrategyComparisonInput
     public required BatteryConfiguration BatteryConfiguration { get; init; }
 
     public required decimal FeedInCompensationPricePerKwh { get; init; }
+
+    /// <summary>
+    /// Import margin the real controller keeps while discharging; the baseline keeps the same margin to stay comparable.
+    /// </summary>
+    public int GridPowerDeadbandWatts { get; init; }
 }
 
 public sealed record StrategyComparisonResult(
@@ -78,6 +83,7 @@ public static class StrategyComparisonCalculator
             var gridWithoutBatteryWatts = gridWatts - batteryAcWatts;
             var baselineGridWatts = SimulateBaselineStep(new BaselineStep(
                 gridWithoutBatteryWatts,
+                input.GridPowerDeadbandWatts,
                 durationHours,
                 efficiency,
                 configuration,
@@ -133,14 +139,23 @@ public static class StrategyComparisonCalculator
     /// <summary>
     /// Covers import from the battery down to the planning minimum and stores export up to the planning maximum.
     /// </summary>
+    /// <remarks>
+    /// Like the real controller, the baseline ignores deviations inside the deadband and keeps the deadband as import margin
+    /// while discharging. Without that margin the baseline would look better only because it regulates perfectly to 0 W.
+    /// </remarks>
     private static decimal SimulateBaselineStep(BaselineStep step, ref decimal storedKwh)
     {
         var configuration = step.Configuration;
 
+        if (Math.Abs(step.GridWithoutBatteryWatts) <= step.DeadbandWatts)
+        {
+            return step.GridWithoutBatteryWatts;
+        }
+
         if (step.GridWithoutBatteryWatts > 0m)
         {
             var availableAcWatts = Math.Max(0m, storedKwh - step.MinimumStoredKwh) * step.Efficiency * 1000m / step.DurationHours;
-            var dischargeAcWatts = Math.Min(step.GridWithoutBatteryWatts, Math.Min(configuration.MaximumDischargePowerWatts, availableAcWatts));
+            var dischargeAcWatts = Math.Min(step.GridWithoutBatteryWatts - step.DeadbandWatts, Math.Min(configuration.MaximumDischargePowerWatts, availableAcWatts));
             storedKwh -= dischargeAcWatts / step.Efficiency * step.DurationHours / 1000m;
 
             return step.GridWithoutBatteryWatts - dischargeAcWatts;
@@ -166,6 +181,7 @@ public static class StrategyComparisonCalculator
 
     private sealed record BaselineStep(
         decimal GridWithoutBatteryWatts,
+        int DeadbandWatts,
         decimal DurationHours,
         decimal Efficiency,
         BatteryConfiguration Configuration,
