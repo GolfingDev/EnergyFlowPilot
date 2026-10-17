@@ -33,6 +33,8 @@ public sealed class ControllerDbContext : DbContext
 
     public DbSet<ConsumptionDayProfileEntity> ConsumptionDayProfiles => Set<ConsumptionDayProfileEntity>();
 
+    public DbSet<HomematicClimateSampleEntity> HomematicClimateSamples => Set<HomematicClimateSampleEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureControllerSettings(modelBuilder);
@@ -41,6 +43,7 @@ public sealed class ControllerDbContext : DbContext
         ConfigureBatterySavings(modelBuilder);
         ConfigureLiveConsumptionSamples(modelBuilder);
         ConfigureConsumptionDayProfiles(modelBuilder);
+        ConfigureHomematicClimateSamples(modelBuilder);
     }
 
     private static void ConfigureControllerSettings(ModelBuilder modelBuilder)
@@ -152,6 +155,32 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(profile => profile.UpdatedAtUtc)
                 .HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
             entity.HasIndex(profile => profile.UpdatedAtUtc);
+        });
+    }
+
+    private static void ConfigureHomematicClimateSamples(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<HomematicClimateSampleEntity>(entity =>
+        {
+            entity.ToTable("HomematicClimateSamples");
+            entity.HasKey(sample => sample.Id);
+            entity.Property(sample => sample.PolledAtUtc)
+                .HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(sample => sample.LastChangedAtUtc)
+                .HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(sample => sample.ChannelAddress).HasMaxLength(64);
+            entity.Property(sample => sample.DeviceType).HasMaxLength(64);
+            entity.Property(sample => sample.DeviceName).HasMaxLength(256);
+            entity.Property(sample => sample.ChannelName).HasMaxLength(256);
+            entity.Property(sample => sample.Kind).HasConversion<string>().HasMaxLength(32);
+            entity.Property(sample => sample.SetPointMode).HasConversion<string>().HasMaxLength(32);
+            // REAL keeps the column numeric so the series can be analysed directly with SQL.
+            entity.Property(sample => sample.ActualTemperatureCelsius).HasConversion<double?>();
+            entity.Property(sample => sample.SetPointTemperatureCelsius).HasConversion<double?>();
+            entity.Property(sample => sample.ValveOpeningPercent).HasConversion<double?>();
+            entity.Property(sample => sample.RelativeHumidityPercent).HasConversion<double?>();
+            entity.HasIndex(sample => sample.PolledAtUtc);
+            entity.HasIndex(sample => new { sample.ChannelAddress, sample.PolledAtUtc });
         });
     }
 }

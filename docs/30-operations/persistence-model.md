@@ -99,6 +99,21 @@ Week, month, year and total reports are calculated by summing daily rows. Weight
 
 The first reporting API exposes these views through `GET /api/savings` with `period=day|week|month|year|total`. For bounded periods, the caller must provide `referenceDate=yyyy-MM-dd`.
 
+### HomematicClimateSamples
+
+Stores read-only Homematic room climate readings, one row per supported channel and polling cycle. See `homematic-telemetry.md`.
+
+Important columns:
+
+- `PolledAtUtc` (time axis for analyses)
+- `LastChangedAtUtc` (CCU datapoint timestamp, only changes when the value changes)
+- `ChannelAddress` (stable hardware address, survives renames)
+- `Kind`
+- `ActualTemperatureCelsius`, `SetPointTemperatureCelsius`, `SetPointMode`
+- `ValveOpeningPercent`, `RelativeHumidityPercent`, `IsWindowOpen`, `IsReachable`
+
+Rows older than `homematic.sampleRetentionDays` are deleted once per day.
+
 ## Time Storage
 
 Domain code uses `DateTimeOffset` with UTC timestamps.

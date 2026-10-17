@@ -87,7 +87,7 @@ const sectionDefinitions: SectionDefinition[] = [
   { key: 'operations', title: 'Betrieb', description: 'Simulationsmodus, Worker-Intervalle, Dashboard-Aktualisierung und Protokollierung.' },
   { key: 'battery', title: 'Batterie', description: 'Kapazität, harte Grenzen, Planungsprofil und Wirkungsgrad.' },
   { key: 'control', title: 'Steuerung', description: 'Parameter, die direkt Lade-, Entlade- und Idle-Entscheidungen beeinflussen.' },
-  { key: 'sources', title: 'Datenquellen', description: 'Live-Datenquellen sowie Victron- und Hager-Verbindungen.' },
+  { key: 'sources', title: 'Datenquellen', description: 'Live-Datenquellen sowie Victron-, Hager- und Homematic-Verbindungen.' },
   { key: 'forecast', title: 'Prognosen', description: 'Tibber-Preise, PV-Prognose und Verbrauchsannahmen.' },
   { key: 'advanced', title: 'Erweitert', description: 'Roh-Topics, OAuth-Endpunkte, SMTP-Details und technische Sonderwerte.' }
 ];
@@ -137,6 +137,11 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'hagerEnergy.clientId', section: 'sources', subgroup: 'Hager Energy API', category: 'critical' },
   { key: 'hagerEnergy.clientSecret', section: 'sources', subgroup: 'Hager Energy API', category: 'critical', helpText: 'Leer lassen, wenn dein OAuth-Client ohne Secret arbeitet.' },
   { key: 'hagerEnergy.installationId', section: 'sources', subgroup: 'Hager Energy API', category: 'critical' },
+  { key: 'homematic.enabled', section: 'sources', subgroup: 'Homematic', category: 'important' },
+  { key: 'homematic.baseUrl', section: 'sources', subgroup: 'Homematic', category: 'important' },
+  { key: 'homematic.apiToken', section: 'sources', subgroup: 'Homematic', category: 'critical', helpText: 'Token aus tokenregister.cgi der XML-API. Leer lassen behält einen vorhandenen geheimen Wert.' },
+  { key: 'homematic.pollingIntervalSeconds', section: 'sources', subgroup: 'Homematic', category: 'normal' },
+  { key: 'homematic.sampleRetentionDays', section: 'sources', subgroup: 'Homematic', category: 'normal' },
   { key: 'victron.host', section: 'sources', subgroup: 'Victron MQTT', category: 'critical' },
   { key: 'victron.port', section: 'sources', subgroup: 'Victron MQTT', category: 'important' },
   { key: 'victron.portalId', section: 'sources', subgroup: 'Victron MQTT', category: 'important' },
@@ -578,6 +583,8 @@ function getGroupDescription(groupTitle: string): string {
       return 'Technische Topic-Zuordnung. Normalerweise nur ändern, wenn sich das Victron-MQTT-Schema ändert.';
     case 'SMTP':
       return 'Technische Versandparameter für Worker-Fehlermails.';
+    case 'Homematic':
+      return 'Liest Raumklima und Ventilstellungen nur lesend aus der CCU. Kein Einfluss auf die Akkusteuerung.';
     default:
       return '';
   }

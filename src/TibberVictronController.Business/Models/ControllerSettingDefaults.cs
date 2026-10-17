@@ -98,6 +98,11 @@ public static class ControllerSettingDefaults
     public const string HagerEnergyPvProductionJsonPathKey = "hagerEnergy.jsonPaths.pvProductionWatts";
     public const string HagerEnergyBatterySocJsonPathKey = "hagerEnergy.jsonPaths.batterySocPercent";
     public const string HagerEnergyPollingIntervalSecondsKey = "hagerEnergy.pollingIntervalSeconds";
+    public const string HomematicEnabledKey = "homematic.enabled";
+    public const string HomematicBaseUrlKey = "homematic.baseUrl";
+    public const string HomematicApiTokenKey = "homematic.apiToken";
+    public const string HomematicPollingIntervalSecondsKey = "homematic.pollingIntervalSeconds";
+    public const string HomematicSampleRetentionDaysKey = "homematic.sampleRetentionDays";
 
     private static readonly ControllerSettingDefinition[] Definitions =
     {
@@ -185,7 +190,12 @@ public static class ControllerSettingDefaults
         new(HagerEnergyGridImportJsonPathKey, "auto", ControllerSettingSensitivity.Normal),
         new(HagerEnergyPvProductionJsonPathKey, "auto", ControllerSettingSensitivity.Normal),
         new(HagerEnergyBatterySocJsonPathKey, "auto", ControllerSettingSensitivity.Normal),
-        new(HagerEnergyPollingIntervalSecondsKey, "60", ControllerSettingSensitivity.Normal)
+        new(HagerEnergyPollingIntervalSecondsKey, "60", ControllerSettingSensitivity.Normal),
+        new(HomematicEnabledKey, "false", ControllerSettingSensitivity.Normal),
+        new(HomematicBaseUrlKey, "http://homematic-raspi", ControllerSettingSensitivity.Normal),
+        new(HomematicApiTokenKey, null, ControllerSettingSensitivity.Sensitive),
+        new(HomematicPollingIntervalSecondsKey, "300", ControllerSettingSensitivity.Normal),
+        new(HomematicSampleRetentionDaysKey, "400", ControllerSettingSensitivity.Normal)
     };
 
     /// <summary>

@@ -234,9 +234,64 @@ public sealed class SqlitePersistenceTests : IDisposable
         Assert.Equal(300m, sample.PvProductionWatts);
     }
 
+    [Fact]
+    public async Task HomematicClimateRepositoryWorksOnTableAddedToExistingDatabase()
+    {
+        await using var dbContext = CreateDbContext();
+        var initializer = new ControllerDbInitializer(dbContext);
+        await initializer.InitializeAsync(SeededAtUtc);
+        // Simulate a database created before the Homematic feature existed: the additive script must recreate a compatible table.
+        await dbContext.Database.ExecuteSqlRawAsync("DROP TABLE \"HomematicClimateSamples\";");
+        await initializer.InitializeAsync(SeededAtUtc);
+        var repository = new EfHomematicClimateRepository(dbContext);
+
+        await repository.SaveSamplesAsync(new[]
+        {
+            CreateHomematicSample(SeededAtUtc.AddDays(-401), 20.1m),
+            CreateHomematicSample(SeededAtUtc, 21.4m)
+        });
+        var deletedCount = await repository.DeleteSamplesOlderThanAsync(SeededAtUtc.AddDays(-400));
+        var samples = await repository.GetSamplesAsync(SeededAtUtc.AddDays(-500), SeededAtUtc.AddMinutes(1));
+
+        Assert.Equal(1, deletedCount);
+        var sample = Assert.Single(samples);
+        Assert.Equal(SeededAtUtc, sample.PolledAtUtc);
+        Assert.Equal(SeededAtUtc.AddMinutes(-3), sample.LastChangedAtUtc);
+        Assert.Equal("0050226997F35A:1", sample.ChannelAddress);
+        Assert.Equal("Heizung Bad", sample.DeviceName);
+        Assert.Equal(HomematicClimateSampleKind.RadiatorThermostat, sample.Kind);
+        Assert.Equal(21.4m, sample.ActualTemperatureCelsius);
+        Assert.Equal(22m, sample.SetPointTemperatureCelsius);
+        Assert.Equal(HomematicSetPointMode.Automatic, sample.SetPointMode);
+        Assert.Equal(89m, sample.ValveOpeningPercent);
+        Assert.Null(sample.RelativeHumidityPercent);
+        Assert.False(sample.IsWindowOpen);
+        Assert.True(sample.IsReachable);
+    }
+
     public void Dispose()
     {
         sqliteConnection.Dispose();
+    }
+
+    private static HomematicClimateSample CreateHomematicSample(DateTimeOffset polledAtUtc, decimal actualTemperatureCelsius)
+    {
+        return new HomematicClimateSample
+        {
+            PolledAtUtc = polledAtUtc,
+            LastChangedAtUtc = polledAtUtc.AddMinutes(-3),
+            ChannelAddress = "0050226997F35A:1",
+            DeviceType = "HmIP-eTRV-3",
+            DeviceName = "Heizung Bad",
+            ChannelName = "Heizung Bad:1",
+            Kind = HomematicClimateSampleKind.RadiatorThermostat,
+            ActualTemperatureCelsius = actualTemperatureCelsius,
+            SetPointTemperatureCelsius = 22m,
+            SetPointMode = HomematicSetPointMode.Automatic,
+            ValveOpeningPercent = 89m,
+            IsWindowOpen = false,
+            IsReachable = true
+        };
     }
 
     private ControllerDbContext CreateDbContext()

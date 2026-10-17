@@ -33,7 +33,7 @@ public sealed class ControllerDbInitializer
     {
         var databaseCreator = dbContext.GetService<IRelationalDatabaseCreator>();
 
-        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles" })
+        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples" })
         {
             if (await databaseCreator.HasTablesAsync(cancellationToken) &&
                 await TableExistsAsync(tableName, cancellationToken))
@@ -148,6 +148,31 @@ public sealed class ControllerDbInitializer
 
     private static string CreateTableScript(string tableName)
     {
+        if (string.Equals(tableName, "HomematicClimateSamples", StringComparison.OrdinalIgnoreCase))
+        {
+            return """
+CREATE TABLE IF NOT EXISTS "HomematicClimateSamples" (
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_HomematicClimateSamples" PRIMARY KEY AUTOINCREMENT,
+    "PolledAtUtc" INTEGER NOT NULL,
+    "LastChangedAtUtc" INTEGER NULL,
+    "ChannelAddress" TEXT NOT NULL,
+    "DeviceType" TEXT NOT NULL,
+    "DeviceName" TEXT NOT NULL,
+    "ChannelName" TEXT NOT NULL,
+    "Kind" TEXT NOT NULL,
+    "ActualTemperatureCelsius" REAL NULL,
+    "SetPointTemperatureCelsius" REAL NULL,
+    "SetPointMode" TEXT NULL,
+    "ValveOpeningPercent" REAL NULL,
+    "RelativeHumidityPercent" REAL NULL,
+    "IsWindowOpen" INTEGER NULL,
+    "IsReachable" INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "IX_HomematicClimateSamples_PolledAtUtc" ON "HomematicClimateSamples" ("PolledAtUtc");
+CREATE INDEX IF NOT EXISTS "IX_HomematicClimateSamples_ChannelAddress_PolledAtUtc" ON "HomematicClimateSamples" ("ChannelAddress", "PolledAtUtc");
+""";
+        }
+
         if (!string.Equals(tableName, "BatterySavingsDailySummaries", StringComparison.OrdinalIgnoreCase))
         {
             if (!string.Equals(tableName, "LiveConsumptionSamples", StringComparison.OrdinalIgnoreCase))

@@ -7,6 +7,7 @@ using TibberVictronController.Api.Dashboard;
 using TibberVictronController.Dal.Battery;
 using TibberVictronController.Dal.Consumption;
 using TibberVictronController.Dal.HagerEnergy;
+using TibberVictronController.Dal.Homematic;
 using TibberVictronController.Dal.Mqtt;
 using TibberVictronController.Dal.Persistence;
 using TibberVictronController.Dal.Repositories;
@@ -45,6 +46,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<DatabaseMqttDeviceSettingsProvider>();
         services.AddScoped<DatabaseVictronMqttSettingsProvider>();
         services.AddScoped<DatabaseHagerEnergySettingsProvider>();
+        services.AddScoped<DatabaseHomematicSettingsProvider>();
         services.AddScoped<TelemetrySourceSelector>();
         services.AddSingleton<VictronMqttRuntimeStatus>();
         services.AddSingleton<DecisionWorkerRuntimeStatus>();
@@ -56,6 +58,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IBatterySavingsAccountingService, BatterySavingsAccountingService>();
         services.AddScoped<IOperationalEventRepository, EfOperationalEventRepository>();
         services.AddScoped<ILiveConsumptionRepository, EfLiveConsumptionRepository>();
+        services.AddScoped<IHomematicClimateRepository, EfHomematicClimateRepository>();
         services.AddScoped<IWorkerFailureNotifier, WorkerFailureEmailNotifier>();
         services.AddSingleton<IDashboardLiveUpdatePublisher, SignalRDashboardLiveUpdatePublisher>();
         services.AddScoped<IVictronSetpointPublisher, MqttVictronSetpointPublisher>();
@@ -73,6 +76,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddSingleton<HagerEnergyTokenCache>();
         services.AddSingleton<HagerEnergyTelemetrySnapshotStore>();
         services.AddHttpClient<HagerEnergyApiClient>();
+        services.AddHttpClient<IHomematicClimateSource, HomematicXmlApiClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<HagerEnergyBatteryStateProvider>();
         services.AddScoped<HagerEnergyCurrentSiteTelemetryProvider>();
         services.AddScoped<IBatteryStateProvider, SelectedBatteryStateProvider>();
@@ -122,6 +126,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddHostedService<DecisionExecutionBackgroundService>();
         services.AddHostedService<BatterySavingsAccountingBackgroundService>();
         services.AddHostedService<HagerEnergyPollingBackgroundService>();
+        services.AddHostedService<HomematicPollingBackgroundService>();
         services.AddHostedService<VictronSetpointRefreshBackgroundService>();
         services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<VictronMqttClientService>());
 
