@@ -206,7 +206,45 @@ public sealed class BatteryForecastSimulatorTests
         Assert.Equal(result.Entries[4].TimeSlot, gridChargeEntry.TimeSlot);
         Assert.Contains(gridChargeEntry.Reasons, reason => reason.RuleName == BatteryForecastRuleIds.PlannedGridCharge);
         Assert.Equal(BatteryDecisionState.Discharge, result.Entries[5].Decision.Instruction.DecisionState);
-        Assert.Equal(4000, result.Entries[5].Decision.TargetPowerWatts);
+
+        // The optimizer plans on a 0.05 kWh energy grid, so the charged energy may miss the exact need by a few Wh.
+        Assert.InRange(result.Entries[5].Decision.TargetPowerWatts, 3950, 4000);
+    }
+
+    [Fact]
+    public void SimulateChargesInCheaperPvSlotInsteadOfExpensiveNight()
+    {
+        // Pattern of 2026-10-17: the battery is empty at night (0.31), a midday slot with little PV costs 0.28 and the evening 0.45.
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(15m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(10m, minimumStateOfChargePercent: 15m, maximumChargePowerWatts: 5000, maximumDischargePowerWatts: 5000, roundTripEfficiencyPercent: 90m);
+        var priceForecast = CreatePriceForecast(0.31m, 0.31m, 0.28m, 0.45m);
+        var pvForecast = CreatePvForecast(0m, 0m, 0.30m, 0m);
+        var consumptionForecast = CreateConsumptionForecast(0.50m, 0.50m, 0.20m, 1.00m);
+
+        var result = simulator.Simulate(priceForecast, pvForecast, consumptionForecast, batteryState, batteryConfiguration, feedInCompensationPricePerKwh: 0.08m);
+
+        Assert.All(result.Entries.Take(2), entry => Assert.NotEqual(BatteryChargeSource.Grid, entry.Decision.Instruction.ChargeSource));
+        Assert.Equal(BatteryChargeSource.Grid, result.Entries[2].Decision.Instruction.ChargeSource);
+        Assert.Equal(BatteryDecisionState.Discharge, result.Entries[3].Decision.Instruction.DecisionState);
+        Assert.InRange(result.Entries[3].Decision.TargetPowerWatts, 3950, 4000);
+    }
+
+    [Fact]
+    public void SimulateNeverGridChargesOnEstimatedPrices()
+    {
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(15m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(10m, minimumStateOfChargePercent: 15m, maximumChargePowerWatts: 5000, maximumDischargePowerWatts: 5000, roundTripEfficiencyPercent: 90m);
+        var priceForecast = new[]
+        {
+            new TibberPriceForecastSlot(CreateTimeSlot(0), 0.10m, "EUR") { IsEstimated = true },
+            new TibberPriceForecastSlot(CreateTimeSlot(1), 0.45m, "EUR") { IsEstimated = true }
+        };
+
+        var result = simulator.Simulate(priceForecast, CreatePvForecast(0m, 0m), CreateConsumptionForecast(0.20m, 1.00m), batteryState, batteryConfiguration, feedInCompensationPricePerKwh: 0.08m);
+
+        Assert.DoesNotContain(result.Entries, entry => entry.Decision.Instruction.ChargeSource == BatteryChargeSource.Grid);
     }
 
     [Fact]

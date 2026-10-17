@@ -52,22 +52,25 @@ The forecast should contain:
 
 Each forecast entry must use the projected battery state of charge for its time slot once forecasted battery state calculation exists.
 
-Forecast charging decisions are need-based (`BatteryGridChargeNeedPlanner`):
+Forecast charging decisions are cost-optimal over the whole horizon (`BatterySocOptimizer`, dynamic programming):
 
 - by default the battery covers expected consumption in every slot down to the planning minimum state of charge (`SELF_CONSUMPTION_DISCHARGE`)
-- the planner first simulates the forecast without grid charging; grid import that only remains because the battery is empty is a shortage
-- shortages are closed in descending price order with the cheapest earlier source after the last slot in which the battery ran out of energy:
-  - holding battery energy in a cheaper slot (`HOLD_FOR_EXPENSIVE_SLOT`), cost = price of the holding slot
-  - grid charging (`PLANNED_GRID_CHARGE`), cost = charge price divided by the round-trip efficiency
-- a source is only used when its cost is at least the configured minimum savings (`decision.minimumSavingsPerKwh`, default 0.03 EUR/kWh) below the price of the shortage slot
+- the optimizer models the stored battery energy on a 0.05 kWh grid between planning minimum and maximum. A backward pass computes, for every slot and energy level, the cheapest cost until the horizon end. A forward pass then follows it from the real start energy
+- per slot it chooses the next battery energy within the physical limits: maximum charge and discharge power, single-direction efficiency, no discharge beyond the expected import (no feed-in from the battery), and PV surplus is always stored as far as power and headroom allow
+- energy cost per slot: grid import at the slot price, export at the feed-in compensation
+- deviations from the default behaviour are planned as:
+  - holding battery energy (`HOLD_FOR_EXPENSIVE_SLOT`): the battery covers less than it could
+  - grid charging (`PLANNED_GRID_CHARGE`): only on published, non-negative prices
+- every deviation costs the configured minimum savings per kWh (`decision.minimumSavingsPerKwh`, default 0.03 EUR/kWh), so energy is only shifted when the gain clearly exceeds forecast noise
 - grid charging additionally carries the configured battery wear cost (`battery.wearCostPerKwh`, battery price divided by usable kWh times cycles); holding causes no extra cycle and therefore no wear cost
-- added energy must fit below the planning maximum in every slot until the shortage, so grid charging never displaces expected PV surplus
+- the optimizer sees all combinations at once. For example, holding energy early can make a smaller, cheaper charge later sufficient. The previous greedy planner closed one shortage after the other and could miss such combinations
 - PV surplus slots are grid charge candidates as well: PV rarely uses the full charge power (the E3/DC takes PV first), so the charge power left next to the PV surplus can be filled from the grid when the slot is the cheapest source; the direct decision then charges the live surplus plus the planned grid share
-- only the missing energy is charged, never a blanket fill to the planning maximum
+- only the energy that pays off is charged, never a blanket fill to the planning maximum
+- the result uses the same plan format as before (hold and charge energy per slot); the simulator applies it and stays the model for state of charge and explanations. Because of the energy grid, planned amounts can differ from the exact need by a few Wh
 - there is no end-of-horizon reserve (`END_SOC_RESERVE` is no longer produced): the horizon end only reflects when Tibber publishes prices, and the plan is recalculated as soon as they are known
 - missing prices up to 24 h ahead are estimated from a comparable day (`ComparableDayPriceEstimator`): Tuesday to Friday use the previous day, Saturday, Sunday and Monday the same weekday one week earlier; past prices come from the decision log, the current day from Tibber; negative estimated prices are set to 0
 - estimated slots (`IsPriceEstimated`) may hold energy and show shortages, but grid charging is only planned on published prices
-- if multiple sources have the same cost, holding is preferred over charging and earlier slots are preferred so the forecast remains deterministic
+- if multiple plans have the same cost, the default behaviour wins, so the forecast remains deterministic
 - negative prices keep their own rules: the cheapest negative slots are planned for a full charge
 - there is no grid charging without an expected consumption shortage; energy that PV or the battery would provide anyway must not be bought
 - the projected state of charge must be updated slot by slot after every planned charge, discharge, PV surplus and consumption decision

@@ -10,7 +10,7 @@ public sealed class BatteryForecastSimulator
     private const decimal EnergyToleranceKwh = 0.001m;
 
     private readonly BatteryChargeWindowPlanner chargeWindowPlanner = new();
-    private readonly BatteryGridChargeNeedPlanner gridChargeNeedPlanner = new();
+    private readonly BatterySocOptimizer socOptimizer = new();
 
     /// <summary>
     /// Calculates forecast entries by applying PV, Tibber price and battery capacity rules slot by slot.
@@ -33,17 +33,22 @@ public sealed class BatteryForecastSimulator
                 batteryConfiguration)
             .PlannedChargeSlots
             .ToHashSet();
-        var needPlan = gridChargeNeedPlanner.Plan(
-            batteryConfiguration,
-            plan => SimulateEntries(
-                priceForecast,
-                pvForecast,
-                consumptionForecast,
-                initialBatteryState,
-                batteryConfiguration,
-                feedInCompensationPricePerKwh,
-                plannedNegativePriceChargeSlots,
-                plan));
+        var pvSlotsByTime = pvForecast.ToDictionary(pvSlot => pvSlot.TimeSlot);
+        var consumptionSlotsByTime = consumptionForecast.ToDictionary(consumptionSlot => consumptionSlot.TimeSlot);
+        var needPlan = socOptimizer.Plan(new BatterySocOptimizationInput
+        {
+            Slots = priceForecast
+                .OrderBy(priceSlot => priceSlot.TimeSlot.StartsAtUtc)
+                .Select(priceSlot => new BatterySocOptimizationSlot(
+                    priceSlot.TimeSlot,
+                    priceSlot.TotalPricePerKwh,
+                    priceSlot.IsEstimated,
+                    consumptionSlotsByTime[priceSlot.TimeSlot].ExpectedConsumptionKwh - pvSlotsByTime[priceSlot.TimeSlot].ExpectedPvYieldKwh))
+                .ToArray(),
+            InitialEnergyKwh = batteryConfiguration.TotalCapacityKwh * initialBatteryState.StateOfChargePercent / 100m,
+            BatteryConfiguration = batteryConfiguration,
+            FeedInCompensationPricePerKwh = feedInCompensationPricePerKwh
+        });
         var entries = SimulateEntries(
             priceForecast,
             pvForecast,
