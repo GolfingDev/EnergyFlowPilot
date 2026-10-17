@@ -1,14 +1,16 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using TibberVictronController.Business.Abstractions;
+using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Models;
-using TibberVictronController.Dal.Entities;
 using TibberVictronController.Dal.Persistence;
 
 namespace TibberVictronController.Dal.Consumption;
 
 /// <summary>
-/// Builds a 15-minute consumption forecast from persisted weekday profiles and falls back to the initial average-day shape when needed.
+/// Builds a 15-minute consumption forecast from a learned, temperature-scaled daily profile and falls back to the initial
+/// average-day shape when no measurements exist yet.
 /// </summary>
 public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsumptionProvider
 {
@@ -22,22 +24,31 @@ public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsump
 
     private static readonly decimal BaseDailyConsumptionKwh = ThreePartyHouseholdHourlyConsumptionShare.Sum();
     private static readonly TimeSpan SlotDuration = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan ProfileRefreshInterval = TimeSpan.FromHours(1);
     private static readonly TimeSpan ProfileHistoryWindow = TimeSpan.FromDays(14);
+    private static readonly TimeSpan TemperatureLookahead = TimeSpan.FromDays(4);
 
     private readonly IControllerSettingStore controllerSettingStore;
     private readonly ControllerDbContext dbContext;
+    private readonly ITemperatureProvider temperatureProvider;
+    private readonly ConsumptionForecastModelCache modelCache;
+    private readonly ILogger<AverageDailyConsumptionForecastProvider> logger;
 
     public AverageDailyConsumptionForecastProvider(
         IControllerSettingStore controllerSettingStore,
-        ControllerDbContext dbContext)
+        ControllerDbContext dbContext,
+        ITemperatureProvider temperatureProvider,
+        ConsumptionForecastModelCache modelCache,
+        ILogger<AverageDailyConsumptionForecastProvider> logger)
     {
         this.controllerSettingStore = controllerSettingStore;
         this.dbContext = dbContext;
+        this.temperatureProvider = temperatureProvider;
+        this.modelCache = modelCache;
+        this.logger = logger;
     }
 
     /// <summary>
-    /// Creates 15-minute consumption slots from persisted weekday profiles and uses the initial average-day baseline as fallback.
+    /// Creates 15-minute consumption slots from the learned profile and uses the initial average-day baseline as fallback.
     /// </summary>
     public async Task<IReadOnlyList<ConsumptionForecastSlot>> GetConsumptionForecastAsync(
         DateTimeOffset startsAtUtc,
@@ -50,28 +61,17 @@ public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsump
         var timeZone = await GetForecastTimeZoneAsync(cancellationToken);
         var scaleFactor = averageDailyConsumptionKwh / BaseDailyConsumptionKwh;
         var consumptionSlots = new List<ConsumptionForecastSlot>();
-        var profiles = await GetOrBuildProfilesAsync(timeZone, cancellationToken);
-        var profilesByDayAndSlot = profiles.ToDictionary(
-            profile => (profile.DayOfWeek, profile.SlotIndex),
-            profile => profile.AverageConsumptionWatts);
-        var slotAverages = profiles
-            .GroupBy(profile => profile.SlotIndex)
-            .ToDictionary(
-                profileGroup => profileGroup.Key,
-                profileGroup => profileGroup.Average(profile => profile.AverageConsumptionWatts));
+        var model = await GetOrBuildModelAsync(timeZone, cancellationToken);
 
         for (var slotStartUtc = startsAtUtc; slotStartUtc < endsAtUtc; slotStartUtc = slotStartUtc.Add(SlotDuration))
         {
             var slotEndUtc = slotStartUtc.Add(SlotDuration);
             var localSlotStart = TimeZoneInfo.ConvertTime(slotStartUtc, timeZone);
-            var slotIndex = GetSlotIndex(localSlotStart);
-            var profileConsumptionKwh = TryGetProfileConsumptionKwh(
-                profilesByDayAndSlot,
-                slotAverages,
-                localSlotStart.DayOfWeek,
-                slotIndex);
-            var fallbackConsumptionKwh = GetFallbackSlotConsumptionKwh(localSlotStart, scaleFactor);
-            var slotConsumptionKwh = profileConsumptionKwh ?? fallbackConsumptionKwh;
+            var profileConsumptionKwh = model?.GetSlotConsumptionKwh(
+                DateOnly.FromDateTime(localSlotStart.DateTime),
+                GetSlotIndex(localSlotStart),
+                SlotDuration);
+            var slotConsumptionKwh = profileConsumptionKwh ?? GetFallbackSlotConsumptionKwh(localSlotStart, scaleFactor);
 
             consumptionSlots.Add(new ConsumptionForecastSlot(
                 new ForecastTimeSlot(slotStartUtc, slotEndUtc),
@@ -81,7 +81,7 @@ public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsump
         return consumptionSlots;
     }
 
-    private async Task<List<ConsumptionDayProfileEntity>> GetOrBuildProfilesAsync(
+    private async Task<ConsumptionForecastModel?> GetOrBuildModelAsync(
         TimeZoneInfo timeZone,
         CancellationToken cancellationToken)
     {
@@ -90,33 +90,31 @@ public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsump
             .Select(sample => (DateTimeOffset?)sample.MeasuredAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (latestSampleMeasuredAtUtc is null)
+        if (latestSampleMeasuredAtUtc is not { } latestSampleUtc)
         {
-            return new List<ConsumptionDayProfileEntity>();
+            return null;
         }
 
-        var existingProfiles = await dbContext.ConsumptionDayProfiles
-            .OrderBy(profile => profile.DayOfWeek)
-            .ThenBy(profile => profile.SlotIndex)
-            .ToListAsync(cancellationToken);
+        return await modelCache.GetOrCreateAsync(
+            timeZone.Id,
+            latestSampleUtc,
+            token => BuildModelAsync(timeZone, latestSampleUtc, token),
+            cancellationToken);
+    }
 
-        // Samples arrive every few seconds, so rebuilding on every newer sample would reload the whole history on each decision cycle.
-        if (existingProfiles.Count > 0 &&
-            existingProfiles.All(profile => profile.UpdatedAtUtc >= latestSampleMeasuredAtUtc.Value.Subtract(ProfileRefreshInterval)))
-        {
-            return existingProfiles;
-        }
-
+    private async Task<ConsumptionForecastModel> BuildModelAsync(
+        TimeZoneInfo timeZone,
+        DateTimeOffset latestSampleUtc,
+        CancellationToken cancellationToken)
+    {
         // A short history window follows seasonal load changes such as a heat pump quickly.
-        var historyStartsAtUtc = latestSampleMeasuredAtUtc.Value.Subtract(ProfileHistoryWindow);
+        var historyStartsAtUtc = latestSampleUtc.Subtract(ProfileHistoryWindow);
         var rawSamples = await dbContext.LiveConsumptionSamples
             .Where(sample => sample.MeasuredAtUtc >= historyStartsAtUtc)
-            .OrderBy(sample => sample.MeasuredAtUtc)
             .Select(sample => new { sample.MeasuredAtUtc, sample.HouseConsumptionWatts })
             .ToArrayAsync(cancellationToken);
 
-        var updatedAtUtc = latestSampleMeasuredAtUtc.Value;
-        var rebuiltProfiles = rawSamples
+        var history = rawSamples
             .Select(sample => new
             {
                 LocalMeasuredAt = TimeZoneInfo.ConvertTime(sample.MeasuredAtUtc, timeZone),
@@ -124,24 +122,32 @@ public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsump
             })
             .GroupBy(sample => new
             {
-                DayOfWeek = (int)sample.LocalMeasuredAt.DayOfWeek,
+                LocalDate = DateOnly.FromDateTime(sample.LocalMeasuredAt.DateTime),
                 SlotIndex = GetSlotIndex(sample.LocalMeasuredAt)
             })
-            .Select(sampleGroup => new ConsumptionDayProfileEntity
-            {
-                DayOfWeek = sampleGroup.Key.DayOfWeek,
-                SlotIndex = sampleGroup.Key.SlotIndex,
-                AverageConsumptionWatts = sampleGroup.Average(sample => sample.EffectiveConsumptionWatts),
-                SampleCount = sampleGroup.Count(),
-                UpdatedAtUtc = updatedAtUtc
-            })
-            .ToList();
+            .Select(sampleGroup => new ConsumptionDaySlotAverage(
+                sampleGroup.Key.LocalDate,
+                sampleGroup.Key.SlotIndex,
+                sampleGroup.Average(sample => sample.EffectiveConsumptionWatts)))
+            .ToArray();
 
-        dbContext.ConsumptionDayProfiles.RemoveRange(dbContext.ConsumptionDayProfiles);
-        dbContext.ConsumptionDayProfiles.AddRange(rebuiltProfiles);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        // The temperature window reaches beyond the planning horizon so future days get their own heating scale.
+        var temperatures = await temperatureProvider.GetHourlyTemperaturesAsync(
+            historyStartsAtUtc.Subtract(TimeSpan.FromDays(1)),
+            latestSampleUtc.Add(TemperatureLookahead),
+            cancellationToken);
+        var heatingDegrees = ConsumptionForecastModel.CalculateHeatingDegrees(temperatures, timeZone);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(latestSampleUtc, timeZone).DateTime);
+        var model = ConsumptionForecastModel.Build(history, heatingDegrees, today);
 
-        return rebuiltProfiles;
+        logger.LogInformation(
+            "Verbrauchsprofil neu berechnet: {Days} vollstaendige Tage, {TemperatureDays} Tage mit Temperatur, Grundlast {BaseDailyKwh} kWh/Tag, Heizanteil {SlopeKwh} kWh je Heizgrad.",
+            model.CompleteDays,
+            heatingDegrees.Count,
+            model.BaseDailyKwh is { } baseKwh ? Math.Round(baseKwh, 2) : (decimal?)null,
+            model.HeatingSlopeKwhPerDegree is { } slope ? Math.Round(slope, 3) : (decimal?)null);
+
+        return model;
     }
 
     private async Task<decimal> GetAverageDailyConsumptionKwhAsync(CancellationToken cancellationToken)
@@ -182,34 +188,10 @@ public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsump
         return ResolveTimeZone(setting.Value!);
     }
 
-    private static decimal? TryGetProfileConsumptionKwh(
-        IReadOnlyDictionary<(int DayOfWeek, int SlotIndex), decimal> profilesByDayAndSlot,
-        IReadOnlyDictionary<int, decimal> slotAverages,
-        DayOfWeek dayOfWeek,
-        int slotIndex)
-    {
-        if (profilesByDayAndSlot.TryGetValue(((int)dayOfWeek, slotIndex), out var profileWatts))
-        {
-            return ConvertWattsToSlotConsumptionKwh(profileWatts);
-        }
-
-        if (slotAverages.TryGetValue(slotIndex, out var fallbackWatts))
-        {
-            return ConvertWattsToSlotConsumptionKwh(fallbackWatts);
-        }
-
-        return null;
-    }
-
     private static decimal GetFallbackSlotConsumptionKwh(DateTimeOffset localSlotStart, decimal scaleFactor)
     {
         var hourlyConsumptionKwh = ThreePartyHouseholdHourlyConsumptionShare[localSlotStart.Hour] * scaleFactor;
         return hourlyConsumptionKwh / 4m;
-    }
-
-    private static decimal ConvertWattsToSlotConsumptionKwh(decimal watts)
-    {
-        return watts / 1000m * (decimal)SlotDuration.TotalHours;
     }
 
     private static int GetSlotIndex(DateTimeOffset localMeasuredAt)

@@ -77,6 +77,9 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<HagerEnergyCurrentSiteTelemetryProvider>();
         services.AddScoped<IBatteryStateProvider, SelectedBatteryStateProvider>();
         services.AddScoped<ICurrentSiteTelemetryProvider, SelectedCurrentSiteTelemetryProvider>();
+        services.AddSingleton<OpenMeteoTemperatureCache>();
+        services.AddHttpClient<ITemperatureProvider, OpenMeteoTemperatureProvider>();
+        services.AddSingleton<ConsumptionForecastModelCache>();
         services.AddScoped<IHistoricalConsumptionProvider, AverageDailyConsumptionForecastProvider>();
         services.AddScoped<IBatteryForecastService, BatteryForecastService>();
         services.AddScoped(serviceProvider => new CurrentBatteryDecisionServiceDependencies

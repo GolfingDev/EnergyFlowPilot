@@ -278,6 +278,10 @@ The need-based planner includes battery capacity, planning minimum and maximum, 
 
 The consumption profile learns from the gross site demand `grid power - Victron battery power + supplementary (E3/DC) PV production`. Victron's own AC consumption is not suitable for this site because it does not know the PV and battery behind the E3/DC system and clips each phase at 0 W. Grid power alone is not suitable either, because it already contains the Victron battery action and the profile would learn that covered load does not exist. Adding the E3/DC PV back lets the forecast subtract the PV forecast exactly once; the E3/DC battery effect stays in the profile because that energy is not available to the Victron battery. If no fresh E3/DC value is available, the summed Victron consumption topics (comma-separated list, default L1 to L3) are used as fallback.
 
+The forecast shape (`ConsumptionForecastModel`) uses every day of the last 14 days, not only the same weekday. A weekday profile has just two samples per slot in two weeks and reacts slowly to weather changes. Each day is weighted by recency with a half-life of three days. The model is rebuilt at most once per hour.
+
+The heat pump makes consumption depend on the outside temperature. Hourly temperatures for the PV site (latitude and longitude from the PV forecast settings) come from Open-Meteo: 16 past days and 4 forecast days, without an API key, cached for one hour. Per local day the model calculates heating degrees, the mean of `max(0, 15 °C - T)`. It then regresses the measured daily energy of complete days against them. The fit needs at least 5 complete days and a correlation of at least 0.3. If the fit succeeds, each forecast day is scaled by `(base + slope × heating degrees of the day) / (base + slope × weighted heating degrees of the learned days)`, limited to 0.5 to 2.0. Without temperatures or without a clear dependency, the scale stays 1. A failing temperature request never breaks the plan.
+
 ## Interfaces
 
 The engine should depend on abstractions, for example:
