@@ -707,6 +707,41 @@ public sealed class CurrentBatteryDecisionServiceTests
     }
 
     [Fact]
+    public async Task CalculateCurrentDecisionAsyncAddsPlannedGridShareToLivePvSurplus()
+    {
+        // The plan expects 1000 W PV surplus plus 2000 W grid charging; live there are 1500 W surplus.
+        var batteryConfiguration = new BatteryConfiguration(19.2m, maximumChargePowerWatts: 5000, roundTripEfficiencyPercent: 100m);
+        var planEntry = new BatteryForecastEntry(
+            new ForecastTimeSlot(NowUtc.AddMinutes(-5), NowUtc.AddMinutes(10)),
+            TibberPricePerKwh: 0.29m,
+            TibberPriceCurrency: "EUR",
+            ExpectedPvYieldKwh: 0.50m,
+            ExpectedConsumptionKwh: 0.25m,
+            ExpectedGridImportBeforeBatteryKwh: -0.25m,
+            StateOfChargeBeforePercent: 30m,
+            StateOfChargeAfterPercent: 34m,
+            new CurrentBatteryDecision(new BatteryDecisionInstruction(BatteryDecisionState.Charge, BatteryChargeSource.Grid), 3000),
+            new[] { new BatteryDecisionReason(BatteryForecastRuleIds.PlannedGridCharge, "Test-Plan.") });
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(30m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(batteryConfiguration),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(-1500, 0, NowUtc, currentBatteryPowerWatts: 0)),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.29m, 0.44m)),
+            BatteryForecastService = new StaticBatteryForecastService(new BatteryForecastResult(new BatteryState(30m, NowUtc), batteryConfiguration, new[] { planEntry })),
+            ControllerSettingStore = CreateSettingsStore(),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+
+        var result = await service.CalculateCurrentDecisionAsync();
+
+        Assert.Equal(BatteryDecisionState.Charge, result.Decision.Instruction.DecisionState);
+        Assert.Equal(BatteryChargeSource.Grid, result.Decision.Instruction.ChargeSource);
+        Assert.Equal(1500 + 2000, result.Decision.TargetPowerWatts);
+    }
+
+    [Fact]
     public async Task CalculateCurrentDecisionAsyncGridChargesOnlyWithPlannedPower()
     {
         var batteryConfiguration = new BatteryConfiguration(12m, maximumChargePowerWatts: 5000, roundTripEfficiencyPercent: 100m);

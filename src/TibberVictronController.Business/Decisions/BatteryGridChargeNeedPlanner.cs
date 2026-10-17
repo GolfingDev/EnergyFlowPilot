@@ -213,6 +213,13 @@ internal sealed class BatteryGridChargeNeedPlanner
                     : 0m;
                 var maximumChargeInputKwh = batteryConfiguration.MaximumChargePowerWatts / 1000m * slotHours;
 
+                // PV surplus slots stay grid charge candidates; only the charge power not used by PV (or by an earlier
+                // planned grid charge) is available. The larger value also stops repeated allocations to a slot the
+                // simulator cannot charge in, e.g. while headroom is kept for negative prices.
+                var usedChargeInputKwh = Math.Max(
+                    isCharge ? entry.Decision.TargetPowerWatts / 1000m * slotHours : 0m,
+                    plannedAction?.ChargeInputKwh ?? 0m);
+
                 return new AnalyzedSlot(
                     index,
                     entry,
@@ -222,10 +229,8 @@ internal sealed class BatteryGridChargeNeedPlanner
                     dischargeOutputKwh,
                     energyShortageKwh,
                     isEnergyLimited,
-                    CanGridCharge: entry.TibberPricePerKwh >= 0m &&
-                        entry.ExpectedGridImportBeforeBatteryKwh >= 0m &&
-                        !(isCharge && entry.Decision.Instruction.ChargeSource == BatteryChargeSource.PV),
-                    RemainingChargeInputKwh: Math.Max(0m, maximumChargeInputKwh - (plannedAction?.ChargeInputKwh ?? 0m)));
+                    CanGridCharge: entry.TibberPricePerKwh >= 0m,
+                    RemainingChargeInputKwh: Math.Max(0m, maximumChargeInputKwh - usedChargeInputKwh));
             })
             .ToArray();
     }

@@ -163,6 +163,31 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             // Export caused by the discharging E3/DC battery is no PV surplus; only the remaining export may be absorbed.
             var absorbableGridPowerWatts = Math.Min(0, gridPowerWithoutBatteryWatts + decisionSiteTelemetry.SupplementaryBatteryDischargeWatts);
 
+            // A cheap PV slot can also be the planned grid charging slot: absorb the surplus and add the planned grid share.
+            if (currentPriceSlot is not null)
+            {
+                var plannedExportSlot = await TryGetPlannedForecastSlotAsync(decidedAtUtc, currentPriceSlot, cancellationToken);
+                if (plannedExportSlot.Entry is { Decision.Instruction: { DecisionState: BatteryDecisionState.Charge, ChargeSource: BatteryChargeSource.Grid } } plannedEntry)
+                {
+                    var slotHours = (decimal)plannedEntry.TimeSlot.Duration.TotalHours;
+                    var forecastPvSurplusWatts = slotHours <= 0m
+                        ? 0
+                        : (int)Math.Round(Math.Max(0m, -plannedEntry.ExpectedGridImportBeforeBatteryKwh) / slotHours * 1000m, MidpointRounding.AwayFromZero);
+                    var plannedGridWatts = Math.Max(0, plannedEntry.Decision.TargetPowerWatts - forecastPvSurplusWatts);
+
+                    return await CreateGridChargeDecisionAsync(
+                        decidedAtUtc,
+                        batteryState,
+                        batteryConfiguration,
+                        decisionSiteTelemetry,
+                        currentPriceSlot,
+                        feedInCompensationPricePerKwh,
+                        plannedEntry.Reasons[0],
+                        -absorbableGridPowerWatts + plannedGridWatts,
+                        cancellationToken);
+                }
+            }
+
             if (-absorbableGridPowerWatts <= gridPowerDeadbandWatts)
             {
                 return await SaveIdleDecisionAsync(

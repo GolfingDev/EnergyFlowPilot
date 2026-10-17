@@ -129,7 +129,8 @@ public sealed class BatteryForecastSimulator
                 feedInCompensationPricePerKwh,
                 expectedGridImportBeforeBatteryKwh,
                 maximumChargeInputEnergyKwh,
-                singleDirectionEfficiency);
+                singleDirectionEfficiency,
+                plannedAction);
         }
 
         return SimulateTibberPriceSlot(
@@ -161,7 +162,8 @@ public sealed class BatteryForecastSimulator
         decimal feedInCompensationPricePerKwh,
         decimal expectedGridImportBeforeBatteryKwh,
         decimal maximumChargeInputEnergyKwh,
-        decimal singleDirectionEfficiency)
+        decimal singleDirectionEfficiency,
+        BatteryPlannedSlotAction? plannedAction)
     {
         var maximumPlannedBatteryEnergyKwh = CalculatePlanningMaximumBatteryEnergyKwh(batteryConfiguration);
         var availableCapacityKwh = maximumPlannedBatteryEnergyKwh - batteryEnergyBeforeKwh;
@@ -198,6 +200,34 @@ public sealed class BatteryForecastSimulator
         var chargeInputEnergyKwh = CalculateChargeInputEnergyKwh(surplusInputEnergyKwh, maximumChargeInputEnergyKwh, availableCapacityKwh, singleDirectionEfficiency);
         var storedEnergyKwh = chargeInputEnergyKwh * singleDirectionEfficiency;
         var targetPowerWatts = CalculatePowerWatts(chargeInputEnergyKwh, priceSlot.TimeSlot);
+
+        // PV surplus rarely uses the full charge power, especially while the E3/DC takes PV first. A cheap PV slot can
+        // therefore also be the cheapest grid charging slot; the planned grid energy fills the remaining charge power.
+        var plannedGridInputKwh = plannedAction is { ChargeInputKwh: > 0m } && priceSlot.TotalPricePerKwh >= 0m
+            ? CalculateChargeInputEnergyKwh(
+                plannedAction.ChargeInputKwh,
+                maximumChargeInputEnergyKwh - chargeInputEnergyKwh,
+                availableCapacityKwh - storedEnergyKwh,
+                singleDirectionEfficiency)
+            : 0m;
+
+        if (plannedGridInputKwh > EnergyToleranceKwh)
+        {
+            var totalStoredEnergyKwh = storedEnergyKwh + plannedGridInputKwh * singleDirectionEfficiency;
+
+            return CreateSimulatedSlot(
+                priceSlot,
+                pvSlot,
+                consumptionSlot,
+                expectedGridImportBeforeBatteryKwh,
+                stateOfChargeBeforePercent,
+                batteryEnergyBeforeKwh + totalStoredEnergyKwh,
+                batteryConfiguration,
+                new BatteryDecisionInstruction(BatteryDecisionState.Charge, BatteryChargeSource.Grid),
+                CalculatePowerWatts(chargeInputEnergyKwh + plannedGridInputKwh, priceSlot.TimeSlot),
+                plannedAction!.RuleId,
+                $"Der Akku nimmt {chargeInputEnergyKwh:0.0000} kWh PV-Ueberschuss auf und laedt zusaetzlich {plannedGridInputKwh:0.0000} kWh aus dem Netz zu {priceSlot.TotalPricePerKwh:0.0000} EUR/kWh. {plannedAction.Explanation}");
+        }
 
         return CreateSimulatedSlot(
             priceSlot,

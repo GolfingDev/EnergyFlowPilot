@@ -61,6 +61,7 @@ Forecast charging decisions are need-based (`BatteryGridChargeNeedPlanner`):
   - grid charging (`PLANNED_GRID_CHARGE`), cost = charge price divided by the round-trip efficiency
 - a source is only used when its cost is at least 0.01 EUR/kWh below the price of the shortage slot
 - added energy must fit below the planning maximum in every slot until the shortage, so grid charging never displaces expected PV surplus
+- PV surplus slots are grid charge candidates as well: PV rarely uses the full charge power (the E3/DC takes PV first), so the charge power left next to the PV surplus can be filled from the grid when the slot is the cheapest source; the direct decision then charges the live surplus plus the planned grid share
 - only the missing energy is charged, never a blanket fill to the planning maximum
 - if the forecast would end below the target end state of charge, the cheapest holds or charges keep that reserve (`END_SOC_RESERVE`); this reserve is not price-checked because prices after the horizon are unknown
 - if multiple sources have the same cost, holding is preferred over charging and earlier slots are preferred so the forecast remains deterministic

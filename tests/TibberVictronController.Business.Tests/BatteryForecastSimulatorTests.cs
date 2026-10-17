@@ -515,6 +515,33 @@ public sealed class BatteryForecastSimulatorTests
     }
 
     [Fact]
+    public void SimulateAddsGridChargingToCheapPvSlotInsteadOfLaterExpensiveSlot()
+    {
+        // 2026-10-17: PV alone does not fill the battery; the cheap midday slot must take the grid share,
+        // not the 0.35 EUR slot right before the evening shortage.
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(20m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(10m, minimumStateOfChargePercent: 15m, maximumChargePowerWatts: 5000, maximumDischargePowerWatts: 5000, roundTripEfficiencyPercent: 90m);
+        var priceForecast = CreatePriceForecast(0.29m, 0.35m, 0.44m, 0.44m);
+        var pvForecast = CreatePvForecast(0.75m, 0m, 0m, 0m);
+        var consumptionForecast = CreateConsumptionForecast(0.25m, 0m, 1.00m, 1.00m);
+
+        var result = simulator.Simulate(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            batteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh: 0.09m);
+
+        var middaySlot = result.Entries[0];
+        Assert.Equal(BatteryDecisionState.Charge, middaySlot.Decision.Instruction.DecisionState);
+        Assert.Equal(BatteryChargeSource.Grid, middaySlot.Decision.Instruction.ChargeSource);
+        Assert.Equal(5000, middaySlot.Decision.TargetPowerWatts);
+        Assert.Contains("PV-Ueberschuss", middaySlot.Reasons[0].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SimulateStaysIdleForNegligibleExpectedImport()
     {
         // Reproduces the NullReferenceException of 2026-10-15 22:30: a tiny import without any planned hold.
