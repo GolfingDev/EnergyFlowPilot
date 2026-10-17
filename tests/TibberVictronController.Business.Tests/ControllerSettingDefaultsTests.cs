@@ -140,14 +140,31 @@ public sealed class ControllerSettingDefaultsTests
         Assert.Equal("victronMqtt", GetSettingValue(settings, ControllerSettingDefaults.TelemetryPvProductionSourceKey));
         Assert.Equal("victronMqtt", GetSettingValue(settings, ControllerSettingDefaults.TelemetryBatterySocSourceKey));
         Assert.Equal("https://api.hagerenergy.com", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyApiBaseUrlKey));
-        Assert.Equal("https://auth.hagerenergy.com/realms/customer/.well-known/uma2-configuration", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyAuthorizationEndpointKey));
-        Assert.Equal("read:storage", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyScopeKey));
-        Assert.Equal("data.gridPower", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyGridImportJsonPathKey));
-        Assert.Equal("data.pvProduction", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyPvProductionJsonPathKey));
-        Assert.Equal("data.batteryStateOfCharge", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyBatterySocJsonPathKey));
-        Assert.Null(GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyApiKeyKey));
-        Assert.Null(GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyRefreshTokenKey));
+        Assert.Equal("https://auth.hagerenergy.com/realms/customer/protocol/openid-connect/token", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyTokenEndpointKey));
+        // "auto" lets the reader discover values by known property names.
+        Assert.Equal("auto", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyGridImportJsonPathKey));
+        Assert.Equal("auto", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyPvProductionJsonPathKey));
+        Assert.Equal("auto", GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyBatterySocJsonPathKey));
+        Assert.Null(GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyClientIdKey));
+        Assert.Null(GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyClientSecretKey));
         Assert.Null(GetSettingValue(settings, ControllerSettingDefaults.HagerEnergyInstallationIdKey));
+        // The authorization-code OAuth flow was replaced by client credentials; its settings must not be seeded anymore.
+        Assert.DoesNotContain(settings, setting => setting.Key == ControllerSettingDefaults.HagerEnergyAuthorizationEndpointKey);
+        Assert.DoesNotContain(settings, setting => setting.Key == ControllerSettingDefaults.HagerEnergyRefreshTokenKey);
+    }
+
+    [Fact]
+    public void CreateDefaultSettingsKeepsHomematicDisabledAndTokenSensitive()
+    {
+        var settings = ControllerSettingDefaults.CreateDefaultSettings(UpdatedAtUtc);
+        var apiTokenSetting = settings.Single(setting => setting.Key == ControllerSettingDefaults.HomematicApiTokenKey);
+
+        Assert.Equal("false", GetSettingValue(settings, ControllerSettingDefaults.HomematicEnabledKey));
+        Assert.Equal("http://homematic-raspi", GetSettingValue(settings, ControllerSettingDefaults.HomematicBaseUrlKey));
+        Assert.Equal("300", GetSettingValue(settings, ControllerSettingDefaults.HomematicPollingIntervalSecondsKey));
+        Assert.Equal("400", GetSettingValue(settings, ControllerSettingDefaults.HomematicSampleRetentionDaysKey));
+        Assert.False(apiTokenSetting.IsConfigured);
+        Assert.Equal(ControllerSettingSensitivity.Sensitive, apiTokenSetting.Sensitivity);
     }
 
     [Fact]

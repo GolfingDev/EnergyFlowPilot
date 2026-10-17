@@ -1,5 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
 using TibberVictronController.Dal.Consumption;
 using TibberVictronController.Dal.Entities;
@@ -24,7 +26,7 @@ public sealed class AverageDailyConsumptionForecastProviderTests : IDisposable
     {
         await using var dbContext = CreateDbContext();
         var settingsStore = await CreateInitializedSettingStoreAsync(dbContext);
-        var provider = new AverageDailyConsumptionForecastProvider(settingsStore, dbContext);
+        var provider = CreateProvider(settingsStore, dbContext);
 
         var consumptionSlots = await provider.GetConsumptionForecastAsync(
             SeededAtUtc,
@@ -50,7 +52,7 @@ public sealed class AverageDailyConsumptionForecastProviderTests : IDisposable
             "30",
             ControllerSettingSensitivity.Normal,
             SeededAtUtc.AddMinutes(5)));
-        var provider = new AverageDailyConsumptionForecastProvider(settingsStore, dbContext);
+        var provider = CreateProvider(settingsStore, dbContext);
 
         var consumptionSlots = await provider.GetConsumptionForecastAsync(
             SeededAtUtc,
@@ -64,7 +66,7 @@ public sealed class AverageDailyConsumptionForecastProviderTests : IDisposable
     {
         await using var dbContext = CreateDbContext();
         var settingsStore = await CreateInitializedSettingStoreAsync(dbContext);
-        var provider = new AverageDailyConsumptionForecastProvider(settingsStore, dbContext);
+        var provider = CreateProvider(settingsStore, dbContext);
         var localStart = new DateTimeOffset(2026, 5, 1, 2, 0, 0, TimeSpan.FromHours(2));
 
         var exception = await Assert.ThrowsAsync<ArgumentException>(
@@ -74,7 +76,7 @@ public sealed class AverageDailyConsumptionForecastProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task GetConsumptionForecastAsyncBuildsWeekdayProfilesFromLiveSamples()
+    public async Task GetConsumptionForecastAsyncLearnsOneRecencyWeightedProfileFromAllRecentDays()
     {
         await using var dbContext = CreateDbContext();
         var settingsStore = await CreateInitializedSettingStoreAsync(dbContext);
@@ -95,7 +97,7 @@ public sealed class AverageDailyConsumptionForecastProviderTests : IDisposable
                 HouseConsumptionWatts = 200m
             });
         await dbContext.SaveChangesAsync();
-        var provider = new AverageDailyConsumptionForecastProvider(settingsStore, dbContext);
+        var provider = CreateProvider(settingsStore, dbContext);
 
         var mondayForecast = await provider.GetConsumptionForecastAsync(
             new DateTimeOffset(2026, 5, 4, 6, 0, 0, TimeSpan.Zero),
@@ -104,16 +106,41 @@ public sealed class AverageDailyConsumptionForecastProviderTests : IDisposable
             new DateTimeOffset(2026, 5, 5, 6, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2026, 5, 5, 6, 15, 0, TimeSpan.Zero));
 
-        Assert.Single(mondayForecast);
-        Assert.Single(tuesdayForecast);
-        Assert.Equal(0.25m, mondayForecast[0].ExpectedConsumptionKwh);
-        Assert.Equal(0.05m, tuesdayForecast[0].ExpectedConsumptionKwh);
-        Assert.NotEmpty(await dbContext.ConsumptionDayProfiles.ToListAsync());
+        // Monday averages 1000 W, Tuesday 200 W in the same slot. The profile no longer splits by weekday,
+        // and the newer Tuesday weighs more, so the result lies below the plain mean of 600 W (0.15 kWh per slot).
+        var mondaySlot = Assert.Single(mondayForecast);
+        var tuesdaySlot = Assert.Single(tuesdayForecast);
+        Assert.Equal(mondaySlot.ExpectedConsumptionKwh, tuesdaySlot.ExpectedConsumptionKwh);
+        Assert.InRange(tuesdaySlot.ExpectedConsumptionKwh, 0.05m, 0.1499m);
     }
 
     public void Dispose()
     {
         sqliteConnection.Dispose();
+    }
+
+    private static AverageDailyConsumptionForecastProvider CreateProvider(EfControllerSettingStore settingsStore, ControllerDbContext dbContext)
+    {
+        return new AverageDailyConsumptionForecastProvider(
+            settingsStore,
+            dbContext,
+            new NoTemperatureProvider(),
+            new ConsumptionForecastModelCache(),
+            NullLogger<AverageDailyConsumptionForecastProvider>.Instance);
+    }
+
+    /// <summary>
+    /// Without temperatures the model keeps the plain profile, which keeps these tests independent of weather data.
+    /// </summary>
+    private sealed class NoTemperatureProvider : ITemperatureProvider
+    {
+        public Task<IReadOnlyList<HourlyTemperature>> GetHourlyTemperaturesAsync(
+            DateTimeOffset startsAtUtc,
+            DateTimeOffset endsAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<HourlyTemperature>>([]);
+        }
     }
 
     private async Task<EfControllerSettingStore> CreateInitializedSettingStoreAsync(ControllerDbContext dbContext)
