@@ -20,4 +20,14 @@ public sealed class BatteryConfigurationValues
     public decimal? PlanningMinimumStateOfChargePercent { get; init; }
 
     public decimal? PlanningMaximumStateOfChargePercent { get; init; }
+
+    /// <summary>
+    /// Gets the battery ageing cost per kWh that an additional grid-charged cycle causes.
+    /// </summary>
+    public decimal WearCostPerKwh { get; init; }
+
+    /// <summary>
+    /// Gets the minimum advantage per kWh a hold or grid charge must bring before the planner uses it.
+    /// </summary>
+    public decimal MinimumSavingsPerKwh { get; init; } = 0.01m;
 }

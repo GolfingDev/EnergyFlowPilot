@@ -210,6 +210,66 @@ public sealed class BatteryForecastSimulatorTests
     }
 
     [Fact]
+    public void SimulateSkipsGridChargingWhenWearCostEatsThePriceSpread()
+    {
+        // Same situation as the profitable grid charge above, but each extra cycle costs 0.20 EUR/kWh of battery ageing.
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(30m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(new BatteryConfigurationValues
+        {
+            TotalCapacityKwh = 10m,
+            MinimumStateOfChargePercent = 15m,
+            MaximumChargePowerWatts = 5000,
+            MaximumDischargePowerWatts = 5000,
+            RoundTripEfficiencyPercent = 90m,
+            WearCostPerKwh = 0.20m
+        });
+        var priceForecast = CreatePriceForecast(0.29m, 0.29m, 0.30m, 0.30m, 0.25m, 0.45m);
+        var pvForecast = CreatePvForecast(0m, 0m, 0m, 0m, 0m, 0m);
+        var consumptionForecast = CreateConsumptionForecast(1.00m, 1.00m, 1.00m, 1.00m, 0m, 1.00m);
+
+        var result = simulator.Simulate(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            batteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh: 0.09m);
+
+        Assert.DoesNotContain(result.Entries, entry => entry.Decision.Instruction.ChargeSource == BatteryChargeSource.Grid);
+    }
+
+    [Fact]
+    public void SimulateSkipsHoldingBelowConfiguredMinimumSavings()
+    {
+        // Holding at 0.20 EUR for a 0.50 EUR shortage saves 0.30 EUR/kWh, which is below the configured 0.35 EUR/kWh.
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(20m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(new BatteryConfigurationValues
+        {
+            TotalCapacityKwh = 10m,
+            MinimumStateOfChargePercent = 10m,
+            MaximumDischargePowerWatts = 3000,
+            RoundTripEfficiencyPercent = 100m,
+            MinimumSavingsPerKwh = 0.35m
+        });
+        var priceForecast = CreatePriceForecast(0.20m, 0.50m);
+        var pvForecast = CreatePvForecast(0m, 0m);
+        var consumptionForecast = CreateConsumptionForecast(0.75m, 0.75m);
+
+        var result = simulator.Simulate(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            batteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh: 0.08m);
+
+        Assert.Equal(3000, result.Entries[0].Decision.TargetPowerWatts);
+        Assert.DoesNotContain(result.Entries, entry => entry.Reasons.Any(reason => reason.RuleName == BatteryForecastRuleIds.HoldForExpensiveSlot));
+    }
+
+    [Fact]
     public void SimulateDischargesBeforeFuturePvSurplus()
     {
         var simulator = new BatteryForecastSimulator();

@@ -14,6 +14,8 @@ public static class ControllerSettingDefaults
     public const string BatteryPlanningMinimumStateOfChargePercentKey = "battery.planningMinimumStateOfChargePercent";
     public const string BatteryPlanningMaximumStateOfChargePercentKey = "battery.planningMaximumStateOfChargePercent";
     public const string BatteryTemporaryStateOfChargePercentKey = "battery.temporaryStateOfChargePercent";
+    public const string BatteryWearCostPerKwhKey = "battery.wearCostPerKwh";
+    public const string DecisionMinimumSavingsPerKwhKey = "decision.minimumSavingsPerKwh";
     public const string TelemetryTemporaryGridImportWattsKey = "telemetry.temporaryGridImportWatts";
     public const string TelemetryTemporaryPvProductionWattsKey = "telemetry.temporaryPvProductionWatts";
     public const string TelemetryGridPowerDeadbandWattsKey = "telemetry.gridPowerDeadbandWatts";
@@ -107,6 +109,8 @@ public static class ControllerSettingDefaults
         new(BatteryTargetEndStateOfChargePercentKey, "25", ControllerSettingSensitivity.Normal),
         new(BatteryPlanningMinimumStateOfChargePercentKey, "15", ControllerSettingSensitivity.Normal),
         new(BatteryPlanningMaximumStateOfChargePercentKey, "95", ControllerSettingSensitivity.Normal),
+        new(BatteryWearCostPerKwhKey, "0", ControllerSettingSensitivity.Normal),
+        new(DecisionMinimumSavingsPerKwhKey, "0.03", ControllerSettingSensitivity.Normal),
         new(BatteryTemporaryStateOfChargePercentKey, "55", ControllerSettingSensitivity.Normal),
         new(TelemetryTemporaryGridImportWattsKey, "0", ControllerSettingSensitivity.Normal),
         new(TelemetryTemporaryPvProductionWattsKey, "0", ControllerSettingSensitivity.Normal),

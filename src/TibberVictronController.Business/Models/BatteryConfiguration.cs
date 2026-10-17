@@ -87,6 +87,18 @@ public sealed record BatteryConfiguration
             throw new ArgumentOutOfRangeException(nameof(values.PlanningMaximumStateOfChargePercent), "Das Planungs-Maximum muss zwischen Ziel-Endreserve und 100 Prozent liegen.");
         }
 
+        if (values.WearCostPerKwh < 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(values.WearCostPerKwh), "Die Verschleisskosten duerfen nicht negativ sein.");
+        }
+
+        if (values.MinimumSavingsPerKwh < 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(values.MinimumSavingsPerKwh), "Der Mindestvorteil darf nicht negativ sein.");
+        }
+
+        WearCostPerKwh = values.WearCostPerKwh;
+        MinimumSavingsPerKwh = values.MinimumSavingsPerKwh;
         TotalCapacityKwh = totalCapacityKwh;
         MinimumStateOfChargePercent = minimumStateOfChargePercent;
         MaximumChargePowerWatts = maximumChargePowerWatts;
@@ -136,4 +148,14 @@ public sealed record BatteryConfiguration
     /// Gets the softer grid-charging boundary used to preserve headroom for possible PV forecast errors.
     /// </summary>
     public decimal PlanningMaximumStateOfChargePercent { get; }
+
+    /// <summary>
+    /// Gets the battery ageing cost per kWh of an additional grid-charged cycle; holding energy causes no extra cycle.
+    /// </summary>
+    public decimal WearCostPerKwh { get; }
+
+    /// <summary>
+    /// Gets the minimum advantage per kWh a planned hold or grid charge must reach; smaller differences are within forecast noise.
+    /// </summary>
+    public decimal MinimumSavingsPerKwh { get; }
 }

@@ -62,8 +62,21 @@ public sealed class DatabaseBatteryConfigurationProvider : IBatteryConfiguration
             "Das Planungs-Maximum muss als Dezimalzahl konfiguriert sein.",
             cancellationToken);
 
+        var wearCostPerKwh = await GetRequiredDecimalSettingAsync(
+            ControllerSettingDefaults.BatteryWearCostPerKwhKey,
+            "Die Verschleisskosten des Akkus sind nicht konfiguriert.",
+            "Die Verschleisskosten des Akkus muessen als Dezimalzahl konfiguriert sein.",
+            cancellationToken);
+        var minimumSavingsPerKwh = await GetRequiredDecimalSettingAsync(
+            ControllerSettingDefaults.DecisionMinimumSavingsPerKwhKey,
+            "Der Mindestvorteil ist nicht konfiguriert.",
+            "Der Mindestvorteil muss als Dezimalzahl konfiguriert sein.",
+            cancellationToken);
+
         return new BatteryConfiguration(new BatteryConfigurationValues
         {
+            WearCostPerKwh = wearCostPerKwh,
+            MinimumSavingsPerKwh = minimumSavingsPerKwh,
             TotalCapacityKwh = totalCapacityKwh,
             MinimumStateOfChargePercent = minimumStateOfChargePercent,
             MaximumChargePowerWatts = maximumChargePowerWatts,

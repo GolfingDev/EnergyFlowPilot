@@ -14,7 +14,6 @@ namespace TibberVictronController.Business.Decisions;
 /// </remarks>
 internal sealed class BatteryGridChargeNeedPlanner
 {
-    private const decimal MinimumSavingsPerKwh = 0.01m;
     private const decimal EnergyToleranceKwh = 0.001m;
     private const int MaximumPlanningIterations = 400;
 
@@ -62,7 +61,7 @@ internal sealed class BatteryGridChargeNeedPlanner
             var request = new AllocationRequest(
                 shortageSlotIndex,
                 shortageSlot.EnergyShortageKwh,
-                shortageSlot.PricePerKwh - MinimumSavingsPerKwh,
+                shortageSlot.PricePerKwh - batteryConfiguration.MinimumSavingsPerKwh,
                 explanation,
                 BatteryForecastRuleIds.HoldForExpensiveSlot);
 
@@ -112,7 +111,8 @@ internal sealed class BatteryGridChargeNeedPlanner
                 var chargeInputKwh = Math.Min(
                     Math.Min(slot.RemainingChargeInputKwh, neededStoredEnergyKwh / singleDirectionEfficiency),
                     minimumHeadroomKwh / singleDirectionEfficiency);
-                candidates.Add(new AllocationCandidate(slot, AllocationKind.Charge, slot.PricePerKwh / roundTripEfficiency, chargeInputKwh));
+                // Holding shifts an existing discharge; grid charging adds a full cycle, so only it carries the wear cost.
+                candidates.Add(new AllocationCandidate(slot, AllocationKind.Charge, slot.PricePerKwh / roundTripEfficiency + batteryConfiguration.WearCostPerKwh, chargeInputKwh));
             }
 
             if (slot.IsEnergyLimited)

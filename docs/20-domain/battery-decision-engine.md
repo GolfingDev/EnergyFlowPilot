@@ -59,7 +59,8 @@ Forecast charging decisions are need-based (`BatteryGridChargeNeedPlanner`):
 - shortages are closed in descending price order with the cheapest earlier source after the last slot in which the battery ran out of energy:
   - holding battery energy in a cheaper slot (`HOLD_FOR_EXPENSIVE_SLOT`), cost = price of the holding slot
   - grid charging (`PLANNED_GRID_CHARGE`), cost = charge price divided by the round-trip efficiency
-- a source is only used when its cost is at least 0.01 EUR/kWh below the price of the shortage slot
+- a source is only used when its cost is at least the configured minimum savings (`decision.minimumSavingsPerKwh`, default 0.03 EUR/kWh) below the price of the shortage slot
+- grid charging additionally carries the configured battery wear cost (`battery.wearCostPerKwh`, battery price divided by usable kWh times cycles); holding causes no extra cycle and therefore no wear cost
 - added energy must fit below the planning maximum in every slot until the shortage, so grid charging never displaces expected PV surplus
 - PV surplus slots are grid charge candidates as well: PV rarely uses the full charge power (the E3/DC takes PV first), so the charge power left next to the PV surplus can be filled from the grid when the slot is the cheapest source; the direct decision then charges the live surplus plus the planned grid share
 - only the missing energy is charged, never a blanket fill to the planning maximum
