@@ -122,7 +122,21 @@ public static class DashboardSummaryDtoMapper
                 hour.BatteryChargeKwh,
                 hour.BatteryDischargeKwh,
                 hour.BatteryFeedInKwh,
-                hour.SupplementaryChargedFromBatteryKwh)).ToArray());
+                hour.SupplementaryChargedFromBatteryKwh,
+                hour.ActualCost,
+                hour.BaselineCost)).ToArray(),
+            review.Costs is not { } costs
+                ? null
+                : new DashboardCostComparisonDto(
+                    costs.ActualCost,
+                    costs.BaselineCost,
+                    costs.WithoutBatteryCost,
+                    costs.StoredEnergyDifferenceKwh,
+                    costs.StoredEnergyDifferenceValue,
+                    costs.AdvantageOverBaseline,
+                    costs.AdvantageOverNoBattery,
+                    costs.AveragePricePerKwh,
+                    costs.PricedCoveragePercent));
     }
 
     private static string ToName<TEnum>(TEnum value) where TEnum : struct, Enum
@@ -194,7 +208,8 @@ public sealed record DashboardReviewDto(
     decimal SupplementaryChargedFromBatteryKwh,
     decimal? SupplementaryStateOfChargeStartPercent,
     decimal? SupplementaryStateOfChargeEndPercent,
-    IReadOnlyList<DashboardReviewHourDto> Hours);
+    IReadOnlyList<DashboardReviewHourDto> Hours,
+    DashboardCostComparisonDto? Costs);
 
 public sealed record DashboardReviewHourDto(
     DateTimeOffset StartsAtUtc,
@@ -204,4 +219,17 @@ public sealed record DashboardReviewHourDto(
     decimal BatteryChargeKwh,
     decimal BatteryDischargeKwh,
     decimal BatteryFeedInKwh,
-    decimal SupplementaryChargedFromBatteryKwh);
+    decimal SupplementaryChargedFromBatteryKwh,
+    decimal? ActualCost,
+    decimal? BaselineCost);
+
+public sealed record DashboardCostComparisonDto(
+    decimal ActualCost,
+    decimal BaselineCost,
+    decimal WithoutBatteryCost,
+    decimal StoredEnergyDifferenceKwh,
+    decimal StoredEnergyDifferenceValue,
+    decimal AdvantageOverBaseline,
+    decimal AdvantageOverNoBattery,
+    decimal AveragePricePerKwh,
+    decimal PricedCoveragePercent);

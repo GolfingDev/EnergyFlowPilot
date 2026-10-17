@@ -70,6 +70,20 @@ export interface DashboardReviewHourDto {
   batteryDischargeKwh: number;
   batteryFeedInKwh: number;
   supplementaryChargedFromBatteryKwh: number;
+  actualCost: number | null;
+  baselineCost: number | null;
+}
+
+export interface DashboardCostComparisonDto {
+  actualCost: number;
+  baselineCost: number;
+  withoutBatteryCost: number;
+  storedEnergyDifferenceKwh: number;
+  storedEnergyDifferenceValue: number;
+  advantageOverBaseline: number;
+  advantageOverNoBattery: number;
+  averagePricePerKwh: number;
+  pricedCoveragePercent: number;
 }
 
 export interface DashboardReviewDto {
@@ -84,6 +98,7 @@ export interface DashboardReviewDto {
   supplementaryStateOfChargeStartPercent: number | null;
   supplementaryStateOfChargeEndPercent: number | null;
   hours: DashboardReviewHourDto[];
+  costs: DashboardCostComparisonDto | null;
 }
 
 export const leitstandCategoryLabels: Record<LeitstandCategory, string> = {

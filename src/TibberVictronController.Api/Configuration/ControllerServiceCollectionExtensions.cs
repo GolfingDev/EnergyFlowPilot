@@ -100,7 +100,9 @@ public static class ControllerServiceCollectionExtensions
             DecisionLogRepository = serviceProvider.GetRequiredService<IDecisionLogRepository>(),
             LiveConsumptionRepository = serviceProvider.GetRequiredService<ILiveConsumptionRepository>(),
             BatteryForecastService = serviceProvider.GetRequiredService<IBatteryForecastService>(),
-            BatteryConfigurationProvider = serviceProvider.GetRequiredService<IBatteryConfigurationProvider>()
+            BatteryConfigurationProvider = serviceProvider.GetRequiredService<IBatteryConfigurationProvider>(),
+            TibberPriceForecastProvider = serviceProvider.GetRequiredService<ITibberPriceForecastProvider>(),
+            ControllerSettingStore = serviceProvider.GetRequiredService<IControllerSettingStore>()
         });
         services.AddScoped<IDashboardSummaryService, DashboardSummaryService>();
         services.AddSingleton<TibberPriceForecastCache>();

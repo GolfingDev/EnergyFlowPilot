@@ -338,7 +338,10 @@ function reviewHourTooltip(hour: DashboardReviewHourDto | undefined): string {
     `${dayTime(hour.startsAtUtc)}–${time(new Date(new Date(hour.startsAtUtc).getTime() + 3_600_000).toISOString())}`,
     `SoC: ${percent(hour.batterySocEndPercent)}`,
     `Netzbezug: ${kwh(hour.gridImportKwh)} · Akku: ${kwh(hour.batteryDischargeKwh)}`,
-    `Akku-Einspeisung: ${kwh(hour.batteryFeedInKwh)} · E3/DC-Transfer: ${kwh(hour.supplementaryChargedFromBatteryKwh)}`
+    `Akku-Einspeisung: ${kwh(hour.batteryFeedInKwh)} · E3/DC-Transfer: ${kwh(hour.supplementaryChargedFromBatteryKwh)}`,
+    ...(hour.actualCost !== null && hour.baselineCost !== null
+      ? [`Kosten: ${money(hour.actualCost)} · „Akku zuerst“: ${money(hour.baselineCost)}`]
+      : [])
   ].join('\n');
 }
 
@@ -615,6 +618,44 @@ onBeforeUnmount(() => {
           </dl>
           <p class="ls-muted ls-savings__note">Energie, die aus dem Akku ins Netz oder in das E3/DC geflossen ist, zählt nicht als Ersparnis.</p>
         </div>
+      </div>
+      <div class="ls-panel ls-savings">
+        <div class="ls-zone__head">
+          <h3>Strategievergleich ({{ reviewHours }} h)</h3>
+        </div>
+        <div v-if="review?.costs" class="ls-savings__body">
+          <div class="ls-savings__total">
+            <span class="ls-kpi__label">Vorteil gegenüber „Akku zuerst“</span>
+            <span class="ls-savings__value" :class="{ 'ls-savings__value--negative': review.costs.advantageOverBaseline < 0 }">{{ money(review.costs.advantageOverBaseline) }}</span>
+          </div>
+          <dl class="ls-savings__rows">
+            <div>
+              <dt>Tatsächliche Stromkosten</dt>
+              <dd><span class="ls-num">{{ money(review.costs.actualCost) }}</span>
+                <small>Ø Preis {{ price(review.costs.averagePricePerKwh) }} €/kWh</small></dd>
+            </div>
+            <div>
+              <dt>„Akku zuerst“ ohne Netzladung</dt>
+              <dd><span class="ls-num">{{ money(review.costs.baselineCost) }}</span>
+                <small>Akku deckt jeden Bezug, lädt nur aus Überschuss</small></dd>
+            </div>
+            <div>
+              <dt>Ohne Victron-Akku</dt>
+              <dd><span class="ls-num">{{ money(review.costs.withoutBatteryCost) }}</span>
+                <small>Akku spart insgesamt {{ money(review.costs.advantageOverNoBattery) }}</small></dd>
+            </div>
+            <div>
+              <dt>Mehr Energie im Akku am Ende</dt>
+              <dd><span class="ls-num">{{ money(review.costs.storedEnergyDifferenceValue) }}</span>
+                <small>{{ kwh(review.costs.storedEnergyDifferenceKwh) }} gegenüber „Akku zuerst“</small></dd>
+            </div>
+          </dl>
+          <p class="ls-muted ls-savings__note">
+            Nachgerechnet aus den Messwerten; die Reaktion des E3/DC wird als unverändert angenommen.
+            <template v-if="review.costs.pricedCoveragePercent < 95"> Preise liegen nur für {{ numberFormat(0).format(review.costs.pricedCoveragePercent) }} % des Zeitraums vor.</template>
+          </p>
+        </div>
+        <p v-else class="ls-muted">Für den Zeitraum liegen noch keine Preise oder Messwerte vor.</p>
       </div>
       <div class="ls-panel ls-chart-panel">
         <div class="ls-chart">

@@ -18,6 +18,7 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
     private static readonly TimeSpan MaximumSampleGap = TimeSpan.FromMinutes(1);
     private const decimal BatteryActivityThresholdWatts = 100m;
     private const decimal FeedInThresholdWatts = 50m;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<DateTimeOffset, decimal?> LoggedPriceCache = new();
 
     private readonly DashboardSummaryServiceDependencies dependencies;
 
@@ -80,8 +81,99 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
     {
         var configuration = await dependencies.BatteryConfigurationProvider.GetBatteryConfigurationAsync(cancellationToken);
         var samples = await dependencies.LiveConsumptionRepository.GetSamplesAsync(startsAtUtc, endsAtUtc, cancellationToken);
+        var review = CalculateReview(startsAtUtc, endsAtUtc, samples, configuration.PlanningMinimumStateOfChargePercent);
 
-        return CalculateReview(startsAtUtc, endsAtUtc, samples, configuration.PlanningMinimumStateOfChargePercent);
+        var prices = await LoadSlotPricesAsync(startsAtUtc, endsAtUtc, cancellationToken);
+        var comparison = StrategyComparisonCalculator.Calculate(new StrategyComparisonInput
+        {
+            Samples = samples,
+            GetSlotPricePerKwh = slotStartsAtUtc => prices.TryGetValue(slotStartsAtUtc, out var price) ? price : null,
+            BatteryConfiguration = configuration,
+            FeedInCompensationPricePerKwh = await GetFeedInCompensationPricePerKwhAsync(cancellationToken)
+        });
+
+        return review with
+        {
+            Costs = comparison.Total,
+            Hours = review.Hours
+                .Select(hour => comparison.Hours.TryGetValue(hour.StartsAtUtc, out var cost)
+                    ? hour with { ActualCost = cost.ActualCost, BaselineCost = cost.BaselineCost }
+                    : hour)
+                .ToArray()
+        };
+    }
+
+    /// <summary>
+    /// Collects the slot prices of the review period: Tibber still delivers today, older slots come from the decision log.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<DateTimeOffset, decimal>> LoadSlotPricesAsync(
+        DateTimeOffset startsAtUtc,
+        DateTimeOffset endsAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var slotDuration = TimeSpan.FromMinutes(15);
+        var firstSlotUtc = new DateTimeOffset(startsAtUtc.UtcTicks - startsAtUtc.UtcTicks % slotDuration.Ticks, TimeSpan.Zero);
+        var prices = new Dictionary<DateTimeOffset, decimal>();
+
+        try
+        {
+            var tibberSlots = await dependencies.TibberPriceForecastProvider.GetPriceForecastAsync(firstSlotUtc, endsAtUtc, cancellationToken);
+            foreach (var slot in tibberSlots)
+            {
+                prices[slot.TimeSlot.StartsAtUtc] = slot.TotalPricePerKwh;
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Without Tibber the decision log still knows the prices of all slots the controller has seen.
+        }
+
+        var nowUtc = dependencies.UtcClock.UtcNow;
+        for (var slotStartsAtUtc = firstSlotUtc; slotStartsAtUtc < endsAtUtc; slotStartsAtUtc = slotStartsAtUtc.Add(slotDuration))
+        {
+            if (prices.ContainsKey(slotStartsAtUtc))
+            {
+                continue;
+            }
+
+            if (LoggedPriceCache.TryGetValue(slotStartsAtUtc, out var cachedPrice))
+            {
+                if (cachedPrice is not null)
+                {
+                    prices[slotStartsAtUtc] = cachedPrice.Value;
+                }
+
+                continue;
+            }
+
+            var decisions = await dependencies.DecisionLogRepository.GetDecisionsAsync(slotStartsAtUtc, slotStartsAtUtc.Add(slotDuration).AddTicks(-1), 1, cancellationToken);
+            var loggedPrice = decisions.FirstOrDefault(decision => decision.TibberPricePerKwh is not null)?.TibberPricePerKwh;
+
+            // Finished slots never change, so the five-minute review refresh does not repeat these queries.
+            if (slotStartsAtUtc.Add(slotDuration) <= nowUtc)
+            {
+                LoggedPriceCache[slotStartsAtUtc] = loggedPrice;
+            }
+
+            if (loggedPrice is not null)
+            {
+                prices[slotStartsAtUtc] = loggedPrice.Value;
+            }
+        }
+
+        return prices;
+    }
+
+    private async Task<decimal> GetFeedInCompensationPricePerKwhAsync(CancellationToken cancellationToken)
+    {
+        var setting = await dependencies.ControllerSettingStore.GetSettingAsync(
+            ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey,
+            cancellationToken);
+
+        return setting is { IsConfigured: true } &&
+               decimal.TryParse(setting.Value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var price)
+            ? price
+            : 0m;
     }
 
     /// <summary>

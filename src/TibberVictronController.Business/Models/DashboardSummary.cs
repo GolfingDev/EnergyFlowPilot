@@ -104,7 +104,8 @@ public sealed record DashboardReview(
     decimal SupplementaryChargedFromBatteryKwh,
     decimal? SupplementaryStateOfChargeStartPercent,
     decimal? SupplementaryStateOfChargeEndPercent,
-    IReadOnlyList<DashboardReviewHour> Hours);
+    IReadOnlyList<DashboardReviewHour> Hours,
+    DashboardCostComparison? Costs = null);
 
 public sealed record DashboardReviewHour(
     DateTimeOffset StartsAtUtc,
@@ -114,4 +115,25 @@ public sealed record DashboardReviewHour(
     decimal BatteryChargeKwh,
     decimal BatteryDischargeKwh,
     decimal BatteryFeedInKwh,
-    decimal SupplementaryChargedFromBatteryKwh);
+    decimal SupplementaryChargedFromBatteryKwh,
+    decimal? ActualCost = null,
+    decimal? BaselineCost = null);
+
+/// <summary>
+/// Measured energy cost of a period compared with the simple "battery first" strategy and with no Victron battery.
+/// </summary>
+/// <param name="StoredEnergyDifferenceKwh">Stored energy at the end of the period, real operation minus baseline.</param>
+/// <param name="StoredEnergyDifferenceValue">That difference valued at the average price after discharge losses.</param>
+/// <param name="AdvantageOverBaseline">Positive when the price-based plan was cheaper than "battery first".</param>
+/// <param name="AdvantageOverNoBattery">Positive when the Victron battery lowered the cost at all.</param>
+/// <param name="PricedCoveragePercent">Share of the measured time with a known price; costs only cover that share.</param>
+public sealed record DashboardCostComparison(
+    decimal ActualCost,
+    decimal BaselineCost,
+    decimal WithoutBatteryCost,
+    decimal StoredEnergyDifferenceKwh,
+    decimal StoredEnergyDifferenceValue,
+    decimal AdvantageOverBaseline,
+    decimal AdvantageOverNoBattery,
+    decimal AveragePricePerKwh,
+    decimal PricedCoveragePercent);

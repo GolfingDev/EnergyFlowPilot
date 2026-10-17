@@ -24,6 +24,8 @@ The themes `leitstandLight` and `leitstandDark` render `LeitstandDashboard.vue` 
 
 It reads `/api/dashboard/summary` (every 15 s) and `/api/dashboard/review?hours=12|24|48` (every 5 min). Categories, checks, plan segments and review energies are calculated in `DashboardSummaryService`; the frontend only formats them as German text and charts. All power values are measured samples, never requested decision targets. The review relies on E3/DC battery and PV values stored with every live sample.
 
+The review also contains a strategy comparison (`StrategyComparisonCalculator`). It replays the measured period with a simulated Victron battery that follows the simple rule "battery first": cover every import down to the planning minimum, store every surplus up to the planning maximum, never charge from the grid, never hold. It compares that result with the real energy cost and with no Victron battery at all. The demand without the battery is `grid power - battery AC power`. Import is priced at the slot price: Tibber for today, the decision log for older slots. Export is priced at the feed-in compensation. If the real operation ends with more stored energy than the baseline, the difference counts at the average price of the period after discharge losses, so energy bought for the next day is not a loss. The replay assumes the E3/DC behaves the same as it really did, because its reaction to a different Victron behaviour cannot be replayed.
+
 ## Local Development
 
 The Vite development server runs on port `5173`.

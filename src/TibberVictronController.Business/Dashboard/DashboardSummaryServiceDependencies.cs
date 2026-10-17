@@ -16,4 +16,8 @@ public sealed class DashboardSummaryServiceDependencies
     public required IBatteryForecastService BatteryForecastService { get; init; }
 
     public required IBatteryConfigurationProvider BatteryConfigurationProvider { get; init; }
+
+    public required ITibberPriceForecastProvider TibberPriceForecastProvider { get; init; }
+
+    public required IControllerSettingStore ControllerSettingStore { get; init; }
 }
