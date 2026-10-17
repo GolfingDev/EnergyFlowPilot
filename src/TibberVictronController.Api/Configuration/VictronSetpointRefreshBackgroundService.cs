@@ -66,12 +66,15 @@ public sealed class VictronSetpointRefreshBackgroundService : BackgroundService
         }
 
         var topics = VictronMqttTopicFactory.Create(settings);
-        var setpoints = MqttVictronSetpointPublisher.ApplySetpointRamp(
-            snapshot.Setpoints,
-            snapshot.DesiredSetpoints,
+        // The battery target ramps toward the decision; the setpoint is rebuilt with the current AC-out load every refresh,
+        // so a wallbox or other L1 load that starts between two decisions does not drain the battery.
+        var signedBatteryTargetWatts = MoveToward(
+            snapshot.SignedBatteryTargetWatts,
+            snapshot.DesiredSignedBatteryTargetWatts,
             MqttVictronSetpointPublisher.SetpointRampStepWatts);
+        var setpoints = MqttVictronSetpointPublisher.CreateExternalEssSetpoints(topics, signedBatteryTargetWatts, mqttControlClient);
         var hub4Control = MqttVictronSetpointPublisher.CalculateHub4ControlFromSignedBatteryTarget(
-            setpoints.Sum(setpoint => setpoint.Value),
+            signedBatteryTargetWatts,
             settings.BatteryIdleThresholdWatts);
         await PublishValueIfChangedAsync(topics.DisableChargeTopic, topics.DisableChargeReadTopic, hub4Control.DisableCharge ? 1 : 0, cancellationToken);
         await PublishValueIfChangedAsync(topics.DisableFeedInTopic, topics.DisableFeedInReadTopic, hub4Control.DisableFeedIn ? 1 : 0, cancellationToken);
@@ -84,13 +87,22 @@ public sealed class VictronSetpointRefreshBackgroundService : BackgroundService
         refreshState.Update(snapshot with
         {
             Setpoints = setpoints,
-            SignedBatteryTargetWatts = setpoints.Sum(setpoint => setpoint.Value)
+            SignedBatteryTargetWatts = signedBatteryTargetWatts
         });
 
         logger.LogDebug(
             "Victron-Setpoint refreshed. Count={SetpointCount}, ValidToUtc={ValidToUtc}",
             setpoints.Count,
             snapshot.ValidToUtc);
+    }
+
+    private static int MoveToward(int currentValue, int desiredValue, int maximumStepWatts)
+    {
+        var delta = desiredValue - currentValue;
+
+        return Math.Abs(delta) <= maximumStepWatts
+            ? desiredValue
+            : currentValue + Math.Sign(delta) * maximumStepWatts;
     }
 
     private async Task PublishValueIfChangedAsync(

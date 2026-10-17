@@ -66,11 +66,20 @@ public sealed class BatteryForecastService : IBatteryForecastService
     /// <summary>
     /// Loads all required forecast inputs for the UTC range and returns a slotwise Decision Engine forecast.
     /// </summary>
-    public async Task<BatteryForecastResult> CalculateForecastAsync(
+    public Task<BatteryForecastResult> CalculateForecastAsync(
         DateTimeOffset startsAtUtc,
         DateTimeOffset endsAtUtc,
         CancellationToken cancellationToken = default)
     {
+        return CalculateForecastAsync(new BatteryForecastRequest { StartsAtUtc = startsAtUtc, EndsAtUtc = endsAtUtc }, cancellationToken);
+    }
+
+    public async Task<BatteryForecastResult> CalculateForecastAsync(
+        BatteryForecastRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var startsAtUtc = request.StartsAtUtc;
+        var endsAtUtc = request.EndsAtUtc;
         ValidateUtcRange(startsAtUtc, endsAtUtc);
 
         var priceForecast = await tibberPriceForecastProvider.GetPriceForecastAsync(startsAtUtc, endsAtUtc, cancellationToken);
@@ -106,6 +115,11 @@ public sealed class BatteryForecastService : IBatteryForecastService
         var pvForecast = await weatherForecastProvider.GetPvYieldForecastAsync(effectiveStartsAtUtc, effectiveEndsAtUtc, cancellationToken);
         var consumptionForecast = await historicalConsumptionProvider.GetConsumptionForecastAsync(effectiveStartsAtUtc, effectiveEndsAtUtc, cancellationToken);
 
+        if (request.CurrentNetLoadWatts is { } currentNetLoadWatts)
+        {
+            consumptionForecast = ApplyCurrentNetLoad(consumptionForecast, pvForecast, effectiveStartsAtUtc, currentNetLoadWatts);
+        }
+
         return batteryForecastSimulator.Simulate(
             relevantPriceForecast,
             pvForecast,
@@ -113,6 +127,36 @@ public sealed class BatteryForecastService : IBatteryForecastService
             batteryState,
             batteryConfiguration,
             feedInCompensationPricePerKwh);
+    }
+
+    /// <summary>
+    /// Replaces the expected consumption of the first slot so that consumption minus forecast PV equals the live net load.
+    /// </summary>
+    /// <remarks>
+    /// The live value already contains the real PV production, so the forecast PV is added back to keep the simulator's
+    /// "consumption - PV" equal to what is measured. The decision runs every few seconds, so a short load peak only affects
+    /// the plan while it lasts.
+    /// </remarks>
+    public static IReadOnlyList<ConsumptionForecastSlot> ApplyCurrentNetLoad(
+        IReadOnlyList<ConsumptionForecastSlot> consumptionForecast,
+        IReadOnlyList<PvYieldForecastSlot> pvForecast,
+        DateTimeOffset currentSlotStartsAtUtc,
+        decimal currentNetLoadWatts)
+    {
+        return consumptionForecast
+            .Select(slot =>
+            {
+                if (slot.TimeSlot.StartsAtUtc != currentSlotStartsAtUtc)
+                {
+                    return slot;
+                }
+
+                var pvYieldKwh = pvForecast.FirstOrDefault(pvSlot => pvSlot.TimeSlot == slot.TimeSlot)?.ExpectedPvYieldKwh ?? 0m;
+                var netLoadKwh = currentNetLoadWatts / 1000m * (decimal)slot.TimeSlot.Duration.TotalHours;
+
+                return new ConsumptionForecastSlot(slot.TimeSlot, Math.Max(0m, netLoadKwh + pvYieldKwh));
+            })
+            .ToArray();
     }
 
     private async Task<TimeZoneInfo> GetForecastTimeZoneAsync(CancellationToken cancellationToken)

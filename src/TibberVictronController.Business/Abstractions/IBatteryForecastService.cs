@@ -14,4 +14,14 @@ public interface IBatteryForecastService
         DateTimeOffset startsAtUtc,
         DateTimeOffset endsAtUtc,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Calculates a Decision Engine forecast; implementations that do not support the live load ignore it.
+    /// </summary>
+    Task<BatteryForecastResult> CalculateForecastAsync(
+        BatteryForecastRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return CalculateForecastAsync(request.StartsAtUtc, request.EndsAtUtc, cancellationToken);
+    }
 }

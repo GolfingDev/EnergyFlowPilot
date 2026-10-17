@@ -33,6 +33,12 @@ public sealed class VictronMqttTopics
 
     public required IReadOnlyList<string> ExternalEssAcPowerSetpointTopics { get; init; }
 
+    /// <summary>
+    /// Gets the Multi's AC-out power per controlled phase. In External ESS the setpoint controls AC-in, and loads on AC-out
+    /// (on this site the complete house phase L1) are supplied in addition, so they must be added to the setpoint.
+    /// </summary>
+    public required IReadOnlyList<string> AcOutPowerTopics { get; init; }
+
     public required string DisableChargeTopic { get; init; }
 
     public required string DisableChargeReadTopic { get; init; }
@@ -48,6 +54,7 @@ public sealed class VictronMqttTopics
             BatteryPowerTopic
         }
         .Concat(HouseConsumptionTopics)
+        .Concat(AcOutPowerTopics)
         .Concat(new[]
         {
             Hub4ModeReadTopic,

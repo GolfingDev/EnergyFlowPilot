@@ -231,6 +231,30 @@ public sealed class BatteryForecastSimulatorTests
     }
 
     [Fact]
+    public void SimulateWithLiveCarLoadHoldsEnergyForMoreExpensiveEvening()
+    {
+        // 2026-10-17 15:45: an electric car draws 5 kW at 0.33 EUR/kWh, the evening costs 0.42. The forecast only knew the
+        // normal house load; with the live load the optimizer keeps the energy the evening needs instead of feeding the car.
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(30m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(10m, minimumStateOfChargePercent: 15m, maximumChargePowerWatts: 5000, maximumDischargePowerWatts: 5000, roundTripEfficiencyPercent: 90m);
+        var priceForecast = CreatePriceForecast(0.33m, 0.42m, 0.42m, 0.42m, 0.42m);
+        var pvForecast = CreatePvForecast(0.10m, 0m, 0m, 0m, 0m);
+        var consumptionForecast = BatteryForecastService.ApplyCurrentNetLoad(
+            CreateConsumptionForecast(0.20m, 0.30m, 0.30m, 0.30m, 0.30m),
+            pvForecast,
+            ForecastStartsAtUtc,
+            currentNetLoadWatts: 5000m);
+
+        var result = simulator.Simulate(priceForecast, pvForecast, consumptionForecast, batteryState, batteryConfiguration, feedInCompensationPricePerKwh: 0.08m);
+
+        Assert.Equal(1.25m, result.Entries[0].ExpectedGridImportBeforeBatteryKwh);
+        Assert.Equal(BatteryForecastRuleIds.HoldForExpensiveSlot, result.Entries[0].Reasons[0].RuleName);
+        Assert.True(result.Entries[0].Decision.TargetPowerWatts < 1500, $"Der Akku soll das Auto nur mit dem Rest ueber dem Abendbedarf versorgen, geplant waren {result.Entries[0].Decision.TargetPowerWatts} W.");
+        Assert.All(result.Entries.Skip(1), entry => Assert.Equal(BatteryDecisionState.Discharge, entry.Decision.Instruction.DecisionState));
+    }
+
+    [Fact]
     public void SimulateNeverGridChargesOnEstimatedPrices()
     {
         var simulator = new BatteryForecastSimulator();

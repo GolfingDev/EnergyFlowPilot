@@ -166,7 +166,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             // A cheap PV slot can also be the planned grid charging slot: absorb the surplus and add the planned grid share.
             if (currentPriceSlot is not null)
             {
-                var plannedExportSlot = await TryGetPlannedForecastSlotAsync(decidedAtUtc, currentPriceSlot, cancellationToken);
+                var plannedExportSlot = await TryGetPlannedForecastSlotAsync(decidedAtUtc, currentPriceSlot, currentNetLoadWatts: null, cancellationToken);
                 if (plannedExportSlot.Entry is { Decision.Instruction: { DecisionState: BatteryDecisionState.Charge, ChargeSource: BatteryChargeSource.Grid } } plannedEntry)
                 {
                     var slotHours = (decimal)plannedEntry.TimeSlot.Duration.TotalHours;
@@ -254,7 +254,13 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         }
 
         // The forecast plan decides grid charging and holding, so direct decision and forecast chart follow the same rules.
-        var plannedSlot = await TryGetPlannedForecastSlotAsync(decidedAtUtc, currentPriceSlot, cancellationToken);
+        // The current slot is planned with the live load: an unplanned load such as an electric car is only covered when
+        // the battery energy is not worth more in a later, more expensive slot.
+        var plannedSlot = await TryGetPlannedForecastSlotAsync(
+            decidedAtUtc,
+            currentPriceSlot,
+            Math.Max(0, gridPowerWithoutBatteryWatts - decisionSiteTelemetry.SupplementaryBatteryChargeFromSiteWatts),
+            cancellationToken);
         var planEntry = plannedSlot.Entry;
 
         if (planEntry?.Decision.Instruction is { DecisionState: BatteryDecisionState.Charge, ChargeSource: BatteryChargeSource.Grid })
@@ -316,6 +322,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
     private async Task<PlannedForecastSlot> TryGetPlannedForecastSlotAsync(
         DateTimeOffset decidedAtUtc,
         TibberPriceForecastSlot currentPriceSlot,
+        int? currentNetLoadWatts,
         CancellationToken cancellationToken)
     {
         if (dependencies.BatteryForecastService is null)
@@ -327,8 +334,12 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         {
             // The forecast starts at the current slot so the plan for "now" is part of the result.
             var forecastResult = await dependencies.BatteryForecastService.CalculateForecastAsync(
-                currentPriceSlot.TimeSlot.StartsAtUtc,
-                decidedAtUtc.Add(DecisionLookahead),
+                new BatteryForecastRequest
+                {
+                    StartsAtUtc = currentPriceSlot.TimeSlot.StartsAtUtc,
+                    EndsAtUtc = decidedAtUtc.Add(DecisionLookahead),
+                    CurrentNetLoadWatts = currentNetLoadWatts
+                },
                 cancellationToken);
             var entry = forecastResult.Entries.FirstOrDefault(forecastEntry =>
                 forecastEntry.TimeSlot.StartsAtUtc <= decidedAtUtc &&

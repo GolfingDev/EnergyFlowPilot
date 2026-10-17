@@ -308,6 +308,39 @@ public sealed class DecisionExecutionBackgroundServiceTests
         Assert.Equal(totalSetpointWatts, setpoints.Sum());
     }
 
+    [Theory]
+    [InlineData(0, 1636, 1636)]
+    [InlineData(-2800, 2200, -600)]
+    [InlineData(1256, 1636, 2892)]
+    public void CreateExternalEssSetpointsAddsAcOutLoadSoTheBatteryFollowsItsTarget(int batteryTargetWatts, int acOutWatts, int expectedSetpointWatts)
+    {
+        // 2026-10-17: the house phase L1 including the wallbox share is on the Multi's AC-out. Idle must import the AC-out
+        // load, a discharge only exports its target, and a grid charge must still charge while L1 draws power.
+        var topics = new VictronMqttTopics
+        {
+            GridPowerTopic = "grid",
+            BatterySocTopic = "soc",
+            BatteryPowerTopic = "battery",
+            HouseConsumptionTopics = new[] { "house" },
+            ChargeDischargeSetpointTopic = "setpoint",
+            Hub4ModeTopic = "W/mode",
+            Hub4ModeReadTopic = "N/mode",
+            VebusMaxChargeCurrentTopic = "maxChargeCurrent",
+            BatteryVoltageTopic = "voltage",
+            ExternalEssAcPowerSetpointTopics = new[] { "W/L1/AcPowerSetpoint" },
+            AcOutPowerTopics = new[] { "N/Ac/Out/L1/P" },
+            DisableChargeTopic = "W/disableCharge",
+            DisableChargeReadTopic = "N/disableCharge",
+            DisableFeedInTopic = "W/disableFeedIn",
+            DisableFeedInReadTopic = "N/disableFeedIn"
+        };
+        var client = new LatestValueMqttControlClient(new Dictionary<string, decimal> { ["N/Ac/Out/L1/P"] = acOutWatts });
+
+        var setpoints = MqttVictronSetpointPublisher.CreateExternalEssSetpoints(topics, batteryTargetWatts, client);
+
+        Assert.Equal(new[] { new VictronSetpointValue("W/L1/AcPowerSetpoint", expectedSetpointWatts) }, setpoints);
+    }
+
     [Fact]
     public void ApplySetpointRampIncreasesSetpointOnlyByConfiguredStep()
     {
@@ -509,5 +542,25 @@ public sealed class DecisionExecutionBackgroundServiceTests
         }
 
         public DateTimeOffset UtcNow { get; }
+    }
+
+    private sealed class LatestValueMqttControlClient : IVictronMqttControlClient
+    {
+        private readonly IReadOnlyDictionary<string, decimal> values;
+
+        public LatestValueMqttControlClient(IReadOnlyDictionary<string, decimal> values)
+        {
+            this.values = values;
+        }
+
+        public Task PublishValueAsync(string topic, int value, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+
+        public bool TryGetLatestValue(string topic, out decimal value)
+        {
+            return values.TryGetValue(topic, out value);
+        }
     }
 }

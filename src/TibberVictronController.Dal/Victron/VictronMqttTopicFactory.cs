@@ -19,6 +19,9 @@ public static class VictronMqttTopicFactory
             VebusMaxChargeCurrentTopic = $"N/{settings.PortalId}/vebus/276/Dc/0/MaxChargeCurrent",
             BatteryVoltageTopic = $"N/{settings.PortalId}/battery/512/Dc/0/Voltage",
             ExternalEssAcPowerSetpointTopics = ResolveExternalEssAcPowerSetpointTopics(settings),
+            AcOutPowerTopics = Enumerable.Range(1, settings.ExternalEssPhaseCount)
+                .Select(phase => $"N/{settings.PortalId}/vebus/276/Ac/Out/L{phase}/P")
+                .ToArray(),
             DisableChargeTopic = Resolve(settings.DisableChargeTopic, settings.PortalId),
             DisableChargeReadTopic = ToReadTopic(Resolve(settings.DisableChargeTopic, settings.PortalId)),
             DisableFeedInTopic = Resolve(settings.DisableFeedInTopic, settings.PortalId),

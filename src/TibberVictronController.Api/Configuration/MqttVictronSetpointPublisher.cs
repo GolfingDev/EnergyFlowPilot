@@ -45,17 +45,31 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
 
         await PublishHub4ModeAsync(mqttControlClient, settings, topics, logger, cancellationToken);
         var desiredGridSetpointWatts = CalculateGridSetpointWattsFromSignedBatteryTarget(decisionResult, desiredSignedBatteryTargetWatts);
-        var desiredSetpoints = CreateSetpoints(settings, topics, desiredGridSetpointWatts, desiredSignedBatteryTargetWatts);
-        var rampedSetpoints = CreateSetpoints(settings, topics, gridSetpointWatts, signedBatteryTargetWatts);
-        var setpoints = ApplySetpointRamp(
-            previousSnapshot?.Setpoints ?? Array.Empty<VictronSetpointValue>(),
-            rampedSetpoints,
-            SetpointRampStepWatts);
-        var rampedSignedBatteryTargetWatts = CalculateSignedBatteryTargetWatts(
-            settings,
-            setpoints,
-            decisionResult,
-            signedBatteryTargetWatts);
+        IReadOnlyList<VictronSetpointValue> desiredSetpoints;
+        IReadOnlyList<VictronSetpointValue> setpoints;
+        int rampedSignedBatteryTargetWatts;
+
+        if (settings.ControlMode == VictronControlMode.ExternalEss)
+        {
+            // The battery target is already ramped; the AC-out load is added unramped so load jumps are compensated at once.
+            desiredSetpoints = CreateExternalEssSetpoints(topics, desiredSignedBatteryTargetWatts, mqttControlClient);
+            setpoints = CreateExternalEssSetpoints(topics, signedBatteryTargetWatts, mqttControlClient);
+            rampedSignedBatteryTargetWatts = signedBatteryTargetWatts;
+        }
+        else
+        {
+            desiredSetpoints = CreateSetpoints(settings, topics, desiredGridSetpointWatts, desiredSignedBatteryTargetWatts);
+            setpoints = ApplySetpointRamp(
+                previousSnapshot?.Setpoints ?? Array.Empty<VictronSetpointValue>(),
+                CreateSetpoints(settings, topics, gridSetpointWatts, signedBatteryTargetWatts),
+                SetpointRampStepWatts);
+            rampedSignedBatteryTargetWatts = CalculateSignedBatteryTargetWatts(
+                settings,
+                setpoints,
+                decisionResult,
+                signedBatteryTargetWatts);
+        }
+
         var hub4Control = CalculateHub4ControlFromSignedBatteryTarget(
             rampedSignedBatteryTargetWatts,
             settings.BatteryIdleThresholdWatts);
@@ -69,13 +83,47 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
             desiredSignedBatteryTargetWatts));
 
         logger.LogInformation(
-            "Victron-Setpoint per MQTT veröffentlicht. ControlMode={ControlMode}, GridSetpointW={GridSetpointWatts}, ExternalSetpointW={ExternalSetpointWatts}, EffectiveTargetPowerW={EffectiveTargetPowerWatts}, DisableCharge={DisableCharge}, DisableFeedIn={DisableFeedIn}",
+            "Victron-Setpoint per MQTT veröffentlicht. ControlMode={ControlMode}, GridSetpointW={GridSetpointWatts}, ExternalSetpointW={ExternalSetpointWatts}, AkkuZielW={BatteryTargetWatts}, AcOutW={AcOutWatts}, EffectiveTargetPowerW={EffectiveTargetPowerWatts}, DisableCharge={DisableCharge}, DisableFeedIn={DisableFeedIn}",
             settings.ControlMode,
             gridSetpointWatts,
-            CalculateExternalEssSetpointWatts(decisionResult, effectiveTargetPowerWatts),
+            setpoints.Sum(setpoint => setpoint.Value),
+            rampedSignedBatteryTargetWatts,
+            GetAcOutPowerWatts(topics, mqttControlClient).Sum(),
             effectiveTargetPowerWatts,
             hub4Control.DisableCharge,
             hub4Control.DisableFeedIn);
+    }
+
+    /// <summary>
+    /// Creates the External ESS AC-in setpoints for a signed battery target.
+    /// </summary>
+    /// <remarks>
+    /// The Multi controls its AC-in power to the setpoint and supplies AC-out loads in addition, so the battery power is
+    /// setpoint minus AC-out load. On this site the whole house phase L1 (including the wallbox share) is on AC-out: with a
+    /// plain battery target as setpoint an idle battery still covered L1, a discharge delivered target plus L1 load and a
+    /// grid charge could turn into a discharge. Adding the measured AC-out power per phase makes the battery follow the target.
+    /// </remarks>
+    public static IReadOnlyList<VictronSetpointValue> CreateExternalEssSetpoints(
+        VictronMqttTopics topics,
+        int signedBatteryTargetWatts,
+        IVictronMqttControlClient mqttClient)
+    {
+        var phaseTargets = SplitSetpointAcrossPhases(signedBatteryTargetWatts, topics.ExternalEssAcPowerSetpointTopics.Count);
+        var acOutPowerWatts = GetAcOutPowerWatts(topics, mqttClient);
+
+        return phaseTargets
+            .Select((phaseTarget, index) => new VictronSetpointValue(
+                topics.ExternalEssAcPowerSetpointTopics[index],
+                phaseTarget + (index < acOutPowerWatts.Count ? acOutPowerWatts[index] : 0)))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<int> GetAcOutPowerWatts(VictronMqttTopics topics, IVictronMqttControlClient mqttClient)
+    {
+        // Without a reading the old behaviour (setpoint = battery target) remains, which is correct when AC-out is unused.
+        return topics.AcOutPowerTopics
+            .Select(topic => mqttClient.TryGetLatestValue(topic, out var watts) ? (int)Math.Round(watts) : 0)
+            .ToArray();
     }
 
     public static int CalculateGridSetpointWatts(CurrentBatteryDecisionResult decisionResult)
