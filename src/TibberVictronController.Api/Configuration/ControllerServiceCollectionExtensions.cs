@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Dashboard;
 using TibberVictronController.Business.Decisions;
+using TibberVictronController.Business.Homematic;
 using TibberVictronController.Business.Services;
 using TibberVictronController.Api.Dashboard;
 using TibberVictronController.Dal.Battery;
@@ -59,6 +60,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IOperationalEventRepository, EfOperationalEventRepository>();
         services.AddScoped<ILiveConsumptionRepository, EfLiveConsumptionRepository>();
         services.AddScoped<IHomematicClimateRepository, EfHomematicClimateRepository>();
+        services.AddScoped<IHomematicClimateHistoryService, HomematicClimateHistoryService>();
         services.AddScoped<IWorkerFailureNotifier, WorkerFailureEmailNotifier>();
         services.AddSingleton<IDashboardLiveUpdatePublisher, SignalRDashboardLiveUpdatePublisher>();
         services.AddScoped<IVictronSetpointPublisher, MqttVictronSetpointPublisher>();

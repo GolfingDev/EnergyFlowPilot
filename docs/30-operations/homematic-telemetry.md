@@ -57,6 +57,23 @@ Rules:
 
 `PolledAtUtc` is the time axis. The CCU datapoint timestamp only changes when the value changes and is stored separately as `LastChangedAtUtc`.
 
+## Heating View
+
+The frontend tab "Heizung" (`/heating`) reads `GET /api/homematic/history?range=day|week|month`.
+
+| Range | Window | Bucket |
+|---|---|---|
+| `day` | 24 h | 5 min |
+| `week` | 7 days | 30 min |
+| `month` | 30 days | 2 h |
+
+Each bucket holds the mean of the raw samples per channel. The response also contains:
+
+- a summary of the latest poll: outdoor temperature, mean valve opening of radiator thermostats (heating circuit 1) and underfloor zones (heating circuit 3), rooms more than 0.5 K below set point (set points ≤ 5 °C count as switched off)
+- per-bucket pairs of outdoor temperature and mean valve opening per circuit for the heating curve scatter chart
+
+Room rule: the XML-API exposes no group membership. HmIP heating groups and BidCos thermostats (`HM-*`, never part of HmIP groups) count as rooms. Single HmIP thermostats only count as rooms when no heating group exists, so a room is never shown or counted twice. Heating groups are excluded from the circuit valve means to avoid counting valves twice.
+
 ## Encoding
 
 The XML-API answers in ISO-8859-1. Responses are parsed from the stream so the XML declaration determines the encoding and umlauts in device names stay intact.

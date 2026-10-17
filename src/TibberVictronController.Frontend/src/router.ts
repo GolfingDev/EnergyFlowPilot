@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import DashboardPage from './pages/DashboardPage.vue';
+import HeatingPage from './pages/HeatingPage.vue';
 import SettingsPage from './pages/SettingsPage.vue';
 
 export const router = createRouter({
@@ -13,6 +14,11 @@ export const router = createRouter({
       path: '/dashboard',
       name: 'dashboard',
       component: DashboardPage
+    },
+    {
+      path: '/heating',
+      name: 'heating',
+      component: HeatingPage
     },
     {
       path: '/settings',

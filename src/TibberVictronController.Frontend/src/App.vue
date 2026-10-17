@@ -68,7 +68,16 @@ const settingsMenuGroups: SettingsMenuGroup[] = [
 const activeRouteName = computed(() => String(route.name ?? ''));
 const activeTheme = computed(() => getEnergyFlowTheme(theme.global.name.value));
 const usesExecutiveShell = computed(() => false);
-const pageTitle = computed(() => activeRouteName.value === 'settings' ? 'Einstellungen' : 'Übersicht');
+const pageTitle = computed(() => {
+  switch (activeRouteName.value) {
+    case 'settings':
+      return 'Einstellungen';
+    case 'heating':
+      return 'Heizung';
+    default:
+      return 'Übersicht';
+  }
+});
 
 function navigateTo(routeName: string): void {
   void router.push({ name: routeName });
@@ -201,6 +210,12 @@ function toggleExecutiveSidebar(): void {
               @click="navigateTo('dashboard')">
               <span>Zusammenfassung</span>
               <small>Status, Forecast und Ersparnis</small>
+            </button>
+
+            <button class="top-nav__item" :class="{ 'top-nav__item--active': activeRouteName === 'heating' }"
+              @click="navigateTo('heating')">
+              <span>Heizung</span>
+              <small>Raumklima, Ventile und Außentemperatur</small>
             </button>
 
             <v-menu v-model="isSettingsMenuOpen" location="bottom center" offset="14" :close-on-content-click="false">

@@ -1,0 +1,139 @@
+.heating-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1560px;
+  padding: 24px;
+}
+
+.heating-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.heating-header__eyebrow {
+  color: var(--efp-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.heating-header h1 {
+  margin: 6px 0;
+  color: var(--efp-text);
+  font-size: 2rem;
+  line-height: 1.1;
+}
+
+.heating-header p {
+  max-width: 640px;
+  margin: 0;
+  color: var(--efp-muted);
+  line-height: 1.5;
+}
+
+.heating-header__controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.heating-header__status--active {
+  background: #2f7d4f !important;
+  color: #ffffff !important;
+  font-weight: 700;
+}
+
+.heating-header__status--off {
+  background: #b7791f !important;
+  color: #ffffff !important;
+  font-weight: 700;
+}
+
+.heating-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--efp-muted);
+}
+
+.heating-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.metric-card {
+  padding: 14px 16px;
+  border: 1px solid var(--efp-border);
+  border-radius: 8px;
+}
+
+.metric-card span,
+.metric-card p {
+  margin: 0;
+  color: var(--efp-muted);
+}
+
+.metric-card span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.76rem;
+}
+
+.metric-card strong {
+  display: block;
+  color: var(--efp-text);
+  font-size: 1.6rem;
+  line-height: 1.2;
+}
+
+.metric-card p {
+  margin-top: 6px;
+  font-size: 0.8rem;
+}
+
+.heating-empty {
+  padding: 32px 20px;
+  border: 1px dashed var(--efp-border);
+  border-radius: 8px;
+  color: var(--efp-muted);
+  text-align: center;
+}
+
+.heating-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+@media (max-width: 1100px) {
+  .heating-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .heating-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .heating-page {
+    padding: 16px;
+  }
+
+  .heating-header {
+    flex-direction: column;
+  }
+
+  .heating-header__controls {
+    align-items: flex-start;
+  }
+
+  .heating-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

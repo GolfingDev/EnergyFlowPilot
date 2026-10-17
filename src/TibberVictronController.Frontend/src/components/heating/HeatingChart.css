@@ -1,0 +1,47 @@
+.heating-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--efp-border);
+  border-radius: 8px;
+}
+
+.heating-chart__header h2 {
+  margin: 0;
+  color: var(--efp-text);
+  font-size: 1.05rem;
+}
+
+.heating-chart__header p {
+  margin: 4px 0 0;
+  color: var(--efp-muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.heating-chart__canvas {
+  position: relative;
+  height: 320px;
+}
+
+.heating-chart__empty {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  padding: 16px;
+  border: 1px dashed var(--efp-border);
+  border-radius: 8px;
+  color: var(--efp-muted);
+  text-align: center;
+}
+
+@media (max-width: 700px) {
+  .heating-chart {
+    padding: 14px;
+  }
+
+  .heating-chart__canvas {
+    height: 260px;
+  }
+}
