@@ -110,25 +110,19 @@ const currentConsumptionWatts = computed(() => {
   return liveTelemetry.value?.currentHouseConsumptionWatts ?? null;
 });
 const activeTheme = computed(() => getEnergyFlowTheme(theme.global.name.value));
-const usesMissionDashboard = computed(() => activeTheme.value.name === 'missionDark');
+const usesMissionDashboard = computed(() => false);
 const usesLeitstandDashboard = computed(() =>
   activeTheme.value.name === 'leitstandLight' ||
-  activeTheme.value.name === 'leitstandDark');
-const usesPresetDashboard = computed(() =>
-  activeTheme.value.name === 'controlCenterLight' ||
-  activeTheme.value.name === 'flowCenterLight' ||
-  activeTheme.value.name === 'executiveDark' ||
-  activeTheme.value.name === 'mobileFocusDark' ||
-  activeTheme.value.name === 'neonGridDark' ||
-  activeTheme.value.name === 'missionDark');
-const usesControlCenterDashboard = computed(() =>
-  activeTheme.value.name === 'controlCenterLight' ||
-  activeTheme.value.name === 'flowCenterLight' ||
-  activeTheme.value.name === 'neonGridDark');
-const usesControlChartsDashboard = computed(() => activeTheme.value.name === 'controlCenterLight');
-const usesFlowCenterDashboard = computed(() =>
-  activeTheme.value.name === 'flowCenterLight' ||
-  activeTheme.value.name === 'neonGridDark');
+  activeTheme.value.name === 'leitstandDark' ||
+  activeTheme.value.name === 'leitstandNextLight' ||
+  activeTheme.value.name === 'leitstandNextDark');
+const usesNextLeitstandDashboard = computed(() =>
+  activeTheme.value.name === 'leitstandNextLight' ||
+  activeTheme.value.name === 'leitstandNextDark');
+const usesPresetDashboard = computed(() => false);
+const usesControlCenterDashboard = computed(() => false);
+const usesControlChartsDashboard = computed(() => false);
+const usesFlowCenterDashboard = computed(() => false);
 const dashboardLayoutClass = computed(() => `dashboard-page--${activeTheme.value.name}`);
 const signedGridPowerWatts = computed(() => decision.value?.currentGridImportWatts ?? null);
 const signedBatteryPowerWatts = computed(() => {
@@ -933,6 +927,7 @@ onBeforeUnmount(() => {
     <LeitstandDashboard
       v-if="usesLeitstandDashboard"
       :dark="activeTheme.dark"
+      :next="usesNextLeitstandDashboard"
       :status="status"
       :decision-log-entries="decisionLogEntries"
       :manual-charge="manualCharge"

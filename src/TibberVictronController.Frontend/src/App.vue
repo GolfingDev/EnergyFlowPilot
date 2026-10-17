@@ -67,7 +67,7 @@ const settingsMenuGroups: SettingsMenuGroup[] = [
 
 const activeRouteName = computed(() => String(route.name ?? ''));
 const activeTheme = computed(() => getEnergyFlowTheme(theme.global.name.value));
-const usesExecutiveShell = computed(() => activeTheme.value.name === 'executiveDark');
+const usesExecutiveShell = computed(() => false);
 const pageTitle = computed(() => activeRouteName.value === 'settings' ? 'Einstellungen' : 'Übersicht');
 
 function navigateTo(routeName: string): void {

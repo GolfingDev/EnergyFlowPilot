@@ -4,6 +4,8 @@ import type { BatterySavingsResponseDto, ControllerStatusResponseDto, DecisionLo
 import { getDecisionLabel } from '../dashboard/dashboardFormatters';
 import {
   leitstandCategoryLabels,
+  type DashboardPlanSlotDto,
+  type DashboardReviewHourDto,
   type DashboardPlanSegmentDto,
   type DashboardReviewDto,
   type DashboardSummaryDto,
@@ -13,6 +15,7 @@ import {
 
 const props = defineProps<{
   dark: boolean;
+  next?: boolean;
   status: ControllerStatusResponseDto | null;
   decisionLogEntries: DecisionLogEntryResponseDto[];
   manualCharge: ManualChargeStatusResponseDto | null;
@@ -235,10 +238,10 @@ const reviewChart = computed(() => {
   const bars = hours.flatMap((hour, index) => {
     const x = left + step * index;
     return [
-      { key: `i${index}`, x: x + 1, y: zero - hour.gridImportKwh / maxUp * upHeight, width: Math.max(1, quarter - 1), height: hour.gridImportKwh / maxUp * upHeight, kind: 'import' },
-      { key: `d${index}`, x: x + quarter, y: zero, width: Math.max(1, quarter - 1), height: hour.batteryDischargeKwh / maxDown * downHeight, kind: 'discharge' },
-      { key: `f${index}`, x: x + quarter * 2, y: zero, width: Math.max(1, quarter - 1), height: hour.batteryFeedInKwh / maxDown * downHeight, kind: 'feedin' },
-      { key: `s${index}`, x: x + quarter * 3, y: zero, width: Math.max(1, quarter - 1), height: hour.supplementaryChargedFromBatteryKwh / maxDown * downHeight, kind: 'transfer' }
+      { key: `i${index}`, index, x: x + 1, y: zero - hour.gridImportKwh / maxUp * upHeight, width: Math.max(1, quarter - 1), height: hour.gridImportKwh / maxUp * upHeight, kind: 'import' },
+      { key: `d${index}`, index, x: x + quarter, y: zero, width: Math.max(1, quarter - 1), height: hour.batteryDischargeKwh / maxDown * downHeight, kind: 'discharge' },
+      { key: `f${index}`, index, x: x + quarter * 2, y: zero, width: Math.max(1, quarter - 1), height: hour.batteryFeedInKwh / maxDown * downHeight, kind: 'feedin' },
+      { key: `s${index}`, index, x: x + quarter * 3, y: zero, width: Math.max(1, quarter - 1), height: hour.supplementaryChargedFromBatteryKwh / maxDown * downHeight, kind: 'transfer' }
     ].filter((bar) => bar.height > 0.3);
   });
   const labels = hours
@@ -310,6 +313,33 @@ const manualChargeLabel = computed(() => {
 
 function categoryVar(category: LeitstandCategory): string {
   return `var(--ls-${category})`;
+}
+
+function planSlotTooltip(slot: DashboardPlanSlotDto | undefined): string {
+  if (!slot) {
+    return '';
+  }
+
+  return [
+    `${dayTime(slot.startsAtUtc)}–${time(slot.endsAtUtc)}`,
+    leitstandCategoryLabels[slot.category],
+    `Preis: ${price(slot.pricePerKwh)} €/kWh`,
+    `SoC danach: ${percent(slot.stateOfChargeAfterPercent)}`,
+    `PV: ${kwh(slot.expectedPvYieldKwh)} · Verbrauch: ${kwh(slot.expectedConsumptionKwh)}`
+  ].join('\n');
+}
+
+function reviewHourTooltip(hour: DashboardReviewHourDto | undefined): string {
+  if (!hour) {
+    return '';
+  }
+
+  return [
+    `${dayTime(hour.startsAtUtc)}–${time(new Date(new Date(hour.startsAtUtc).getTime() + 3_600_000).toISOString())}`,
+    `SoC: ${percent(hour.batterySocEndPercent)}`,
+    `Netzbezug: ${kwh(hour.gridImportKwh)} · Akku: ${kwh(hour.batteryDischargeKwh)}`,
+    `Akku-Einspeisung: ${kwh(hour.batteryFeedInKwh)} · E3/DC-Transfer: ${kwh(hour.supplementaryChargedFromBatteryKwh)}`
+  ].join('\n');
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -402,7 +432,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="leitstand" :class="{ 'leitstand--dark': dark }">
+  <div class="leitstand" :class="{ 'leitstand--dark': dark, 'leitstand--next': next }">
     <!-- Lage -->
     <section class="ls-zone" aria-labelledby="ls-situation">
       <h2 id="ls-situation" class="ls-eyebrow">Lage</h2>
@@ -464,8 +494,9 @@ onBeforeUnmount(() => {
               : (live?.supplementaryBatteryPowerWatts ?? 0) < -50 ? `entlädt ${kw(Math.abs(live?.supplementaryBatteryPowerWatts ?? 0))}` : 'Ruhe' }}</text>
           </svg>
         </div>
-        <div class="ls-panel">
-          <h3>Prüfung jetzt</h3>
+        <div class="ls-panel ls-decision-panel">
+          <h3>{{ next ? 'Warum jetzt?' : 'Prüfung jetzt' }}</h3>
+          <p v-if="next && current?.reason" class="ls-decision-reason">{{ current.reason }}</p>
           <ul class="ls-checks">
             <li v-for="check in sortedChecks" :key="check.checkId" class="ls-check" :class="`ls-check--${check.severity}`">
               <span class="ls-check__mark">{{ check.severity === 'ok' ? '✓' : check.severity === 'info' ? 'i' : '!' }}</span>
@@ -503,7 +534,9 @@ onBeforeUnmount(() => {
                 <line class="ls-grid" :x1="plan.left" :x2="plan.width - plan.right" :y1="plan.priceTop + plan.priceHeight - value / plan.priceTicks[2] * plan.priceHeight" :y2="plan.priceTop + plan.priceHeight - value / plan.priceTicks[2] * plan.priceHeight" />
                 <text class="ls-axis" :x="plan.left - 6" :y="plan.priceTop + plan.priceHeight - value / plan.priceTicks[2] * plan.priceHeight + 3" text-anchor="end">{{ numberFormat(2).format(value) }}</text>
               </g>
-              <rect v-for="(bar, index) in plan.bars" :key="`b${index}`" :x="bar.x" :y="bar.y" :width="bar.width" :height="bar.height" rx="1.5" :style="{ fill: categoryVar(bar.category) }" />
+              <rect v-for="(bar, index) in plan.bars" :key="`b${index}`" :class="{ 'ls-chart-hit': next }" :x="bar.x" :y="bar.y" :width="bar.width" :height="bar.height" rx="1.5" :style="{ fill: categoryVar(bar.category) }" :tabindex="next ? 0 : undefined">
+                <title v-if="next">{{ planSlotTooltip(summary?.planSlots[index]) }}</title>
+              </rect>
               <text v-for="label in plan.labels" :key="label.text + label.x" class="ls-axis" :x="label.x" y="292" text-anchor="middle">{{ label.text }}</text>
               <line class="ls-now" :x1="plan.nowX" :x2="plan.nowX" :y1="plan.socTop - 2" :y2="plan.priceTop + plan.priceHeight" />
               <text class="ls-now-label" :x="plan.nowX + 4" :y="plan.socTop + 10">jetzt</text>
@@ -597,7 +630,9 @@ onBeforeUnmount(() => {
             <text class="ls-axis" :x="reviewChart.left - 6" :y="reviewChart.zero - reviewChart.upHeight + 3" text-anchor="end">+{{ numberFormat(1).format(reviewChart.maxUp) }}</text>
             <text class="ls-axis" :x="reviewChart.left - 6" :y="reviewChart.zero + 3" text-anchor="end">0</text>
             <text class="ls-axis" :x="reviewChart.left - 6" :y="reviewChart.zero + reviewChart.downHeight + 3" text-anchor="end">−{{ numberFormat(1).format(reviewChart.maxDown) }}</text>
-            <rect v-for="bar in reviewChart.bars" :key="bar.key" :x="bar.x" :y="bar.y" :width="bar.width" :height="bar.height" rx="1" :class="`ls-bar--${bar.kind}`" />
+            <rect v-for="bar in reviewChart.bars" :key="bar.key" :class="[`ls-bar--${bar.kind}`, { 'ls-chart-hit': next }]" :x="bar.x" :y="bar.y" :width="bar.width" :height="bar.height" rx="1" :tabindex="next ? 0 : undefined">
+              <title v-if="next">{{ reviewHourTooltip(review?.hours[bar.index]) }}</title>
+            </rect>
             <text v-for="label in reviewChart.labels" :key="label.x" class="ls-axis" :x="label.x" y="254" text-anchor="middle">{{ label.text }}</text>
           </svg>
           <p v-else class="ls-muted">Noch keine Messwerte im Zeitraum.</p>
@@ -813,4 +848,77 @@ details.ls-panel summary { cursor: pointer; font-family: var(--ls-font-display);
 .ls-button { border: 0; border-radius: 6px; padding: 6px 14px; background: var(--ls-accent); color: #fff; font-weight: 600; cursor: pointer; }
 .ls-button--secondary { background: transparent; color: var(--ls-fg); border: 1px solid var(--ls-line); }
 .ls-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Leitstand Next: stronger at-a-glance hierarchy while the original Leitstand remains unchanged. */
+.leitstand--next {
+  --ls-bg: #f2f6f8;
+  --ls-surface: #ffffff;
+  --ls-surface-2: #f6f9fb;
+  --ls-line: #dbe4ea;
+  --ls-fg: #152434;
+  --ls-muted: #607383;
+  --ls-accent: #1466a8;
+  --ls-discharge: #14806b;
+  --ls-pvCharge: #d39116;
+  --ls-gridCharge: #7958c7;
+  --ls-hold: #91a1b0;
+  --ls-full: #c5d0d9;
+  --ls-idle: #aab7c2;
+  max-width: 1440px;
+  gap: 26px;
+  padding-top: 14px;
+}
+
+.leitstand--next.leitstand--dark {
+  --ls-bg: #0e1720;
+  --ls-surface: #16232e;
+  --ls-surface-2: #1c2c38;
+  --ls-line: #2b3b49;
+  --ls-fg: #e9f0f5;
+  --ls-muted: #9aabb9;
+  --ls-accent: #69b7f3;
+  --ls-discharge: #42c6aa;
+  --ls-pvCharge: #f0b640;
+  --ls-gridCharge: #b194f5;
+  --ls-hold: #8293a2;
+  --ls-full: #3c4c59;
+  --ls-idle: #5e7080;
+}
+
+.leitstand--next .ls-zone { gap: 14px; }
+.leitstand--next .ls-panel { border-radius: 16px; border-color: color-mix(in srgb, var(--ls-line) 88%, transparent); box-shadow: 0 12px 30px color-mix(in srgb, var(--ls-fg) 7%, transparent); }
+.leitstand--next .ls-situation { grid-template-columns: minmax(230px, auto) minmax(0, 1fr) auto; min-height: 104px; padding: 18px 20px; background: linear-gradient(110deg, color-mix(in srgb, var(--ls-discharge) 12%, var(--ls-surface)), var(--ls-surface) 52%); }
+.leitstand--next .ls-pill { min-height: 48px; padding: 10px 16px; font-size: 1.18rem; box-shadow: 0 8px 18px color-mix(in srgb, var(--ls-discharge) 22%, transparent); }
+.leitstand--next .ls-situation__text { max-width: 720px; font-size: 1.14rem; font-weight: 600; line-height: 1.45; }
+.leitstand--next .ls-situation__meta { justify-content: flex-end; font-family: var(--ls-font-data); font-size: 0.86rem; }
+.leitstand--next .ls-flow { padding: 20px; min-height: 330px; }
+.leitstand--next .ls-decision-panel { display: grid; align-content: start; gap: 12px; background: linear-gradient(180deg, color-mix(in srgb, var(--ls-accent) 7%, var(--ls-surface)), var(--ls-surface)); }
+.ls-decision-reason { margin: -2px 0 2px; color: var(--ls-fg); font-size: 0.94rem; line-height: 1.45; font-weight: 600; }
+.leitstand--next .ls-checks { gap: 11px; }
+.leitstand--next .ls-check { padding-bottom: 10px; border-bottom: 1px solid color-mix(in srgb, var(--ls-line) 80%, transparent); }
+.leitstand--next .ls-check:last-child { border-bottom: 0; padding-bottom: 0; }
+.leitstand--next .ls-chart-panel { overflow: hidden; }
+.leitstand--next .ls-chart { padding: 4px 2px; }
+.leitstand--next .ls-chart-hit { cursor: help; outline: none; }
+.leitstand--next .ls-chart-hit:hover, .leitstand--next .ls-chart-hit:focus { stroke-width: 2px; filter: brightness(1.08) saturate(1.25); }
+.leitstand--next .ls-steps { counter-reset: steps; }
+.leitstand--next .ls-step { grid-template-columns: 112px 8px minmax(0, 1fr); gap: 14px; padding: 13px 0; }
+.leitstand--next .ls-step__bar { border-radius: 999px; }
+.leitstand--next .ls-kpi { border-radius: 14px; padding: 16px; box-shadow: 0 8px 22px color-mix(in srgb, var(--ls-fg) 5%, transparent); }
+.leitstand--next .ls-kpi__value { font-size: 1.8rem; }
+.leitstand--next .ls-savings { padding: 20px; }
+
+@media (max-width: 760px) {
+  .leitstand--next { gap: 18px; padding-top: 4px; }
+  .leitstand--next .ls-situation { grid-template-columns: 1fr; gap: 12px; min-height: 0; }
+  .leitstand--next .ls-situation__meta { justify-content: flex-start; gap: 8px 14px; }
+  .leitstand--next .ls-panel { border-radius: 13px; padding: 14px; }
+  .leitstand--next .ls-flow { min-height: 0; overflow-x: auto; }
+  .leitstand--next .ls-flow svg { min-width: 620px; }
+  .leitstand--next .ls-chart { margin-inline: -4px; }
+  .leitstand--next .ls-step { grid-template-columns: 92px 6px minmax(0, 1fr); gap: 10px; }
+  .leitstand--next .ls-kpis { grid-template-columns: 1fr 1fr; gap: 9px; }
+  .leitstand--next .ls-kpi { padding: 12px; }
+  .leitstand--next .ls-kpi__value { font-size: 1.45rem; }
+}
 </style>
