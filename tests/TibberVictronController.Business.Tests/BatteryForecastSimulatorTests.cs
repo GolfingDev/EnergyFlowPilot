@@ -382,11 +382,10 @@ public sealed class BatteryForecastSimulatorTests
         Assert.All(result.Entries, entry => Assert.True(entry.StateOfChargeAfterPercent >= batteryConfiguration.MinimumStateOfChargePercent));
     }
 
-    [Theory]
-    [InlineData(25, false)]
-    [InlineData(10, true)]
-    public void SimulateAppliesConfiguredEndStateOfChargeReserveAfterPeak(decimal targetEndSocPercent, bool allowsFurtherDischarge)
+    [Fact]
+    public void SimulateKeepsNoEndOfHorizonReserveAndStopsAtPlanningMinimum()
     {
+        // The horizon end only reflects when prices are published; only the planning minimum protects the battery.
         var simulator = new BatteryForecastSimulator();
         var batteryState = new BatteryState(26m, ForecastStartsAtUtc);
         var batteryConfiguration = new BatteryConfiguration(
@@ -394,7 +393,7 @@ public sealed class BatteryForecastSimulatorTests
             minimumStateOfChargePercent: 10m,
             maximumDischargePowerWatts: 3000,
             roundTripEfficiencyPercent: 100m,
-            targetEndStateOfChargePercent: targetEndSocPercent);
+            targetEndStateOfChargePercent: 25m);
         var priceForecast = CreatePriceForecast(0.30m, 0.30m, 0.30m);
         var pvForecast = CreatePvForecast(0m, 0m, 0m);
         var consumptionForecast = CreateConsumptionForecast(0.50m, 0.50m, 0.50m);
@@ -407,15 +406,38 @@ public sealed class BatteryForecastSimulatorTests
             batteryConfiguration,
             feedInCompensationPricePerKwh: 0.08m);
 
-        if (allowsFurtherDischarge)
+        Assert.All(result.Entries, entry => Assert.Equal(BatteryDecisionState.Discharge, entry.Decision.Instruction.DecisionState));
+        Assert.DoesNotContain(result.Entries, entry => entry.Reasons.Any(reason => reason.RuleName == BatteryForecastRuleIds.EndSocReserve));
+        Assert.All(result.Entries, entry => Assert.True(entry.StateOfChargeAfterPercent >= batteryConfiguration.PlanningMinimumStateOfChargePercent));
+    }
+
+    [Fact]
+    public void SimulateNeverPlansGridChargingOnEstimatedPrices()
+    {
+        // Slot 0 has a published price; slots 1 and 2 are estimated from a comparable day.
+        var simulator = new BatteryForecastSimulator();
+        var batteryState = new BatteryState(20m, ForecastStartsAtUtc);
+        var batteryConfiguration = new BatteryConfiguration(10m, minimumStateOfChargePercent: 15m, maximumChargePowerWatts: 5000, maximumDischargePowerWatts: 5000, roundTripEfficiencyPercent: 100m);
+        var priceForecast = new[]
         {
-            Assert.Contains(result.Entries, entry => entry.Decision.Instruction.DecisionState == BatteryDecisionState.Discharge);
-        }
-        else
-        {
-            Assert.All(result.Entries, entry => Assert.True(entry.StateOfChargeAfterPercent >= targetEndSocPercent));
-            Assert.Contains(result.Entries, entry => entry.Reasons.Any(reason => reason.RuleName == "END_SOC_RESERVE"));
-        }
+            new TibberPriceForecastSlot(CreateTimeSlot(0), 0.30m, "EUR"),
+            new TibberPriceForecastSlot(CreateTimeSlot(1), 0.10m, "EUR") { IsEstimated = true },
+            new TibberPriceForecastSlot(CreateTimeSlot(2), 0.50m, "EUR") { IsEstimated = true }
+        };
+        var pvForecast = CreatePvForecast(0m, 0m, 0m);
+        var consumptionForecast = CreateConsumptionForecast(0m, 0m, 1.00m);
+
+        var result = simulator.Simulate(
+            priceForecast,
+            pvForecast,
+            consumptionForecast,
+            batteryState,
+            batteryConfiguration,
+            feedInCompensationPricePerKwh: 0.08m);
+
+        Assert.True(result.Entries[2].IsPriceEstimated);
+        Assert.Equal(BatteryChargeSource.Grid, result.Entries[0].Decision.Instruction.ChargeSource);
+        Assert.Equal(BatteryDecisionState.Idle, result.Entries[1].Decision.Instruction.DecisionState);
     }
 
     [Fact]

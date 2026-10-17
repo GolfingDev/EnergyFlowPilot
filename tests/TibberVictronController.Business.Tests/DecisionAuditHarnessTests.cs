@@ -43,10 +43,7 @@ public sealed class DecisionAuditHarnessTests
         Assert.Contains(report.DecisionSlots, slot =>
             slot.RuleId == BatteryForecastRuleIds.SelfConsumptionDischarge &&
             slot.StateOfChargeBeforePercent - slot.ExpectedSocPercent > slot.DischargedEnergyKwh / scenario.BatteryConfiguration.TotalCapacityKwh * 100m);
-        Assert.Contains(report.DecisionSlots, slot =>
-            slot.TimeSlot.StartsAtUtc.Hour >= 21 &&
-            slot.RuleId == BatteryForecastRuleIds.EndSocReserve);
-        Assert.True(report.Metrics.FinalStateOfChargePercent >= scenario.BatteryConfiguration.TargetEndStateOfChargePercent);
+        Assert.DoesNotContain(report.DecisionSlots, slot => slot.RuleId == BatteryForecastRuleIds.EndSocReserve);
         Assert.All(report.DecisionSlots, slot =>
             Assert.True(slot.ExpectedSocPercent >= scenario.BatteryConfiguration.PlanningMinimumStateOfChargePercent));
         Assert.All(report.DecisionSlots, AssertCandidateRuleIdIsSpecific);

@@ -13,4 +13,5 @@ public sealed record BatteryForecastEntry(
     decimal StateOfChargeBeforePercent,
     decimal StateOfChargeAfterPercent,
     CurrentBatteryDecision Decision,
-    IReadOnlyList<BatteryDecisionReason> Reasons);
+    IReadOnlyList<BatteryDecisionReason> Reasons,
+    bool IsPriceEstimated = false);

@@ -28,17 +28,16 @@ internal sealed class BatteryGridChargeNeedPlanner
         var plan = new BatteryGridChargeNeedPlan();
 
         // Every iteration re-simulates because closing one shortage changes the state of charge of all later slots.
+        // There is no end-of-horizon reserve: the horizon end only reflects when prices are published, and missing prices
+        // are estimated from a comparable day, so needs after midnight are planned like any other shortage.
         for (var iteration = 0; iteration < MaximumPlanningIterations; iteration++)
         {
             var slots = AnalyzeSlots(simulate(plan), batteryConfiguration, plan);
 
-            if (TryCloseMostExpensiveShortage(slots, plan, batteryConfiguration) ||
-                TryKeepEndReserve(slots, plan, batteryConfiguration))
+            if (!TryCloseMostExpensiveShortage(slots, plan, batteryConfiguration))
             {
-                continue;
+                break;
             }
-
-            break;
         }
 
         return plan;
@@ -74,35 +73,6 @@ internal sealed class BatteryGridChargeNeedPlanner
         }
 
         return false;
-    }
-
-    private static bool TryKeepEndReserve(
-        IReadOnlyList<AnalyzedSlot> slots,
-        BatteryGridChargeNeedPlan plan,
-        BatteryConfiguration batteryConfiguration)
-    {
-        if (slots.Count == 0)
-        {
-            return false;
-        }
-
-        var targetEndBatteryEnergyKwh = batteryConfiguration.TotalCapacityKwh * batteryConfiguration.TargetEndStateOfChargePercent / 100m;
-        var missingStoredEnergyKwh = targetEndBatteryEnergyKwh - slots[^1].EnergyAfterKwh;
-
-        if (missingStoredEnergyKwh <= EnergyToleranceKwh)
-        {
-            return false;
-        }
-
-        // The end reserve protects the time after the forecast horizon, where no prices are known yet, so it is not price-checked.
-        var request = new AllocationRequest(
-            slots.Count,
-            missingStoredEnergyKwh * CalculateSingleDirectionEfficiency(batteryConfiguration),
-            decimal.MaxValue,
-            $"Damit am Ende des Forecasts die Endreserve von {batteryConfiguration.TargetEndStateOfChargePercent:0.#} Prozent erhalten bleibt.",
-            BatteryForecastRuleIds.EndSocReserve);
-
-        return TryAllocate(slots, plan, batteryConfiguration, request);
     }
 
     private static bool TryAllocate(
@@ -163,11 +133,9 @@ internal sealed class BatteryGridChargeNeedPlanner
             return false;
         }
 
-        var ruleId = request.RuleId == BatteryForecastRuleIds.EndSocReserve
-            ? BatteryForecastRuleIds.EndSocReserve
-            : bestCandidate.Kind == AllocationKind.Hold
-                ? BatteryForecastRuleIds.HoldForExpensiveSlot
-                : BatteryForecastRuleIds.PlannedGridCharge;
+        var ruleId = bestCandidate.Kind == AllocationKind.Hold
+            ? BatteryForecastRuleIds.HoldForExpensiveSlot
+            : BatteryForecastRuleIds.PlannedGridCharge;
 
         if (bestCandidate.Kind == AllocationKind.Hold)
         {
@@ -229,7 +197,8 @@ internal sealed class BatteryGridChargeNeedPlanner
                     dischargeOutputKwh,
                     energyShortageKwh,
                     isEnergyLimited,
-                    CanGridCharge: entry.TibberPricePerKwh >= 0m,
+                    // Grid charging is only planned on published prices; estimated slots may hold energy but never buy it.
+                    CanGridCharge: entry.TibberPricePerKwh >= 0m && !entry.IsPriceEstimated,
                     RemainingChargeInputKwh: Math.Max(0m, maximumChargeInputKwh - usedChargeInputKwh));
             })
             .ToArray();

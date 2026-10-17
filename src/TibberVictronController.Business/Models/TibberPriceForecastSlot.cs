@@ -34,4 +34,9 @@ public sealed record TibberPriceForecastSlot
     /// Gets the price currency.
     /// </summary>
     public string Currency { get; }
+
+    /// <summary>
+    /// Gets whether the price is estimated from a comparable day because Tibber has not published it yet.
+    /// </summary>
+    public bool IsEstimated { get; init; }
 }

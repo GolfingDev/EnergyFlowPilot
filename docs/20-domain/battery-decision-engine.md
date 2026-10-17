@@ -63,7 +63,9 @@ Forecast charging decisions are need-based (`BatteryGridChargeNeedPlanner`):
 - added energy must fit below the planning maximum in every slot until the shortage, so grid charging never displaces expected PV surplus
 - PV surplus slots are grid charge candidates as well: PV rarely uses the full charge power (the E3/DC takes PV first), so the charge power left next to the PV surplus can be filled from the grid when the slot is the cheapest source; the direct decision then charges the live surplus plus the planned grid share
 - only the missing energy is charged, never a blanket fill to the planning maximum
-- if the forecast would end below the target end state of charge, the cheapest holds or charges keep that reserve (`END_SOC_RESERVE`); this reserve is not price-checked because prices after the horizon are unknown
+- there is no end-of-horizon reserve (`END_SOC_RESERVE` is no longer produced): the horizon end only reflects when Tibber publishes prices, and the plan is recalculated as soon as they are known
+- missing prices up to 24 h ahead are estimated from a comparable day (`ComparableDayPriceEstimator`): Tuesday to Friday use the previous day, Saturday, Sunday and Monday the same weekday one week earlier; past prices come from the decision log, the current day from Tibber; negative estimated prices are set to 0
+- estimated slots (`IsPriceEstimated`) may hold energy and show shortages, but grid charging is only planned on published prices
 - if multiple sources have the same cost, holding is preferred over charging and earlier slots are preferred so the forecast remains deterministic
 - negative prices keep their own rules: the cheapest negative slots are planned for a full charge
 - there is no grid charging without an expected consumption shortage; energy that PV or the battery would provide anyway must not be bought
@@ -239,7 +241,7 @@ The current or forecasted battery state of charge must influence the price strat
 - a full battery cannot be charged
 - a negative Tibber price overrides normal state-of-charge restrictiveness, except when the battery is already full
 - the total usable battery capacity in kWh must come from persisted controller configuration
-- the configurable target end state of charge defines an explainable reserve for the end of the planning horizon
+- the configurable target end state of charge is no longer used by the planner; the planning minimum protects the battery
 - the optional planning minimum state of charge is a softer forecast boundary above the absolute battery protection limit
 - if no planning minimum state of charge is configured, the absolute minimum state of charge is used as fallback
 - the optional planning maximum state of charge preserves headroom for possible PV forecast errors during grid charging
@@ -253,8 +255,7 @@ The current or forecasted battery state of charge must influence the price strat
 - preserving headroom for future negative-price grid charging is allowed only when the negative-price value is higher than the configured feed-in compensation
 - before a future negative Tibber price window, the Battery Decision Engine may discharge energy above minimum state of charge to avoid normal or expensive grid import and create charging headroom
 - if a negative Tibber price slot is reached and the battery still has capacity, the Battery Decision Engine must charge from the grid unless a later negative slot is strictly cheaper
-- if configured target end reserve prevents further discharge, the Decision Engine must use an explicit reserve rule and reason
-- Golden Scenario audits must report final state of charge and verify it remains at or above target end state of charge
+- Golden Scenario audits must report final state of charge and verify it remains at or above the planning minimum state of charge
 - Golden Scenario audits should use a planning reserve above the hard minimum so the forecast does not optimize exactly to the hardware protection boundary
 - the state of charge influences grid charging only through the need-based plan: a full battery has no shortage to close, an almost empty battery reaches a shortage earlier
 - every state-of-charge override must be included in the structured reasons

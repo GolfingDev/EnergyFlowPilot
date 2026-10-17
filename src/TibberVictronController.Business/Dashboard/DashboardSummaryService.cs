@@ -64,7 +64,8 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
                 entry.StateOfChargeAfterPercent,
                 entry.ExpectedPvYieldKwh,
                 entry.ExpectedConsumptionKwh,
-                Categorize(entry.Decision.Instruction, entry.Reasons.FirstOrDefault()?.RuleName)))
+                Categorize(entry.Decision.Instruction, entry.Reasons.FirstOrDefault()?.RuleName),
+                entry.IsPriceEstimated))
             .ToArray();
         var segments = CreateSegments(planEntries);
         var checks = CreateChecks(new CheckInput(nowUtc, latestSample, current, segments, planError));

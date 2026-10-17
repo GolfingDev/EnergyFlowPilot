@@ -619,7 +619,8 @@ public sealed class BatteryForecastSimulator
             stateOfChargeBeforePercent,
             stateOfChargeAfterPercent,
             decision,
-            new[] { new BatteryDecisionReason(ruleId, reasonMessage) });
+            new[] { new BatteryDecisionReason(ruleId, reasonMessage) },
+            priceSlot.IsEstimated);
 
         return new SimulatedSlot(entry, boundedBatteryEnergyAfterKwh);
     }

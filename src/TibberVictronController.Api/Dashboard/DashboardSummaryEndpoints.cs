@@ -85,7 +85,8 @@ public static class DashboardSummaryDtoMapper
                 slot.StateOfChargeAfterPercent,
                 slot.ExpectedPvYieldKwh,
                 slot.ExpectedConsumptionKwh,
-                ToName(slot.Category))).ToArray(),
+                ToName(slot.Category),
+                slot.IsPriceEstimated)).ToArray(),
             summary.PlanSegments.Select(segment => new DashboardPlanSegmentDto(
                 segment.StartsAtUtc,
                 segment.EndsAtUtc,
@@ -166,7 +167,8 @@ public sealed record DashboardPlanSlotDto(
     decimal StateOfChargeAfterPercent,
     decimal ExpectedPvYieldKwh,
     decimal ExpectedConsumptionKwh,
-    string Category);
+    string Category,
+    bool IsPriceEstimated);
 
 public sealed record DashboardPlanSegmentDto(
     DateTimeOffset StartsAtUtc,

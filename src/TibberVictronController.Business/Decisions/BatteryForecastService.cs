@@ -16,6 +16,7 @@ public sealed class BatteryForecastService : IBatteryForecastService
     private readonly IBatteryConfigurationProvider batteryConfigurationProvider;
     private readonly IControllerSettingStore controllerSettingStore;
     private readonly BatteryForecastSimulator batteryForecastSimulator;
+    private readonly IDecisionLogRepository? decisionLogRepository;
 
     public BatteryForecastService(
         ITibberPriceForecastProvider tibberPriceForecastProvider,
@@ -23,7 +24,8 @@ public sealed class BatteryForecastService : IBatteryForecastService
         IHistoricalConsumptionProvider historicalConsumptionProvider,
         IBatteryStateProvider batteryStateProvider,
         IBatteryConfigurationProvider batteryConfigurationProvider,
-        IControllerSettingStore controllerSettingStore)
+        IControllerSettingStore controllerSettingStore,
+        IDecisionLogRepository? decisionLogRepository = null)
         : this(
             tibberPriceForecastProvider,
             weatherForecastProvider,
@@ -33,6 +35,7 @@ public sealed class BatteryForecastService : IBatteryForecastService
             controllerSettingStore,
             new BatteryForecastSimulator())
     {
+        this.decisionLogRepository = decisionLogRepository;
     }
 
     internal BatteryForecastService(
@@ -73,14 +76,23 @@ public sealed class BatteryForecastService : IBatteryForecastService
         var priceForecast = await tibberPriceForecastProvider.GetPriceForecastAsync(startsAtUtc, endsAtUtc, cancellationToken);
         var batteryState = await batteryStateProvider.GetCurrentBatteryStateAsync(cancellationToken);
         var batteryConfiguration = await batteryConfigurationProvider.GetBatteryConfigurationAsync(cancellationToken);
-        var relevantPriceForecast = priceForecast
+        IReadOnlyList<TibberPriceForecastSlot> relevantPriceForecast = priceForecast
             .Where(priceSlot =>
                 priceSlot.TimeSlot.StartsAtUtc >= startsAtUtc &&
                 priceSlot.TimeSlot.EndsAtUtc <= endsAtUtc)
             .OrderBy(priceSlot => priceSlot.TimeSlot.StartsAtUtc)
             .ToArray();
 
-        if (relevantPriceForecast.Length == 0)
+        if (decisionLogRepository is not null)
+        {
+            var estimator = new ComparableDayPriceEstimator(
+                tibberPriceForecastProvider,
+                decisionLogRepository,
+                await GetForecastTimeZoneAsync(cancellationToken));
+            relevantPriceForecast = await estimator.CompleteAsync(relevantPriceForecast, endsAtUtc, DateTimeOffset.UtcNow, cancellationToken);
+        }
+
+        if (relevantPriceForecast.Count == 0)
         {
             return new BatteryForecastResult(
                 batteryState,
@@ -101,6 +113,21 @@ public sealed class BatteryForecastService : IBatteryForecastService
             batteryState,
             batteryConfiguration,
             feedInCompensationPricePerKwh);
+    }
+
+    private async Task<TimeZoneInfo> GetForecastTimeZoneAsync(CancellationToken cancellationToken)
+    {
+        var setting = await controllerSettingStore.GetSettingAsync(ControllerSettingDefaults.ConsumptionForecastTimeZoneKey, cancellationToken);
+        var timeZoneId = string.IsNullOrWhiteSpace(setting?.Value) ? "Europe/Berlin" : setting.Value;
+
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        }
+        catch (TimeZoneNotFoundException) when (string.Equals(timeZoneId, "Europe/Berlin", StringComparison.OrdinalIgnoreCase))
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
+        }
     }
 
     private async Task<decimal> GetFeedInCompensationPricePerKwhAsync(CancellationToken cancellationToken)

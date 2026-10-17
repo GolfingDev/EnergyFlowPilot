@@ -71,7 +71,8 @@ public sealed record DashboardPlanSlot(
     decimal StateOfChargeAfterPercent,
     decimal ExpectedPvYieldKwh,
     decimal ExpectedConsumptionKwh,
-    DashboardActionCategory Category);
+    DashboardActionCategory Category,
+    bool IsPriceEstimated = false);
 
 /// <summary>
 /// Consecutive plan slots with the same action, summarised with the values needed to explain the step.
