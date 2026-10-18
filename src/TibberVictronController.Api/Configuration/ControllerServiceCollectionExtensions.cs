@@ -87,6 +87,8 @@ public static class ControllerServiceCollectionExtensions
         services.AddHttpClient<ITemperatureProvider, OpenMeteoTemperatureProvider>();
         services.AddSingleton<ConsumptionForecastModelCache>();
         services.AddScoped<IHistoricalConsumptionProvider, AverageDailyConsumptionForecastProvider>();
+        services.AddSingleton<PriceDriverCache>();
+        services.AddHttpClient<IPriceDriverProvider, PriceDriverProvider>();
         services.AddScoped<IBatteryForecastService, BatteryForecastService>();
         services.AddScoped(serviceProvider => new CurrentBatteryDecisionServiceDependencies
         {

@@ -72,6 +72,12 @@ Forecast charging decisions are cost-optimal over the whole horizon (`BatterySoc
 In External ESS mode the Multi controls its AC-in power to the published setpoint and supplies AC-out loads in addition, so the battery power equals the setpoint minus the AC-out load. On this site the whole house phase L1, including the wallbox share, is on AC-out. The setpoint is therefore the signed battery target plus the measured AC-out power per phase (`vebus/276/Ac/Out/L{n}/P`). The setpoint refresh rebuilds it every 5 seconds with the current AC-out load. Without this, an idle battery still covered L1, a discharge delivered its target plus the L1 load, and a planned grid charge could turn into a discharge while L1 drew more than the charge power.
 - there is no end-of-horizon reserve (`END_SOC_RESERVE` is no longer produced): the horizon end only reflects when Tibber publishes prices, and the plan is recalculated as soon as they are known
 - missing prices up to 24 h ahead are estimated from a comparable day (`ComparableDayPriceEstimator`): Tuesday to Friday use the previous day, Saturday, Sunday and Monday the same weekday one week earlier; past prices come from the decision log, the current day from Tibber; negative estimated prices are set to 0
+- the comparable-day estimate is then replaced by a weather-based estimate (`WeatherPriceEstimator`) where inputs are available:
+  - a linear model learns the German spot price from a wind index (turbine curve over five northern locations, Open-Meteo `wind_speed_100m`), the irradiance over five southern and central locations, 23 local hour dummies, and Saturday and Sunday
+  - training data: 42 days of hourly weather and Energy-Charts day-ahead prices (`PriceDriverProvider`, three requests per hour at most, cached including failures)
+  - the Tibber end price is calibrated as `intercept + slope x spot` on the published slots of the forecast
+  - on the held-out week 2026-10-11 to 10-18, the error was 43 EUR/MWh instead of 66 EUR/MWh for the comparable day, and 91 % of hour pairs more than 2 ct apart were in the right order
+  - without inputs, model (fewer than 168 training hours) or calibration (fewer than 16 published slots, no spread), the comparable-day estimate stays
 - estimated slots (`IsPriceEstimated`) may hold energy and show shortages, but grid charging is only planned on published prices
 - if multiple plans have the same cost, the default behaviour wins, so the forecast remains deterministic
 - negative prices keep their own rules: the cheapest negative slots are planned for a full charge

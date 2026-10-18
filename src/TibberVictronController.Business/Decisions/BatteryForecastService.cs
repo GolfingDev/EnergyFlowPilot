@@ -17,6 +17,7 @@ public sealed class BatteryForecastService : IBatteryForecastService
     private readonly IControllerSettingStore controllerSettingStore;
     private readonly BatteryForecastSimulator batteryForecastSimulator;
     private readonly IDecisionLogRepository? decisionLogRepository;
+    private readonly IPriceDriverProvider? priceDriverProvider;
 
     public BatteryForecastService(
         ITibberPriceForecastProvider tibberPriceForecastProvider,
@@ -25,7 +26,8 @@ public sealed class BatteryForecastService : IBatteryForecastService
         IBatteryStateProvider batteryStateProvider,
         IBatteryConfigurationProvider batteryConfigurationProvider,
         IControllerSettingStore controllerSettingStore,
-        IDecisionLogRepository? decisionLogRepository = null)
+        IDecisionLogRepository? decisionLogRepository = null,
+        IPriceDriverProvider? priceDriverProvider = null)
         : this(
             tibberPriceForecastProvider,
             weatherForecastProvider,
@@ -36,6 +38,7 @@ public sealed class BatteryForecastService : IBatteryForecastService
             new BatteryForecastSimulator())
     {
         this.decisionLogRepository = decisionLogRepository;
+        this.priceDriverProvider = priceDriverProvider;
     }
 
     internal BatteryForecastService(
@@ -94,11 +97,25 @@ public sealed class BatteryForecastService : IBatteryForecastService
 
         if (decisionLogRepository is not null)
         {
+            var timeZone = await GetForecastTimeZoneAsync(cancellationToken);
             var estimator = new ComparableDayPriceEstimator(
                 tibberPriceForecastProvider,
                 decisionLogRepository,
-                await GetForecastTimeZoneAsync(cancellationToken));
+                timeZone);
             relevantPriceForecast = await estimator.CompleteAsync(relevantPriceForecast, endsAtUtc, DateTimeOffset.UtcNow, cancellationToken);
+
+            if (priceDriverProvider is not null)
+            {
+                try
+                {
+                    relevantPriceForecast = await new WeatherPriceEstimator(priceDriverProvider, timeZone)
+                        .RefineAsync(relevantPriceForecast, cancellationToken);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    // The weather estimate only refines the comparable-day estimate; a failure must never break the plan.
+                }
+            }
         }
 
         if (relevantPriceForecast.Count == 0)
