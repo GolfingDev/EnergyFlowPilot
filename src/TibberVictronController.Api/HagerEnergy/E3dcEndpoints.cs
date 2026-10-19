@@ -13,6 +13,12 @@ public static class E3dcEndpoints
             .WithTags("E3dc");
 
         endpoints.MapGet(
+            "/api/e3dc/raw",
+            GetRawResponse)
+            .WithName("GetE3dcRawResponse")
+            .WithTags("E3dc");
+
+        endpoints.MapGet(
             "/api/e3dc/installations",
             GetInstallationsAsync)
             .WithName("GetE3dcInstallations")
@@ -37,6 +43,16 @@ public static class E3dcEndpoints
             snapshot.BatteryPowerWatts,
             snapshot.MeasuredAtUtc,
             snapshot.LastSuccessfulPollAtUtc));
+    }
+
+    /// <summary>
+    /// Returns the last measured-values response of the E3/DC API for diagnostics; it contains no credentials.
+    /// </summary>
+    private static IResult GetRawResponse(HagerEnergyTelemetrySnapshotStore snapshotStore)
+    {
+        return snapshotStore.LastRawJson is null
+            ? TypedResults.NotFound(new { message = "Es liegt noch keine E3/DC-Antwort vor." })
+            : TypedResults.Text(snapshotStore.LastRawJson, "application/json");
     }
 
     private static async Task<IResult> GetInstallationsAsync(

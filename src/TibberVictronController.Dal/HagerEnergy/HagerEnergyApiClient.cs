@@ -80,7 +80,10 @@ public sealed class HagerEnergyApiClient
                 Math.Max(0m, pvProductionWatts),
                 batterySocPercent,
                 batteryPowerWatts,
-                DateTimeOffset.UtcNow);
+                DateTimeOffset.UtcNow)
+            {
+                RawJson = responseBody
+            };
         }
         catch (JsonException exception)
         {

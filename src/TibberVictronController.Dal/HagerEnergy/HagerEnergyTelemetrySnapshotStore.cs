@@ -10,8 +10,14 @@ public sealed class HagerEnergyTelemetrySnapshotStore
 
     public HagerEnergyTelemetrySnapshot? Current => snapshot;
 
+    /// <summary>
+    /// Gets the last raw API response, used to find additional fields such as external PV inverters.
+    /// </summary>
+    public string? LastRawJson { get; private set; }
+
     public void Update(HagerEnergyCurrentValues values)
     {
+        LastRawJson = values.RawJson ?? LastRawJson;
         snapshot = new HagerEnergyTelemetrySnapshot(
             GridImportWatts: (int)Math.Round(values.GridImportWatts, MidpointRounding.AwayFromZero),
             PvProductionWatts: (int)Math.Round(values.PvProductionWatts, MidpointRounding.AwayFromZero),
