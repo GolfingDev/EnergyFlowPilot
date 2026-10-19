@@ -50,6 +50,8 @@
 46. Add multi-plane PV forecast configuration so one installation can contain multiple PV surfaces with separate azimuth, declination and kWp values.
 47. Add UI text translation storage for v2, including a persistence concept for database-backed multilingual labels and help texts.
 48. Rebuild the live energy view as an animated flow visualization with pictograms, directional power paths and clearly readable live values for PV, grid, battery and house.
+49. Scale the consumption profile per hour with the hourly outdoor temperature instead of one factor per day, because the heat pump runs most in cold nights and mornings.
+50. Revisit the consumption scale limit (0.5 to 2.0) once a winter of daily summaries exists; a frosty day after mild weeks can need more than twice the learned consumption.
 
 ## Rule
 

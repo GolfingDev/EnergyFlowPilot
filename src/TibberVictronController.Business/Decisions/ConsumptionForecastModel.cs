@@ -8,6 +8,11 @@ namespace TibberVictronController.Business.Decisions;
 public sealed record ConsumptionDaySlotAverage(DateOnly LocalDate, int SlotIndex, decimal AverageWatts);
 
 /// <summary>
+/// Measured energy and heating degrees of one complete local day; stored beyond the raw sample retention.
+/// </summary>
+public sealed record ConsumptionDailySummary(DateOnly LocalDate, decimal EnergyKwh, decimal HeatingDegrees, int SlotCount = ConsumptionForecastModel.SlotsPerDay);
+
+/// <summary>
 /// Learns a daily consumption shape and a temperature dependency from recent measured days.
 /// </summary>
 /// <remarks>
@@ -15,6 +20,8 @@ public sealed record ConsumptionDaySlotAverage(DateOnly LocalDate, int SlotIndex
 /// and a weekday profile only has two samples per slot within two weeks. Newer days weigh more (half-life of three days) so
 /// seasonal changes show up quickly. The daily energy is regressed against heating degrees (mean of max(0, 15 °C - T)), and
 /// each forecast day is scaled by its expected heating degrees relative to the days the shape was learned from.
+/// The raw samples are only kept for 14 days, in which the temperature hardly changes. Stored daily summaries extend the
+/// regression over all seasons, so the heat pump's demand at frost or the base load in summer is learned once and kept.
 /// </remarks>
 public sealed class ConsumptionForecastModel
 {
@@ -67,7 +74,8 @@ public sealed class ConsumptionForecastModel
     public static ConsumptionForecastModel Build(
         IReadOnlyList<ConsumptionDaySlotAverage> history,
         IReadOnlyDictionary<DateOnly, decimal> heatingDegreesByDate,
-        DateOnly today)
+        DateOnly today,
+        IReadOnlyList<ConsumptionDailySummary>? storedDays = null)
     {
         double Weight(DateOnly date) => Math.Pow(0.5, Math.Max(0, today.DayNumber - date.DayNumber) / RecencyHalfLifeDays);
 
@@ -83,16 +91,15 @@ public sealed class ConsumptionForecastModel
                         : (decimal)(group.Sum(average => (double)average.AverageWatts * Weight(average.LocalDate)) / weightSum);
                 });
 
-        var completeDays = history
-            .GroupBy(average => average.LocalDate)
-            .Where(group => group.Count() >= MinimumSlotsForCompleteDay && group.Key < today)
-            .Select(group => new
-            {
-                Date = group.Key,
-                EnergyKwh = group.Average(average => average.AverageWatts) * 24m / 1000m
-            })
-            .Where(day => heatingDegreesByDate.ContainsKey(day.Date))
-            .ToArray();
+        // Recent days come from the raw samples; stored days fill in everything older. Recent values win for the same date.
+        var regressionDays = (storedDays ?? Array.Empty<ConsumptionDailySummary>())
+            .ToDictionary(day => day.LocalDate);
+        foreach (var recentDay in SummarizeCompleteDays(history, heatingDegreesByDate, today))
+        {
+            regressionDays[recentDay.LocalDate] = recentDay;
+        }
+
+        var completeDays = regressionDays.Values.ToArray();
 
         var profileDates = history.Select(average => average.LocalDate).Distinct().Where(heatingDegreesByDate.ContainsKey).ToArray();
         var referenceWeightSum = profileDates.Sum(Weight);
@@ -105,10 +112,10 @@ public sealed class ConsumptionForecastModel
 
         if (completeDays.Length >= MinimumCompleteDaysForRegression)
         {
-            var meanX = completeDays.Average(day => heatingDegreesByDate[day.Date]);
+            var meanX = completeDays.Average(day => day.HeatingDegrees);
             var meanY = completeDays.Average(day => day.EnergyKwh);
-            var covariance = completeDays.Sum(day => (heatingDegreesByDate[day.Date] - meanX) * (day.EnergyKwh - meanY));
-            var variance = completeDays.Sum(day => (heatingDegreesByDate[day.Date] - meanX) * (heatingDegreesByDate[day.Date] - meanX));
+            var covariance = completeDays.Sum(day => (day.HeatingDegrees - meanX) * (day.EnergyKwh - meanY));
+            var variance = completeDays.Sum(day => (day.HeatingDegrees - meanX) * (day.HeatingDegrees - meanX));
             var energyVariance = completeDays.Sum(day => (day.EnergyKwh - meanY) * (day.EnergyKwh - meanY));
             var correlation = variance > 0m && energyVariance > 0m
                 ? (double)covariance / Math.Sqrt((double)variance * (double)energyVariance)
@@ -123,6 +130,26 @@ public sealed class ConsumptionForecastModel
         }
 
         return new ConsumptionForecastModel(profile, heatingDegreesByDate, referenceHeatingDegrees, intercept, slope, completeDays.Length);
+    }
+
+    /// <summary>
+    /// Returns energy and heating degrees of every complete past day in the slot history that has temperatures.
+    /// </summary>
+    public static IReadOnlyList<ConsumptionDailySummary> SummarizeCompleteDays(
+        IReadOnlyList<ConsumptionDaySlotAverage> history,
+        IReadOnlyDictionary<DateOnly, decimal> heatingDegreesByDate,
+        DateOnly today)
+    {
+        return history
+            .GroupBy(average => average.LocalDate)
+            .Where(group => group.Count() >= MinimumSlotsForCompleteDay && group.Key < today && heatingDegreesByDate.ContainsKey(group.Key))
+            .Select(group => new ConsumptionDailySummary(
+                group.Key,
+                group.Average(average => average.AverageWatts) * 24m / 1000m,
+                heatingDegreesByDate[group.Key],
+                group.Count()))
+            .OrderBy(day => day.LocalDate)
+            .ToArray();
     }
 
     /// <summary>

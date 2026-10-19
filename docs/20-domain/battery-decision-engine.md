@@ -296,6 +296,8 @@ The forecast shape (`ConsumptionForecastModel`) uses every day of the last 14 da
 
 The heat pump makes consumption depend on the outside temperature. Hourly temperatures for the PV site (latitude and longitude from the PV forecast settings) come from Open-Meteo: 16 past days and 4 forecast days, without an API key, cached for one hour. Per local day the model calculates heating degrees, the mean of `max(0, 15 °C - T)`. It then regresses the measured daily energy of complete days against them. The fit needs at least 5 complete days and a correlation of at least 0.3. If the fit succeeds, each forecast day is scaled by `(base + slope × heating degrees of the day) / (base + slope × weighted heating degrees of the learned days)`, limited to 0.5 to 2.0. Without temperatures or without a clear dependency, the scale stays 1. A failing temperature request never breaks the plan.
 
+Raw samples are kept for 14 days only, and two autumn weeks barely differ in temperature. Every complete day is therefore also stored as a daily summary (`ConsumptionDailySummaries`: local date, energy, heating degrees, slot count) and kept for two years. The regression uses all stored days plus the recent days, so after one heating season it knows the demand at frost as well as the summer base load. The daily shape still comes from the last 14 days. Days before 2026-10-20 are not stored, because until 2026-10-19 the external E3/DC PV inverter was missing and the learned consumption was too low by its yield.
+
 ## Interfaces
 
 The engine should depend on abstractions, for example:

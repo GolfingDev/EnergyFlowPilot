@@ -33,7 +33,7 @@ public sealed class ControllerDbInitializer
     {
         var databaseCreator = dbContext.GetService<IRelationalDatabaseCreator>();
 
-        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples" })
+        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "ConsumptionDailySummaries" })
         {
             if (await databaseCreator.HasTablesAsync(cancellationToken) &&
                 await TableExistsAsync(tableName, cancellationToken))
@@ -148,6 +148,19 @@ public sealed class ControllerDbInitializer
 
     private static string CreateTableScript(string tableName)
     {
+        if (string.Equals(tableName, "ConsumptionDailySummaries", StringComparison.OrdinalIgnoreCase))
+        {
+            return """
+CREATE TABLE IF NOT EXISTS "ConsumptionDailySummaries" (
+    "LocalDate" TEXT NOT NULL CONSTRAINT "PK_ConsumptionDailySummaries" PRIMARY KEY,
+    "EnergyKwh" REAL NOT NULL,
+    "SlotCount" INTEGER NOT NULL,
+    "HeatingDegrees" REAL NOT NULL,
+    "UpdatedAtUtc" INTEGER NOT NULL
+);
+""";
+        }
+
         if (string.Equals(tableName, "HomematicClimateSamples", StringComparison.OrdinalIgnoreCase))
         {
             return """

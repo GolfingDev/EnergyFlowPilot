@@ -35,6 +35,8 @@ public sealed class ControllerDbContext : DbContext
 
     public DbSet<HomematicClimateSampleEntity> HomematicClimateSamples => Set<HomematicClimateSampleEntity>();
 
+    public DbSet<ConsumptionDailySummaryEntity> ConsumptionDailySummaries => Set<ConsumptionDailySummaryEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureControllerSettings(modelBuilder);
@@ -44,6 +46,19 @@ public sealed class ControllerDbContext : DbContext
         ConfigureLiveConsumptionSamples(modelBuilder);
         ConfigureConsumptionDayProfiles(modelBuilder);
         ConfigureHomematicClimateSamples(modelBuilder);
+        ConfigureConsumptionDailySummaries(modelBuilder);
+    }
+
+    private static void ConfigureConsumptionDailySummaries(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ConsumptionDailySummaryEntity>(entity =>
+        {
+            entity.ToTable("ConsumptionDailySummaries");
+            entity.HasKey(summary => summary.LocalDate);
+            entity.Property(summary => summary.LocalDate).HasMaxLength(10);
+            entity.Property(summary => summary.UpdatedAtUtc)
+                .HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+        });
     }
 
     private static void ConfigureControllerSettings(ModelBuilder modelBuilder)

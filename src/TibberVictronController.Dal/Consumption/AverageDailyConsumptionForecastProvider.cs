@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Models;
+using TibberVictronController.Dal.Entities;
 using TibberVictronController.Dal.Persistence;
 
 namespace TibberVictronController.Dal.Consumption;
@@ -26,6 +27,11 @@ public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsump
     private static readonly TimeSpan SlotDuration = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan ProfileHistoryWindow = TimeSpan.FromDays(14);
     private static readonly TimeSpan TemperatureLookahead = TimeSpan.FromDays(4);
+
+    // Until 2026-10-19 10:42 the external E3/DC PV inverter was missing in the samples, so the learned consumption of earlier
+    // days is too low by its yield. Only days from the first complete day after the fix are stored for the long-term model.
+    private static readonly DateOnly FirstStoredDay = new(2026, 10, 20);
+    private static readonly TimeSpan StoredDaysWindow = TimeSpan.FromDays(730);
 
     private readonly IControllerSettingStore controllerSettingStore;
     private readonly ControllerDbContext dbContext;
@@ -138,7 +144,12 @@ public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsump
             cancellationToken);
         var heatingDegrees = ConsumptionForecastModel.CalculateHeatingDegrees(temperatures, timeZone);
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(latestSampleUtc, timeZone).DateTime);
-        var model = ConsumptionForecastModel.Build(history, heatingDegrees, today);
+        var storedDays = await StoreAndLoadDailySummariesAsync(
+            ConsumptionForecastModel.SummarizeCompleteDays(history, heatingDegrees, today),
+            today,
+            latestSampleUtc,
+            cancellationToken);
+        var model = ConsumptionForecastModel.Build(history, heatingDegrees, today, storedDays);
 
         logger.LogInformation(
             "Verbrauchsprofil neu berechnet: {Days} vollstaendige Tage, {TemperatureDays} Tage mit Temperatur, Grundlast {BaseDailyKwh} kWh/Tag, Heizanteil {SlopeKwh} kWh je Heizgrad.",
@@ -186,6 +197,57 @@ public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsump
         }
 
         return ResolveTimeZone(setting.Value!);
+    }
+
+    /// <summary>
+    /// Persists the complete days of the sample window and returns all stored days for the temperature regression.
+    /// </summary>
+    private async Task<IReadOnlyList<ConsumptionDailySummary>> StoreAndLoadDailySummariesAsync(
+        IReadOnlyList<ConsumptionDailySummary> completeDays,
+        DateOnly today,
+        DateTimeOffset updatedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var daysToStore = completeDays.Where(day => day.LocalDate >= FirstStoredDay).ToArray();
+        var keys = daysToStore.Select(day => FormatDate(day.LocalDate)).ToArray();
+        var existing = await dbContext.ConsumptionDailySummaries
+            .Where(summary => keys.Contains(summary.LocalDate))
+            .ToDictionaryAsync(summary => summary.LocalDate, cancellationToken);
+
+        foreach (var day in daysToStore)
+        {
+            var key = FormatDate(day.LocalDate);
+            if (!existing.TryGetValue(key, out var entity))
+            {
+                entity = new ConsumptionDailySummaryEntity { LocalDate = key };
+                dbContext.ConsumptionDailySummaries.Add(entity);
+            }
+
+            entity.EnergyKwh = Math.Round(day.EnergyKwh, 3);
+            entity.HeatingDegrees = Math.Round(day.HeatingDegrees, 3);
+            entity.SlotCount = day.SlotCount;
+            entity.UpdatedAtUtc = updatedAtUtc;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var oldestKey = FormatDate(today.AddDays(-(int)StoredDaysWindow.TotalDays));
+        var stored = await dbContext.ConsumptionDailySummaries
+            .Where(summary => string.Compare(summary.LocalDate, oldestKey) >= 0)
+            .ToArrayAsync(cancellationToken);
+
+        return stored
+            .Select(summary => new ConsumptionDailySummary(
+                DateOnly.ParseExact(summary.LocalDate, "yyyy-MM-dd", CultureInfo.InvariantCulture),
+                summary.EnergyKwh,
+                summary.HeatingDegrees,
+                summary.SlotCount))
+            .ToArray();
+    }
+
+    private static string FormatDate(DateOnly date)
+    {
+        return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     }
 
     private static decimal GetFallbackSlotConsumptionKwh(DateTimeOffset localSlotStart, decimal scaleFactor)

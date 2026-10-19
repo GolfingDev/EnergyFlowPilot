@@ -73,6 +73,60 @@ public sealed class ConsumptionForecastModelTests
     }
 
     [Fact]
+    public void StoredDaysTeachTemperatureDependencyWhenRecentWeeksAreEquallyMild()
+    {
+        // The last week was uniformly mild (5 heating degrees, 30 kWh). Stored winter and summer days from earlier in the
+        // year carry the dependency: 10 kWh base load plus 4 kWh per heating degree.
+        var heatingDegrees = new Dictionary<DateOnly, decimal>();
+        var history = new List<ConsumptionDaySlotAverage>();
+        for (var dayOffset = 7; dayOffset >= 1; dayOffset--)
+        {
+            var date = Today.AddDays(-dayOffset);
+            heatingDegrees[date] = 5m;
+            history.AddRange(CreateFlatDay(date, 30m * 1000m / 24m));
+        }
+
+        var storedDays = new[]
+        {
+            new ConsumptionDailySummary(new DateOnly(2026, 1, 15), 70m, 15m),
+            new ConsumptionDailySummary(new DateOnly(2026, 2, 10), 58m, 12m),
+            new ConsumptionDailySummary(new DateOnly(2026, 4, 20), 26m, 4m),
+            new ConsumptionDailySummary(new DateOnly(2026, 7, 1), 10m, 0m),
+            new ConsumptionDailySummary(new DateOnly(2026, 8, 5), 10m, 0m)
+        };
+        heatingDegrees[Today.AddDays(1)] = 15m;
+
+        var withoutStoredDays = ConsumptionForecastModel.Build(history, heatingDegrees, Today);
+        var withStoredDays = ConsumptionForecastModel.Build(history, heatingDegrees, Today, storedDays);
+
+        Assert.Null(withoutStoredDays.HeatingSlopeKwhPerDegree);
+        Assert.InRange(withStoredDays.HeatingSlopeKwhPerDegree!.Value, 3.8m, 4.2m);
+
+        // A frosty day needs 70 kWh instead of the learned 30 kWh; the scale is capped at 2.0.
+        Assert.Equal(2.0m, withStoredDays.GetTemperatureScale(Today.AddDays(1)));
+    }
+
+    [Fact]
+    public void SummarizeCompleteDaysSkipsTodayAndIncompleteDays()
+    {
+        var heatingDegrees = new Dictionary<DateOnly, decimal>
+        {
+            [Today.AddDays(-2)] = 3m,
+            [Today.AddDays(-1)] = 4m,
+            [Today] = 5m
+        };
+        var history = CreateFlatDay(Today.AddDays(-2), 1000m)
+            .Concat(CreateFlatDay(Today.AddDays(-1), 500m).Take(40))
+            .Concat(CreateFlatDay(Today, 800m))
+            .ToArray();
+
+        var summaries = ConsumptionForecastModel.SummarizeCompleteDays(history, heatingDegrees, Today);
+
+        var day = Assert.Single(summaries);
+        Assert.Equal(new ConsumptionDailySummary(Today.AddDays(-2), 24m, 3m, 96), day);
+    }
+
+    [Fact]
     public void HeatingDegreesUseLocalDaysAndIgnoreWarmHours()
     {
         var berlin = ResolveBerlin();
