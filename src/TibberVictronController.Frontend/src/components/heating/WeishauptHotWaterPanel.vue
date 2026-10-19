@@ -3,41 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import HeatingLineChart from './HeatingLineChart.vue';
 import { formatHeatingDateTime, formatHeatingValue } from './heatingFormatters';
 import type { HeatingChartSeries } from './heatingTypes';
+import type { HotWaterReportDto } from './hotWaterTypes';
 
-interface Plan {
-  needByUtc: string;
-  startsAtUtc: string | null;
-  endsAtUtc: string | null;
-  windowPricePerKwh: number | null;
-  referencePricePerKwh: number | null;
-  estimatedAdvantagePerKwh: number | null;
-  holdHours: number;
-  chargeMinutes: number;
-  reason: string;
-}
-interface Episode {
-  id: string;
-  startedAtUtc: string;
-  endedAtUtc: string | null;
-  trigger: string;
-  originalCelsius: number;
-  raisedCelsius: number;
-  plan: Plan;
-  targetReachedAtUtc: string | null;
-  nextHeatingAtUtc: string | null;
-  temperatureAtNeedCelsius: number | null;
-  assessment: string;
-}
-interface Report {
-  generatedAtUtc: string;
-  isRaised: boolean;
-  isSuspended: boolean;
-  costAssessment: string;
-  plan: Plan | null;
-  episodes: Episode[];
-  samples: Array<{ measuredAtUtc: string; temperatureCelsius: number; operatingStatusCode: number }>;
-}
-const report = ref<Report | null>(null);
+const report = ref<HotWaterReportDto | null>(null);
 const error = ref<string | null>(null);
 let timer: number | undefined;
 const chartSeries = computed<HeatingChartSeries[]>(() => report.value?.samples.length ? [{
@@ -52,7 +20,7 @@ async function load(): Promise<void> {
   try {
     const response = await fetch('/api/weishaupt/hot-water');
     if (!response.ok) throw new Error(`Warmwasserauswertung konnte nicht geladen werden (HTTP ${response.status}).`);
-    report.value = await response.json() as Report;
+    report.value = await response.json() as HotWaterReportDto;
     error.value = null;
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : 'Warmwasserauswertung konnte nicht geladen werden.';

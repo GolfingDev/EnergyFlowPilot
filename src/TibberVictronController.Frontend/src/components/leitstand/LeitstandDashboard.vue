@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { BatterySavingsResponseDto, ControllerStatusResponseDto, DecisionLogEntryResponseDto, ManualChargeStatusResponseDto } from '../dashboard/dashboardTypes';
 import { getDecisionLabel } from '../dashboard/dashboardFormatters';
+import LeitstandHotWaterPanel from './LeitstandHotWaterPanel.vue';
 import {
   leitstandCategoryLabels,
   type DashboardPlanSlotDto,
@@ -509,6 +510,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </section>
+
+    <LeitstandHotWaterPanel />
 
     <!-- Plan -->
     <section class="ls-zone" aria-labelledby="ls-plan">
