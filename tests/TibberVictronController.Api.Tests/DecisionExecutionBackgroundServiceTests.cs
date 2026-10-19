@@ -248,7 +248,7 @@ public sealed class DecisionExecutionBackgroundServiceTests
             maxChargeCurrentAmps: 50m,
             batteryVoltageVolts: 49.92m);
 
-        Assert.Equal(2246, limitWatts);
+        Assert.Equal(2421, limitWatts);
     }
 
     [Fact]

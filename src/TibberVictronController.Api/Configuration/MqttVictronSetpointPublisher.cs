@@ -8,7 +8,9 @@ namespace TibberVictronController.Api.Configuration;
 /// </summary>
 public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
 {
-    private const decimal ChargeCurrentLimitSafetyFactor = 0.90m;
+    // The Multi limits its charge current itself; the small margin only covers voltage changes between two readings.
+    // With 10 % the 70 A charger of this site was capped at 3.15 kW while 5 kW PV surplus went to the grid (2026-10-19).
+    private const decimal ChargeCurrentLimitSafetyFactor = 0.97m;
     public const int SetpointRampStepWatts = 250;
 
     private readonly DatabaseVictronMqttSettingsProvider settingsProvider;
