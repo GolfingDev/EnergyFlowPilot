@@ -9,7 +9,8 @@ namespace TibberVictronController.Dal.Weishaupt;
 public sealed class WeishauptHotWaterModbusControl(DatabaseWeishauptBiblockModbusSettingsProvider settingsProvider)
     : IWeishauptHotWaterControl
 {
-    private const ushort NormalSetPointAddress = 2102;
+    // Verified by FC03 on the installed WBB: the complete register number is the PDU address.
+    private const ushort NormalSetPointAddress = 42103;
 
     public async Task<WeishauptHotWaterReading> ReadAsync(CancellationToken cancellationToken)
     {

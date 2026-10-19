@@ -10,9 +10,10 @@ namespace TibberVictronController.Dal.Weishaupt;
 /// </summary>
 public sealed class WeishauptBiblockModbusClient : IWeishauptBiblockTelemetrySource
 {
-    private const ushort OutdoorTemperatureAddress = 0; // Documentation register 30001
-    private const ushort OperatingStatusAddress = 3100; // Documentation register 33101
-    private const ushort HotWaterTemperatureAddress = 2101; // Documentation register 32102
+    // This WBB expects the full documented numbers on the wire, not offsets from 30001.
+    private const ushort OutdoorTemperatureAddress = 30001;
+    private const ushort OperatingStatusAddress = 33101;
+    private const ushort HotWaterTemperatureAddress = 32102;
 
     private readonly DatabaseWeishauptBiblockModbusSettingsProvider settingsProvider;
 

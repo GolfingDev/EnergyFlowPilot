@@ -125,7 +125,7 @@ public sealed class WeishauptHotWaterControlTests
             await control.SetNormalTemperatureAsync(expected, 50m, timeout.Token);
         await server;
         Assert.Equal(badEcho ? new byte[] { 3, 6 } : new byte[] { 3, 6, 3 }, frames.Select(f => f[7]));
-        Assert.All(frames, frame => Assert.Equal((ushort)2102, BinaryPrimitives.ReadUInt16BigEndian(frame.AsSpan(8))));
+        Assert.All(frames, frame => Assert.Equal((ushort)42103, BinaryPrimitives.ReadUInt16BigEndian(frame.AsSpan(8))));
         Assert.Equal((ushort)500, BinaryPrimitives.ReadUInt16BigEndian(frames[1].AsSpan(10)));
     }
 }

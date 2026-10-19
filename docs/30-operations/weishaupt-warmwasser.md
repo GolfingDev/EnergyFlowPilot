@@ -6,7 +6,10 @@ Der bestehende FC04-Collector bleibt unabhängig und rein lesend.
 Quelle: https://www.weishaupt.si/uploads/tx_weishaupt_documents/documents/83807301.pdf
 (83807301, 1/2025-11, Seiten 3 und 10). Register 42103 ist „Warmwasser Normal“,
 Einheit 0,1 °C; Lesen per FC03, Schreiben eines einzelnen Registers per FC06.
-Die Protokolladresse ist 2102 (42103 minus 40001).
+Die Protokolladresse ist 42103. Beim installierten WBB wurden am 19.10.2026
+die vollstaendigen Adressen 30001, 33101, 32102 (FC04) und 42103 (FC03)
+vom Controller-Host aus rein lesend bestaetigt. Offsets von 30001 bzw. 40001
+werden mit Modbus-Ausnahme 02 abgewiesen und duerfen nicht verwendet werden.
 
 ## Verhalten
 
