@@ -66,6 +66,69 @@ internal static class HagerEnergyJsonValueReader
         throw new HagerEnergyApiException($"Die Hager-Energy-Antwort enthaelt keinen verwendbaren Wert fuer {displayName}. Bitte JSON-Pfad in den Einstellungen anpassen.");
     }
 
+    /// <summary>
+    /// Returns the production of PV inverters connected to the E3/DC through an additional meter ("Ext. PV" in the app).
+    /// </summary>
+    /// <remarks>
+    /// On this site the field <c>externalProduction</c> stays 0 while the external inverter reports through
+    /// <c>meters[]</c> with <c>meterType = production</c> and a negative power (2026-10-19: pvProduction 664 W, production
+    /// meter -3536 W, consumption 1122 W = 664 + 3536 - 2916 battery charge - 162 export). The larger of both sources is
+    /// used, so the value is not counted twice should the API fill the field one day.
+    /// </remarks>
+    public static decimal GetExternalProductionWatts(JsonElement root)
+    {
+        var externalField = TryFindDecimalByPropertyName(root, ExternalProductionAliases, out var fieldValue)
+            ? Math.Abs(fieldValue)
+            : 0m;
+        var productionMeters = 0m;
+
+        if (TryFindProperty(root, "meters", out var meters) && meters.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var meter in meters.EnumerateArray())
+            {
+                if (meter.ValueKind == JsonValueKind.Object &&
+                    meter.TryGetProperty("meterType", out var meterType) &&
+                    string.Equals(meterType.GetString(), "production", StringComparison.OrdinalIgnoreCase) &&
+                    meter.TryGetProperty("power", out var power) &&
+                    TryReadDecimal(power, out var powerWatts))
+                {
+                    productionMeters += Math.Abs(powerWatts);
+                }
+            }
+        }
+
+        return Math.Max(externalField, productionMeters);
+    }
+
+    private static readonly IReadOnlySet<string> ExternalProductionAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "externalProduction"
+    };
+
+    private static bool TryFindProperty(JsonElement element, string name, out JsonElement value)
+    {
+        value = default;
+
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+
+                if (TryFindProperty(property.Value, name, out value))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     public static decimal? TryGetDecimal(JsonElement root, IReadOnlySet<string> aliases)
     {
         return TryFindDecimalByPropertyName(root, aliases, out var value) ? value : null;

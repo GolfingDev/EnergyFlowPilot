@@ -75,9 +75,12 @@ public sealed class HagerEnergyApiClient
                 document.RootElement,
                 HagerEnergyJsonValueReader.BatteryPowerAliases);
 
+            // The E3/DC PV is the internal PV plus the external inverter; the PV forecast covers both (2 x 8 kWp).
+            var externalProductionWatts = HagerEnergyJsonValueReader.GetExternalProductionWatts(document.RootElement);
+
             return new HagerEnergyCurrentValues(
                 gridImportWatts,
-                Math.Max(0m, pvProductionWatts),
+                Math.Max(0m, pvProductionWatts) + externalProductionWatts,
                 batterySocPercent,
                 batteryPowerWatts,
                 DateTimeOffset.UtcNow)
@@ -89,6 +92,17 @@ public sealed class HagerEnergyApiClient
         {
             throw new HagerEnergyApiException("Die E3/DC-Antwort konnte nicht als JSON verarbeitet werden.", exception);
         }
+    }
+
+    /// <summary>
+    /// Returns the total E3/DC PV production (internal PV plus external inverters) of a measured-values response.
+    /// </summary>
+    public static decimal CalculateTotalPvProductionWatts(string responseBody)
+    {
+        using var document = JsonDocument.Parse(responseBody);
+        var internalWatts = HagerEnergyJsonValueReader.TryGetDecimal(document.RootElement, HagerEnergyJsonValueReader.PvProductionAliases) ?? 0m;
+
+        return Math.Max(0m, internalWatts) + HagerEnergyJsonValueReader.GetExternalProductionWatts(document.RootElement);
     }
 
     public async Task<string[]> GetInstallationIdsAsync(CancellationToken cancellationToken = default)
