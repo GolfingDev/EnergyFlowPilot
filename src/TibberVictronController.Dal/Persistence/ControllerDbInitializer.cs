@@ -33,7 +33,7 @@ public sealed class ControllerDbInitializer
     {
         var databaseCreator = dbContext.GetService<IRelationalDatabaseCreator>();
 
-        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "ConsumptionDailySummaries" })
+        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries" })
         {
             if (await databaseCreator.HasTablesAsync(cancellationToken) &&
                 await TableExistsAsync(tableName, cancellationToken))
@@ -148,6 +148,15 @@ public sealed class ControllerDbInitializer
 
     private static string CreateTableScript(string tableName)
     {
+        if (tableName == "WeishauptHotWaterControlStates")
+        {
+            return """
+CREATE TABLE IF NOT EXISTS "WeishauptHotWaterControlStates" (
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_WeishauptHotWaterControlStates" PRIMARY KEY,
+    "StateJson" TEXT NOT NULL
+);
+""";
+        }
         if (string.Equals(tableName, "ConsumptionDailySummaries", StringComparison.OrdinalIgnoreCase))
         {
             return """
@@ -183,6 +192,20 @@ CREATE TABLE IF NOT EXISTS "HomematicClimateSamples" (
 );
 CREATE INDEX IF NOT EXISTS "IX_HomematicClimateSamples_PolledAtUtc" ON "HomematicClimateSamples" ("PolledAtUtc");
 CREATE INDEX IF NOT EXISTS "IX_HomematicClimateSamples_ChannelAddress_PolledAtUtc" ON "HomematicClimateSamples" ("ChannelAddress", "PolledAtUtc");
+""";
+        }
+
+        if (string.Equals(tableName, "WeishauptBiblockTelemetrySamples", StringComparison.OrdinalIgnoreCase))
+        {
+            return """
+CREATE TABLE IF NOT EXISTS "WeishauptBiblockTelemetrySamples" (
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_WeishauptBiblockTelemetrySamples" PRIMARY KEY AUTOINCREMENT,
+    "MeasuredAtUtc" INTEGER NOT NULL,
+    "OutdoorTemperatureCelsius" REAL NOT NULL,
+    "OperatingStatusCode" INTEGER NOT NULL,
+    "HotWaterTemperatureCelsius" REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "IX_WeishauptBiblockTelemetrySamples_MeasuredAtUtc" ON "WeishauptBiblockTelemetrySamples" ("MeasuredAtUtc");
 """;
         }
 

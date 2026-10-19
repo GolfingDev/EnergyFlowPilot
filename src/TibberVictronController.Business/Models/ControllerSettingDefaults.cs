@@ -5,6 +5,14 @@ namespace TibberVictronController.Business.Models;
 /// </summary>
 public static class ControllerSettingDefaults
 {
+    public const string WeishauptHotWaterEnabledKey = "weishauptHotWater.enabled";
+    public const string WeishauptHotWaterCheapPriceKey = "weishauptHotWater.cheapPricePerKwh";
+    public const string WeishauptHotWaterPvSurplusKey = "weishauptHotWater.pvSurplusWatts";
+    public const string WeishauptHotWaterMinimumAdvantageKey = "weishauptHotWater.minimumPriceAdvantagePerKwh";
+    public const string WeishauptHotWaterExtraEnergyKey = "weishauptHotWater.extraEnergyPercent";
+    public const string WeishauptHotWaterDemandHourKey = "weishauptHotWater.demandHourLocal";
+    public const string WeishauptHotWaterInitialHoldHoursKey = "weishauptHotWater.initialHoldHours";
+    public const string WeishauptHotWaterInitialChargeMinutesKey = "weishauptHotWater.initialChargeMinutes";
     public const string BatteryTotalCapacityKwhKey = "battery.totalCapacityKwh";
     public const string BatteryMinimumStateOfChargePercentKey = "battery.minimumStateOfChargePercent";
     public const string BatteryMaximumChargePowerWattsKey = "battery.maximumChargePowerWatts";
@@ -103,9 +111,23 @@ public static class ControllerSettingDefaults
     public const string HomematicApiTokenKey = "homematic.apiToken";
     public const string HomematicPollingIntervalSecondsKey = "homematic.pollingIntervalSeconds";
     public const string HomematicSampleRetentionDaysKey = "homematic.sampleRetentionDays";
+    public const string WeishauptBiblockModbusEnabledKey = "weishauptBiblockModbus.enabled";
+    public const string WeishauptBiblockModbusHostKey = "weishauptBiblockModbus.host";
+    public const string WeishauptBiblockModbusPortKey = "weishauptBiblockModbus.port";
+    public const string WeishauptBiblockModbusSlaveIdKey = "weishauptBiblockModbus.slaveId";
+    public const string WeishauptBiblockModbusPollingIntervalSecondsKey = "weishauptBiblockModbus.pollingIntervalSeconds";
+    public const string WeishauptBiblockModbusSampleRetentionDaysKey = "weishauptBiblockModbus.sampleRetentionDays";
 
     private static readonly ControllerSettingDefinition[] Definitions =
     {
+        new(WeishauptHotWaterEnabledKey, "false", ControllerSettingSensitivity.Normal),
+        new(WeishauptHotWaterCheapPriceKey, "0.20", ControllerSettingSensitivity.Normal),
+        new(WeishauptHotWaterPvSurplusKey, "2000", ControllerSettingSensitivity.Normal),
+        new(WeishauptHotWaterMinimumAdvantageKey, "0.03", ControllerSettingSensitivity.Normal),
+        new(WeishauptHotWaterExtraEnergyKey, "15", ControllerSettingSensitivity.Normal),
+        new(WeishauptHotWaterDemandHourKey, "18", ControllerSettingSensitivity.Normal),
+        new(WeishauptHotWaterInitialHoldHoursKey, "6", ControllerSettingSensitivity.Normal),
+        new(WeishauptHotWaterInitialChargeMinutesKey, "60", ControllerSettingSensitivity.Normal),
         new(BatteryTotalCapacityKwhKey, "10", ControllerSettingSensitivity.Normal),
         new(BatteryMinimumStateOfChargePercentKey, "10", ControllerSettingSensitivity.Normal),
         new(BatteryMaximumChargePowerWattsKey, "3000", ControllerSettingSensitivity.Normal),
@@ -195,7 +217,13 @@ public static class ControllerSettingDefaults
         new(HomematicBaseUrlKey, "http://homematic-raspi", ControllerSettingSensitivity.Normal),
         new(HomematicApiTokenKey, null, ControllerSettingSensitivity.Sensitive),
         new(HomematicPollingIntervalSecondsKey, "300", ControllerSettingSensitivity.Normal),
-        new(HomematicSampleRetentionDaysKey, "400", ControllerSettingSensitivity.Normal)
+        new(HomematicSampleRetentionDaysKey, "400", ControllerSettingSensitivity.Normal),
+        new(WeishauptBiblockModbusEnabledKey, "false", ControllerSettingSensitivity.Normal),
+        new(WeishauptBiblockModbusHostKey, "192.168.69.39", ControllerSettingSensitivity.Normal),
+        new(WeishauptBiblockModbusPortKey, "502", ControllerSettingSensitivity.Normal),
+        new(WeishauptBiblockModbusSlaveIdKey, "1", ControllerSettingSensitivity.Normal),
+        new(WeishauptBiblockModbusPollingIntervalSecondsKey, "300", ControllerSettingSensitivity.Normal),
+        new(WeishauptBiblockModbusSampleRetentionDaysKey, "400", ControllerSettingSensitivity.Normal)
     };
 
     /// <summary>

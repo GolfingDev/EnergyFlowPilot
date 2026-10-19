@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import HeatingLineChart from '../components/heating/HeatingLineChart.vue';
 import HeatingScatterChart from '../components/heating/HeatingScatterChart.vue';
+import WeishauptHotWaterPanel from '../components/heating/WeishauptHotWaterPanel.vue';
 import { formatHeatingDateTime, formatHeatingValue, heatingSeriesPalette } from '../components/heating/heatingFormatters';
 import type {
   HeatingChartSeries,
@@ -199,6 +200,8 @@ onBeforeUnmount(() => {
         </v-chip>
       </div>
     </header>
+
+    <WeishauptHotWaterPanel />
 
     <v-alert v-if="loadError" class="mb-4" type="error" variant="tonal">{{ loadError }}</v-alert>
 

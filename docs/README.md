@@ -18,6 +18,7 @@ When a requirement in this folder changes, future code changes must follow the u
 10. `30-operations/tibber-api.md`
 11. `40-delivery/testing-strategy.md`
 12. `40-delivery/backlog.md`
+13. `30-operations/weishaupt-warmwasser.md`
 
 ## Rule
 

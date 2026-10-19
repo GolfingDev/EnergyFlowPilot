@@ -15,6 +15,7 @@ using TibberVictronController.Dal.Repositories;
 using TibberVictronController.Dal.Tibber;
 using TibberVictronController.Dal.Victron;
 using TibberVictronController.Dal.Weather;
+using TibberVictronController.Dal.Weishaupt;
 
 namespace TibberVictronController.Api.Configuration;
 
@@ -48,6 +49,12 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<DatabaseVictronMqttSettingsProvider>();
         services.AddScoped<DatabaseHagerEnergySettingsProvider>();
         services.AddScoped<DatabaseHomematicSettingsProvider>();
+        services.AddScoped<DatabaseWeishauptBiblockModbusSettingsProvider>();
+        services.AddScoped<DatabaseWeishauptHotWaterSettingsProvider>();
+        services.AddScoped<IWeishauptHotWaterControl, WeishauptHotWaterModbusControl>();
+        services.AddScoped<IWeishauptHotWaterStateStore, EfWeishauptHotWaterStateStore>();
+        services.AddScoped<WeishauptHotWaterControlService>();
+        services.AddScoped<WeishauptHotWaterReportService>();
         services.AddScoped<TelemetrySourceSelector>();
         services.AddSingleton<VictronMqttRuntimeStatus>();
         services.AddSingleton<DecisionWorkerRuntimeStatus>();
@@ -60,6 +67,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IOperationalEventRepository, EfOperationalEventRepository>();
         services.AddScoped<ILiveConsumptionRepository, EfLiveConsumptionRepository>();
         services.AddScoped<IHomematicClimateRepository, EfHomematicClimateRepository>();
+        services.AddScoped<IWeishauptBiblockTelemetryRepository, EfWeishauptBiblockTelemetryRepository>();
         services.AddScoped<IHomematicClimateHistoryService, HomematicClimateHistoryService>();
         services.AddScoped<IWorkerFailureNotifier, WorkerFailureEmailNotifier>();
         services.AddSingleton<IDashboardLiveUpdatePublisher, SignalRDashboardLiveUpdatePublisher>();
@@ -79,6 +87,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddSingleton<HagerEnergyTelemetrySnapshotStore>();
         services.AddHttpClient<HagerEnergyApiClient>();
         services.AddHttpClient<IHomematicClimateSource, HomematicXmlApiClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
+        services.AddScoped<IWeishauptBiblockTelemetrySource, WeishauptBiblockModbusClient>();
         services.AddScoped<HagerEnergyBatteryStateProvider>();
         services.AddScoped<HagerEnergyCurrentSiteTelemetryProvider>();
         services.AddScoped<IBatteryStateProvider, SelectedBatteryStateProvider>();
@@ -131,6 +140,8 @@ public static class ControllerServiceCollectionExtensions
         services.AddHostedService<BatterySavingsAccountingBackgroundService>();
         services.AddHostedService<HagerEnergyPollingBackgroundService>();
         services.AddHostedService<HomematicPollingBackgroundService>();
+        services.AddHostedService<WeishauptBiblockModbusPollingBackgroundService>();
+        services.AddHostedService<WeishauptHotWaterBackgroundService>();
         services.AddHostedService<VictronSetpointRefreshBackgroundService>();
         services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<VictronMqttClientService>());
 

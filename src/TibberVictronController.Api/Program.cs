@@ -10,6 +10,7 @@ using TibberVictronController.Api.ManualCharge;
 using TibberVictronController.Api.Metadata;
 using TibberVictronController.Api.Savings;
 using TibberVictronController.Api.Settings;
+using TibberVictronController.Api.Weishaupt;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Dal.Persistence;
 
@@ -31,6 +32,7 @@ app.MapSavingsEndpoints();
 app.MapGuiMetadataEndpoints();
 app.MapE3dcEndpoints();
 app.MapHomematicEndpoints();
+app.MapWeishauptHotWaterEndpoints();
 app.MapDashboardTelemetryEndpoints();
 app.MapDashboardSummaryEndpoints();
 app.MapDashboardHub();

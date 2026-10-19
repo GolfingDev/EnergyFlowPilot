@@ -35,6 +35,9 @@ public sealed class ControllerDbContext : DbContext
 
     public DbSet<HomematicClimateSampleEntity> HomematicClimateSamples => Set<HomematicClimateSampleEntity>();
 
+    public DbSet<WeishauptBiblockTelemetrySampleEntity> WeishauptBiblockTelemetrySamples => Set<WeishauptBiblockTelemetrySampleEntity>();
+    public DbSet<WeishauptHotWaterControlStateEntity> WeishauptHotWaterControlStates => Set<WeishauptHotWaterControlStateEntity>();
+
     public DbSet<ConsumptionDailySummaryEntity> ConsumptionDailySummaries => Set<ConsumptionDailySummaryEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -46,6 +49,8 @@ public sealed class ControllerDbContext : DbContext
         ConfigureLiveConsumptionSamples(modelBuilder);
         ConfigureConsumptionDayProfiles(modelBuilder);
         ConfigureHomematicClimateSamples(modelBuilder);
+        ConfigureWeishauptBiblockTelemetrySamples(modelBuilder);
+        modelBuilder.Entity<WeishauptHotWaterControlStateEntity>().ToTable("WeishauptHotWaterControlStates");
         ConfigureConsumptionDailySummaries(modelBuilder);
     }
 
@@ -196,6 +201,19 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(sample => sample.RelativeHumidityPercent).HasConversion<double?>();
             entity.HasIndex(sample => sample.PolledAtUtc);
             entity.HasIndex(sample => new { sample.ChannelAddress, sample.PolledAtUtc });
+        });
+    }
+
+    private static void ConfigureWeishauptBiblockTelemetrySamples(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<WeishauptBiblockTelemetrySampleEntity>(entity =>
+        {
+            entity.ToTable("WeishauptBiblockTelemetrySamples");
+            entity.HasKey(sample => sample.Id);
+            entity.Property(sample => sample.MeasuredAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(sample => sample.OutdoorTemperatureCelsius).HasConversion<double>();
+            entity.Property(sample => sample.HotWaterTemperatureCelsius).HasConversion<double>();
+            entity.HasIndex(sample => sample.MeasuredAtUtc);
         });
     }
 }

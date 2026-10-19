@@ -269,6 +269,30 @@ public sealed class SqlitePersistenceTests : IDisposable
         Assert.True(sample.IsReachable);
     }
 
+    [Fact]
+    public async Task WeishauptBiblockRepositoryWorksOnTableAddedToExistingDatabase()
+    {
+        await using var dbContext = CreateDbContext();
+        var initializer = new ControllerDbInitializer(dbContext);
+        await initializer.InitializeAsync(SeededAtUtc);
+        await dbContext.Database.ExecuteSqlRawAsync("DROP TABLE \"WeishauptBiblockTelemetrySamples\";");
+        await initializer.InitializeAsync(SeededAtUtc);
+        var repository = new EfWeishauptBiblockTelemetryRepository(dbContext);
+
+        await repository.SaveSampleAsync(new WeishauptBiblockTelemetrySample
+        {
+            MeasuredAtUtc = SeededAtUtc,
+            OutdoorTemperatureCelsius = -4.5m,
+            OperatingStatusCode = 19,
+            HotWaterTemperatureCelsius = 45m
+        });
+
+        var sample = await dbContext.WeishauptBiblockTelemetrySamples.SingleAsync();
+        Assert.Equal(-4.5m, sample.OutdoorTemperatureCelsius);
+        Assert.Equal((ushort)19, sample.OperatingStatusCode);
+        Assert.Equal(45m, sample.HotWaterTemperatureCelsius);
+    }
+
     public void Dispose()
     {
         sqliteConnection.Dispose();
