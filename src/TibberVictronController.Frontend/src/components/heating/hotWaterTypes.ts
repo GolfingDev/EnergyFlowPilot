@@ -36,6 +36,7 @@ export interface HotWaterPointDto {
 }
 
 export interface HotWaterReportDto {
+  energy?: HotWaterEnergyDto | null;
   generatedAtUtc: string;
   isRaised: boolean;
   isSuspended: boolean;
@@ -43,4 +44,19 @@ export interface HotWaterReportDto {
   plan: HotWaterPlanDto | null;
   episodes: HotWaterEpisodeDto[];
   samples: HotWaterPointDto[];
+}
+
+export interface EnergyPeriodsDto {
+  todayKwh: number | null;
+  yesterdayKwh: number | null;
+  monthKwh: number | null;
+  yearKwh: number | null;
+}
+
+export interface HotWaterEnergyDto {
+  measuredAtUtc: string;
+  totalHeat: EnergyPeriodsDto;
+  heatingHeat: EnergyPeriodsDto;
+  hotWaterHeat: EnergyPeriodsDto;
+  electrical: EnergyPeriodsDto;
 }

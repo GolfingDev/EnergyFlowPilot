@@ -26,7 +26,37 @@ public sealed class ControllerDbInitializer
         await dbContext.Database.EnsureCreatedAsync(cancellationToken);
         await EnsureMissingTablesAsync(cancellationToken);
         await EnsureLiveConsumptionSampleColumnsAsync(cancellationToken);
+        await EnsureWeishauptEnergyColumnsAsync(cancellationToken);
         await SeedMissingDefaultSettingsAsync(initializedAtUtc, cancellationToken);
+    }
+
+    private async Task EnsureWeishauptEnergyColumnsAsync(CancellationToken cancellationToken)
+    {
+        var existing = await GetColumnNamesAsync("WeishauptBiblockTelemetrySamples", cancellationToken);
+        // Additive migration: historical rows retain null; no energy is backfilled.
+        string[] columns =
+        [
+            "TotalHeatTodayKwh",
+            "TotalHeatYesterdayKwh",
+            "TotalHeatMonthKwh",
+            "TotalHeatYearKwh",
+            "HeatingHeatTodayKwh",
+            "HeatingHeatYesterdayKwh",
+            "HeatingHeatMonthKwh",
+            "HeatingHeatYearKwh",
+            "HotWaterHeatTodayKwh",
+            "HotWaterHeatYesterdayKwh",
+            "HotWaterHeatMonthKwh",
+            "HotWaterHeatYearKwh",
+            "ElectricalTodayKwh",
+            "ElectricalYesterdayKwh",
+            "ElectricalMonthKwh",
+            "ElectricalYearKwh"
+        ];
+        foreach (var column in columns)
+            if (!existing.Contains(column))
+                await dbContext.Database.ExecuteSqlRawAsync(
+                    $"ALTER TABLE \"WeishauptBiblockTelemetrySamples\" ADD COLUMN \"{column}\" INTEGER NULL;", cancellationToken);
     }
 
     private async Task EnsureMissingTablesAsync(CancellationToken cancellationToken)

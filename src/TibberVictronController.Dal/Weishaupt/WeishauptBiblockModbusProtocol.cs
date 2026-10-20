@@ -31,7 +31,9 @@ public static class WeishauptBiblockModbusProtocol
 
         if (response[7] == (ReadInputRegistersFunctionCode | 0x80))
         {
-            throw new InvalidOperationException($"Weishaupt Biblock hat Modbus FC04 mit Fehlercode 0x{response[8]:X2} beantwortet.");
+            if (response.Length != 9)
+                throw new InvalidOperationException("Ungueltige Modbus-Fehlerantwort der Weishaupt Biblock.");
+            throw new WeishauptModbusException(response[8]);
         }
 
         if (response.Length != 11 || response[7] != ReadInputRegistersFunctionCode || response[8] != 2)
@@ -41,4 +43,10 @@ public static class WeishauptBiblockModbusProtocol
 
         return BinaryPrimitives.ReadUInt16BigEndian(response.Slice(9));
     }
+}
+
+public sealed class WeishauptModbusException(byte exceptionCode)
+    : InvalidOperationException($"Weishaupt Biblock hat Modbus FC04 mit Fehlercode 0x{exceptionCode:X2} beantwortet.")
+{
+    public byte ExceptionCode { get; } = exceptionCode;
 }

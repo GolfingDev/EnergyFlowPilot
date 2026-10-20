@@ -14,10 +14,14 @@ public sealed class WeishauptHotWaterReportService(
         var episodes = state.Episodes.Where(e => e.StartedAtUtc >= now.AddDays(-14)).ToArray();
         return new WeishauptHotWaterReport(now, state.OriginalCelsius.HasValue, state.Suspended, state.LastPlan,
             WeishauptHotWaterEpisodeAnalyzer.Analyze(episodes, samples, now).OrderByDescending(a => a.Episode.StartedAtUtc).ToArray(),
-            samples.Where(s => s.MeasuredAtUtc >= now.AddDays(-1) && s.HotWaterTemperatureCelsius is >= 0m and <= 95m).ToArray());
+            samples.Where(s => s.MeasuredAtUtc >= now.AddDays(-1) && s.HotWaterTemperatureCelsius is >= 0m and <= 95m).ToArray())
+        { LatestTelemetry = samples.OrderBy(s => s.MeasuredAtUtc).LastOrDefault() };
     }
 }
 
 public sealed record WeishauptHotWaterReport(DateTimeOffset GeneratedAtUtc, bool IsRaised, bool IsSuspended,
     WeishauptHotWaterPricePlan? Plan, IReadOnlyList<WeishauptHotWaterEpisodeAnalysis> Episodes,
-    IReadOnlyList<WeishauptBiblockTelemetrySample> Samples);
+    IReadOnlyList<WeishauptBiblockTelemetrySample> Samples)
+{
+    public WeishauptBiblockTelemetrySample? LatestTelemetry { get; init; }
+}

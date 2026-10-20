@@ -27,4 +27,22 @@ public sealed class WeishauptBiblockTelemetrySample
     public required ushort OperatingStatusCode { get; init; }
 
     public required decimal HotWaterTemperatureCelsius { get; init; }
+
+    // Unsigned whole-kWh device counters; null means unavailable, never zero consumption.
+    public ushort? TotalHeatTodayKwh { get; init; }
+    public ushort? TotalHeatYesterdayKwh { get; init; }
+    public ushort? TotalHeatMonthKwh { get; init; }
+    public ushort? TotalHeatYearKwh { get; init; }
+    public ushort? HeatingHeatTodayKwh { get; init; }
+    public ushort? HeatingHeatYesterdayKwh { get; init; }
+    public ushort? HeatingHeatMonthKwh { get; init; }
+    public ushort? HeatingHeatYearKwh { get; init; }
+    public ushort? HotWaterHeatTodayKwh { get; init; }
+    public ushort? HotWaterHeatYesterdayKwh { get; init; }
+    public ushort? HotWaterHeatMonthKwh { get; init; }
+    public ushort? HotWaterHeatYearKwh { get; init; }
+    public ushort? ElectricalTodayKwh { get; init; }
+    public ushort? ElectricalYesterdayKwh { get; init; }
+    public ushort? ElectricalMonthKwh { get; init; }
+    public ushort? ElectricalYearKwh { get; init; }
 }

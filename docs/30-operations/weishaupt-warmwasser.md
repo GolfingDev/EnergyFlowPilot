@@ -59,6 +59,42 @@ automatisches Deployment und kein Hardware-Schreibtest im Rahmen der Unit-Tests.
 
 ## Speicher und Auswertung
 
+### Interne Energiezaehler (Erweiterung vom 20.10.2026)
+
+Der Collector liest zusaetzlich ausschliesslich per FC04 jeweils vier unsigned
+16-Bit-Register in ganzen kWh (heute, gestern, laufender Monat, laufendes Jahr):
+
+| Adressen (inklusive) | Bedeutung |
+| --- | --- |
+| 36101–36104 | Waerme gesamt |
+| 36201–36204 | Heizungswaerme |
+| 36301–36304 | Warmwasserwaerme |
+| 36701–36704 | Elektrische Aufnahme der gesamten Waermepumpe |
+
+361xx–363xx: Hersteller-Modbus-Dokument 83807301, 1/2025-11, Seite 15.
+367xx steht dort nicht; Quelle ist die Implementierung unter
+https://github.com/OStrama/weishaupt_modbus/blob/main/custom_components/weishaupt_modbus/hpconst.py
+(PARAMS_ENERGY). Die vier 367xx-Register antworteten am installierten Geraet am
+20.10.2026 mit 12, 13, 197 und 5723 kWh. Abgleich mit Regleranzeige/WEM steht
+noch aus; dies ist kein geeichter separater Stromzaehler.
+
+Explizite Modbus-Ausnahmen 01/02 bei optionalen Energie-Registern ergeben null;
+andere Geraete-, Transport- und Protokollfehler bleiben Fehler des Pollings.
+Ein gesamter Modbus-Abruf ist auf 30 Sekunden begrenzt.
+65535 bleibt ein gueltiger unsigned Zaehlerstand, kein Temperatur-Fehlerwert.
+SQLite erhaelt additive nullable Spalten; historische Werte werden nicht aufgefuellt.
+Die API liefert den neuesten Telemetriestand als separates Energie-DTO, ohne
+bei fehlenden Registern aeltere Zaehlerstaende unter neuem Zeitstempel anzuzeigen.
+Leitstand hell/dunkel zeigt die vier Perioden mit Messzeitpunkt und
+Veraltet-Hinweis. Laufende Zeitraeume sind unvollstaendig.
+
+Es wird bewusst noch kein Verbrauch pro Vorladung, COP oder Euro-Ersparnis
+berechnet: Elektrische Aufnahme umfasst auch Heizung; 1-kWh-Aufloesung ist
+fuer einzelne kurze Ladungen grob. Tages-/Monats-/Jahreswechsel, Resets und
+Ueberlaeufe verhindern einfache Differenzbildung. Tagesstaende duerfen nicht
+rueckwirkend einer einzelnen Vorladung zugeschrieben werden.
+Die Temperatur-/Haltezeitauswertung und die Steuerungslogik bleiben unveraendert.
+
 - Laut Rechnung: Weishaupt 200-Liter-Speicher (vermutlich Heizungspuffer; Hydraulik
   nicht bestaetigt) und WES 910 Aqua/Cas fuer Warmwasser mit Trinkwasser-Waermetauscher.
 - Hersteller-Gesamtinhalt WES 910: 903 Liter. Der tatsaechlich geladene Bereich und

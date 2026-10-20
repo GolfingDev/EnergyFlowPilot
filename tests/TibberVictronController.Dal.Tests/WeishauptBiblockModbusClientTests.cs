@@ -9,15 +9,19 @@ namespace TibberVictronController.Dal.Tests;
 
 public sealed class WeishauptBiblockModbusClientTests
 {
-    [Fact]
-    public async Task CollectorUsesVerifiedFullRegisterNumbersAndFC04Only()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task CollectorUsesVerifiedFullRegisterNumbersAndFC04Only(int energyExceptionCode)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        ushort[] addresses = [30001, 33101, 32102];
-        ushort[] values = [50, 19, 445];
+        ushort[] addresses = [30001, 33101, 32102, 36101, 36102, 36103, 36104, 36201, 36202, 36203, 36204, 36301, 36302, 36303, 36304, 36701, 36702, 36703, 36704];
+        ushort[] values = [50, 19, 445, 42, 49, 600, 8000, 38, 37, 391, 5178, 4, 11, 209, 2822, 12, 13, 197, 65535];
         var server = Task.Run(async () =>
         {
             using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
@@ -29,11 +33,15 @@ public sealed class WeishauptBiblockModbusClientTests
                 Assert.Equal(4, request[7]);
                 Assert.Equal(addresses[i], BinaryPrimitives.ReadUInt16BigEndian(request.AsSpan(8)));
                 Assert.Equal((ushort)1, BinaryPrimitives.ReadUInt16BigEndian(request.AsSpan(10)));
-                var response = new byte[11];
+                var rejected = i >= 3 && energyExceptionCode != 0;
+                var response = new byte[rejected ? 9 : 11];
                 request.AsSpan(0, 4).CopyTo(response);
-                response[5] = 5; response[6] = 1; response[7] = 4; response[8] = 2;
-                BinaryPrimitives.WriteUInt16BigEndian(response.AsSpan(9), values[i]);
+                response[5] = rejected ? (byte)3 : (byte)5;
+                response[6] = 1; response[7] = rejected ? (byte)0x84 : (byte)4;
+                response[8] = rejected ? (byte)energyExceptionCode : (byte)2;
+                if (!rejected) BinaryPrimitives.WriteUInt16BigEndian(response.AsSpan(9), values[i]);
                 await stream.WriteAsync(response, timeout.Token);
+                if (rejected && energyExceptionCode == 3) break;
             }
         }, timeout.Token);
         var now = DateTimeOffset.UtcNow;
@@ -45,11 +53,39 @@ public sealed class WeishauptBiblockModbusClientTests
             (ControllerSettingDefaults.WeishauptBiblockModbusPortKey, port.ToString())
         })
             await store.SaveSettingAsync(new ControllerSetting(key, value, ControllerSettingSensitivity.Normal, now));
-        var sample = await new WeishauptBiblockModbusClient(new DatabaseWeishauptBiblockModbusSettingsProvider(store))
-            .GetCurrentSampleAsync(now, timeout.Token);
+        var client = new WeishauptBiblockModbusClient(new DatabaseWeishauptBiblockModbusSettingsProvider(store));
+        if (energyExceptionCode == 3)
+        {
+            var error = await Assert.ThrowsAsync<WeishauptModbusException>(() => client.GetCurrentSampleAsync(now, timeout.Token));
+            Assert.Equal(3, error.ExceptionCode);
+            await server;
+            return;
+        }
+        var sample = await client.GetCurrentSampleAsync(now, timeout.Token);
         await server;
         Assert.Equal(5m, sample.OutdoorTemperatureCelsius);
         Assert.Equal((ushort)19, sample.OperatingStatusCode);
         Assert.Equal(44.5m, sample.HotWaterTemperatureCelsius);
+        ushort?[] actual =
+        [
+            sample.TotalHeatTodayKwh,
+            sample.TotalHeatYesterdayKwh,
+            sample.TotalHeatMonthKwh,
+            sample.TotalHeatYearKwh,
+            sample.HeatingHeatTodayKwh,
+            sample.HeatingHeatYesterdayKwh,
+            sample.HeatingHeatMonthKwh,
+            sample.HeatingHeatYearKwh,
+            sample.HotWaterHeatTodayKwh,
+            sample.HotWaterHeatYesterdayKwh,
+            sample.HotWaterHeatMonthKwh,
+            sample.HotWaterHeatYearKwh,
+            sample.ElectricalTodayKwh,
+            sample.ElectricalYesterdayKwh,
+            sample.ElectricalMonthKwh,
+            sample.ElectricalYearKwh
+        ];
+        for (var i = 0; i < actual.Length; i++)
+            Assert.Equal(energyExceptionCode == 0 ? (ushort?)values[i + 3] : null, actual[i]);
     }
 }

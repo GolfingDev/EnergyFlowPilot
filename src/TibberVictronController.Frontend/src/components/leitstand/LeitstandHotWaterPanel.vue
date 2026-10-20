@@ -21,6 +21,12 @@ const temperature = (value: number | null | undefined) => value == null ? '–' 
 const price = (value: number | null | undefined) => value == null ? '–' : `${priceFormat.format(value * 100)} ct/kWh`;
 const latest = computed(() => report.value?.samples.at(-1) ?? null);
 const latestEpisode = computed(() => report.value?.episodes[0] ?? null);
+const energy = computed(() => report.value?.energy ?? null);
+const kwh = (value: number | null | undefined) => value == null ? '–' : `${priceFormat.format(value)} kWh`;
+const energyStale = computed(() => {
+  const at = energy.value ? Date.parse(energy.value.measuredAtUtc) : NaN;
+  return !Number.isFinite(at) || now.value - at < 0 || now.value - at > 600_000;
+});
 const plan = computed(() => report.value?.plan ?? null);
 const stale = computed(() => {
   if (!latest.value) return true;
@@ -159,6 +165,30 @@ onBeforeUnmount(() => { window.clearInterval(timer); request?.abort(); });
         <p class="lhw-muted lhw-note">Ohne separaten Stromzähler: keine gemessene Euro-Ersparnis.</p>
       </article>
     </div>
+    <article class="lhw-panel">
+      <span class="lhw-label">Interne Energiezähler · {{ energyStale ? 'kein aktueller Messstand' : 'aktueller Messstand' }}</span>
+      <p class="lhw-muted lhw-note" v-if="energy">Stand {{ date(energy.measuredAtUtc) }} Uhr · Heute / gestern beziehen sich auf diesen Messstand.</p>
+      <div class="lhw-energy-scroll">
+        <table class="lhw-energy">
+          <caption class="lhw-muted">Wärmeabgabe und elektrische Aufnahme getrennt, Auflösung 1 kWh</caption>
+          <thead><tr><th scope="col">Zähler</th><th scope="col">Heute*</th><th scope="col">Gestern</th><th scope="col">Monat*</th><th scope="col">Jahr*</th></tr></thead>
+          <tbody>
+            <tr v-for="row in [
+              { label: 'Warmwasser-Wärme', values: energy?.hotWaterHeat },
+              { label: 'Heizungswärme', values: energy?.heatingHeat },
+              { label: 'Wärme gesamt', values: energy?.totalHeat },
+              { label: 'Strom WP gesamt', values: energy?.electrical }
+            ]" :key="row.label">
+              <th scope="row">{{ row.label }}</th>
+              <td>{{ kwh(row.values?.todayKwh) }}</td><td>{{ kwh(row.values?.yesterdayKwh) }}</td>
+              <td>{{ kwh(row.values?.monthKwh) }}</td><td>{{ kwh(row.values?.yearKwh) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lhw-muted lhw-note">* Laufender Zeitraum, noch nicht vollständig. Fehlende Register werden als – angezeigt. Strom gilt für die gesamte Wärmepumpe, nicht nur Warmwasser; keine geeichte separate Verbrauchsmessung.</p>
+      <p class="lhw-muted lhw-note">{{ report?.costAssessment }}</p>
+    </article>
     <details class="lhw-panel lhw-details">
       <summary>Temperaturverlauf und letzte Vorladung</summary>
       <div v-if="chart.last" class="lhw-chart">
@@ -208,6 +238,12 @@ onBeforeUnmount(() => { window.clearInterval(timer); request?.abort(); });
 .lhw-facts dt { color: var(--ls-muted); font-size: 0.86rem; }
 .lhw-facts dd { margin: 0; font-size: 0.86rem; font-family: var(--ls-font-data); overflow-wrap: anywhere; }
 .lhw-details summary { cursor: pointer; font-family: var(--ls-font-display); font-weight: 600; }
+.lhw-energy-scroll { overflow-x: auto; margin-top: 12px; }
+.lhw-energy { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.lhw-energy caption { text-align: left; margin-bottom: 8px; }
+.lhw-energy th, .lhw-energy td { padding: 8px; border-bottom: 1px solid var(--ls-line); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lhw-energy th { color: var(--ls-muted); font-weight: 500; }
+.lhw-energy th:first-child { text-align: left; }
 .lhw-details summary:focus-visible { outline: 2px solid var(--ls-accent); outline-offset: 4px; }
 .lhw-chart { margin-top: 16px; overflow-x: auto; }
 .lhw-chart svg { display: block; width: 100%; min-width: 430px; }

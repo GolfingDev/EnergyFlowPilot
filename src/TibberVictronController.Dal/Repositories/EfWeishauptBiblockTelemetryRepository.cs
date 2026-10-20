@@ -22,7 +22,23 @@ public sealed class EfWeishauptBiblockTelemetryRepository : IWeishauptBiblockTel
             MeasuredAtUtc = sample.MeasuredAtUtc,
             OutdoorTemperatureCelsius = sample.OutdoorTemperatureCelsius,
             OperatingStatusCode = sample.OperatingStatusCode,
-            HotWaterTemperatureCelsius = sample.HotWaterTemperatureCelsius
+            HotWaterTemperatureCelsius = sample.HotWaterTemperatureCelsius,
+            TotalHeatTodayKwh = sample.TotalHeatTodayKwh,
+            TotalHeatYesterdayKwh = sample.TotalHeatYesterdayKwh,
+            TotalHeatMonthKwh = sample.TotalHeatMonthKwh,
+            TotalHeatYearKwh = sample.TotalHeatYearKwh,
+            HeatingHeatTodayKwh = sample.HeatingHeatTodayKwh,
+            HeatingHeatYesterdayKwh = sample.HeatingHeatYesterdayKwh,
+            HeatingHeatMonthKwh = sample.HeatingHeatMonthKwh,
+            HeatingHeatYearKwh = sample.HeatingHeatYearKwh,
+            HotWaterHeatTodayKwh = sample.HotWaterHeatTodayKwh,
+            HotWaterHeatYesterdayKwh = sample.HotWaterHeatYesterdayKwh,
+            HotWaterHeatMonthKwh = sample.HotWaterHeatMonthKwh,
+            HotWaterHeatYearKwh = sample.HotWaterHeatYearKwh,
+            ElectricalTodayKwh = sample.ElectricalTodayKwh,
+            ElectricalYesterdayKwh = sample.ElectricalYesterdayKwh,
+            ElectricalMonthKwh = sample.ElectricalMonthKwh,
+            ElectricalYearKwh = sample.ElectricalYearKwh
         });
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -49,7 +65,23 @@ public sealed class EfWeishauptBiblockTelemetryRepository : IWeishauptBiblockTel
             .Select(s => new WeishauptBiblockTelemetrySample
             {
                 MeasuredAtUtc = s.MeasuredAtUtc, HotWaterTemperatureCelsius = s.HotWaterTemperatureCelsius,
-                OutdoorTemperatureCelsius = s.OutdoorTemperatureCelsius, OperatingStatusCode = s.OperatingStatusCode
+                OutdoorTemperatureCelsius = s.OutdoorTemperatureCelsius, OperatingStatusCode = s.OperatingStatusCode,
+                TotalHeatTodayKwh = s.TotalHeatTodayKwh,
+                TotalHeatYesterdayKwh = s.TotalHeatYesterdayKwh,
+                TotalHeatMonthKwh = s.TotalHeatMonthKwh,
+                TotalHeatYearKwh = s.TotalHeatYearKwh,
+                HeatingHeatTodayKwh = s.HeatingHeatTodayKwh,
+                HeatingHeatYesterdayKwh = s.HeatingHeatYesterdayKwh,
+                HeatingHeatMonthKwh = s.HeatingHeatMonthKwh,
+                HeatingHeatYearKwh = s.HeatingHeatYearKwh,
+                HotWaterHeatTodayKwh = s.HotWaterHeatTodayKwh,
+                HotWaterHeatYesterdayKwh = s.HotWaterHeatYesterdayKwh,
+                HotWaterHeatMonthKwh = s.HotWaterHeatMonthKwh,
+                HotWaterHeatYearKwh = s.HotWaterHeatYearKwh,
+                ElectricalTodayKwh = s.ElectricalTodayKwh,
+                ElectricalYesterdayKwh = s.ElectricalYesterdayKwh,
+                ElectricalMonthKwh = s.ElectricalMonthKwh,
+                ElectricalYearKwh = s.ElectricalYearKwh
             }).ToArrayAsync(cancellationToken);
     }
 }
