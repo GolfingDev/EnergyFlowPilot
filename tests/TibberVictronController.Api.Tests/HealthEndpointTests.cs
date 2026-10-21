@@ -38,7 +38,7 @@ public sealed class HealthEndpointTests
         var checkedAtUtc = new DateTimeOffset(2026, 5, 3, 8, 0, 0, TimeSpan.Zero);
 
         mqttRuntimeStatus.MarkConnected();
-        workerRuntimeStatus.MarkFailed("Verbindung zum Tibber-Preisabruf fehlgeschlagen.", checkedAtUtc);
+        workerRuntimeStatus.MarkFailed("Verbindung zum Strompreisabruf fehlgeschlagen.", checkedAtUtc);
 
         var result = HealthEndpoints.GetHealthAsync(
             new FakeUtcClock(checkedAtUtc),

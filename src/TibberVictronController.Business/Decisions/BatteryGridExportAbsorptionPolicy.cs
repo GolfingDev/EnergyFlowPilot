@@ -29,7 +29,7 @@ public sealed class BatteryGridExportAbsorptionPolicy
 
         if (priceForecast is null)
         {
-            throw new ArgumentNullException(nameof(priceForecast), "Die Tibber-Preisprognose darf nicht null sein.");
+            throw new ArgumentNullException(nameof(priceForecast), "Die Strompreisprognose darf nicht null sein.");
         }
 
         if (feedInCompensationPricePerKwh < 0m)

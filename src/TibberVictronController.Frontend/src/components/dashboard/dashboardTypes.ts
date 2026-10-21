@@ -1,4 +1,5 @@
 export interface ControllerStatusResponseDto {
+  electricityPriceProvider?: string;
   status: string;
   knownSettingsCount: number;
   persistedSettingsCount: number;

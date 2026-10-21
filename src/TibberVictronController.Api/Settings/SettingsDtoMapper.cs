@@ -46,6 +46,7 @@ public static class SettingsDtoMapper
             status.GeneratedAtUtc,
             victronMqttRuntimeStatus.ConnectionState,
             victronMqttRuntimeStatus.LastErrorMessage,
-            victronMqttRuntimeStatus.LastSuccessfulMessageAtUtc);
+            victronMqttRuntimeStatus.LastSuccessfulMessageAtUtc)
+        { ElectricityPriceProvider = status.ElectricityPriceProvider };
     }
 }

@@ -33,8 +33,8 @@ internal sealed class BatterySocOptimizationInput
 /// and maximum; the backward pass stores the cheapest remaining cost per energy level, the forward pass follows it from the
 /// real start energy. The physical rules match the simulator: PV surplus is always stored, the battery never discharges more
 /// than the expected import (no feed-in from the battery), and grid charging needs a published, non-negative price.
-/// Every deviation from the default behaviour (cover consumption, store surplus) costs the configured minimum savings per kWh,
-/// so the plan only shifts energy when the gain is clearly larger than the forecast noise. Grid charging additionally
+/// Newly deferred energy relative to a fixed self-consumption baseline costs the configured minimum savings per kWh once;
+/// simply waiting with the same deferred energy is free. Grid charging has its own minimum-advantage hurdle and additionally
 /// carries the battery wear cost. Energy left at the horizon end has no value, as before there is no end reserve.
 /// The result uses the existing plan format, so the simulator stays the model for SoC projection and explanations.
 /// </remarks>
@@ -57,7 +57,17 @@ internal sealed class BatterySocOptimizer
         }
 
         var grid = new EnergyGrid(minimumEnergyKwh, maximumEnergyKwh);
-        var models = input.Slots.Select(slot => SlotModel.Create(slot, input)).ToArray();
+        // The reference trajectory covers consumption/stores PV without price-based holds or grid purchases.
+        // It lets Evaluate charge newly deferred energy, rather than charging the same stock every quarter hour.
+        var baselineEnergyKwh = (double)input.InitialEnergyKwh;
+        var models = input.Slots.Select(slot =>
+        {
+            var model = SlotModel.Create(slot, input);
+            var baselineNextKwh = model.GetNextEnergyRange(baselineEnergyKwh, minimumEnergyKwh, maximumEnergyKwh).Lower;
+            model = model with { BaselineBeforeKwh = baselineEnergyKwh, BaselineAfterKwh = baselineNextKwh };
+            baselineEnergyKwh = baselineNextKwh;
+            return model;
+        }).ToArray();
 
         // Backward pass: cheapest cost from slot t until the horizon end for every stored energy level.
         var values = new double[models.Length + 1][];
@@ -194,9 +204,12 @@ internal sealed class BatterySocOptimizer
         }
 
         var energyCost = gridKwh >= 0d ? gridKwh * model.PricePerKwh : gridKwh * model.FeedInPricePerKwh;
-        var heldOutputKwh = Math.Max(0d, model.DefaultOutputKwh(energyKwh) - outputKwh);
+        var deferredBeforeKwh = Math.Max(0d, energyKwh - model.BaselineBeforeKwh);
+        var deferredAfterKwh = Math.Max(0d, nextEnergyKwh - model.BaselineAfterKwh);
+        // Grid purchases already carry the hurdle below; don't also charge their stored increment as a hold.
+        var newlyDeferredKwh = Math.Max(0d, deferredAfterKwh - deferredBeforeKwh - gridChargeInputKwh * model.Efficiency);
         var deviationCost = gridChargeInputKwh * (model.MinimumSavingsPerKwh + model.WearCostPerKwh * model.Efficiency)
-            + heldOutputKwh * model.MinimumSavingsPerKwh;
+            + newlyDeferredKwh * model.Efficiency * model.MinimumSavingsPerKwh;
 
         return new Transition(
             energyKwh,
@@ -225,6 +238,9 @@ internal sealed class BatterySocOptimizer
         double WearCostPerKwh,
         double MinimumEnergyKwh)
     {
+        public double BaselineBeforeKwh { get; init; }
+        public double BaselineAfterKwh { get; init; }
+
         public double ImportKwh => Math.Max(0d, NetLoadKwh);
 
         public double SurplusKwh => Math.Max(0d, -NetLoadKwh);

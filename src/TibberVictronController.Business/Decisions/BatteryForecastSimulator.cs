@@ -198,7 +198,7 @@ public sealed class BatteryForecastSimulator
                 batteryEnergyBeforeKwh,
                 batteryConfiguration,
                 BatteryForecastRuleIds.PreserveHeadroomForNegativePrice,
-                "Die Decision Engine haelt Kapazitaet fuer spaetere negative Tibber-Preise frei, weil diese wertvoller sind als die konfigurierte Einspeiseverguetung.");
+                "Die Decision Engine haelt Kapazitaet fuer spaetere negative Strompreise frei, weil diese wertvoller sind als die konfigurierte Einspeiseverguetung.");
         }
 
         var surplusInputEnergyKwh = Math.Abs(expectedGridImportBeforeBatteryKwh);
@@ -305,7 +305,7 @@ public sealed class BatteryForecastSimulator
                     batteryEnergyBeforeKwh,
                     batteryConfiguration,
                     BatteryForecastRuleIds.PlanningMaximumSocHeadroom,
-                    $"Der Tibber-Preis ist negativ, aber das Planungs-Maximum von {batteryConfiguration.PlanningMaximumStateOfChargePercent:0.#} Prozent ist erreicht. Die Decision Engine lädt nicht weiter.");
+                    $"Der Strompreis ist negativ, aber das Planungs-Maximum von {batteryConfiguration.PlanningMaximumStateOfChargePercent:0.#} Prozent ist erreicht. Die Decision Engine lädt nicht weiter.");
             }
 
             if (isPlannedNegativePriceChargeSlot || !HasFutureCheaperNegativePrice(priceForecast, priceSlot))
@@ -323,7 +323,7 @@ public sealed class BatteryForecastSimulator
                     SingleDirectionEfficiency = singleDirectionEfficiency,
                     FeedInCompensationPricePerKwh = feedInCompensationPricePerKwh,
                     RuleId = BatteryForecastRuleIds.NegativePriceGridCharge,
-                    ReasonMessage = "Der Tibber-Preis ist negativ und gehoert zum guenstigen Ladefenster. Die Decision Engine laedt deshalb aus dem Netz."
+                    ReasonMessage = "Der Strompreis ist negativ und gehoert zum guenstigen Ladefenster. Die Decision Engine laedt deshalb aus dem Netz."
                 });
             }
 
@@ -336,7 +336,7 @@ public sealed class BatteryForecastSimulator
                 batteryEnergyBeforeKwh,
                 batteryConfiguration,
                 BatteryForecastRuleIds.WaitForNegativePriceWindow,
-                "Der Tibber-Preis ist negativ, aber ein noch guenstigerer geplanter Ladeslot bleibt frei. Die Decision Engine wartet auf das bessere Ladefenster.");
+                "Der Strompreis ist negativ, aber ein noch guenstigerer geplanter Ladeslot bleibt frei. Die Decision Engine wartet auf das bessere Ladefenster.");
         }
 
         if (plannedAction is { ChargeInputKwh: > 0m })
@@ -640,7 +640,7 @@ public sealed class BatteryForecastSimulator
     {
         if (priceForecast is null)
         {
-            throw new ArgumentNullException(nameof(priceForecast), "Die Tibber-Preisprognose darf nicht null sein.");
+            throw new ArgumentNullException(nameof(priceForecast), "Die Strompreisprognose darf nicht null sein.");
         }
 
         if (pvForecast is null)
@@ -682,7 +682,7 @@ public sealed class BatteryForecastSimulator
 
         if (!priceTimeSlots.SequenceEqual(pvTimeSlots) || !priceTimeSlots.SequenceEqual(consumptionTimeSlots))
         {
-            throw new ArgumentException("Tibber-Preise, PV-Prognose und Verbrauchsprognose muessen dieselben Forecast-Zeitabschnitte enthalten.");
+            throw new ArgumentException("Strompreise, PV-Prognose und Verbrauchsprognose muessen dieselben Forecast-Zeitabschnitte enthalten.");
         }
     }
 

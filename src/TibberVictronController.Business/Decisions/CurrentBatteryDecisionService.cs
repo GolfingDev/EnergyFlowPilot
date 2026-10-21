@@ -140,7 +140,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         {
             missingCurrentPriceReason = new BatteryDecisionReason(
                 CurrentBatteryDecisionRuleIds.MissingCurrentPrice,
-                $"Die aktuellen Tibber-Preise konnten nicht geladen werden ({exception.Message}). Die Decision Engine bleibt deshalb im Idle-Zustand.");
+                $"Die aktuellen Strompreise konnten nicht geladen werden ({exception.Message}). Die Decision Engine bleibt deshalb im Idle-Zustand.");
         }
 
         if (Math.Abs(gridPowerWithoutBatteryWatts) <= gridPowerDeadbandWatts)
@@ -228,14 +228,14 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 currentPriceSlot: null,
                 new BatteryDecisionReason(
                     CurrentBatteryDecisionRuleIds.CoverCurrentGridImport,
-                    $"Aktueller Verbrauch ohne Akku von {gridPowerWithoutBatteryWatts} Watt wird aus dem Akku gedeckt. Der Tibber-Preis ist in diesem Zyklus nicht verfuegbar; die Decision Engine startet deshalb keine preisbasierte Netzladung."),
+                    $"Aktueller Verbrauch ohne Akku von {gridPowerWithoutBatteryWatts} Watt wird aus dem Akku gedeckt. Der Strompreis ist in diesem Zyklus nicht verfuegbar; die Decision Engine startet deshalb keine preisbasierte Netzladung."),
                 batteryConfiguration.MinimumStateOfChargePercent,
                 cancellationToken);
         }
 
         if (priceForecast is null)
         {
-            throw new InvalidOperationException("Die Tibber-Preise wurden nicht geladen.");
+            throw new InvalidOperationException("Die Strompreise wurden nicht geladen.");
         }
 
         if (currentPriceSlot is null)
@@ -249,7 +249,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 tibberPriceCurrency: null,
                 new BatteryDecisionReason(
                     CurrentBatteryDecisionRuleIds.MissingCurrentPrice,
-                    "Für den aktuellen Zeitpunkt liegt kein gültiger Tibber-Preis vor. Die Decision Engine bleibt deshalb im Idle-Zustand."),
+                    "Für den aktuellen Zeitpunkt liegt kein gültiger Strompreis vor. Die Decision Engine bleibt deshalb im Idle-Zustand."),
                 cancellationToken);
         }
 
@@ -597,7 +597,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                     $"Das Planungs-Maximum von {batteryConfiguration.PlanningMaximumStateOfChargePercent:0.#} Prozent ist erreicht. Die Decision Engine nimmt aktuellen Netzexport deshalb nicht weiter in die Batterie auf.")
                 : new BatteryDecisionReason(
                     BatteryForecastRuleIds.PreserveHeadroomForNegativePrice,
-                    "Die Decision Engine haelt Kapazitaet fuer spaetere negative Tibber-Preise frei und bleibt deshalb trotz aktuellem Netzexport im Idle-Zustand.");
+                    "Die Decision Engine haelt Kapazitaet fuer spaetere negative Strompreise frei und bleibt deshalb trotz aktuellem Netzexport im Idle-Zustand.");
 
             return await SaveIdleDecisionAsync(
                 decidedAtUtc,
@@ -823,6 +823,7 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
         var inputSummaryJson = JsonSerializer.Serialize(new
         {
+            ElectricityPriceProvider = dependencies.TibberPriceForecastProvider.Source,
             BatteryStateOfChargePercent = batteryState.StateOfChargePercent,
             BatteryMeasuredAtUtc = batteryState.MeasuredAtUtc,
             CurrentGridImportWatts = siteTelemetry.CurrentGridImportWatts,

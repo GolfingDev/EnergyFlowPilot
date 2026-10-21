@@ -16,7 +16,8 @@ public sealed class SettingsEndpointTests
         var service = new FakeControllerSettingsService(new[]
         {
             new ControllerSetting(ControllerSettingDefaults.BatteryTotalCapacityKwhKey, "12", ControllerSettingSensitivity.Normal, UpdatedAtUtc),
-            new ControllerSetting(ControllerSettingDefaults.TibberAccessTokenKey, "secret-token", ControllerSettingSensitivity.Sensitive, UpdatedAtUtc)
+            new ControllerSetting(ControllerSettingDefaults.TibberAccessTokenKey, "secret-token", ControllerSettingSensitivity.Sensitive, UpdatedAtUtc),
+            new ControllerSetting(ControllerSettingDefaults.OctopusApiKeyKey, "secret-octopus", ControllerSettingSensitivity.Sensitive, UpdatedAtUtc)
         });
 
         var result = await SettingsEndpoints.GetSettingsAsync(service, CancellationToken.None);
@@ -26,6 +27,8 @@ public sealed class SettingsEndpointTests
         Assert.Equal("12", settings.Single(setting => setting.Key == ControllerSettingDefaults.BatteryTotalCapacityKwhKey).Value);
         Assert.Null(settings.Single(setting => setting.Key == ControllerSettingDefaults.TibberAccessTokenKey).Value);
         Assert.True(settings.Single(setting => setting.Key == ControllerSettingDefaults.TibberAccessTokenKey).IsConfigured);
+        Assert.Null(settings.Single(setting => setting.Key == ControllerSettingDefaults.OctopusApiKeyKey).Value);
+        Assert.True(settings.Single(setting => setting.Key == ControllerSettingDefaults.OctopusApiKeyKey).IsConfigured);
     }
 
     [Fact]

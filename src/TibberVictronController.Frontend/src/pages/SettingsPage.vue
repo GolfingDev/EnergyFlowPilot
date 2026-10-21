@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { isEverydaySetting, usesCents, settingInputValue, settingStoredValue, secretPresentation, settingUpdatePayload } from './settingsPresentation';
 
 interface ControllerStatusResponseDto {
   status: string;
@@ -60,7 +61,7 @@ interface UiError {
   details: string;
 }
 
-type SectionKey = 'operations' | 'battery' | 'control' | 'sources' | 'forecast' | 'advanced';
+type SectionKey = 'operations' | 'battery' | 'control' | 'heating' | 'sources' | 'forecast' | 'advanced';
 type FieldCategory = 'normal' | 'important' | 'critical';
 
 interface SectionDefinition {
@@ -84,15 +85,21 @@ interface SelectOption {
 }
 
 const sectionDefinitions: SectionDefinition[] = [
-  { key: 'operations', title: 'Betrieb', description: 'Simulationsmodus, Worker-Intervalle, Dashboard-Aktualisierung und Protokollierung.' },
-  { key: 'battery', title: 'Batterie', description: 'Kapazität, harte Grenzen, Planungsprofil und Wirkungsgrad.' },
-  { key: 'control', title: 'Steuerung', description: 'Parameter, die direkt Lade-, Entlade- und Idle-Entscheidungen beeinflussen.' },
-  { key: 'sources', title: 'Datenquellen', description: 'Live-Datenquellen sowie Victron-, Hager- und Homematic-Verbindungen.' },
-  { key: 'forecast', title: 'Prognosen', description: 'Tibber-Preise, PV-Prognose und Verbrauchsannahmen.' },
-  { key: 'advanced', title: 'Erweitert', description: 'Roh-Topics, OAuth-Endpunkte, SMTP-Details und technische Sonderwerte.' }
+  { key: 'control', title: 'Ladestrategie', description: 'Wann sich Laden und Zurückhalten von Akkuenergie lohnen soll.' },
+  { key: 'battery', title: 'Batteriegrenzen', description: 'Planungsreserve, Ladeziel und Leistungsgrenzen. Technische Batteriedaten nur im erweiterten Modus.' },
+  { key: 'heating', title: 'Warmwasser', description: 'Eigene Preis- und PV-Steuerung der Warmwasseranhebung, unabhängig von der Akku-Schwelle.' },
+  { key: 'forecast', title: 'Stromtarif & Prognosen', description: 'Einrichtung von Stromanbieter, Zugangsdaten, PV-Anlage und Verbrauchsmodell.' },
+  { key: 'sources', title: 'Verbindungen', description: 'Einmalige Einrichtung von Victron, Hager, Homematic und Wärmepumpe.' },
+  { key: 'operations', title: 'Betrieb & Diagnose', description: 'Simulationsmodus, Aktualisierung, Aufbewahrung und Benachrichtigungen.' },
+  { key: 'advanced', title: 'Technische Details', description: 'MQTT-Topics, OAuth-Endpunkte, SMTP und technische Sonderwerte.' }
 ];
 
 const fieldDefinitions: FieldDefinition[] = [
+  { key: 'decision.minimumSavingsPerKwh', section: 'control', subgroup: 'Wirtschaftliche Steuerung', category: 'important', helpText: 'Mindestvorteil für Netzladung und Verschieben von Akkuenergie. 3 bedeutet 3 ct/kWh, nicht 3 EUR. Verluste und konfigurierte Verschleißkosten werden zusätzlich berücksichtigt. Kein maximaler Einkaufspreis.' },
+  { key: 'battery.wearCostPerKwh', section: 'control', subgroup: 'Wirtschaftliche Steuerung', category: 'important', helpText: 'Zusätzliche Verschleißkosten für netzgeladene Energie. Einmal anhand der Batterie kalkulieren; nur im erweiterten Modus sichtbar.' },
+  { key: 'electricityPrices.provider', section: 'forecast', subgroup: 'Strompreise', category: 'critical', helpText: 'Tibber bleibt Standard. Octopus erst mit aktivem dynamicOctopus-Vertrag auswählen; kein Anbieter-Fallback.' },
+  { key: 'octopus.apiKey', section: 'forecast', subgroup: 'Octopus Deutschland', category: 'critical', helpText: 'API-Key, kein Passwort. Leer lassen behält den gespeicherten Schlüssel.' },
+  { key: 'octopus.accountNumber', section: 'forecast', subgroup: 'Octopus Deutschland', category: 'important' },
   { key: 'battery.totalCapacityKwh', section: 'battery', subgroup: 'Harte Grenzen', category: 'critical' },
   { key: 'battery.minimumStateOfChargePercent', section: 'battery', subgroup: 'Harte Grenzen', category: 'critical', helpText: 'Harte Untergrenze zum Schutz des Akkus.' },
   { key: 'battery.maximumChargePowerWatts', section: 'battery', subgroup: 'Harte Grenzen', category: 'critical' },
@@ -103,7 +110,7 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'battery.roundTripEfficiencyPercent', section: 'battery', subgroup: 'Wirkungsgrad', category: 'important' },
   { key: 'tibber.accessToken', section: 'forecast', subgroup: 'Tibber', category: 'critical', helpText: 'Token werden nie im Klartext angezeigt. Leer lassen behält einen vorhandenen geheimen Wert.' },
   { key: 'tibber.homeSelection', section: 'forecast', subgroup: 'Tibber', category: 'normal' },
-  { key: 'forecast.horizonHours', section: 'forecast', subgroup: 'Planungshorizont', category: 'important' },
+  { key: 'forecast.horizonHours', section: 'control', subgroup: 'Planungshorizont', category: 'important' },
   { key: 'gridFeedIn.compensationPricePerKwh', section: 'control', subgroup: 'Wirtschaftliche Steuerung', category: 'important' },
   { key: 'pvForecast.apiKey', section: 'forecast', subgroup: 'Forecast.Solar', category: 'critical', helpText: 'Optionaler Forecast.Solar API-Key für bezahlte Pläne. Leer lassen behält einen vorhandenen geheimen Wert.' },
   { key: 'pvForecast.latitude', section: 'forecast', subgroup: 'Standort', category: 'important' },
@@ -144,13 +151,13 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'weishauptBiblockModbus.slaveId', section: 'sources', subgroup: 'Weishaupt Biblock', category: 'normal' },
   { key: 'weishauptBiblockModbus.pollingIntervalSeconds', section: 'sources', subgroup: 'Weishaupt Biblock', category: 'normal' },
   { key: 'weishauptBiblockModbus.sampleRetentionDays', section: 'sources', subgroup: 'Weishaupt Biblock', category: 'normal' },
-  { key: 'weishauptHotWater.enabled', section: 'sources', subgroup: 'Weishaupt Warmwasser', category: 'critical' },
-  { key: 'weishauptHotWater.minimumPriceAdvantagePerKwh', section: 'sources', subgroup: 'Weishaupt Warmwasser', category: 'important' },
-  { key: 'weishauptHotWater.extraEnergyPercent', section: 'sources', subgroup: 'Weishaupt Warmwasser', category: 'important' },
-  { key: 'weishauptHotWater.demandHourLocal', section: 'sources', subgroup: 'Weishaupt Warmwasser', category: 'important' },
-  { key: 'weishauptHotWater.initialHoldHours', section: 'sources', subgroup: 'Weishaupt Warmwasser', category: 'normal' },
-  { key: 'weishauptHotWater.initialChargeMinutes', section: 'sources', subgroup: 'Weishaupt Warmwasser', category: 'normal' },
-  { key: 'weishauptHotWater.pvSurplusWatts', section: 'sources', subgroup: 'Weishaupt Warmwasser', category: 'important' },
+  { key: 'weishauptHotWater.enabled', section: 'heating', subgroup: 'Weishaupt Warmwasser', category: 'critical' },
+  { key: 'weishauptHotWater.minimumPriceAdvantagePerKwh', section: 'heating', subgroup: 'Weishaupt Warmwasser', category: 'important' },
+  { key: 'weishauptHotWater.extraEnergyPercent', section: 'heating', subgroup: 'Weishaupt Warmwasser', category: 'important' },
+  { key: 'weishauptHotWater.demandHourLocal', section: 'heating', subgroup: 'Weishaupt Warmwasser', category: 'important' },
+  { key: 'weishauptHotWater.initialHoldHours', section: 'heating', subgroup: 'Weishaupt Warmwasser', category: 'normal' },
+  { key: 'weishauptHotWater.initialChargeMinutes', section: 'heating', subgroup: 'Weishaupt Warmwasser', category: 'normal' },
+  { key: 'weishauptHotWater.pvSurplusWatts', section: 'heating', subgroup: 'Weishaupt Warmwasser', category: 'important' },
   { key: 'homematic.baseUrl', section: 'sources', subgroup: 'Homematic', category: 'important' },
   { key: 'homematic.apiToken', section: 'sources', subgroup: 'Homematic', category: 'critical', helpText: 'Token aus tokenregister.cgi der XML-API. Leer lassen behält einen vorhandenen geheimen Wert.' },
   { key: 'homematic.pollingIntervalSeconds', section: 'sources', subgroup: 'Homematic', category: 'normal' },
@@ -177,7 +184,11 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'victron.writeTopics.disableFeedIn', section: 'advanced', subgroup: 'MQTT-Schreibthemen', category: 'critical' }
 ];
 
-const requiredKeys = new Set(['tibber.accessToken', 'battery.totalCapacityKwh']);
+const requiredKeys = new Set(['battery.totalCapacityKwh']);
+const electricityPriceOptions: SelectOption[] = [
+  { title: 'Tibber', value: 'tibber' },
+  { title: 'Octopus Deutschland (dynamicOctopus)', value: 'octopusGermany' }
+];
 const timezoneOptions = [
   'Europe/Berlin',
   'UTC'
@@ -204,7 +215,8 @@ const fallbackMetadata: SettingMetadataDto[] = [
 ];
 
 const route = useRoute();
-const activeSectionKey = ref<SectionKey>('battery');
+const activeSectionKey = ref<SectionKey>('control');
+const showAdvanced = ref(false);
 const settings = ref<ControllerSettingResponseDto[]>([]);
 const metadata = ref<GuiMetadataResponseDto | null>(null);
 const status = ref<ControllerStatusResponseDto | null>(null);
@@ -223,11 +235,15 @@ const metadataByKey = computed(() => new Map([
 const settingByKey = computed(() => new Map(settings.value.map((entry) => [entry.key, entry])));
 
 const availableFields = computed(() => fieldDefinitions.filter((field) => metadataByKey.value.has(field.key)));
+const visibleFields = computed(() => availableFields.value.filter(field => showAdvanced.value ||
+  (isEverydaySetting(field.key) && !shouldRenderSensitive(field))));
+const hiddenDirtyCount = computed(() => availableFields.value.filter(field =>
+  !visibleFields.value.includes(field) && getDraftValue(field.key) !== initialValues.value[field.key]).length);
 
 const sections = computed(() => sectionDefinitions
   .map((section) => ({
     ...section,
-    fields: availableFields.value.filter((field) => field.section === section.key)
+    fields: visibleFields.value.filter((field) => field.section === section.key)
   }))
   .filter((section) => section.fields.length > 0));
 
@@ -247,18 +263,8 @@ const activeSubgroups = computed(() => {
 
 const hasUnsavedChanges = computed(() => Object.keys(draftValues.value).some((key) => draftValues.value[key] !== initialValues.value[key]));
 
-const validationErrors = computed(() => Array.from(new Set([
-  ...getFieldErrors('battery.totalCapacityKwh'),
-  ...getFieldErrors('battery.minimumStateOfChargePercent'),
-  ...getFieldErrors('battery.planningMinimumStateOfChargePercent'),
-  ...getFieldErrors('battery.planningMaximumStateOfChargePercent'),
-  ...getFieldErrors('battery.targetEndStateOfChargePercent'),
-  ...getFieldErrors('battery.roundTripEfficiencyPercent'),
-  ...getFieldErrors('battery.maximumChargePowerWatts'),
-  ...getFieldErrors('battery.maximumDischargePowerWatts'),
-  ...getFieldErrors('victron.controlMode'),
-  ...getFieldErrors('victron.externalEss.phaseCount')
-])));
+const validationErrors = computed(() => availableFields.value.flatMap(field =>
+  getFieldErrors(field.key).map(error => `${getFieldLabel(field)}: ${error}`)));
 
 const warningMessages = computed(() => {
   const warnings: string[] = [];
@@ -288,6 +294,10 @@ const warningMessages = computed(() => {
     warnings.push('External ESS ist gewaehlt, aber der Cerbo-ESS-Modus wird nicht per MQTT gesetzt. Stelle ihn manuell im Cerbo um oder aktiviere den MQTT-Umschalter.');
   }
 
+  const provider = getDraftValue('electricityPrices.provider') || 'tibber';
+  const accessKeys = provider === 'octopusGermany' ? ['octopus.apiKey', 'octopus.accountNumber'] : ['tibber.accessToken'];
+  if (accessKeys.some(key => !isSettingConfigured(key)))
+    warnings.push('Zugang zur ausgewählten Strompreisquelle unvollständig. Unter Erweiterter Modus → Stromtarif & Prognosen einrichten.');
   return warnings;
 });
 
@@ -329,6 +339,7 @@ const summaryItems = computed(() => {
     : null;
 
   return [
+    { label: 'Mindestvorteil Akku', value: `${settingInputValue('decision.minimumSavingsPerKwh', getDraftValue('decision.minimumSavingsPerKwh')) || '–'} ct/kWh` },
     { label: 'Planungsbereich', value: planningMinimum !== null && planningMaximum !== null ? `${formatPercentValue(planningMinimum)} bis ${formatPercentValue(planningMaximum)}` : 'Nicht verfügbar' },
     { label: 'Nutzbare Planungskapazität', value: usableCapacity !== null ? `${formatDecimal(usableCapacity, 2)} kWh` : 'Nicht verfügbar' },
     { label: 'Ziel-SoC am Ende', value: targetEnd !== null ? formatPercentValue(targetEnd) : 'Nicht verfügbar' },
@@ -337,9 +348,9 @@ const summaryItems = computed(() => {
     { label: 'ESS-Modus MQTT', value: getDraftValue('victron.externalEss.switchModeViaMqtt') === 'true' ? 'Aktiv' : 'Inaktiv' },
     { label: 'Netzquelle', value: formatTelemetrySource(getDraftValue('telemetry.sources.gridImportWatts') || 'victronMqtt') },
     { label: 'PV-Quelle', value: formatTelemetrySource(getDraftValue('telemetry.sources.pvProductionWatts') || 'victronMqtt') },
-    { label: 'Tibber Token', value: isSettingConfigured('tibber.accessToken') ? 'Konfiguriert' : 'Fehlt' },
+    { label: 'Strompreisquelle', value: getDraftValue('electricityPrices.provider') === 'octopusGermany' ? 'Octopus Deutschland' : 'Tibber' },
     { label: 'Victron MQTT', value: status.value?.victronMqttStatus ?? 'Unbekannt' }
-  ];
+  ].filter(item => showAdvanced.value || ['Mindestvorteil Akku', 'Planungsbereich', 'Nutzbare Planungskapazität', 'Strompreisquelle'].includes(item.label));
 });
 
 const planningRangeStyle = computed(() => {
@@ -390,7 +401,9 @@ async function saveSettings(): Promise<void> {
   saveSuccess.value = false;
 
   try {
-    const changedKeys = Object.keys(draftValues.value).filter((key) => draftValues.value[key] !== initialValues.value[key]);
+    // Credentials first: changing the selection must not race with saving the new supplier's access data.
+    const changedKeys = Object.keys(draftValues.value).filter((key) => draftValues.value[key] !== initialValues.value[key])
+      .sort((a, b) => Number(a === 'electricityPrices.provider') - Number(b === 'electricityPrices.provider'));
 
     for (const key of changedKeys) {
       const setting = getSettingOrFallback(key);
@@ -443,6 +456,13 @@ function applySectionFromRoute(): void {
   const routeSection = typeof route.query.section === 'string'
     ? route.query.section
     : null;
+  if (routeSection && sectionDefinitions.some(section => section.key === routeSection) &&
+      !visibleFields.value.some(field => field.section === routeSection))
+    showAdvanced.value = true;
+  if (route.query.hagerEnergyAuth) {
+    showAdvanced.value = true;
+    activeSectionKey.value = 'sources';
+  }
   const matchingSection = routeSection === null
     ? null
     : sections.value.find((section) => section.key === routeSection);
@@ -463,6 +483,21 @@ function getDraftValue(key: string): string {
   return draftValues.value[key] ?? '';
 }
 
+function getInputValue(field: FieldDefinition): string {
+  return settingInputValue(field.key, getDraftValue(field.key));
+}
+
+function setInputValue(field: FieldDefinition, value: string | number | null): void {
+  draftValues.value[field.key] = settingStoredValue(field.key, String(value ?? ''));
+}
+
+function inputPlaceholder(field: FieldDefinition): string | undefined {
+  if (shouldRenderSensitive(field)) return secretPresentation(settingByKey.value.get(field.key)?.isConfigured ?? false).placeholder;
+  if (field.key === 'octopus.accountNumber') return 'Kundennummer A-…';
+  const defaultValue = metadataByKey.value.get(field.key)?.defaultValue;
+  return defaultValue == null ? undefined : settingInputValue(field.key, defaultValue);
+}
+
 function getNumericDraftValue(key: string): number | null {
   const rawValue = getDraftValue(key).trim();
 
@@ -478,10 +513,24 @@ function getNumericDraftValue(key: string): number | null {
 function getFieldErrors(key: string): string[] {
   const errors: string[] = [];
   const numericValue = getNumericDraftValue(key);
+  const provider = getDraftValue('electricityPrices.provider') || 'tibber';
+  const requiredForProvider = provider === 'octopusGermany'
+    ? ['octopus.apiKey', 'octopus.accountNumber'] : ['tibber.accessToken'];
+  const editingAccess = ['electricityPrices.provider', 'tibber.accessToken', 'octopus.apiKey', 'octopus.accountNumber']
+    .some(accessKey => getDraftValue(accessKey) !== (initialValues.value[accessKey] ?? ''));
+  if (editingAccess && requiredForProvider.includes(key) && !isSettingConfigured(key))
+    errors.push('Für die ausgewählte Strompreisquelle erforderlich.');
+  if (key === 'electricityPrices.provider' && !['tibber', 'octopusGermany'].includes(provider))
+    errors.push('Bitte Tibber oder Octopus Deutschland auswählen.');
 
   if (requiredKeys.has(key) && !isSettingConfigured(key)) {
         errors.push('Diese Einstellung ist erforderlich.');
   }
+  if (usesCents(key) && (numericValue === null || numericValue < 0))
+    errors.push('Bitte einen gültigen, nicht negativen Preis in ct/kWh eingeben.');
+  if (key === 'weishauptHotWater.minimumPriceAdvantagePerKwh' && numericValue !== null &&
+      (numericValue < .01 || numericValue > 1))
+    errors.push('Für Warmwasser sind 1 bis 100 ct/kWh zulässig.');
 
   switch (key) {
     case 'battery.totalCapacityKwh':
@@ -566,19 +615,26 @@ function shouldRenderVictronControlModeSelect(field: FieldDefinition): boolean {
 }
 
 function shouldRenderSensitive(field: FieldDefinition): boolean {
-  return metadataByKey.value.get(field.key)?.isSensitive === true;
+  return metadataByKey.value.get(field.key)?.isSensitive === true || settingByKey.value.get(field.key)?.isSensitive === true;
 }
 
 function getFieldLabel(field: FieldDefinition): string {
+  if (field.key === 'decision.minimumSavingsPerKwh') return 'Mindestvorteil für den Akku';
+  if (field.key === 'weishauptHotWater.minimumPriceAdvantagePerKwh') return 'Mindestvorteil für Warmwasser';
   return metadataByKey.value.get(field.key)?.displayName ?? field.key;
 }
 
 function getFieldDescription(field: FieldDefinition): string {
+  if (field.key === 'weishauptHotWater.minimumPriceAdvantagePerKwh') return 'Eigene Schwelle nur für Warmwasser: erforderlicher Vorteil gegenüber späterem Nachheizen, nach geschätztem Mehrverbrauch. Eingabe 1 bis 100 ct/kWh. Keine gemessene Ersparnis.';
+  if (field.key === 'gridFeedIn.compensationPricePerKwh') return 'Vergütung für eingespeisten Strom in ct/kWh. Einmal passend zum Einspeisevertrag einrichten.';
+  if (field.key === 'battery.targetEndStateOfChargePercent') return 'Kompatibilitätswert. Der aktuelle Optimierer hält am Ende des Prognosezeitraums keine zusätzliche Endreserve.';
   return field.helpText ?? metadataByKey.value.get(field.key)?.description ?? '';
 }
 
 function getGroupDescription(groupTitle: string): string {
   switch (groupTitle) {
+    case 'Wirtschaftliche Steuerung':
+      return 'Preise werden hier in Cent je kWh eingegeben. Die Akku-Schwelle ist unabhängig von der Warmwasser-Schwelle.';
     case 'Betrieb':
       return 'Zentrale Intervalle für Worker, Dashboard und Protokollierung.';
     case 'Benachrichtigungen':
@@ -657,7 +713,8 @@ function initializeDrafts(): void {
 
   for (const [key, metadataEntry] of metadataByKey.value.entries()) {
     const setting = settingByKey.value.get(key);
-    nextDrafts[key] = setting?.isSensitive ? '' : (setting?.value ?? metadataEntry.defaultValue ?? '');
+    const value = setting?.value ?? metadataEntry.defaultValue ?? '';
+    nextDrafts[key] = setting?.isSensitive || (key === 'octopus.accountNumber' && value === 'not-configured') ? '' : value;
   }
 
   draftValues.value = nextDrafts;
@@ -707,13 +764,7 @@ function createUiError(error: unknown, fallbackMessage: string): UiError {
 }
 
 function createUpdatePayload(setting: ControllerSettingResponseDto, rawValue: string): UpdateControllerSettingRequestDto | null {
-  const trimmedValue = rawValue.trim();
-
-  if (setting.isSensitive && trimmedValue === '' && setting.isConfigured) {
-    return null;
-  }
-
-  return { value: trimmedValue === '' ? null : trimmedValue };
+  return settingUpdatePayload(setting, rawValue);
 }
 
 function formatPercentValue(value: number): string {
@@ -738,6 +789,7 @@ onMounted(() => {
 watch(() => route.query.section, () => {
   applySectionFromRoute();
 });
+watch(showAdvanced, ensureActiveSection);
 </script>
 
 <template>
@@ -746,7 +798,7 @@ watch(() => route.query.section, () => {
       <div>
         <span class="settings-header__eyebrow">Konfiguration</span>
         <h1>Einstellungen</h1>
-        <p>Controller-Konfiguration für Batterie, Preise, Prognosen und Systemverhalten</p>
+        <p>Im Alltag Steuerungswerte anpassen. Einrichtung und Zugangsdaten bleiben im erweiterten Modus.</p>
       </div>
 
       <div class="settings-header__meta">
@@ -761,6 +813,25 @@ watch(() => route.query.section, () => {
         <span>Änderungen werden beim nächsten Entscheidungszyklus aktiv. Verbindungswerte können einen Reconnect erfordern.</span>
       </div>
     </header>
+
+    <section class="settings-mode" aria-label="Umfang der Einstellungen">
+      <div>
+        <strong>{{ showAdvanced ? 'Erweiterter Modus' : 'Alltagssteuerung' }}</strong>
+        <p>{{ showAdvanced ? 'Zusätzlich sichtbar: Einrichtung, Zugangsdaten und technische Einstellungen.' : 'Sichtbar: Ladestrategie, Batteriegrenzen und Warmwasser. Keine Einrichtung nötig, um Steuerungswerte anzupassen.' }}</p>
+      </div>
+      <v-switch
+        v-model="showAdvanced"
+        label="Erweiterter Modus"
+        color="primary"
+        hide-details
+        inset
+        :disabled="isSaving"
+      />
+    </section>
+    <v-alert v-if="hiddenDirtyCount > 0" class="mb-4" type="info" variant="tonal">
+      {{ hiddenDirtyCount }} Änderung(en) im erweiterten Modus sind noch ungespeichert und werden beim Speichern mit übernommen.
+      <v-btn variant="text" size="small" @click="showAdvanced = true">Erweiterte Werte anzeigen</v-btn>
+    </v-alert>
 
     <div v-if="isLoading" class="loading-panel">
       <v-progress-circular indeterminate color="primary" size="24" />
@@ -795,6 +866,7 @@ watch(() => route.query.section, () => {
       <ul class="message-list">
         <li v-for="error in validationErrors" :key="error">{{ error }}</li>
       </ul>
+      <v-btn v-if="!showAdvanced" variant="text" size="small" @click="showAdvanced = true">Auch erweiterte Werte prüfen</v-btn>
     </v-alert>
 
     <v-alert v-if="warningMessages.length > 0" class="mb-4" type="warning" variant="tonal">
@@ -802,6 +874,7 @@ watch(() => route.query.section, () => {
       <ul class="message-list">
         <li v-for="warning in warningMessages" :key="warning">{{ warning }}</li>
       </ul>
+      <v-btn v-if="!showAdvanced" variant="text" size="small" @click="showAdvanced = true">Einrichtung anzeigen</v-btn>
     </v-alert>
 
     <div class="settings-layout" :class="{ 'settings-layout--disabled': isLoading }">
@@ -832,12 +905,12 @@ watch(() => route.query.section, () => {
             <div class="planning-range__labels">
               <span>Hartes Minimum {{ formatPercentValue(getNumericDraftValue('battery.minimumStateOfChargePercent') ?? 0) }}</span>
               <span>Planung {{ formatPercentValue(getNumericDraftValue('battery.planningMinimumStateOfChargePercent') ?? 0) }} - {{ formatPercentValue(getNumericDraftValue('battery.planningMaximumStateOfChargePercent') ?? 0) }}</span>
-              <span>Ziel am Ende {{ formatPercentValue(getNumericDraftValue('battery.targetEndStateOfChargePercent') ?? 0) }}</span>
+              <span v-if="showAdvanced">Endreserve-Kompatibilitätswert {{ formatPercentValue(getNumericDraftValue('battery.targetEndStateOfChargePercent') ?? 0) }}</span>
             </div>
             <div class="planning-range__track" aria-hidden="true">
               <span class="planning-range__hard-min" />
               <span class="planning-range__window" />
-              <span class="planning-range__target" />
+              <span v-if="showAdvanced" class="planning-range__target" />
             </div>
             <p>Planungsgrenzen nutzt der Forecast. Harte Grenzen gelten als Sicherheitsrahmen.</p>
           </div>
@@ -849,7 +922,7 @@ watch(() => route.query.section, () => {
               {{ getGroupDescription(group.title) }}
             </p>
 
-            <div v-if="group.title === 'Hager Energy OAuth'" class="setting-group__actions">
+            <div v-if="showAdvanced && group.title === 'Hager Energy API'" class="setting-group__actions">
               <v-btn
                 color="primary"
                 prepend-icon="mdi-login"
@@ -875,6 +948,9 @@ watch(() => route.query.section, () => {
                 <div class="setting-row__copy">
                   <label class="setting-row__label" :for="field.key">{{ getFieldLabel(field) }}</label>
                   <p>{{ getFieldDescription(field) }}</p>
+                  <span v-if="shouldRenderSensitive(field)" class="credential-state">
+                    {{ getDraftValue(field.key).trim() ? 'Neuer Wert (ungespeichert)' : settingByKey.get(field.key)?.isConfigured ? 'Gespeichert' : 'Nicht eingerichtet' }}
+                  </span>
                   <small v-if="field.category === 'critical'">Sicherheitsrelevant: Bitte Wert bewusst setzen.</small>
                   <small v-else-if="field.category === 'important'">Beeinflusst die Planung und Entscheidungen.</small>
                 </div>
@@ -893,10 +969,10 @@ watch(() => route.query.section, () => {
                   />
 
                   <v-select
-                    v-else-if="shouldRenderTelemetrySourceSelect(field)"
+                    v-else-if="field.key === 'electricityPrices.provider' || shouldRenderTelemetrySourceSelect(field)"
                     :id="field.key"
                     v-model="draftValues[field.key]"
-                    :items="telemetrySourceOptions"
+                    :items="field.key === 'electricityPrices.provider' ? electricityPriceOptions : telemetrySourceOptions"
                     item-title="title"
                     item-value="value"
                     :error-messages="getFieldErrors(field.key)"
@@ -932,12 +1008,16 @@ watch(() => route.query.section, () => {
                   <v-text-field
                     v-else
                     :id="field.key"
-                    v-model="draftValues[field.key]"
+                    :model-value="getInputValue(field)"
+                    @update:model-value="setInputValue(field, $event)"
                     :type="shouldRenderSensitive(field) ? 'password' : shouldRenderNumber(field) ? 'number' : 'text'"
-                    :suffix="metadataByKey.get(field.key)?.unit ?? undefined"
-                    :placeholder="metadataByKey.get(field.key)?.defaultValue ?? undefined"
-                    :hint="shouldRenderSensitive(field) && settingByKey.get(field.key)?.isConfigured ? 'Gespeichert. Leer lassen, um den geheimen Wert beizubehalten.' : undefined"
-                    :persistent-hint="shouldRenderSensitive(field) && settingByKey.get(field.key)?.isConfigured"
+                    :suffix="usesCents(field.key) ? 'ct/kWh' : metadataByKey.get(field.key)?.unit ?? undefined"
+                    :placeholder="inputPlaceholder(field)"
+                    persistent-placeholder
+                    :autocomplete="shouldRenderSensitive(field) ? 'new-password' : undefined"
+                    :hint="shouldRenderSensitive(field) ? secretPresentation(settingByKey.get(field.key)?.isConfigured ?? false).hint : undefined"
+                    :persistent-hint="shouldRenderSensitive(field)"
+                    :step="shouldRenderNumber(field) ? 'any' : undefined"
                     :error-messages="getFieldErrors(field.key)"
                     density="comfortable"
                     hide-details="auto"

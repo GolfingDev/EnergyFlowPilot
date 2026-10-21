@@ -82,6 +82,36 @@ public sealed class ControllerSettingsServiceTests
         Assert.Equal(NowUtc, status.GeneratedAtUtc);
     }
 
+    [Fact]
+    public async Task ProviderSelectionDefaultsToTibberAndRecordsOnlyActualChanges()
+    {
+        var store = new InMemoryControllerSettingStore(ControllerSettingDefaults.CreateDefaultSettings(NowUtc));
+        var service = new ControllerSettingsService(store, new FixedUtcClock(NowUtc));
+        Assert.Equal("tibber", (await service.GetStatusAsync()).ElectricityPriceProvider);
+        await service.UpdateSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderKey, "tibber");
+        Assert.Equal(ControllerSettingDefaults.ElectricityPriceProviderNeverChanged,
+            (await store.GetSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey))?.Value);
+        await service.UpdateSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderKey, "octopusGermany");
+        Assert.Equal(NowUtc.ToString("O"), (await store.GetSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey))?.Value);
+        Assert.Equal("octopusGermany", (await service.GetStatusAsync()).ElectricityPriceProvider);
+        var later = new ControllerSettingsService(store, new FixedUtcClock(NowUtc.AddDays(1)));
+        await later.UpdateSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderKey, "octopusGermany");
+        Assert.Equal(NowUtc.ToString("O"), (await store.GetSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey))?.Value);
+        await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderKey, "uk"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey, "manual"));
+    }
+
+    [Fact]
+    public async Task OctopusApiKeyIsSensitiveAndHiddenFromFrontend()
+    {
+        var store = new InMemoryControllerSettingStore(ControllerSettingDefaults.CreateDefaultSettings(NowUtc));
+        var service = new ControllerSettingsService(store, new FixedUtcClock(NowUtc));
+        var setting = await service.UpdateSettingAsync(ControllerSettingDefaults.OctopusApiKeyKey, "secret-octopus");
+        Assert.Null(setting.GetFrontendReadableValue());
+        Assert.True(setting.IsConfigured);
+        Assert.Equal(ControllerSettingSensitivity.Sensitive, setting.Sensitivity);
+    }
+
     private sealed class FixedUtcClock : IUtcClock
     {
         public FixedUtcClock(DateTimeOffset utcNow)

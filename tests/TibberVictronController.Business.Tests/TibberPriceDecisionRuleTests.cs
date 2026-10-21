@@ -20,7 +20,7 @@ public sealed class TibberPriceDecisionRuleTests
 
         Assert.Equal(BatteryDecisionState.Charge, result.Instruction.DecisionState);
         Assert.Equal(BatteryChargeSource.Grid, result.Instruction.ChargeSource);
-        Assert.Contains(result.Reasons, reason => reason.Message.Contains("guenstigen Tibber-Preisphase"));
+        Assert.Contains(result.Reasons, reason => reason.Message.Contains("guenstigen Strompreisphase"));
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public sealed class TibberPriceDecisionRuleTests
 
         Assert.Equal(BatteryDecisionState.Discharge, result.Instruction.DecisionState);
         Assert.Null(result.Instruction.ChargeSource);
-        Assert.Contains(result.Reasons, reason => reason.Message.Contains("teuren Tibber-Preisphase"));
+        Assert.Contains(result.Reasons, reason => reason.Message.Contains("teuren Strompreisphase"));
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public sealed class TibberPriceDecisionRuleTests
 
         Assert.Equal(BatteryDecisionState.Idle, result.Instruction.DecisionState);
         Assert.Null(result.Instruction.ChargeSource);
-        Assert.Contains(result.Reasons, reason => reason.Message.Contains("neutralen Tibber-Preisphase"));
+        Assert.Contains(result.Reasons, reason => reason.Message.Contains("neutralen Strompreisphase"));
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public sealed class TibberPriceDecisionRuleTests
         var result = rule.Evaluate(decisionTimeUtc, Array.Empty<TibberPriceForecastSlot>(), batteryState);
 
         Assert.Equal(BatteryDecisionState.Idle, result.Instruction.DecisionState);
-        Assert.Contains(result.Reasons, reason => reason.Message.Contains("Es liegen keine Tibber-Preise vor."));
+        Assert.Contains(result.Reasons, reason => reason.Message.Contains("Es liegen keine Strompreise vor."));
     }
 
     [Fact]

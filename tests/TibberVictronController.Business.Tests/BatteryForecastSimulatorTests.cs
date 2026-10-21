@@ -78,7 +78,7 @@ public sealed class BatteryForecastSimulatorTests
             feedInCompensationPricePerKwh: 0.08m);
 
         Assert.Equal(BatteryDecisionState.Idle, result.Entries[0].Decision.Instruction.DecisionState);
-        Assert.Contains(result.Entries[0].Reasons, reason => reason.Message.Contains("Kapazitaet fuer spaetere negative Tibber-Preise"));
+        Assert.Contains(result.Entries[0].Reasons, reason => reason.Message.Contains("Kapazitaet fuer spaetere negative Strompreise"));
     }
 
     [Fact]

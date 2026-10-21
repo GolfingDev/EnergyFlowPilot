@@ -38,13 +38,25 @@ public sealed class ControllerSettingsService : IControllerSettingsService
         CancellationToken cancellationToken = default)
     {
         var definition = GetRequiredDefinition(key);
+        if (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey)
+            throw new ArgumentException("Der Anbieterwechsel-Zeitpunkt wird automatisch gesetzt.", nameof(key));
         var normalizedValue = NormalizeValue(definition, value);
+        if (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderKey && normalizedValue is not ("tibber" or "octopusGermany"))
+            throw new ArgumentException("Die Strompreisquelle muss tibber oder octopusGermany sein.", nameof(value));
         var updatedSetting = new ControllerSetting(
             definition.Key,
             normalizedValue,
             definition.Sensitivity,
             utcClock.UtcNow);
 
+        if (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderKey)
+        {
+            var previous = (await controllerSettingStore.GetSettingAsync(definition.Key, cancellationToken))?.Value ?? "tibber";
+            if (previous != normalizedValue)
+                await controllerSettingStore.SaveSettingAsync(new ControllerSetting(
+                    ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey, utcClock.UtcNow.ToString("O"),
+                    ControllerSettingSensitivity.Normal, utcClock.UtcNow), cancellationToken);
+        }
         await controllerSettingStore.SaveSettingAsync(updatedSetting, cancellationToken);
 
         return updatedSetting;
@@ -66,7 +78,11 @@ public sealed class ControllerSettingsService : IControllerSettingsService
             knownSettings.Count,
             persistedSettings.Count,
             configuredSensitiveSettingsCount,
-            utcClock.UtcNow);
+            utcClock.UtcNow)
+        {
+            ElectricityPriceProvider = persistedSettings.FirstOrDefault(s =>
+                s.Key == ControllerSettingDefaults.ElectricityPriceProviderKey)?.Value ?? "tibber"
+        };
     }
 
     private static ControllerSettingDefinition GetRequiredDefinition(string key)

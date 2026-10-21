@@ -13,6 +13,8 @@ using TibberVictronController.Dal.Mqtt;
 using TibberVictronController.Dal.Persistence;
 using TibberVictronController.Dal.Repositories;
 using TibberVictronController.Dal.Tibber;
+using TibberVictronController.Dal.Octopus;
+using TibberVictronController.Dal.Prices;
 using TibberVictronController.Dal.Victron;
 using TibberVictronController.Dal.Weather;
 using TibberVictronController.Dal.Weishaupt;
@@ -105,7 +107,7 @@ public static class ControllerServiceCollectionExtensions
             BatteryStateProvider = serviceProvider.GetRequiredService<IBatteryStateProvider>(),
             BatteryConfigurationProvider = serviceProvider.GetRequiredService<IBatteryConfigurationProvider>(),
             CurrentSiteTelemetryProvider = serviceProvider.GetRequiredService<ICurrentSiteTelemetryProvider>(),
-            TibberPriceForecastProvider = serviceProvider.GetRequiredService<ITibberPriceForecastProvider>(),
+            TibberPriceForecastProvider = serviceProvider.GetRequiredService<IElectricityPriceForecastProvider>(),
             BatteryForecastService = serviceProvider.GetRequiredService<IBatteryForecastService>(),
             ControllerSettingStore = serviceProvider.GetRequiredService<IControllerSettingStore>(),
             DecisionLogRepository = serviceProvider.GetRequiredService<IDecisionLogRepository>()
@@ -118,13 +120,13 @@ public static class ControllerServiceCollectionExtensions
             LiveConsumptionRepository = serviceProvider.GetRequiredService<ILiveConsumptionRepository>(),
             BatteryForecastService = serviceProvider.GetRequiredService<IBatteryForecastService>(),
             BatteryConfigurationProvider = serviceProvider.GetRequiredService<IBatteryConfigurationProvider>(),
-            TibberPriceForecastProvider = serviceProvider.GetRequiredService<ITibberPriceForecastProvider>(),
+            TibberPriceForecastProvider = serviceProvider.GetRequiredService<IElectricityPriceForecastProvider>(),
             ControllerSettingStore = serviceProvider.GetRequiredService<IControllerSettingStore>()
         });
         services.AddScoped<IDashboardSummaryService, DashboardSummaryService>();
         services.AddSingleton<TibberPriceForecastCache>();
         services.AddHttpClient(nameof(TibberPriceForecastProvider));
-        services.AddScoped<ITibberPriceForecastProvider>(serviceProvider =>
+        services.AddScoped<TibberPriceForecastProvider>(serviceProvider =>
         {
             var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
 
@@ -133,6 +135,9 @@ public static class ControllerServiceCollectionExtensions
                 serviceProvider.GetRequiredService<IControllerSettingStore>(),
                 serviceProvider.GetRequiredService<TibberPriceForecastCache>());
         });
+        services.AddSingleton<OctopusPriceCache>();
+        services.AddHttpClient<OctopusPriceForecastProvider>(client => client.Timeout = TimeSpan.FromSeconds(20));
+        services.AddScoped<IElectricityPriceForecastProvider, SelectedElectricityPriceForecastProvider>();
         services.AddSingleton<ForecastSolarPvForecastCache>();
         services.AddHttpClient<ForecastSolarPvForecastProvider>();
         services.AddScoped<IWeatherForecastProvider, CachedWeatherForecastProvider>();

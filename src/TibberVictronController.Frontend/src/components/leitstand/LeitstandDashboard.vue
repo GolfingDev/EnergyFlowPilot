@@ -295,6 +295,7 @@ const reviewKpis = computed(() => {
 });
 
 const statusRows = computed(() => [
+  { label: 'Strompreisquelle (ausgewählt)', value: props.status?.electricityPriceProvider === 'octopusGermany' ? 'Octopus Deutschland' : 'Tibber', ok: true },
   { label: 'Controller', value: props.status?.status ?? '–', ok: props.status?.status === 'Healthy' },
   { label: 'Victron MQTT', value: props.status?.victronMqttStatus ?? '–', ok: props.status?.victronMqttStatus === 'Connected' },
   {

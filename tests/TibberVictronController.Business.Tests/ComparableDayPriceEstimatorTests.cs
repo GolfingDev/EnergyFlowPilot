@@ -67,6 +67,20 @@ public sealed class ComparableDayPriceEstimatorTests
         Assert.All(estimated, slot => Assert.Equal(0m, slot.TotalPricePerKwh));
     }
 
+    [Theory]
+    [InlineData("octopusGermany", "{}")]
+    [InlineData("tibber", "{\"ElectricityPriceProvider\":\"octopusGermany\"}")]
+    public async Task NeverUsesOtherSuppliersHistoricalPrices(string provider, string historicalSource)
+    {
+        var start = LocalToUtc(new DateTime(2026, 11, 22, 23, 45, 0));
+        var known = new[] { new TibberPriceForecastSlot(new ForecastTimeSlot(start, start.AddMinutes(15)), 0.3m, "EUR") };
+        var prices = new DayPriceProvider(start.AddDays(-30), _ => 0m) { Source = provider };
+        var history = new LoggedPriceRepository(0.1m) { InputSummaryJson = historicalSource };
+        var estimator = new ComparableDayPriceEstimator(prices, history, Berlin);
+        var completed = await estimator.CompleteAsync(known, start.AddHours(2), start);
+        Assert.Single(completed);
+    }
+
     private static DateTimeOffset LocalToUtc(DateTime local)
     {
         return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), Berlin), TimeSpan.Zero);
@@ -87,6 +101,7 @@ public sealed class ComparableDayPriceEstimatorTests
     /// <summary>Delivers prices for exactly one local day, like Tibber before next-day prices are published.</summary>
     private sealed class DayPriceProvider : ITibberPriceForecastProvider
     {
+        public string Source { get; init; } = "tibber";
         private readonly DateTimeOffset dayStartUtc;
         private readonly Func<DateTimeOffset, decimal> price;
 
@@ -111,6 +126,7 @@ public sealed class ComparableDayPriceEstimatorTests
     /// <summary>Returns one logged decision with the given price for every requested range.</summary>
     private sealed class LoggedPriceRepository : IDecisionLogRepository
     {
+        public string InputSummaryJson { get; init; } = "{}";
         private readonly decimal? price;
 
         public LoggedPriceRepository(decimal? price)
@@ -135,7 +151,7 @@ public sealed class ComparableDayPriceEstimatorTests
                         tibberPriceCurrency: "EUR",
                         gridImportWatts: null,
                         gridExportWatts: null,
-                        inputSummaryJson: "{}",
+                        inputSummaryJson: InputSummaryJson,
                         new[] { new BatteryDecisionReason("TEST", "Test.") })
                 };
 

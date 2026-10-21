@@ -9,7 +9,7 @@ namespace TibberVictronController.Business.Decisions;
 /// </summary>
 public sealed class BatteryForecastService : IBatteryForecastService
 {
-    private readonly ITibberPriceForecastProvider tibberPriceForecastProvider;
+    private readonly IElectricityPriceForecastProvider tibberPriceForecastProvider;
     private readonly IWeatherForecastProvider weatherForecastProvider;
     private readonly IHistoricalConsumptionProvider historicalConsumptionProvider;
     private readonly IBatteryStateProvider batteryStateProvider;
@@ -20,7 +20,7 @@ public sealed class BatteryForecastService : IBatteryForecastService
     private readonly IPriceDriverProvider? priceDriverProvider;
 
     public BatteryForecastService(
-        ITibberPriceForecastProvider tibberPriceForecastProvider,
+        IElectricityPriceForecastProvider tibberPriceForecastProvider,
         IWeatherForecastProvider weatherForecastProvider,
         IHistoricalConsumptionProvider historicalConsumptionProvider,
         IBatteryStateProvider batteryStateProvider,
@@ -42,7 +42,7 @@ public sealed class BatteryForecastService : IBatteryForecastService
     }
 
     internal BatteryForecastService(
-        ITibberPriceForecastProvider tibberPriceForecastProvider,
+        IElectricityPriceForecastProvider tibberPriceForecastProvider,
         IWeatherForecastProvider weatherForecastProvider,
         IHistoricalConsumptionProvider historicalConsumptionProvider,
         IBatteryStateProvider batteryStateProvider,
@@ -51,7 +51,7 @@ public sealed class BatteryForecastService : IBatteryForecastService
         BatteryForecastSimulator batteryForecastSimulator)
     {
         this.tibberPriceForecastProvider = tibberPriceForecastProvider
-            ?? throw new ArgumentNullException(nameof(tibberPriceForecastProvider), "Der Tibber-Preisprovider darf nicht null sein.");
+            ?? throw new ArgumentNullException(nameof(tibberPriceForecastProvider), "Der Strompreisprovider darf nicht null sein.");
         this.weatherForecastProvider = weatherForecastProvider
             ?? throw new ArgumentNullException(nameof(weatherForecastProvider), "Der Wetter-/PV-Provider darf nicht null sein.");
         this.historicalConsumptionProvider = historicalConsumptionProvider

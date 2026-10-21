@@ -19,6 +19,9 @@ public sealed record ControllerStatusResponseDto(
     DateTimeOffset GeneratedAtUtc,
     string? VictronMqttStatus,
     string? VictronMqttLastError,
-    DateTimeOffset? VictronMqttLastSuccessfulMessageAtUtc);
+    DateTimeOffset? VictronMqttLastSuccessfulMessageAtUtc)
+{
+    public string ElectricityPriceProvider { get; init; } = "tibber";
+}
 
 public sealed record SettingsErrorDto(string Message);

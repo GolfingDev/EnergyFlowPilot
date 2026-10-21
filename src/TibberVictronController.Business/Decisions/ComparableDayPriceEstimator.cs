@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
 
@@ -19,12 +20,12 @@ public sealed class ComparableDayPriceEstimator
     private static readonly TimeSpan SlotDuration = TimeSpan.FromMinutes(15);
     private static readonly ConcurrentDictionary<DateTimeOffset, IReadOnlyDictionary<TimeSpan, decimal>> PastDayPriceCache = new();
 
-    private readonly ITibberPriceForecastProvider tibberPriceForecastProvider;
+    private readonly IElectricityPriceForecastProvider tibberPriceForecastProvider;
     private readonly IDecisionLogRepository decisionLogRepository;
     private readonly TimeZoneInfo timeZone;
 
     public ComparableDayPriceEstimator(
-        ITibberPriceForecastProvider tibberPriceForecastProvider,
+        IElectricityPriceForecastProvider tibberPriceForecastProvider,
         IDecisionLogRepository decisionLogRepository,
         TimeZoneInfo timeZone)
     {
@@ -107,6 +108,11 @@ public sealed class ComparableDayPriceEstimator
             return tibberPrices;
         }
 
+        // Legacy decision logs/cache contain Tibber prices. Never reuse them for another supplier.
+        // Octopus estimates may use published comparable-day prices, but not untagged historical prices.
+        if (tibberPriceForecastProvider.Source != "tibber")
+            return new Dictionary<TimeSpan, decimal>();
+
         if (dayEndUtc > nowUtc)
         {
             return new Dictionary<TimeSpan, decimal>();
@@ -122,7 +128,8 @@ public sealed class ComparableDayPriceEstimator
         for (var slotStartUtc = dayStartUtc; slotStartUtc < dayEndUtc; slotStartUtc = slotStartUtc.Add(SlotDuration))
         {
             var decisions = await decisionLogRepository.GetDecisionsAsync(slotStartUtc, slotStartUtc.Add(SlotDuration).AddTicks(-1), 1, cancellationToken);
-            var price = decisions.FirstOrDefault(decision => decision.TibberPricePerKwh is not null)?.TibberPricePerKwh;
+            var price = decisions.FirstOrDefault(decision => decision.TibberPricePerKwh is not null &&
+                IsTibberHistory(decision.InputSummaryJson))?.TibberPricePerKwh;
 
             if (price is not null)
             {
@@ -137,5 +144,16 @@ public sealed class ComparableDayPriceEstimator
 
         PastDayPriceCache[dayStartUtc] = loggedPrices;
         return loggedPrices;
+    }
+
+    private static bool IsTibberHistory(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return !document.RootElement.TryGetProperty("ElectricityPriceProvider", out var source) ||
+                source.GetString() == "tibber";
+        }
+        catch (JsonException) { return false; }
     }
 }

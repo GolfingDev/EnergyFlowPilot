@@ -15,7 +15,7 @@ public sealed class CurrentBatteryDecisionServiceDependencies
 
     public required ICurrentSiteTelemetryProvider CurrentSiteTelemetryProvider { get; init; }
 
-    public required ITibberPriceForecastProvider TibberPriceForecastProvider { get; init; }
+    public required IElectricityPriceForecastProvider TibberPriceForecastProvider { get; init; }
 
     public IBatteryForecastService? BatteryForecastService { get; init; }
 

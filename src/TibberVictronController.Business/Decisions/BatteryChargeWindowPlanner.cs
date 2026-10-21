@@ -17,7 +17,7 @@ public sealed class BatteryChargeWindowPlanner
     {
         if (priceForecast is null)
         {
-            throw new ArgumentNullException(nameof(priceForecast), "Die Tibber-Preisprognose darf nicht null sein.");
+            throw new ArgumentNullException(nameof(priceForecast), "Die Strompreisprognose darf nicht null sein.");
         }
 
         if (batteryState is null)

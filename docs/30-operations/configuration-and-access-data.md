@@ -1,5 +1,36 @@
 # Configuration And Access Data
 
+## Settings UI: daily controls and setup (21.10.2026)
+
+- The default view is **Alltagssteuerung** with **Ladestrategie**,
+  **Batteriegrenzen** and **Warmwasser**. The initial section is Ladestrategie.
+- Battery minimum savings is now visible as **Mindestvorteil fuer den Akku**.
+  Battery and hot-water minimum savings are distinct controls.
+- Monetary inputs use **ct/kWh**. For example, 3 ct/kWh is still saved as
+  0.03 EUR/kWh. Drafts remain in backend units; opening a page or toggling
+  modes does not convert or save anything.
+- **Erweiterter Modus** reveals setup values, provider selection, credentials,
+  technical battery data, physical safety minimum, PV configuration, connections,
+  polling/retention, MQTT and SMTP. Unclassified new fields are setup-only.
+  Safety relevance and everyday visibility are separate classifications.
+- A configured secret shows `********` as an always-visible placeholder and
+  **Gespeichert**; an absent secret shows **Noch nicht eingerichtet**.
+  The actual input stays empty until a replacement is typed. No secret prefix
+  is exposed and the placeholder is never saved. Blank input keeps an existing
+  secret. Read DTOs still contain no secret values.
+- Mode changes preserve all drafts. Hidden unsaved setup edits are counted in
+  a notice and remain included in Save; Reset also resets hidden drafts.
+- Missing supplier credentials produce a setup warning, without blocking unrelated
+  daily changes. Editing supplier/access settings still validates the required
+  credentials. Hidden numeric validation failures remain labelled and can be
+  reached by enabling the extended mode.
+- A deep link to a setup-only section or the Hager OAuth callback enables the
+  extended mode. This is a presentation choice, not access control.
+- Existing stored values, API units and backend control logic are unchanged.
+
+Checks: `node --experimental-strip-types --test tests/settingsPresentation.test.mjs`
+and `npm run build` in the frontend directory. No new test framework is required.
+
 ## Rule
 
 All runtime settings and all required access data must be stored in the database.

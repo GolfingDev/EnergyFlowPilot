@@ -5,13 +5,7 @@ namespace TibberVictronController.Business.Abstractions;
 /// <summary>
 /// Provides future Tibber electricity prices for the Decision Engine forecast.
 /// </summary>
-public interface ITibberPriceForecastProvider
+public interface ITibberPriceForecastProvider : IElectricityPriceForecastProvider
 {
-    /// <summary>
-    /// Gets future electricity prices for the requested UTC time range.
-    /// </summary>
-    Task<IReadOnlyList<TibberPriceForecastSlot>> GetPriceForecastAsync(
-        DateTimeOffset startsAtUtc,
-        DateTimeOffset endsAtUtc,
-        CancellationToken cancellationToken = default);
+    // Compatibility alias for existing Tibber adapters and test doubles.
 }

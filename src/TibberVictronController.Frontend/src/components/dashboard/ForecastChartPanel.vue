@@ -59,7 +59,7 @@ async function renderForecastChart(): Promise<void> {
       datasets: [
         {
           type: 'bar',
-          label: 'Tibber Preis',
+          label: 'Strompreis',
           data: entries.map((entry) => entry.tibberPricePerKwh),
           yAxisID: 'price',
           backgroundColor: entries.map((entry) => getForecastBarColor(entry)),
@@ -239,7 +239,7 @@ function formatForecastChartTooltipLine(
   const entry = entries[item.dataIndex];
 
   switch (item.dataset.label) {
-    case 'Tibber Preis':
+    case 'Strompreis':
       return `Preis: ${formatPrice(entry.tibberPricePerKwh, entry.tibberPriceCurrency)}`;
     case 'SoC':
       return `SoC: ${formatPercent(entry.stateOfChargeAfterPercent)}`;
@@ -300,13 +300,13 @@ onBeforeUnmount(() => {
     <div class="panel__header">
       <div>
         <h2>Forecast</h2>
-        <p>Tibber-Preise als Hauptchart, eingefarbt nach geplanter Batterieentscheidung.</p>
+        <p>Strompreise als Hauptchart, eingefarbt nach geplanter Batterieentscheidung.</p>
       </div>
     </div>
 
     <div v-if="forecastChartEntries.length" class="forecast-chart">
       <canvas ref="forecastChartCanvas"
-        aria-label="Forecast-Chart mit Tibber-Preisen, Batterieentscheidungen, PV, Verbrauch und erwartetem SoC"></canvas>
+        aria-label="Forecast-Chart mit Strompreisen, Batterieentscheidungen, PV, Verbrauch und erwartetem SoC"></canvas>
     </div>
     <div v-else class="forecast-chart forecast-chart--empty">
       <div class="forecast-empty-frame" aria-hidden="true"></div>

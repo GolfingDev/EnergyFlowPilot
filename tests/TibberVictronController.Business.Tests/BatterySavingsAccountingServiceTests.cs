@@ -144,6 +144,28 @@ public sealed class BatterySavingsAccountingServiceTests
         Assert.Empty(savingsRepository.Summaries);
     }
 
+    [Theory]
+    [InlineData(-1, true)]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    public async Task ProviderSwitchDoesNotRepriceOldOrMixedDays(int daysAfterSwitch, bool skipped)
+    {
+        var live = new FakeLiveConsumptionRepository([
+            CreateSample(0, 500m, 0m, -1000m, 0m),
+            CreateSample(5, 500m, 0m, -1000m, 0m)
+        ]);
+        var savings = new FakeBatterySavingsRepository();
+        var settings = new TestDoubles.FakeControllerSettingStore();
+        await settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey,
+            "0.08", ControllerSettingSensitivity.Normal, UpdatedAtUtc));
+        await settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey,
+            StartsAtUtc.AddDays(-daysAfterSwitch).ToString("O"), ControllerSettingSensitivity.Normal, UpdatedAtUtc));
+        var service = new BatterySavingsAccountingService(live, savings,
+            new FakeTibberPriceForecastProvider([CreatePriceSlot(0, 15, 0.30m)]), settings, new FakeUtcClock());
+        await service.RefreshAsync(new BatterySavingsQuery { StartDate = new(2026, 6, 4), EndDate = new(2026, 6, 4), Currency = "EUR" });
+        Assert.Equal(skipped ? 0 : 1, savings.Summaries.Count);
+    }
+
     private static BatterySavingsAccountingService CreateService(
         ILiveConsumptionRepository liveRepository,
         IBatterySavingsRepository savingsRepository,

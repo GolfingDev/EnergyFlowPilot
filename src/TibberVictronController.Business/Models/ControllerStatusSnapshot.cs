@@ -8,4 +8,7 @@ public sealed record ControllerStatusSnapshot(
     int KnownSettingsCount,
     int PersistedSettingsCount,
     int ConfiguredSensitiveSettingsCount,
-    DateTimeOffset GeneratedAtUtc);
+    DateTimeOffset GeneratedAtUtc)
+{
+    public string ElectricityPriceProvider { get; init; } = "tibber";
+}

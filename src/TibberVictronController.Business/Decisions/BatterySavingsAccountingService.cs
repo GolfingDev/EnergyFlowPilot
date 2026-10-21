@@ -14,7 +14,7 @@ public sealed class BatterySavingsAccountingService : IBatterySavingsAccountingS
 
     private readonly ILiveConsumptionRepository liveConsumptionRepository;
     private readonly IBatterySavingsRepository batterySavingsRepository;
-    private readonly ITibberPriceForecastProvider tibberPriceForecastProvider;
+    private readonly IElectricityPriceForecastProvider tibberPriceForecastProvider;
     private readonly IControllerSettingStore controllerSettingStore;
     private readonly IUtcClock utcClock;
     private readonly BatterySavingsCalculator calculator = new();
@@ -22,7 +22,7 @@ public sealed class BatterySavingsAccountingService : IBatterySavingsAccountingS
     public BatterySavingsAccountingService(
         ILiveConsumptionRepository liveConsumptionRepository,
         IBatterySavingsRepository batterySavingsRepository,
-        ITibberPriceForecastProvider tibberPriceForecastProvider,
+        IElectricityPriceForecastProvider tibberPriceForecastProvider,
         IControllerSettingStore controllerSettingStore,
         IUtcClock utcClock)
     {
@@ -53,7 +53,15 @@ public sealed class BatterySavingsAccountingService : IBatterySavingsAccountingS
         }
 
         var prices = await tibberPriceForecastProvider.GetPriceForecastAsync(startsAtUtc, endsAtUtc, cancellationToken);
+        var changedAt = await controllerSettingStore.GetSettingAsync(
+            ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey, cancellationToken);
+        DateOnly? transitionDay = DateTimeOffset.TryParse(changedAt?.Value, CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out var changed)
+            ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(changed, reportingTimeZone).DateTime) : null;
         var relevantPrices = prices
+            // Daily summaries cannot safely mix suppliers. Preserve old/transition-day summaries unchanged.
+            .Where(price => transitionDay is null ||
+                DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(price.TimeSlot.StartsAtUtc, reportingTimeZone).DateTime) > transitionDay)
             .Where(price => string.Equals(price.Currency, query.Currency, StringComparison.OrdinalIgnoreCase))
             .OrderBy(price => price.TimeSlot.StartsAtUtc)
             .ToArray();

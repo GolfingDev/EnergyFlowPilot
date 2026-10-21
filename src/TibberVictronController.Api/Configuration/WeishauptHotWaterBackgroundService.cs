@@ -55,11 +55,11 @@ public sealed class WeishauptHotWaterBackgroundService(
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeout.CancelAfter(TimeSpan.FromSeconds(10));
-                prices = await services.GetRequiredService<ITibberPriceForecastProvider>().GetPriceForecastAsync(now, now.AddHours(28), timeout.Token);
+                prices = await services.GetRequiredService<IElectricityPriceForecastProvider>().GetPriceForecastAsync(now, now.AddHours(28), timeout.Token);
             }
             catch (Exception exception) when (!ct.IsCancellationRequested)
             {
-                logger.LogWarning(exception, "Weishaupt-Automatik: aktueller Tibber-Preis nicht verfuegbar.");
+                logger.LogWarning(exception, "Weishaupt-Automatik: aktueller Strompreis nicht verfuegbar.");
             }
             try
             {

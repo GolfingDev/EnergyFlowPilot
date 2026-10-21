@@ -28,7 +28,7 @@ public sealed class TibberPriceDecisionRule
 
         if (priceForecast is null)
         {
-            throw new ArgumentNullException(nameof(priceForecast), "Die Tibber-Preisprognose darf nicht null sein.");
+            throw new ArgumentNullException(nameof(priceForecast), "Die Strompreisprognose darf nicht null sein.");
         }
 
         if (batteryState is null)
@@ -38,7 +38,7 @@ public sealed class TibberPriceDecisionRule
 
         if (priceForecast.Count == 0)
         {
-            return CreateIdleResult("Es liegen keine Tibber-Preise vor. Die Decision Engine bleibt deshalb im Idle-Zustand.");
+            return CreateIdleResult("Es liegen keine Strompreise vor. Die Decision Engine bleibt deshalb im Idle-Zustand.");
         }
 
         var currentPriceSlot = priceForecast.SingleOrDefault(priceSlot =>
@@ -47,7 +47,7 @@ public sealed class TibberPriceDecisionRule
 
         if (currentPriceSlot is null)
         {
-            return CreateIdleResult("Fuer den aktuellen Entscheidungszeitpunkt liegt kein Tibber-Preis vor. Die Decision Engine bleibt deshalb im Idle-Zustand.");
+            return CreateIdleResult("Fuer den aktuellen Entscheidungszeitpunkt liegt kein Strompreis vor. Die Decision Engine bleibt deshalb im Idle-Zustand.");
         }
 
         var priceBoundaries = CalculatePriceBoundaries(priceForecast);
@@ -57,12 +57,12 @@ public sealed class TibberPriceDecisionRule
         {
             if (batteryState.StateOfChargePercent >= FullBatterySocPercent)
             {
-                return CreateIdleResult("Der Tibber-Preis ist negativ, aber der Akku ist voll und kann nicht weiter geladen werden.");
+                return CreateIdleResult("Der Strompreis ist negativ, aber der Akku ist voll und kann nicht weiter geladen werden.");
             }
 
             return CreateResult(
                 new BatteryDecisionInstruction(BatteryDecisionState.Charge, BatteryChargeSource.Grid),
-                $"Der aktuelle Tibber-Preis {currentPriceSlot.TotalPricePerKwh:0.0000} ist negativ. Die Decision Engine nutzt diesen Slot deshalb zum Laden aus dem Netz.");
+                $"Der aktuelle Strompreis {currentPriceSlot.TotalPricePerKwh:0.0000} ist negativ. Die Decision Engine nutzt diesen Slot deshalb zum Laden aus dem Netz.");
         }
 
         if (currentPriceSlot.TotalPricePerKwh <= chargePriceLimit)
@@ -86,18 +86,18 @@ public sealed class TibberPriceDecisionRule
 
             return CreateResult(
                 new BatteryDecisionInstruction(BatteryDecisionState.Discharge, chargeSource: null),
-                $"Der aktuelle Tibber-Preis {currentPriceSlot.TotalPricePerKwh:0.0000} liegt in der teuren Tibber-Preisphase. Entladen vermeidet teuren Netzbezug.");
+                $"Der aktuelle Strompreis {currentPriceSlot.TotalPricePerKwh:0.0000} liegt in der teuren Strompreisphase. Entladen vermeidet teuren Netzbezug.");
         }
 
         if (batteryState.StateOfChargePercent >= HighBatterySocPercent &&
             currentPriceSlot.TotalPricePerKwh <= priceBoundaries.CheapPriceLimit)
         {
             return CreateIdleResult(
-                $"Der aktuelle Tibber-Preis {currentPriceSlot.TotalPricePerKwh:0.0000} ist nur normal guenstig. Wegen hohem Akkuladestand von {batteryState.StateOfChargePercent:0.#} Prozent wird nicht aus dem Netz geladen.");
+                $"Der aktuelle Strompreis {currentPriceSlot.TotalPricePerKwh:0.0000} ist nur normal guenstig. Wegen hohem Akkuladestand von {batteryState.StateOfChargePercent:0.#} Prozent wird nicht aus dem Netz geladen.");
         }
 
         return CreateIdleResult(
-            $"Der aktuelle Tibber-Preis {currentPriceSlot.TotalPricePerKwh:0.0000} liegt in der neutralen Tibber-Preisphase. Die Decision Engine bleibt idle.");
+            $"Der aktuelle Strompreis {currentPriceSlot.TotalPricePerKwh:0.0000} liegt in der neutralen Strompreisphase. Die Decision Engine bleibt idle.");
     }
 
     private static PriceBoundaries CalculatePriceBoundaries(IReadOnlyList<TibberPriceForecastSlot> priceForecast)
@@ -144,7 +144,7 @@ public sealed class TibberPriceDecisionRule
     {
         var chargeReasonPrefix = batteryState.StateOfChargePercent <= LowBatterySocPercent
             ? $"Der niedrige Akkuladestand von {batteryState.StateOfChargePercent:0.#} Prozent macht Laden bereits bis {chargePriceLimit:0.0000} EUR/kWh sinnvoll."
-            : $"Der aktuelle Tibber-Preis {currentPriceSlot.TotalPricePerKwh:0.0000} liegt in der guenstigen Tibber-Preisphase.";
+            : $"Der aktuelle Strompreis {currentPriceSlot.TotalPricePerKwh:0.0000} liegt in der guenstigen Strompreisphase.";
 
         return $"{chargeReasonPrefix} Laden aus dem Netz senkt den erwarteten Durchschnittspreis.";
     }

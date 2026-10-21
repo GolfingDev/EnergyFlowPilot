@@ -59,7 +59,7 @@ const savingsMetricTitle = computed(() => {
     </article>
 
     <article class="metric-card">
-      <span>Tibber Preis</span>
+      <span>Strompreis</span>
       <strong>{{ formatPrice(decision?.tibberPricePerKwh, decision?.tibberPriceCurrency) }}</strong>
       <p>Preis aus der aktuellen Entscheidung.</p>
     </article>

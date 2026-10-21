@@ -248,7 +248,7 @@ public sealed class BatteryForecastServiceTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            throw new InvalidOperationException("Darf ohne Tibber-Preise nicht aufgerufen werden.");
+            throw new InvalidOperationException("Darf ohne Strompreise nicht aufgerufen werden.");
         }
     }
 
@@ -260,7 +260,7 @@ public sealed class BatteryForecastServiceTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            throw new InvalidOperationException("Darf ohne Tibber-Preise nicht aufgerufen werden.");
+            throw new InvalidOperationException("Darf ohne Strompreise nicht aufgerufen werden.");
         }
     }
 }

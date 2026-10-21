@@ -62,6 +62,12 @@ public static class ControllerSettingDefaults
     public const string PvForecastAzimuthDegreesKey = "pvForecast.azimuthDegrees";
     public const string PvForecastTimeZoneKey = "pvForecast.timeZone";
     public const string TibberApiEndpointKey = "tibber.apiEndpoint";
+    public const string ElectricityPriceProviderKey = "electricityPrices.provider";
+    public const string ElectricityPriceProviderChangedAtKey = "electricityPrices.providerChangedAtUtc";
+    public const string OctopusApiKeyKey = "octopus.apiKey";
+    public const string OctopusAccountNumberKey = "octopus.accountNumber";
+    public const string OctopusAccountNumberNotConfigured = "not-configured";
+    public const string ElectricityPriceProviderNeverChanged = "never";
     public const string TibberHomeSelectionKey = "tibber.homeSelection";
     public const string TibberAccessTokenKey = "tibber.accessToken";
     public const string MqttHostKey = "mqtt.host";
@@ -177,6 +183,10 @@ public static class ControllerSettingDefaults
         new(PvForecastAzimuthDegreesKey, "0", ControllerSettingSensitivity.Normal),
         new(PvForecastTimeZoneKey, "Europe/Berlin", ControllerSettingSensitivity.Normal),
         new(TibberApiEndpointKey, "https://api.tibber.com/v1-beta/gql", ControllerSettingSensitivity.Normal),
+        new(ElectricityPriceProviderKey, "tibber", ControllerSettingSensitivity.Normal),
+        new(ElectricityPriceProviderChangedAtKey, ElectricityPriceProviderNeverChanged, ControllerSettingSensitivity.Normal),
+        new(OctopusApiKeyKey, null, ControllerSettingSensitivity.Sensitive),
+        new(OctopusAccountNumberKey, OctopusAccountNumberNotConfigured, ControllerSettingSensitivity.Normal),
         new(TibberHomeSelectionKey, "first", ControllerSettingSensitivity.Normal),
         new(TibberAccessTokenKey, null, ControllerSettingSensitivity.Sensitive),
         new(MqttHostKey, "localhost", ControllerSettingSensitivity.Normal),
