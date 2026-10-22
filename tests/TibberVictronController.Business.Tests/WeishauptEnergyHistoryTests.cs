@@ -10,8 +10,9 @@ public sealed class WeishauptEnergyHistoryTests
     public async Task ComparesEqualPeriodsUsingFirstHourlyReadingsAndPreservesRealZero()
     {
         var now = DateTimeOffset.Parse("2026-10-22T12:34:00Z");
+        var midnightUtc = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         var data = new Data(now);
-        for (var i = 0; i <= 48; i++) data.Samples.Add(Sample(now.Date.AddDays(-2).AddHours(12 + i).AddMinutes(5), (ushort)(100 + i)));
+        for (var i = 0; i <= 48; i++) data.Samples.Add(Sample(midnightUtc.AddDays(-2).AddHours(12 + i).AddMinutes(5), (ushort)(100 + i)));
         // A later reading in the same hour must not replace the boundary reading.
         data.Samples.Add(Sample(DateTimeOffset.Parse("2026-10-22T11:55:00Z"), 500));
         var report = await new WeishauptEnergyHistoryService(data, data).GetAsync(1, null, default);
@@ -22,8 +23,8 @@ public sealed class WeishauptEnergyHistoryTests
         Assert.Equal(5, report.Hours[0].MeasuredFromUtc!.Value.Minute);
         Assert.Equal(8m, report.Hours[0].OutdoorTemperatureCelsius);
         data.Samples.Clear();
-        data.Samples.Add(Sample(now.Date.AddHours(10), 10));
-        data.Samples.Add(Sample(now.Date.AddHours(11), 10));
+        data.Samples.Add(Sample(midnightUtc.AddHours(10), 10));
+        data.Samples.Add(Sample(midnightUtc.AddHours(11), 10));
         report = await new WeishauptEnergyHistoryService(data, data).GetAsync(1, null, default);
         Assert.Equal(0m, report.Hours[^2].ElectricalKwh);
         Assert.Null(report.Hours[^1].ElectricalKwh);

@@ -94,10 +94,55 @@ public sealed class RollingGridChargeTests
             measured, Configuration, "tibber").EnergyKwh);
     }
 
+    [Theory]
+    [InlineData(1500, false)]
+    [InlineData(3000, false)]
+    [InlineData(1500, true)]
+    public void RepeatedDecisionsRetainEachCommandUntilTheNextSocMeasurement(int nextPower, bool manual)
+    {
+        var unchanged = new BatteryState(15m, Start);
+        var credit = GridChargeEnergyCredit.Update(null, unchanged, Configuration, "tibber");
+        var first = Log(credit, BatteryChargeSource.Grid);
+        var pending = GridChargeEnergyCredit.Update(first, unchanged, Configuration, "tibber");
+        Assert.Equal(0m, pending.EnergyKwh); // Commands alone never earn credit.
+        var second = Log(pending, BatteryChargeSource.Grid, manual: manual,
+            decidedAt: Start.AddSeconds(45), targetPower: nextPower);
+        // Simulate persistence/restart between decisions, including the unmeasured command intervals.
+        var repeated = GridChargeEnergyCredit.Update(second, unchanged, Configuration, "tibber");
+        var third = Log(repeated, BatteryChargeSource.Grid, manual: manual,
+            decidedAt: Start.AddSeconds(90), targetPower: nextPower);
+        var charged = GridChargeEnergyCredit.Update(third,
+            new BatteryState(16m, Start.AddMinutes(2)), Configuration, "tibber");
+        var efficiency = (decimal)Math.Sqrt(.9);
+        var expected = Math.Min(.192m, (1500m * 45m + (manual ? 0m : nextPower * 75m)) / 3600000m * efficiency);
+        Assert.InRange(charged.EnergyKwh, expected - .000001m, expected + .000001m);
+        // Re-reading the same measured sample cannot count the intervals twice.
+        Assert.Equal(charged.EnergyKwh, GridChargeEnergyCredit.Update(
+            Log(charged, null, decidedAt: Start.AddMinutes(2)),
+            new BatteryState(16m, Start.AddMinutes(2)), Configuration, "tibber").EnergyKwh);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(BatteryChargeSource.PV)]
+    public void NonGridCommandsDoNotEraseEarlierMeasuredPurchaseOrExtendItsDuration(BatteryChargeSource? source)
+    {
+        var unchanged = new BatteryState(15m, Start);
+        var credit = GridChargeEnergyCredit.Update(null, unchanged, Configuration, "tibber");
+        var pending = GridChargeEnergyCredit.Update(Log(credit, BatteryChargeSource.Grid), unchanged, Configuration, "tibber");
+        var switched = Log(pending, source, decidedAt: Start.AddMinutes(1));
+        var measured = new BatteryState(16m, Start.AddMinutes(2));
+        var charged = GridChargeEnergyCredit.Update(switched, measured, Configuration, "tibber");
+        var expected = 1.5m / 60m * (decimal)Math.Sqrt(.9);
+        Assert.InRange(charged.EnergyKwh, expected - .000001m, expected + .000001m);
+        Assert.Empty(charged.PendingCommands);
+        Assert.Equal(0m, GridChargeEnergyCredit.Update(switched, measured, Configuration, "other-supplier").EnergyKwh);
+    }
+
     private static DecisionLogEntry Log(GridChargeEnergyCredit credit, BatteryChargeSource? source,
-        bool manual = false, int pv = 0, int grid = 800) => new(
-        Guid.NewGuid(), credit.MeasuredAtUtc, credit.MeasuredAtUtc, credit.MeasuredAtUtc.AddMinutes(15),
-        new CurrentBatteryDecision(new BatteryDecisionInstruction(source is null ? BatteryDecisionState.Idle : BatteryDecisionState.Charge, source), source is null ? 0 : 1500),
+        bool manual = false, int pv = 0, int grid = 800, DateTimeOffset? decidedAt = null, int targetPower = 1500) => new(
+        Guid.NewGuid(), decidedAt ?? credit.MeasuredAtUtc, decidedAt ?? credit.MeasuredAtUtc, (decidedAt ?? credit.MeasuredAtUtc).AddMinutes(15),
+        new CurrentBatteryDecision(new BatteryDecisionInstruction(source is null ? BatteryDecisionState.Idle : BatteryDecisionState.Charge, source), source is null ? 0 : targetPower),
         credit.StateOfChargePercent, .3m, "EUR", grid, 0,
         JsonSerializer.Serialize(new { GridChargeEnergyCredit = credit, CurrentPvProductionWatts = pv,
             CurrentGridImportWatts = grid, CurrentBatteryPowerWatts = 0 }),

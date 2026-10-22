@@ -11,10 +11,15 @@ internal sealed record GridChargeEnergyCredit(
     decimal EnergyKwh, decimal StateOfChargePercent, DateTimeOffset MeasuredAtUtc,
     decimal CapacityKwh, string Source)
 {
+    // Retain command boundaries until a new SoC sample can confirm their energy. Replanning with
+    // the same sample must neither discard earlier charging time nor credit an unmeasured purchase.
+    public IReadOnlyList<GridChargeCommandWindow> PendingCommands { get; init; } = [];
+
     public static GridChargeEnergyCredit Update(DecisionLogEntry? previous, BatteryState battery,
         BatteryConfiguration configuration, string source)
     {
         var credit = 0m;
+        var commands = new List<GridChargeCommandWindow>();
         if (previous is not null)
         {
             try
@@ -30,13 +35,22 @@ internal sealed record GridChargeEnergyCredit(
                     {
                         var delta = (battery.StateOfChargePercent - old.StateOfChargePercent) * old.CapacityKwh / 100m;
                         credit = Math.Max(0m, old.EnergyKwh + Math.Min(0m, delta));
-                        // Reject unobserved gaps and PV-only gains. The previous command must still cover the sample.
-                        if (delta > 0m && battery.MeasuredAtUtc <= previous.ValidToUtc &&
-                            previous.Decision.Instruction.ChargeSource == BatteryChargeSource.Grid &&
+                        // A later decision supersedes the old command, even when it switches to idle,
+                        // manual or PV charging. Preserve only the time each automatic command covered.
+                        foreach (var command in old.PendingCommands ?? [])
+                        {
+                            if (command.StartsAtUtc.Offset != TimeSpan.Zero || command.EndsAtUtc.Offset != TimeSpan.Zero ||
+                                command.GridInputWatts < 0m || command.EndsAtUtc <= command.StartsAtUtc)
+                                throw new JsonException();
+                            var end = command.EndsAtUtc < previous.DecidedAtUtc ? command.EndsAtUtc : previous.DecidedAtUtc;
+                            if (end > command.StartsAtUtc && end > old.MeasuredAtUtc)
+                                commands.Add(command with { EndsAtUtc = end });
+                        }
+                        var efficiency = (decimal)Math.Sqrt((double)(configuration.RoundTripEfficiencyPercent / 100m));
+                        if (previous.Decision.Instruction.ChargeSource == BatteryChargeSource.Grid &&
                             !previous.Reasons.Any(reason => reason.RuleName == CurrentBatteryDecisionRuleIds.ManualGridCharge) &&
                             json.RootElement.TryGetProperty("CurrentPvProductionWatts", out var pv))
                         {
-                            var efficiency = (decimal)Math.Sqrt((double)(configuration.RoundTripEfficiencyPercent / 100m));
                             // Deduct PV surplus, not all PV production: PV serving house demand is not battery input.
                             var surplusWatts = Math.Max(0m, pv.GetInt32());
                             if (json.RootElement.TryGetProperty("CurrentGridImportWatts", out var grid) &&
@@ -47,12 +61,20 @@ internal sealed record GridChargeEnergyCredit(
                                 var acWatts = dcWatts >= 0m ? dcWatts / efficiency : dcWatts * efficiency;
                                 surplusWatts = Math.Max(0m, -(grid.GetDecimal() - acWatts));
                             }
-                            var commandHours = (decimal)Math.Max(0d,
-                                (battery.MeasuredAtUtc - (previous.DecidedAtUtc > old.MeasuredAtUtc
-                                    ? previous.DecidedAtUtc : old.MeasuredAtUtc)).TotalHours);
-                            var maximumGain = Math.Max(0m,
-                                Math.Min(previous.Decision.TargetPowerWatts, configuration.MaximumChargePowerWatts) - surplusWatts)
-                                / 1000m * commandHours * efficiency;
+                            var start = previous.ValidFromUtc > previous.DecidedAtUtc ? previous.ValidFromUtc : previous.DecidedAtUtc;
+                            if (previous.ValidToUtc > start)
+                                commands.Add(new(start, previous.ValidToUtc, Math.Max(0m,
+                                    Math.Min(previous.Decision.TargetPowerWatts, configuration.MaximumChargePowerWatts) - surplusWatts)));
+                        }
+                        if (delta > 0m)
+                        {
+                            var maximumGain = commands.Sum(command =>
+                            {
+                                var start = command.StartsAtUtc > old.MeasuredAtUtc ? command.StartsAtUtc : old.MeasuredAtUtc;
+                                var end = command.EndsAtUtc < battery.MeasuredAtUtc ? command.EndsAtUtc : battery.MeasuredAtUtc;
+                                return Math.Min(command.GridInputWatts, configuration.MaximumChargePowerWatts) / 1000m *
+                                    (decimal)Math.Max(0d, (end - start).TotalHours) * efficiency;
+                            });
                             credit += Math.Min(delta, maximumGain);
                         }
                     }
@@ -62,12 +84,18 @@ internal sealed record GridChargeEnergyCredit(
             {
                 // Old/malformed history is not evidence of a paid purchase. Start conservatively with no credit.
                 credit = 0m;
+                commands.Clear();
             }
         }
 
         var usable = configuration.TotalCapacityKwh *
             Math.Max(0m, battery.StateOfChargePercent - configuration.PlanningMinimumStateOfChargePercent) / 100m;
         return new GridChargeEnergyCredit(Math.Clamp(credit, 0m, usable), battery.StateOfChargePercent,
-            battery.MeasuredAtUtc, configuration.TotalCapacityKwh, source);
+            battery.MeasuredAtUtc, configuration.TotalCapacityKwh, source)
+        {
+            PendingCommands = commands.Where(command => command.EndsAtUtc > battery.MeasuredAtUtc).ToArray()
+        };
     }
 }
+
+internal sealed record GridChargeCommandWindow(DateTimeOffset StartsAtUtc, DateTimeOffset EndsAtUtc, decimal GridInputWatts);
