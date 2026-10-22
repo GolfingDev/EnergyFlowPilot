@@ -360,10 +360,11 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
                 checks.Add(new DashboardCheck(
                     "supplementary-from-battery",
                     DashboardCheckSeverity.Info,
-                    "Keine aktuellen E3/DC-Werte. Ob das E3/DC aus dem Victron-Akku laedt, kann nicht geprueft werden."));
+                    "Keine aktuellen E3/DC-Werte. Umladen zwischen E3/DC und Victron kann nicht geprueft werden."));
             }
             else
             {
+                checks.Add(CheckSupplementarySupply(sample));
                 var chargeFromSiteWatts = Math.Max(0m, supplementaryBatteryPowerWatts - Math.Max(0m, sample.SupplementaryPvProductionWatts ?? 0m));
                 checks.Add(isDischarging && chargeFromSiteWatts > BatteryActivityThresholdWatts
                     ? new DashboardCheck("supplementary-from-battery", DashboardCheckSeverity.Critical, $"Das E3/DC laedt gerade mit {Math.Round(chargeFromSiteWatts):0} W aus dem Victron-Akku.")
@@ -373,7 +374,9 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
 
         if (input.Current.Category == DashboardActionCategory.GridCharge)
         {
-            checks.Add(new DashboardCheck("grid-charge", DashboardCheckSeverity.Info, $"Netzladung aktiv mit {input.Current.TargetPowerWatts} W."));
+            checks.Add(new DashboardCheck("grid-charge", DashboardCheckSeverity.Info,
+                $"Netzladung angefordert: Soll {input.Current.TargetPowerWatts} W. " +
+                (sample?.GridPowerWatts is { } measuredGrid ? $"Gemessene Netzleistung {Math.Round(measuredGrid):0} W (+ Bezug / - Einspeisung)." : "Keine gemessene Netzleistung verfuegbar.")));
         }
         else if (input.Segments.Any(segment => segment.Category == DashboardActionCategory.GridCharge))
         {
@@ -390,6 +393,16 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
         }
 
         return checks;
+    }
+
+    public static DashboardCheck CheckSupplementarySupply(LiveConsumptionSample sample)
+    {
+        if (sample.BatteryPowerWatts is not { } battery || sample.SupplementaryBatteryPowerWatts is not { } secondary)
+            return new("battery-from-supplementary", DashboardCheckSeverity.Info, "Ohne beide Batterie-Leistungen kann E3/DC-Entladung waehrend einer Victron-Ladung nicht geprueft werden.");
+        return battery > BatteryActivityThresholdWatts && secondary < -BatteryActivityThresholdWatts
+            ? new("battery-from-supplementary", DashboardCheckSeverity.Critical,
+                $"Victron laedt mit {Math.Round(battery):0} W, waehrend der E3/DC-Akku {Math.Round(-secondary):0} W entlaedt. Umladen vom E3/DC zum Victron ist moeglich; eine angeforderte Netzladung muss gesperrt werden.")
+            : new("battery-from-supplementary", DashboardCheckSeverity.Ok, "Keine gleichzeitige Victron-Ladung und E3/DC-Entladung beobachtet.");
     }
 
     private static decimal Round(decimal value)

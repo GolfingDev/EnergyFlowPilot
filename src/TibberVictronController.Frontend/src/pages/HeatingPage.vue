@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import HeatingLineChart from '../components/heating/HeatingLineChart.vue';
 import HeatingScatterChart from '../components/heating/HeatingScatterChart.vue';
 import WeishauptHotWaterPanel from '../components/heating/WeishauptHotWaterPanel.vue';
+import WeishauptEnergyPanel from '../components/heating/WeishauptEnergyPanel.vue';
 import { formatHeatingDateTime, formatHeatingValue, heatingSeriesPalette } from '../components/heating/heatingFormatters';
 import type {
   HeatingChartSeries,
@@ -201,6 +202,7 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <WeishauptEnergyPanel />
     <WeishauptHotWaterPanel />
 
     <v-alert v-if="loadError" class="mb-4" type="error" variant="tonal">{{ loadError }}</v-alert>

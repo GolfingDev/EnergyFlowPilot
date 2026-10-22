@@ -659,3 +659,31 @@
     display: none;
   }
 }
+
+/* The two analytical layouts share a quiet navigation rail, matching their data-first surfaces. */
+.app-shell--executive .executive-sidebar { width: 220px; background: #263036; box-shadow: none; padding: 22px 12px; }
+.app-shell--executive :deep(.v-main) { padding-left: 220px; }
+.app-shell--executive .top-bar { left: 220px !important; width: calc(100% - 220px) !important; }
+.app-shell--executive-collapsed .executive-sidebar { width: 76px; }
+.app-shell--executive-collapsed :deep(.v-main) { padding-left: 76px; }
+.app-shell--executive-collapsed .top-bar { left: 76px !important; width: calc(100% - 76px) !important; }
+.app-shell--executive .executive-sidebar__brand { font-size: 13px; }
+.app-shell--executive .executive-sidebar__nav button { font-size: 12px; border-radius: 5px; }
+.app-shell--executive .executive-sidebar__item--active, .app-shell--executive .executive-sidebar__nav button:hover { background: color-mix(in srgb, var(--efp-primary) 30%, #263036) !important; border-color: transparent !important; color: #fff !important; }
+.app-shell--executive .top-bar__title { font-size: 17px; font-weight: 550; }
+.app-shell--executive .top-bar__actions { margin-left: auto; }
+@media (max-width: 960px) {
+  .app-shell--executive :deep(.v-main), .app-shell--executive-collapsed :deep(.v-main) { padding-left: 0; }
+  .app-shell--executive .top-bar, .app-shell--executive-collapsed .top-bar { left: 0 !important; width: 100% !important; }
+  .app-shell--executive .top-bar__title { display: none; }
+  .app-shell--executive .top-bar__center { display: flex; }
+}
+
+.workspace-mobile-nav { display: none; }
+@media (max-width: 960px) {
+  .app-shell--executive .top-bar__center { display: none; }
+  .workspace-mobile-nav { display: flex; position: sticky; top: 74px; z-index: 900; background: #fff; border-bottom: 1px solid var(--efp-border); padding: 6px 10px; gap: 6px; }
+  .workspace-mobile-nav button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 6px; padding: 9px 6px; font-size: 11px; color: var(--efp-muted); }
+  .workspace-mobile-nav button[aria-current="page"] { color: var(--efp-primary); background: var(--efp-card-accent); font-weight: 600; }
+  .workspace-mobile-nav button:focus-visible { outline: 2px solid var(--efp-primary); outline-offset: -2px; }
+}

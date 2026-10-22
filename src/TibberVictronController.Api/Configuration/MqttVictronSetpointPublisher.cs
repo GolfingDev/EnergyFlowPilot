@@ -1,3 +1,4 @@
+using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Models;
 using TibberVictronController.Dal.Victron;
 
@@ -13,6 +14,8 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
     private const decimal ChargeCurrentLimitSafetyFactor = 0.97m;
     public const int SetpointRampStepWatts = 250;
 
+    private readonly ISupplementaryGridChargeSafety chargeSafety;
+    private readonly DecisionCalculationTrigger? calculationTrigger;
     private readonly DatabaseVictronMqttSettingsProvider settingsProvider;
     private readonly IVictronMqttControlClient mqttControlClient;
     private readonly VictronSetpointRefreshState refreshState;
@@ -22,8 +25,11 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
         DatabaseVictronMqttSettingsProvider settingsProvider,
         IVictronMqttControlClient mqttControlClient,
         VictronSetpointRefreshState refreshState,
-        ILogger<MqttVictronSetpointPublisher> logger)
+        ILogger<MqttVictronSetpointPublisher> logger,
+        ISupplementaryGridChargeSafety chargeSafety, DecisionCalculationTrigger? calculationTrigger = null)
     {
+        this.chargeSafety = chargeSafety;
+        this.calculationTrigger = calculationTrigger;
         this.settingsProvider = settingsProvider;
         this.mqttControlClient = mqttControlClient;
         this.refreshState = refreshState;
@@ -32,6 +38,7 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
 
     public async Task PublishAsync(CurrentBatteryDecisionResult decisionResult, CancellationToken cancellationToken = default)
     {
+        using var publication = await refreshState.AcquirePublicationAsync(cancellationToken);
         var settings = await settingsProvider.GetSettingsAsync(cancellationToken);
         var topics = VictronMqttTopicFactory.Create(settings);
         var effectiveTargetPowerWatts = CalculateEffectiveTargetPowerWatts(decisionResult, mqttControlClient, topics, logger);
@@ -39,7 +46,17 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
         var previousSnapshot = refreshState.TryGetLatest(out var latestSnapshot)
             ? latestSnapshot
             : null;
-        var signedBatteryTargetWatts = MoveToward(
+        var needsProtection = decisionResult.Decision.Instruction is { DecisionState: BatteryDecisionState.Charge, ChargeSource: BatteryChargeSource.Grid } ||
+            previousSnapshot is { RequiresGridChargeProtection: true, SignedBatteryTargetWatts: > 0 };
+        var protectionReason = needsProtection ? await chargeSafety.CheckAsync(cancellationToken) : null;
+        var immediateStop = protectionReason is not null || decisionResult.Reasons.Any(reason => SupplementaryGridChargeGuard.IsStopReason(reason.RuleName));
+        if (immediateStop) { desiredSignedBatteryTargetWatts = 0; effectiveTargetPowerWatts = 0; }
+        if (protectionReason is not null)
+        {
+            logger.LogWarning("Victron-Netzladung an der Hardwaregrenze gestoppt. Regel={RuleId}, Grund={Reason}", protectionReason.RuleName, protectionReason.Message);
+            calculationTrigger?.Signal();
+        }
+        var signedBatteryTargetWatts = immediateStop ? 0 : MoveToward(
             previousSnapshot?.SignedBatteryTargetWatts ?? 0,
             desiredSignedBatteryTargetWatts,
             SetpointRampStepWatts);
@@ -61,10 +78,10 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
         else
         {
             desiredSetpoints = CreateSetpoints(settings, topics, desiredGridSetpointWatts, desiredSignedBatteryTargetWatts);
-            setpoints = ApplySetpointRamp(
-                previousSnapshot?.Setpoints ?? Array.Empty<VictronSetpointValue>(),
-                CreateSetpoints(settings, topics, gridSetpointWatts, signedBatteryTargetWatts),
-                SetpointRampStepWatts);
+            var nextSetpoints = CreateSetpoints(settings, topics, gridSetpointWatts, signedBatteryTargetWatts);
+            // A safety stop bypasses the normal 250 W ramp, including hub4 mode.
+            setpoints = immediateStop ? nextSetpoints : ApplySetpointRamp(
+                previousSnapshot?.Setpoints ?? Array.Empty<VictronSetpointValue>(), nextSetpoints, SetpointRampStepWatts);
             rampedSignedBatteryTargetWatts = CalculateSignedBatteryTargetWatts(
                 settings,
                 setpoints,
@@ -75,14 +92,24 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
         var hub4Control = CalculateHub4ControlFromSignedBatteryTarget(
             rampedSignedBatteryTargetWatts,
             settings.BatteryIdleThresholdWatts);
-        await PublishHub4ControlAsync(mqttControlClient, settings, topics, logger, hub4Control, cancellationToken);
+        if (immediateStop)
+        {
+            // Safety-off writes must not depend on a cached readback being available.
+            await PublishValueAsync(mqttControlClient, topics.DisableChargeTopic, 1, cancellationToken);
+            await PublishValueAsync(mqttControlClient, topics.DisableFeedInTopic, 1, cancellationToken);
+        }
+        else
+        {
+            await PublishHub4ControlAsync(mqttControlClient, settings, topics, logger, hub4Control, cancellationToken);
+        }
         await PublishSetpointsAsync(mqttControlClient, setpoints, cancellationToken);
         refreshState.Update(new VictronSetpointRefreshSnapshot(
             decisionResult.ValidToUtc,
             setpoints,
             desiredSetpoints,
             rampedSignedBatteryTargetWatts,
-            desiredSignedBatteryTargetWatts));
+            desiredSignedBatteryTargetWatts)
+        { RequiresGridChargeProtection = needsProtection || immediateStop });
 
         logger.LogInformation(
             "Victron-Setpoint per MQTT veröffentlicht. ControlMode={ControlMode}, GridSetpointW={GridSetpointWatts}, ExternalSetpointW={ExternalSetpointWatts}, AkkuZielW={BatteryTargetWatts}, AcOutW={AcOutWatts}, EffectiveTargetPowerW={EffectiveTargetPowerWatts}, DisableCharge={DisableCharge}, DisableFeedIn={DisableFeedIn}",

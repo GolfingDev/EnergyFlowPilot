@@ -57,12 +57,15 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IWeishauptHotWaterStateStore, EfWeishauptHotWaterStateStore>();
         services.AddScoped<WeishauptHotWaterControlService>();
         services.AddScoped<WeishauptHotWaterReportService>();
+        services.AddScoped<WeishauptEnergyHistoryService>();
         services.AddScoped<TelemetrySourceSelector>();
         services.AddSingleton<VictronMqttRuntimeStatus>();
         services.AddSingleton<DecisionWorkerRuntimeStatus>();
         services.AddSingleton<DecisionCalculationTrigger>();
         services.AddSingleton<SignificantTelemetryChangeDetector>();
         services.AddSingleton<VictronSetpointRefreshState>();
+        services.AddSingleton<SupplementaryGridChargeGuard>();
+        services.AddScoped<ISupplementaryGridChargeSafety, SupplementaryGridChargeSafety>();
         services.AddScoped<IDecisionLogRepository, EfDecisionLogRepository>();
         services.AddScoped<IBatterySavingsRepository, EfBatterySavingsRepository>();
         services.AddScoped<IBatterySavingsAccountingService, BatterySavingsAccountingService>();
@@ -103,6 +106,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IBatteryForecastService, BatteryForecastService>();
         services.AddScoped(serviceProvider => new CurrentBatteryDecisionServiceDependencies
         {
+            GridChargeGuard = serviceProvider.GetRequiredService<SupplementaryGridChargeGuard>(),
             UtcClock = serviceProvider.GetRequiredService<IUtcClock>(),
             BatteryStateProvider = serviceProvider.GetRequiredService<IBatteryStateProvider>(),
             BatteryConfigurationProvider = serviceProvider.GetRequiredService<IBatteryConfigurationProvider>(),

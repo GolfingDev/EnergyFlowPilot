@@ -44,6 +44,9 @@ public sealed class ControllerSettingsService : IControllerSettingsService
         ControllerSettingValueValidation.Validate(definition.Key, normalizedValue);
         if (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderKey && normalizedValue is not ("tibber" or "octopusGermany"))
             throw new ArgumentException("Die Strompreisquelle muss tibber oder octopusGermany sein.", nameof(value));
+        if (definition.Key == ControllerSettingDefaults.WeishauptBiblockModbusPollingIntervalSecondsKey &&
+            (!int.TryParse(normalizedValue, out var pollingSeconds) || pollingSeconds is < 60 or > 3600))
+            throw new ArgumentException("Das Biblock-Abfrageintervall muss zwischen 60 und 3600 Sekunden liegen.", nameof(value));
         var updatedSetting = new ControllerSetting(
             definition.Key,
             normalizedValue,

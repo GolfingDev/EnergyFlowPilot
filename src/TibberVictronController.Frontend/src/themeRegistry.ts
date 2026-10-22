@@ -1,8 +1,9 @@
 export type EnergyFlowThemeName =
   | 'leitstandLight'
   | 'leitstandDark'
-  | 'leitstandNextLight'
-  | 'leitstandNextDark';
+  | 'orbit'
+  | 'energyCenter'
+  | 'tileLab';
 
 export interface EnergyFlowThemeDefinition {
   name: EnergyFlowThemeName;
@@ -28,18 +29,25 @@ export const energyFlowThemes: EnergyFlowThemeDefinition[] = [
     icon: 'mdi-monitor-dashboard'
   },
   {
-    name: 'leitstandNextLight',
-    label: 'Leitstand Next Hell',
-    description: 'Weiterentwickeltes Layout mit klarerer Sofort-Lage und interaktiven Charts.',
+    name: 'energyCenter',
+    label: 'Energiezentrale',
+    description: 'Helle Energieübersicht mit großem Flussdiagramm, Bilanz und grünen Akzenten.',
     dark: false,
-    icon: 'mdi-monitor-dashboard'
+    icon: 'mdi-home-lightning-bolt-outline'
   },
   {
-    name: 'leitstandNextDark',
-    label: 'Leitstand Next Dunkel',
-    description: 'Weiterentwickeltes Layout für dunkle Umgebungen.',
+    name: 'tileLab',
+    label: 'Kachelwerk',
+    description: 'Kompaktes Analyseboard mit Gerätekacheln, Tageskurven und Verbrauchsvergleich.',
+    dark: false,
+    icon: 'mdi-view-dashboard-outline'
+  },
+  {
+    name: 'orbit',
+    label: 'Orbit',
+    description: 'Energie im Mittelpunkt. Waldgrün, Limette und ein neuer Blick auf dein Zuhause.',
     dark: true,
-    icon: 'mdi-monitor-dashboard'
+    icon: 'mdi-orbit'
   }
 ];
 

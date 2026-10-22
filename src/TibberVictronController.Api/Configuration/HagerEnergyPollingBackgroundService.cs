@@ -49,6 +49,8 @@ public sealed class HagerEnergyPollingBackgroundService : BackgroundService
 
             var values = await apiClient.GetCurrentValuesAsync(cancellationToken);
             snapshotStore.Update(values);
+            // Secondary battery changes are safety inputs, not merely dashboard information.
+            scope.ServiceProvider.GetService<DecisionCalculationTrigger>()?.Signal();
         }
         catch (OperationCanceledException)
         {

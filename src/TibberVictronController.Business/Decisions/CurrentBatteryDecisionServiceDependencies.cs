@@ -7,6 +7,8 @@ namespace TibberVictronController.Business.Decisions;
 /// </summary>
 public sealed class CurrentBatteryDecisionServiceDependencies
 {
+    public SupplementaryGridChargeGuard GridChargeGuard { get; init; } = new();
+
     public required IUtcClock UtcClock { get; init; }
 
     public required IBatteryStateProvider BatteryStateProvider { get; init; }

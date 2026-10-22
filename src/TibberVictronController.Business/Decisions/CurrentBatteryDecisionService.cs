@@ -430,7 +430,9 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
                 siteTelemetry.CurrentBatteryPowerWatts)
             {
                 SupplementaryBatteryChargeFromSiteWatts = siteTelemetry.SupplementaryBatteryChargeFromSiteWatts,
-                SupplementaryBatteryDischargeWatts = siteTelemetry.SupplementaryBatteryDischargeWatts
+                SupplementaryBatteryDischargeWatts = siteTelemetry.SupplementaryBatteryDischargeWatts,
+                SupplementaryBatteryMonitoringRequired = siteTelemetry.SupplementaryBatteryMonitoringRequired,
+                SupplementaryBatteryMeasuredAtUtc = siteTelemetry.SupplementaryBatteryMeasuredAtUtc
             }
             : siteTelemetry;
     }
@@ -811,6 +813,24 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         IReadOnlyList<BatteryDecisionReason> reasons,
         CancellationToken cancellationToken)
     {
+        // Every save observes the secondary battery so the interlock survives scoped decision services and idle cycles.
+        var gridChargeBlock = dependencies.GridChargeGuard.Evaluate(siteTelemetry, decidedAtUtc);
+        if (decision.Instruction is { DecisionState: BatteryDecisionState.Charge, ChargeSource: BatteryChargeSource.Grid })
+        {
+            if (siteTelemetry.MeasuredAtUtc < decidedAtUtc.Subtract(SiteTelemetryMaxAge))
+                gridChargeBlock = new BatteryDecisionReason(CurrentBatteryDecisionRuleIds.StaleSiteTelemetry,
+                    "Netzladung gesperrt: Die Live-Telemetrie ist zu alt, auch eine manuelle Ladung darf ohne aktuelle Messwerte nicht starten.");
+            if (gridChargeBlock is not null)
+            {
+                decision = new CurrentBatteryDecision(new BatteryDecisionInstruction(BatteryDecisionState.Idle, null), 0);
+                reasons = new[] { gridChargeBlock };
+            }
+        }
+
+        if (decision.Instruction.DecisionState == BatteryDecisionState.Idle && gridChargeBlock is not null &&
+            !reasons.Any(reason => reason.RuleName == gridChargeBlock.RuleName))
+            reasons = new[] { gridChargeBlock }.Concat(reasons).ToArray();
+
         var stabilizedDecision = await TryCreateDirectionChangeHoldDecisionAsync(
             decidedAtUtc,
             decision,
@@ -835,6 +855,9 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             CurrentPvProductionWatts = siteTelemetry.CurrentPvProductionWatts,
             CurrentBatteryPowerWatts = siteTelemetry.CurrentBatteryPowerWatts,
             SiteTelemetryMeasuredAtUtc = siteTelemetry.MeasuredAtUtc,
+            siteTelemetry.SupplementaryBatteryDischargeWatts,
+            siteTelemetry.SupplementaryBatteryMonitoringRequired,
+            siteTelemetry.SupplementaryBatteryMeasuredAtUtc,
             TibberPricePerKwh = tibberPricePerKwh,
             TibberPriceCurrency = tibberPriceCurrency
         });

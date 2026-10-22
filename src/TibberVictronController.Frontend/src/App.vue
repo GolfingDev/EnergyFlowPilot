@@ -24,7 +24,10 @@ interface SettingsMenuGroup {
 const router = useRouter();
 const route = useRoute();
 const theme = useTheme();
-const storedTheme = localStorage.getItem('energyFlowPilotTheme');
+const savedTheme = localStorage.getItem('energyFlowPilotTheme');
+// Retired Next selections move to the replacement without losing the user's layout choice.
+const storedTheme = savedTheme === 'leitstandNextLight' || savedTheme === 'leitstandNextDark' ? 'orbit' : savedTheme;
+if (storedTheme !== savedTheme) localStorage.setItem('energyFlowPilotTheme', storedTheme!);
 const isLoading = ref(false);
 const isSettingsMenuOpen = ref(false);
 const isThemeMenuOpen = ref(false);
@@ -67,7 +70,7 @@ const settingsMenuGroups: SettingsMenuGroup[] = [
 
 const activeRouteName = computed(() => String(route.name ?? ''));
 const activeTheme = computed(() => getEnergyFlowTheme(theme.global.name.value));
-const usesExecutiveShell = computed(() => false);
+const usesExecutiveShell = computed(() => activeTheme.value.name === 'energyCenter' || activeTheme.value.name === 'tileLab');
 const pageTitle = computed(() => {
   switch (activeRouteName.value) {
     case 'settings':
@@ -137,27 +140,31 @@ function toggleExecutiveSidebar(): void {
       <nav class="executive-sidebar__nav">
         <button
           type="button"
-          :class="{ 'executive-sidebar__item--active': activeRouteName === 'dashboard' }"
+          aria-label="Übersicht" :class="{ 'executive-sidebar__item--active': activeRouteName === 'dashboard' }"
           @click="navigateTo('dashboard')"
         >
           <v-icon icon="mdi-home-outline" size="22" />
           <span>Übersicht</span>
         </button>
-        <button type="button" @click="navigateToDashboardSection('dashboard-live-flow')">
+        <button type="button" aria-label="Energiefluss" @click="navigateToDashboardSection('dashboard-live-flow')">
           <v-icon icon="mdi-transmission-tower" size="22" />
           <span>Energiefluss</span>
         </button>
-        <button type="button" @click="navigateToDashboardSection('dashboard-forecast')">
+        <button type="button" :class="{ 'executive-sidebar__item--active': activeRouteName === 'heating' }" @click="navigateTo('heating')" aria-label="Heizung">
+          <v-icon icon="mdi-heat-pump-outline" size="22" />
+          <span>Heizung</span>
+        </button>
+        <button type="button" aria-label="Prognosen" @click="navigateToDashboardSection('dashboard-forecast')">
           <v-icon icon="mdi-chart-line" size="22" />
           <span>Prognosen</span>
         </button>
-        <button type="button" @click="navigateToDashboardSection('dashboard-details')">
+        <button type="button" aria-label="Status" @click="navigateToDashboardSection('dashboard-details')">
           <v-icon icon="mdi-alert-outline" size="22" />
           <span>Status</span>
         </button>
         <button
           type="button"
-          :class="{ 'executive-sidebar__item--active': activeRouteName === 'settings' }"
+          aria-label="Einstellungen" :class="{ 'executive-sidebar__item--active': activeRouteName === 'settings' }"
           @click="openSettingsPage"
         >
           <v-icon icon="mdi-cog-outline" size="22" />
@@ -271,6 +278,11 @@ function toggleExecutiveSidebar(): void {
     </v-app-bar>
 
     <v-main>
+      <nav v-if="usesExecutiveShell" class="workspace-mobile-nav" aria-label="Hauptnavigation">
+        <button type="button" :aria-current="activeRouteName === 'dashboard' ? 'page' : undefined" @click="navigateTo('dashboard')"><v-icon icon="mdi-view-dashboard-outline" size="18" />Übersicht</button>
+        <button type="button" :aria-current="activeRouteName === 'heating' ? 'page' : undefined" @click="navigateTo('heating')"><v-icon icon="mdi-heat-pump-outline" size="18" />Heizung</button>
+        <button type="button" :aria-current="activeRouteName === 'settings' ? 'page' : undefined" @click="openSettingsPage"><v-icon icon="mdi-cog-outline" size="18" />Einstellungen</button>
+      </nav>
       <GeneralOverlay v-model="isLoading" image-src="Main.png" width="90vw" max-width="90vw" max-height="90vh" />
       <router-view />
     </v-main>
