@@ -24,7 +24,7 @@ public sealed class DatabaseWeishauptBiblockModbusSettingsProvider
             Host = await GetValueAsync(ControllerSettingDefaults.WeishauptBiblockModbusHostKey, cancellationToken) ?? string.Empty,
             Port = await GetIntAsync(ControllerSettingDefaults.WeishauptBiblockModbusPortKey, 502, cancellationToken),
             SlaveId = (byte)Math.Clamp(await GetIntAsync(ControllerSettingDefaults.WeishauptBiblockModbusSlaveIdKey, 1, cancellationToken), 0, 247),
-            PollingIntervalSeconds = Math.Max(WeishauptBiblockModbusSettings.MinimumPollingIntervalSeconds, interval),
+            PollingIntervalSeconds = Math.Clamp(interval, WeishauptBiblockModbusSettings.MinimumPollingIntervalSeconds, 3600),
             SampleRetentionDays = await GetIntAsync(ControllerSettingDefaults.WeishauptBiblockModbusSampleRetentionDaysKey, 400, cancellationToken)
         };
     }

@@ -8,6 +8,19 @@ public sealed class ControllerSettingsServiceTests
 {
     private static readonly DateTimeOffset NowUtc = new(2026, 5, 1, 12, 0, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData("59")]
+    [InlineData("3601")]
+    [InlineData("invalid")]
+    public async Task RejectsBiblockIntervalsThatCannotProvideHourlyHistory(string interval)
+    {
+        var store = new InMemoryControllerSettingStore(ControllerSettingDefaults.CreateDefaultSettings(NowUtc));
+        var service = new ControllerSettingsService(store, new FixedUtcClock(NowUtc));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateSettingAsync(
+            ControllerSettingDefaults.WeishauptBiblockModbusPollingIntervalSecondsKey, interval));
+        Assert.Equal("300", (await store.GetSettingAsync(ControllerSettingDefaults.WeishauptBiblockModbusPollingIntervalSecondsKey))?.Value);
+    }
+
     [Fact]
     public async Task UpdateSettingAsyncPersistsKnownSettingWithDefaultSensitivity()
     {

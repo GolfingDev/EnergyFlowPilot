@@ -124,3 +124,36 @@ Die Temperatur-/Haltezeitauswertung und die Steuerungslogik bleiben unveraendert
   Detailauswertung fuer die letzten 14 Tage innerhalb der Telemetrieaufbewahrung.
 - Quellen: https://www.weishaupt.de/uploads/tx_weishaupt_documents/documents/83149101.pdf
   und https://www.weishaupt.de/uploads/tx_weishaupt_documents/documents/83280801.pdf.
+
+## Stündlicher Stromverbrauch und Zeitraumvergleich
+
+Die Heizungsseite zeigt den Stromverbrauch der gesamten Wärmepumpe für 24 Stunden,
+7 oder 30 Tage neben dem unmittelbar vorherigen gleich langen Zeitraum. Über das
+Zeitraumende können auch historische Zeiträume vor und nach einer Änderung geprüft
+werden. Außentemperatur und Datenabdeckung werden zum Vergleich mit angezeigt;
+eine Verbrauchsänderung ist kein kausaler Nachweis einer Einsparung.
+
+Die vorhandene SQLite-Telemetrie enthält die Stromzählerstände bei jedem erfolgreichen
+Modbus-Abruf (Standard 300 Sekunden). Das wirksame Intervall ist auf 60–3600 Sekunden
+begrenzt; neue Einstellungen außerhalb dieser Grenzen werden abgewiesen. Die
+Erfassung muss aktiviert und die Wärmepumpe erreichbar sein. Die Aufbewahrung umfasst
+auch die Stromzähler (Standard 400 Tage); nach Ablauf gelöschte Daten werden nicht
+rekonstruiert. Es wird keine zusätzliche Datenbank oder zweite Messschleife benötigt.
+
+`GET /api/weishaupt/energy-history?days=7&endsAtUtc=2026-10-22T12:00:00Z`
+unterstützt `days=1|7|30` (Standard 7) und ein optionales historisches Ende innerhalb
+des letzten Jahres. Das Ende wird auf eine abgeschlossene UTC-Stunde abgerundet.
+Jede Stunde enthält die Differenz der ersten Messungen ihrer beiden Stundengrenzen
+sowie die tatsächlichen Messzeitpunkte; das Messintervall muss 30–90 Minuten lang sein.
+Fehlende Stunden oder Zähler, Rücksetzungen und größere Lücken ergeben `null`, niemals
+künstliche Nullen. Die aktuelle unvollständige Stunde bleibt ausgeschlossen.
+Der Jahreszähler überbrückt Tages- und Monatswechsel; ersatzweise werden Tageszähler
+verwendet, bei Mitternacht einschließlich des abgeschlossenen Vortageszählers.
+Zählerwechsel richten sich nach Europe/Berlin, Diagrammzeiten nach der Ortszeit des
+Browsers. UTC-Stunden bleiben beim Sommerzeitwechsel eindeutig und gleich lang.
+
+Die internen Stromzähler haben nur 1-kWh-Auflösung. Stündliche Differenzen sind daher
+grob und zeitlich vom Abfrageintervall abhängig. Summen beziehen sich ausschließlich
+auf verfügbare Intervalle. Prozentvergleiche erscheinen nur bei vollständigen Daten
+beider Zeiträume und einem positiven Vorverbrauch. Die Messung unterscheidet nicht
+zwischen Strom für Heizung und Warmwasser.

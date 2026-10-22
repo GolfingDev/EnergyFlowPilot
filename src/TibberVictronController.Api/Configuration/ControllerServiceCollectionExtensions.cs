@@ -57,6 +57,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IWeishauptHotWaterStateStore, EfWeishauptHotWaterStateStore>();
         services.AddScoped<WeishauptHotWaterControlService>();
         services.AddScoped<WeishauptHotWaterReportService>();
+        services.AddScoped<WeishauptEnergyHistoryService>();
         services.AddScoped<TelemetrySourceSelector>();
         services.AddSingleton<VictronMqttRuntimeStatus>();
         services.AddSingleton<DecisionWorkerRuntimeStatus>();

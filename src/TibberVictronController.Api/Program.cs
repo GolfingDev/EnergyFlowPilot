@@ -33,6 +33,7 @@ app.MapGuiMetadataEndpoints();
 app.MapE3dcEndpoints();
 app.MapHomematicEndpoints();
 app.MapWeishauptHotWaterEndpoints();
+app.MapWeishauptEnergyEndpoints();
 app.MapDashboardTelemetryEndpoints();
 app.MapDashboardSummaryEndpoints();
 app.MapDashboardHub();
