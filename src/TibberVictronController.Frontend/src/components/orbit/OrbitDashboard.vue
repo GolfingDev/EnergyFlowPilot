@@ -28,10 +28,25 @@ const power = (value: number | null | undefined) => value == null ? '–' : `${f
 const time = (value: string) => new Date(value).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 const soc = computed(() => live.value?.batterySocPercent ?? null);
 const ring = computed(() => soc.value == null ? 0 : Math.max(0, Math.min(100, soc.value)));
+const signedTarget = computed(() => summary.value == null ? null : summary.value.current.category === 'discharge' ? -Math.abs(summary.value.current.targetPowerWatts) : summary.value.current.targetPowerWatts);
 const state = computed(() => summary.value ? leitstandCategoryLabels[summary.value.current.category] : 'Warte auf Energiedaten');
 const checks = computed(() => summary.value?.checks.filter(c => c.severity !== 'ok') ?? []);
 const segments = computed(() => summary.value?.planSegments.filter(s => Date.parse(s.endsAtUtc) > now.value).slice(0, 4) ?? []);
-const nextSegment = computed(() => segments.value.find(s => Date.parse(s.startsAtUtc) > now.value));
+const nextSegment = computed(() => summary.value?.planSegments.find(s => Date.parse(s.startsAtUtc) > now.value));
+const currentSegment = computed(() => summary.value?.planSegments.find(s => Date.parse(s.startsAtUtc) <= now.value && Date.parse(s.endsAtUtc) > now.value));
+const planTotals = computed(() => {
+  const plan = summary.value?.planSlots ?? [];
+  if (!plan.length) return null;
+  return {
+    startsAtUtc: plan[0].startsAtUtc, endsAtUtc: plan[plan.length - 1].endsAtUtc,
+    pvKwh: plan.reduce((sum, slot) => sum + slot.expectedPvYieldKwh, 0),
+    consumptionKwh: plan.reduce((sum, slot) => sum + slot.expectedConsumptionKwh, 0),
+    gridKwh: summary.value!.planSegments.reduce((sum, segment) => sum + segment.gridEnergyKwh, 0)
+  };
+});
+const dateTime = (value: string) => new Date(value).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+const priceUnit = computed(() => summary.value?.current.currency && summary.value.current.currency !== 'EUR' ? `${summary.value.current.currency}/kWh` : 'ct/kWh');
+const priceScale = computed(() => summary.value?.current.currency && summary.value.current.currency !== 'EUR' ? 1 : 100);
 const slots = computed(() => summary.value?.planSlots ?? []);
 const priceBounds = computed(() => {
   const prices = slots.value.map(s => s.pricePerKwh);
@@ -65,7 +80,7 @@ onBeforeUnmount(() => { request?.abort(); window.clearInterval(timer); });
 <template>
   <div class="orbit">
     <header class="orbit-heading">
-      <div class="orbit-wordmark"><span class="orbit-emblem" aria-hidden="true">◎</span> ORBIT <span class="orbit-edition">ENERGYFLOWPILOT / 01</span></div>
+      <div class="orbit-wordmark"><span class="orbit-emblem" aria-hidden="true">◎</span> ORBIT</div>
       <div class="orbit-tools">
         <span class="orbit-status" :class="{ 'orbit-status--live': connected }"><i />{{ connected ? 'Telemetrie aktuell' : 'Keine aktuellen Live-Daten' }}</span>
         <button class="orbit-icon-button" aria-label="Energiedaten aktualisieren" @click="refresh"><v-icon icon="mdi-refresh" size="19" /></button>
@@ -76,15 +91,31 @@ onBeforeUnmount(() => { request?.abort(); window.clearInterval(timer); });
 
     <section class="orbit-hero" aria-label="Energieübersicht">
       <div class="orbit-intro">
-        <p class="orbit-eyebrow"><span /> DEIN ZUHAUSE. DEINE ENERGIE.</p>
-        <h1>Alles im<br><em>Fluss.</em></h1>
-        <p class="orbit-intro-copy">Ein Blick aufs Jetzt.<br>Ein guter Plan für später.</p>
+        <h1>Speichersteuerung</h1>
         <div class="orbit-decision">
-          <span class="orbit-small">AKTUELLER FAHRPLAN</span>
           <strong>{{ state }}</strong>
-          <p>{{ summary?.current.reason ?? 'Sobald Messwerte vorliegen, siehst du hier, was dein Speicher gerade macht.' }}</p>
-          <span v-if="stale && summary" class="orbit-stale">Live-Messwerte fehlen oder sind veraltet.</span>
+          <p>{{ summary?.current.reason ?? 'Noch keine Entscheidung verfügbar. Geräteverbindungen und Preisquelle prüfen.' }}</p>
+          <span v-if="!connected && summary" class="orbit-stale">Live-Messwerte fehlen, sind veraltet oder konnten nicht aktualisiert werden.</span>
         </div>
+        <dl class="orbit-operating-values" aria-label="Aktuelle Steuerungswerte">
+          <div><dt>Sollleistung · Victron</dt><dd>{{ power(signedTarget) }}<small>+ Laden / − Entladen</small></dd></div>
+          <div><dt>Istleistung · Victron</dt><dd>{{ power(live?.batteryPowerWatts) }}<small>{{ connected ? '+ Laden / − Entladen' : 'Keine aktuelle Messung' }}</small></dd></div>
+          <div><dt>Aktuelle Planphase bis</dt><dd>{{ currentSegment ? dateTime(currentSegment.endsAtUtc) : '–' }}</dd></div>
+          <div><dt>Geplanter Ladezustand danach</dt><dd>{{ format(currentSegment?.stateOfChargeEndPercent, 0) }} %</dd></div>
+        </dl>
+        <div v-if="manualCharge?.isActive" class="orbit-manual" role="status">
+          <strong>Manuelle Ladung aktiv · {{ power(manualCharge.powerWatts) }}</strong>
+          <span>{{ manualCharge.expiresAtUtc ? `Bis ${dateTime(manualCharge.expiresAtUtc)}` : 'Endzeit nicht verfügbar' }} · Vorrang vor dem Automatikplan</span>
+        </div>
+        <section class="orbit-upcoming" aria-label="Nächste geplante Aktion">
+          <span class="orbit-small">NÄCHSTE PLANPHASE</span>
+          <template v-if="nextSegment">
+            <strong>{{ leitstandCategoryLabels[nextSegment.category] }}</strong>
+            <p>{{ dateTime(nextSegment.startsAtUtc) }} – {{ dateTime(nextSegment.endsAtUtc) }} · {{ format(nextSegment.stateOfChargeStartPercent, 0) }} → {{ format(nextSegment.stateOfChargeEndPercent, 0) }} % SoC</p>
+            <p v-if="nextSegment.reason">{{ nextSegment.reason }}</p>
+          </template>
+          <p v-else>Noch keine weitere Planphase verfügbar.</p>
+        </section>
         <router-link to="/heating" class="orbit-link">Wärmepumpe & Verbrauch <v-icon icon="mdi-arrow-top-right" size="20" aria-hidden="true" /></router-link>
       </div>
 
@@ -114,19 +145,24 @@ onBeforeUnmount(() => { request?.abort(); window.clearInterval(timer); });
 
     <section class="orbit-metrics" aria-label="Aktuelle Energiewerte">
       <article class="orbit-metric orbit-metric--battery">
-        <div><span class="orbit-small">DEINE ENERGIERESERVE</span><strong>{{ format(soc, 0) }}<small> %</small></strong><p>Victron · Ladezustand</p></div>
+        <div><span class="orbit-small">LADEZUSTAND · VICTRON</span><strong>{{ format(soc, 0) }}<small> %</small></strong><p>Victron · Ladezustand</p></div>
         <div class="orbit-gauge" :style="{ '--charge': `${ring}%` }"><v-icon icon="mdi-battery-medium" size="30" /></div>
       </article>
-      <article class="orbit-metric"><span class="orbit-small">STROMPREIS JETZT</span><strong>{{ format(summary?.current.pricePerKwh == null ? null : summary.current.pricePerKwh * 100, 2) }}<small> ct/kWh</small></strong><p>{{ summary?.current.currency ?? '–' }} · aktueller Preis</p></article>
-      <article class="orbit-metric"><span class="orbit-small">NÄCHSTER SCHRITT</span><strong class="orbit-next-time">{{ nextSegment ? time(nextSegment.startsAtUtc) : '–' }}<small v-if="nextSegment"> Uhr</small></strong><p>{{ nextSegment ? leitstandCategoryLabels[nextSegment.category] : 'Noch kein weiterer Plan verfügbar' }}</p></article>
+      <article class="orbit-metric"><span class="orbit-small">STROMPREIS JETZT</span><strong>{{ format(summary?.current.pricePerKwh == null ? null : summary.current.pricePerKwh * priceScale, 2) }}<small> {{ priceUnit }}</small></strong><p>{{ summary?.current.currency ?? '–' }} · aktueller Preis</p></article>
+      <article class="orbit-metric"><span class="orbit-small">LADEZUSTAND · E3/DC</span><strong>{{ format(live?.supplementaryBatterySocPercent, 0) }}<small> %</small></strong><p>{{ power(live?.supplementaryBatteryPowerWatts) }} · + Laden / − Entladen</p></article>
     </section>
 
     <section class="orbit-plan" aria-labelledby="orbit-plan-title">
-      <header class="orbit-section-heading"><div><span class="orbit-small">VORAUSDENKEN</span><h2 id="orbit-plan-title">Deine nächsten 24 Stunden.</h2></div><span class="orbit-small">PROGNOSE, KEINE MESSUNG</span></header>
+      <header class="orbit-section-heading"><div><h2 id="orbit-plan-title">24-Stunden-Plan</h2><p v-if="planTotals" class="orbit-plan-period">{{ dateTime(planTotals.startsAtUtc) }} – {{ dateTime(planTotals.endsAtUtc) }}</p></div><span class="orbit-small">PROGNOSE, KEINE MESSUNG</span></header>
+      <dl class="orbit-plan-totals" aria-label="Energieprognose für den gesamten Planzeitraum">
+        <div><dt>Erwarteter Verbrauch</dt><dd>{{ format(planTotals?.consumptionKwh, 2) }} <small>kWh</small></dd></div>
+        <div><dt>Erwarteter PV-Ertrag</dt><dd>{{ format(planTotals?.pvKwh, 2) }} <small>kWh</small></dd></div>
+        <div><dt>Geplante Netzenergie für Speicher</dt><dd>{{ format(planTotals?.gridKwh, 2) }} <small>kWh</small></dd></div>
+      </dl>
       <div v-if="slots.length" class="orbit-price-strip" aria-label="Preisprognose, Balken nach geplanter Aktion eingefärbt">
         <span v-for="slot in slots" tabindex="0" role="img" :key="slot.startsAtUtc" class="orbit-price-bar" :style="{ height: `${barHeight(slot.pricePerKwh)}%`, background: categoryColors[slot.category] }"
-          :aria-label="`${time(slot.startsAtUtc)}: ${format(slot.pricePerKwh * 100, 2)} ct/kWh, ${leitstandCategoryLabels[slot.category]}`"
-          :title="`${time(slot.startsAtUtc)} · ${format(slot.pricePerKwh * 100, 2)} ct/kWh · ${leitstandCategoryLabels[slot.category]}`" />
+          :aria-label="`${time(slot.startsAtUtc)}: ${format(slot.pricePerKwh * priceScale, 2)} ${priceUnit}, ${leitstandCategoryLabels[slot.category]}`"
+          :title="`${time(slot.startsAtUtc)} · ${format(slot.pricePerKwh * priceScale, 2)} ${priceUnit} · ${leitstandCategoryLabels[slot.category]}`" />
       </div>
       <p v-else class="orbit-empty">Die Preis- und Ladeplanung erscheint, sobald eine Prognose verfügbar ist.</p>
       <div v-if="slots.length" class="orbit-chart-times"><span>{{ time(slots[0].startsAtUtc) }}</span><span>Strompreis · relative Höhe, einschließlich negativer Preise</span><span>{{ time(slots[slots.length - 1].endsAtUtc) }}</span></div>
@@ -140,14 +176,14 @@ onBeforeUnmount(() => { request?.abort(); window.clearInterval(timer); });
     </section>
 
     <section class="orbit-bottom">
-      <div><span class="orbit-small">IM BLICK BEHALTEN</span><h2>{{ checks.length ? `${checks.length} Hinweise zum Betrieb` : summary ? 'Dein System im Blick.' : 'Verbindungen einrichten.' }}</h2><p v-if="!summary">Verbinde deine Geräte, um Energieflüsse und Planung zu sehen.</p><p v-else-if="!checks.length">Prüfungen und Messwerte findest du in der Detailansicht.</p><ul v-else><li v-for="check in checks.slice(0, 3)" :key="check.checkId">{{ check.message }}</li></ul></div>
+      <div><h2>Systemmeldungen{{ checks.length ? ` · ${checks.length}` : '' }}</h2><p v-if="!summary">Noch keine Systemauswertung verfügbar.</p><p v-else-if="!checks.length">Keine Hinweise in der aktuellen Auswertung.</p><ul v-else><li v-for="check in checks" :key="check.checkId">{{ check.message }}</li></ul></div>
       <button class="orbit-details-button" :aria-expanded="detailsOpen" aria-controls="orbit-details" @click="detailsOpen = !detailsOpen">{{ detailsOpen ? 'Details schließen' : 'Analyse & Steuerung öffnen' }} <v-icon :icon="detailsOpen ? 'mdi-minus' : 'mdi-arrow-top-right'" size="20" aria-hidden="true" /></button>
     </section>
     <div v-if="detailsOpen" id="orbit-details" class="orbit-details">
       <LeitstandDashboard :dark="true" :status="props.status" :decision-log-entries="props.decisionLogEntries" :manual-charge="props.manualCharge" :is-manual-charge-busy="props.isManualChargeBusy"
         @start-manual-charge="(minutes, kw) => emit('start-manual-charge', minutes, kw)" @stop-manual-charge="emit('stop-manual-charge')" />
     </div>
-    <footer class="orbit-footer"><span>ENERGYFLOWPILOT</span><span>Weniger raten. Bewusster steuern.</span><span>{{ summary ? `Stand ${time(summary.createdAtUtc)} Uhr` : 'Noch keine Daten' }}</span></footer>
+    <footer class="orbit-footer"><span>{{ live ? `Messwerte: ${dateTime(live.measuredAtUtc)}` : 'Noch keine Messwerte' }}</span><span>{{ summary?.current.decidedAtUtc ? `Entscheidung: ${dateTime(summary.current.decidedAtUtc)}` : 'Noch keine Entscheidung' }}</span><span>{{ summary ? `Planstand: ${dateTime(summary.createdAtUtc)}` : 'Noch kein Plan' }}</span></footer>
   </div>
 </template>
 

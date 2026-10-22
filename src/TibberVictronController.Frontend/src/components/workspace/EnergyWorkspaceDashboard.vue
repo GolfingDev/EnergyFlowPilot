@@ -90,7 +90,7 @@ onBeforeUnmount(() => { summaryRequest?.abort(); reviewRequest?.abort(); window.
 <template>
   <div class="workspace" :class="`workspace--${variant}`">
     <header class="workspace-header">
-      <div><p>ENERGYFLOWPILOT <span>/ {{ variant === 'flow' ? 'ENERGIEZENTRALE' : 'KACHELWERK' }}</span></p><h1>{{ variant === 'flow' ? 'Deine Energie. Auf einen Blick.' : 'Energie & Analyse' }}</h1></div>
+      <div><p>ENERGYFLOWPILOT <span>/ {{ variant === 'flow' ? 'ENERGIEZENTRALE' : 'KACHELWERK' }}</span></p><h1>{{ variant === 'flow' ? 'Energieübersicht' : 'Energie & Analyse' }}</h1></div>
       <div class="workspace-header-actions"><span class="workspace-status" :class="{ 'workspace-status--stale': stale }"><i />{{ stale ? 'Live-Daten fehlen oder sind veraltet' : 'Live-Daten aktuell' }}</span><button class="workspace-refresh" aria-label="Dashboard-Daten aktualisieren" @click="loadSummary(); loadReview()"><v-icon icon="mdi-refresh" size="19" /></button></div>
     </header>
     <p v-if="summaryError" class="workspace-error" role="alert">{{ summaryError }} Letzte Daten können veraltet sein.</p>
