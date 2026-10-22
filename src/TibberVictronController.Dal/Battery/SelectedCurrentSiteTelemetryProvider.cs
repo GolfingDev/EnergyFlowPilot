@@ -12,6 +12,7 @@ public sealed class SelectedCurrentSiteTelemetryProvider : ICurrentSiteTelemetry
 {
     private static readonly TimeSpan SupplementarySnapshotMaxAge = TimeSpan.FromMinutes(3);
 
+    private readonly DatabaseHagerEnergySettingsProvider? supplementarySettingsProvider;
     private readonly TelemetrySourceSelector sourceSelector;
     private readonly ResilientCurrentSiteTelemetryProvider victronCurrentSiteTelemetryProvider;
     private readonly HagerEnergyCurrentSiteTelemetryProvider hagerEnergyCurrentSiteTelemetryProvider;
@@ -21,8 +22,10 @@ public sealed class SelectedCurrentSiteTelemetryProvider : ICurrentSiteTelemetry
         TelemetrySourceSelector sourceSelector,
         ResilientCurrentSiteTelemetryProvider victronCurrentSiteTelemetryProvider,
         HagerEnergyCurrentSiteTelemetryProvider hagerEnergyCurrentSiteTelemetryProvider,
-        HagerEnergyTelemetrySnapshotStore supplementarySnapshotStore)
+        HagerEnergyTelemetrySnapshotStore supplementarySnapshotStore,
+        DatabaseHagerEnergySettingsProvider? supplementarySettingsProvider = null)
     {
+        this.supplementarySettingsProvider = supplementarySettingsProvider;
         this.sourceSelector = sourceSelector;
         this.victronCurrentSiteTelemetryProvider = victronCurrentSiteTelemetryProvider;
         this.hagerEnergyCurrentSiteTelemetryProvider = hagerEnergyCurrentSiteTelemetryProvider;
@@ -62,18 +65,26 @@ public sealed class SelectedCurrentSiteTelemetryProvider : ICurrentSiteTelemetry
             ? hagerTelemetry!.MeasuredAtUtc
             : victronTelemetry!.MeasuredAtUtc;
 
-        return new CurrentSiteTelemetry(
-            gridImportWatts,
-            pvProductionWatts,
-            measuredAtUtc,
-            victronTelemetry?.CurrentBatteryPowerWatts)
+        var snapshot = supplementarySnapshotStore.Current;
+        var monitoringRequired = needsHager || snapshot is not null ||
+            (supplementarySettingsProvider is not null && await supplementarySettingsProvider.IsConfiguredAsync(cancellationToken));
+        return WithSupplementaryTelemetry(new CurrentSiteTelemetry(gridImportWatts, pvProductionWatts,
+            measuredAtUtc, victronTelemetry?.CurrentBatteryPowerWatts), snapshot, monitoringRequired);
+    }
+
+    public static CurrentSiteTelemetry WithSupplementaryTelemetry(CurrentSiteTelemetry telemetry,
+        HagerEnergyTelemetrySnapshot? snapshot, bool monitoringRequired)
+    {
+        var measuredAt = snapshot is { BatteryPowerWatts: not null }
+            ? (snapshot.MeasuredAtUtc < snapshot.LastSuccessfulPollAtUtc ? snapshot.MeasuredAtUtc : snapshot.LastSuccessfulPollAtUtc)
+            : (DateTimeOffset?)null;
+        return telemetry with
         {
-            SupplementaryBatteryChargeFromSiteWatts = CalculateSupplementaryBatteryChargeFromSiteWatts(
-                supplementarySnapshotStore.Current,
-                DateTimeOffset.UtcNow),
-            SupplementaryBatteryDischargeWatts = CalculateSupplementaryBatteryDischargeWatts(
-                supplementarySnapshotStore.Current,
-                DateTimeOffset.UtcNow)
+            SupplementaryBatteryMonitoringRequired = monitoringRequired,
+            SupplementaryBatteryMeasuredAtUtc = measuredAt,
+            // Preserve the actual value and its age; the safety interlock must distinguish unknown from a measured zero.
+            SupplementaryBatteryDischargeWatts = snapshot?.BatteryPowerWatts is { } watts ? Math.Max(0, -watts) : 0,
+            SupplementaryBatteryChargeFromSiteWatts = CalculateSupplementaryBatteryChargeFromSiteWatts(snapshot, DateTimeOffset.UtcNow)
         };
     }
 

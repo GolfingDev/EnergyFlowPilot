@@ -119,7 +119,7 @@ const situationSentence = computed(() => {
       parts.push(`Der Akku nimmt ${kw(Math.max(0, battery))} PV-Überschuss auf.`);
       break;
     case 'gridCharge':
-      parts.push(`Der Akku lädt mit ${kw(current.value.targetPowerWatts)} aus dem Netz.`);
+      parts.push(`Netzladung angefordert: Soll ${kw(current.value.targetPowerWatts)}. Gemessene Akkuleistung ${kw(live.value?.batteryPowerWatts)}; Netzleistung ${kw(live.value?.gridPowerWatts)} (+ Bezug / − Einspeisung).`);
       break;
     case 'hold':
       parts.push('Der Akku hält seine Energie für teurere Stunden zurück.');

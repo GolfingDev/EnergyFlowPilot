@@ -8,6 +8,17 @@ public sealed class DashboardSummaryServiceTests
 {
     private static readonly DateTimeOffset StartUtc = new(2026, 10, 14, 21, 0, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData(3030, -774, DashboardCheckSeverity.Critical)]
+    [InlineData(3030, 0, DashboardCheckSeverity.Ok)]
+    [InlineData(-3030, -774, DashboardCheckSeverity.Ok)]
+    public void MonitoringDetectsOppositeBatteryTransferDirection(int battery, int secondary, DashboardCheckSeverity expected)
+    {
+        var result = DashboardSummaryService.CheckSupplementarySupply(CreateSample(StartUtc, 27, battery, 79, secondary, 3090));
+        Assert.Equal("battery-from-supplementary", result.CheckId);
+        Assert.Equal(expected, result.Severity);
+    }
+
     [Fact]
     public void CalculateReviewDetectsFeedInAndSupplementaryChargingFromBattery()
     {

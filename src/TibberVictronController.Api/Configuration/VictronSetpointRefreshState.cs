@@ -5,6 +5,20 @@ namespace TibberVictronController.Api.Configuration;
 /// </summary>
 public sealed class VictronSetpointRefreshState
 {
+    private readonly SemaphoreSlim publicationGate = new(1, 1);
+
+    // Serializes complete write batches so a concurrent refresh cannot restore a target stopped by a decision.
+    public async Task<IDisposable> AcquirePublicationAsync(CancellationToken cancellationToken)
+    {
+        await publicationGate.WaitAsync(cancellationToken);
+        return new PublicationLease(publicationGate);
+    }
+
+    private sealed class PublicationLease(SemaphoreSlim gate) : IDisposable
+    {
+        public void Dispose() => gate.Release();
+    }
+
     private readonly object syncRoot = new();
     private VictronSetpointRefreshSnapshot? snapshot;
 
@@ -60,6 +74,9 @@ public sealed record VictronSetpointRefreshSnapshot(
     IReadOnlyList<VictronSetpointValue> Setpoints,
     IReadOnlyList<VictronSetpointValue> DesiredSetpoints,
     int SignedBatteryTargetWatts,
-    int DesiredSignedBatteryTargetWatts);
+    int DesiredSignedBatteryTargetWatts)
+{
+    public bool RequiresGridChargeProtection { get; init; }
+}
 
 public sealed record VictronSetpointValue(string Topic, int Value);

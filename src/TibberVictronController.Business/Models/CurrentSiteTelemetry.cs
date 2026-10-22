@@ -52,5 +52,11 @@ public sealed record CurrentSiteTelemetry
     /// </remarks>
     public int SupplementaryBatteryDischargeWatts { get; init; }
 
+    /// <summary>Whether an installed secondary battery requires fresh readings before grid charging.</summary>
+    public bool SupplementaryBatteryMonitoringRequired { get; init; }
+
+    /// <summary>Oldest of source measurement and successful poll; null also means battery power is unavailable.</summary>
+    public DateTimeOffset? SupplementaryBatteryMeasuredAtUtc { get; init; }
+
     public DateTimeOffset MeasuredAtUtc { get; }
 }

@@ -10,6 +10,34 @@ public sealed class CurrentBatteryDecisionServiceTests
 {
     private static readonly DateTimeOffset NowUtc = new(2026, 5, 2, 10, 5, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData(false, 27)]
+    [InlineData(true, 27)]
+    [InlineData(false, 3500)]
+    [InlineData(false, -2000)]
+    public async Task GridChargeIsBlockedBySecondaryDischargeForManualAndAllPlannedPaths(bool manual, int gridWatts)
+    {
+        var config = new BatteryConfiguration(19.2m, maximumChargePowerWatts: 5000, roundTripEfficiencyPercent: 100m);
+        var service = CreateService(new CurrentBatteryDecisionServiceDependencies
+        {
+            UtcClock = new FixedUtcClock(NowUtc),
+            BatteryStateProvider = new FakeBatteryStateProvider(new BatteryState(40m, NowUtc)),
+            BatteryConfigurationProvider = new FakeBatteryConfigurationProvider(config),
+            CurrentSiteTelemetryProvider = new FakeCurrentSiteTelemetryProvider(new CurrentSiteTelemetry(gridWatts, 3090, NowUtc, 3030)
+            { SupplementaryBatteryMonitoringRequired = true, SupplementaryBatteryMeasuredAtUtc = NowUtc, SupplementaryBatteryDischargeWatts = 774 }),
+            TibberPriceForecastProvider = new StaticTibberPriceForecastProvider(CreatePriceForecast(0.20m, 0.45m)),
+            BatteryForecastService = new StaticBatteryForecastService(CreatePlanForecast(config,
+                new BatteryDecisionInstruction(BatteryDecisionState.Charge, BatteryChargeSource.Grid), 3846, BatteryForecastRuleIds.PlannedGridCharge)),
+            ControllerSettingStore = CreateSettingsStore(manual ? 3846 : 0, manual ? NowUtc.AddMinutes(15) : null),
+            DecisionLogRepository = new FakeDecisionLogRepository()
+        });
+        var result = await service.CalculateCurrentDecisionAsync();
+        Assert.Equal(BatteryDecisionState.Idle, result.Decision.Instruction.DecisionState);
+        Assert.Equal(0, result.Decision.TargetPowerWatts);
+        Assert.Contains(result.Reasons, r => r.RuleName == CurrentBatteryDecisionRuleIds.SupplementaryGridChargeBlocked);
+        Assert.Contains("SupplementaryBatteryDischargeWatts", result.InputSummaryJson);
+    }
+
     [Fact]
     public async Task CalculateCurrentDecisionAsyncReturnsIdleForStaleSiteTelemetry()
     {

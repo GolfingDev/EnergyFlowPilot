@@ -60,9 +60,27 @@ public sealed class VictronSetpointRefreshBackgroundService : BackgroundService
             return;
         }
 
+        using var publication = await refreshState.AcquirePublicationAsync(cancellationToken);
         if (!refreshState.TryGet(utcClock.UtcNow, out var snapshot))
         {
             return;
+        }
+
+        var safety = scope.ServiceProvider.GetRequiredService<ISupplementaryGridChargeSafety>();
+        var protectionReason = snapshot.RequiresGridChargeProtection
+            ? await safety.CheckAsync(cancellationToken) : null;
+        var immediateStop = protectionReason is not null;
+        if (immediateStop)
+        {
+            // Latch the stop in the refresh state. Only a newly approved decision may restart charging.
+            var wasCharging = snapshot.SignedBatteryTargetWatts > 0 || snapshot.DesiredSignedBatteryTargetWatts > 0;
+            snapshot = snapshot with { SignedBatteryTargetWatts = 0, DesiredSignedBatteryTargetWatts = 0 };
+            if (wasCharging)
+            {
+                // Repeated blocked refreshes keep the hardware idle without triggering expensive replanning every five seconds.
+                scope.ServiceProvider.GetService<DecisionCalculationTrigger>()?.Signal();
+                logger.LogWarning("Victron-Netzladung im Setpoint-Refresh gestoppt. Regel={RuleId}, Grund={Reason}", protectionReason!.RuleName, protectionReason.Message);
+            }
         }
 
         var topics = VictronMqttTopicFactory.Create(settings);
@@ -87,6 +105,7 @@ public sealed class VictronSetpointRefreshBackgroundService : BackgroundService
         refreshState.Update(snapshot with
         {
             Setpoints = setpoints,
+            DesiredSetpoints = immediateStop ? setpoints : snapshot.DesiredSetpoints,
             SignedBatteryTargetWatts = signedBatteryTargetWatts
         });
 

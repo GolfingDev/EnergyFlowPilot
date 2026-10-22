@@ -15,6 +15,14 @@ public sealed class DatabaseHagerEnergySettingsProvider
         this.controllerSettingStore = controllerSettingStore;
     }
 
+    public async Task<bool> IsConfiguredAsync(CancellationToken cancellationToken = default)
+    {
+        var client = await GetOptionalSettingAsync(ControllerSettingDefaults.HagerEnergyClientIdKey, cancellationToken);
+        var secret = await GetOptionalSettingAsync(ControllerSettingDefaults.HagerEnergyClientSecretKey, cancellationToken);
+        var installation = await GetOptionalSettingAsync(ControllerSettingDefaults.HagerEnergyInstallationIdKey, cancellationToken);
+        return !string.IsNullOrWhiteSpace(client) && !string.IsNullOrWhiteSpace(secret) && !string.IsNullOrWhiteSpace(installation);
+    }
+
     public async Task<HagerEnergySettings> GetSettingsAsync(CancellationToken cancellationToken = default)
     {
         return new HagerEnergySettings

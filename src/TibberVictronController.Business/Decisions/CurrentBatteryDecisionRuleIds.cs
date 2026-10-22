@@ -15,6 +15,9 @@ public static class CurrentBatteryDecisionRuleIds
     public const string AbsorbGridExport = "ABSORB_GRID_EXPORT";
     public const string SupplementaryDischargeExport = "SUPPLEMENTARY_DISCHARGE_EXPORT";
     public const string CoverCurrentGridImport = "COVER_CURRENT_GRID_IMPORT";
+    public const string SupplementaryGridChargeBlocked = "SUPPLEMENTARY_GRID_CHARGE_BLOCKED";
+    public const string SupplementaryGridChargeCooldown = "SUPPLEMENTARY_GRID_CHARGE_COOLDOWN";
+    public const string SupplementaryTelemetryMissing = "SUPPLEMENTARY_TELEMETRY_MISSING";
     public const string ManualGridCharge = "MANUAL_GRID_CHARGE";
     public const string DirectionChangeHold = "DIRECTION_CHANGE_HOLD";
     public const string ChargePowerLimitedBySettings = "CHARGE_POWER_LIMITED_BY_SETTINGS";
