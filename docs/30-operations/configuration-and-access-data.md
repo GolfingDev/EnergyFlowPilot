@@ -101,5 +101,6 @@ Access data includes values such as:
 - Sensitive settings must be marked as sensitive.
 - Updates should store `UpdatedAtUtc`.
 - Unknown setting keys must not be silently ignored.
+- Battery and hot-water control numbers are validated before saving, not only on the next worker run. Battery power limits require positive 32-bit integers in watts; fractional watts, missing/non-numeric numbers and values outside the field's domain are rejected without changing the saved setting. API decimal values use a dot without thousands separators; the GUI normalizes decimal commas for these control fields. Forecast horizon is an integer from 1 to 72 hours. The complete GUI draft and battery domain model additionally check relationships between the hard minimum and planning limits; the single-field settings API does not provide an atomic multi-field transaction.
 - Database creation must seed all default setting definitions.
 - Database startup checks must add missing future default settings without overwriting existing user values.

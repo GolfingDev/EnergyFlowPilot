@@ -21,7 +21,8 @@ public sealed class BatteryForecastSimulator
         IReadOnlyList<ConsumptionForecastSlot> consumptionForecast,
         BatteryState initialBatteryState,
         BatteryConfiguration batteryConfiguration,
-        decimal feedInCompensationPricePerKwh)
+        decimal feedInCompensationPricePerKwh,
+        decimal prepaidGridEnergyKwh = 0m)
     {
         ValidateInputs(priceForecast, pvForecast, consumptionForecast, initialBatteryState, batteryConfiguration, feedInCompensationPricePerKwh);
 
@@ -46,6 +47,7 @@ public sealed class BatteryForecastSimulator
                     consumptionSlotsByTime[priceSlot.TimeSlot].ExpectedConsumptionKwh - pvSlotsByTime[priceSlot.TimeSlot].ExpectedPvYieldKwh))
                 .ToArray(),
             InitialEnergyKwh = batteryConfiguration.TotalCapacityKwh * initialBatteryState.StateOfChargePercent / 100m,
+            PrepaidGridEnergyKwh = prepaidGridEnergyKwh,
             BatteryConfiguration = batteryConfiguration,
             FeedInCompensationPricePerKwh = feedInCompensationPricePerKwh
         });

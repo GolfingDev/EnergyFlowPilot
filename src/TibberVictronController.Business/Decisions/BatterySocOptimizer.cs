@@ -18,6 +18,8 @@ internal sealed class BatterySocOptimizationInput
 
     public required decimal InitialEnergyKwh { get; init; }
 
+    public decimal PrepaidGridEnergyKwh { get; init; }
+
     public required BatteryConfiguration BatteryConfiguration { get; init; }
 
     public required decimal FeedInCompensationPricePerKwh { get; init; }
@@ -59,7 +61,9 @@ internal sealed class BatterySocOptimizer
         var grid = new EnergyGrid(minimumEnergyKwh, maximumEnergyKwh);
         // The reference trajectory covers consumption/stores PV without price-based holds or grid purchases.
         // It lets Evaluate charge newly deferred energy, rather than charging the same stock every quarter hour.
-        var baselineEnergyKwh = (double)input.InitialEnergyKwh;
+        // Measured grid purchases already paid the economic hurdle in an earlier decision cycle.
+        var baselineEnergyKwh = Math.Max(minimumEnergyKwh,
+            (double)(input.InitialEnergyKwh - Math.Max(0m, input.PrepaidGridEnergyKwh)));
         var models = input.Slots.Select(slot =>
         {
             var model = SlotModel.Create(slot, input);

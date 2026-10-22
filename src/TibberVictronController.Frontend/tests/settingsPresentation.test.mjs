@@ -1,6 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isEverydaySetting, usesCents, settingInputValue, settingStoredValue, secretPresentation, settingUpdatePayload } from '../src/pages/settingsPresentation.ts';
+import { isEverydaySetting, usesCents, settingInputValue, settingStoredValue, secretPresentation, settingUpdatePayload, numericControlErrors } from '../src/pages/settingsPresentation.ts';
+
+test('control inputs reject empty, fractional watts and invalid ranges; decimal commas are normalized', () => {
+  for (const raw of ['', 'no', '4000.5', '4000,5', '0', '-1', '2147483648', '0x10'])
+    assert.ok(numericControlErrors('battery.maximumChargePowerWatts', raw).length > 0, raw);
+  assert.deepEqual(numericControlErrors('battery.maximumChargePowerWatts', '4000'), []);
+  assert.equal(settingStoredValue('battery.totalCapacityKwh', '19,2'), '19.2');
+  assert.equal(settingStoredValue('mqtt.password', 'abc,xyz'), 'abc,xyz');
+  assert.ok(numericControlErrors('weishauptHotWater.demandHourLocal', '18.5').length);
+  assert.ok(numericControlErrors('weishauptHotWater.pvSurplusWatts', '499').length);
+  assert.ok(numericControlErrors('forecast.horizonHours', '73').length);
+  assert.ok(numericControlErrors('battery.minimumStateOfChargePercent', '100').length);
+  assert.deepEqual(numericControlErrors('battery.targetEndStateOfChargePercent', '25'), []);
+  assert.deepEqual(numericControlErrors('battery.planningMinimumStateOfChargePercent', '30'), []);
+});
 
 test('everyday mode highlights battery and hot-water controls, not installation details', () => {
   for (const key of ['decision.minimumSavingsPerKwh', 'battery.planningMinimumStateOfChargePercent', 'weishauptHotWater.enabled'])

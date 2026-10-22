@@ -9,6 +9,46 @@ public sealed class ControllerSettingsServiceTests
     private static readonly DateTimeOffset NowUtc = new(2026, 5, 1, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task InvalidControlValuesNeverChangePersistence()
+    {
+        var store = new InMemoryControllerSettingStore(ControllerSettingDefaults.CreateDefaultSettings(NowUtc));
+        var service = new ControllerSettingsService(store, new FixedUtcClock(NowUtc.AddHours(1)));
+        var invalidValues = new[]
+        {
+            (ControllerSettingDefaults.BatteryMaximumChargePowerWattsKey, "4000.5"),
+            (ControllerSettingDefaults.BatteryMaximumDischargePowerWattsKey, "4000,5"),
+            (ControllerSettingDefaults.BatteryMaximumChargePowerWattsKey, "2147483648"),
+            (ControllerSettingDefaults.BatteryMaximumChargePowerWattsKey, "0"),
+            (ControllerSettingDefaults.BatteryTotalCapacityKwhKey, "kein Wert"),
+            (ControllerSettingDefaults.BatteryTotalCapacityKwhKey, "0"),
+            (ControllerSettingDefaults.BatteryRoundTripEfficiencyPercentKey, "101"),
+            (ControllerSettingDefaults.BatteryPlanningMinimumStateOfChargePercentKey, "-1"),
+            (ControllerSettingDefaults.BatteryPlanningMaximumStateOfChargePercentKey, "101"),
+            (ControllerSettingDefaults.DecisionMinimumSavingsPerKwhKey, "-0.03"),
+            (ControllerSettingDefaults.WeishauptHotWaterDemandHourKey, "18.5"),
+            (ControllerSettingDefaults.WeishauptHotWaterDemandHourKey, "24"),
+            (ControllerSettingDefaults.WeishauptHotWaterPvSurplusKey, "499"),
+            (ControllerSettingDefaults.WeishauptHotWaterMinimumAdvantageKey, "0.001"),
+            (ControllerSettingDefaults.WeishauptHotWaterExtraEnergyKey, "101"),
+            (ControllerSettingDefaults.WeishauptHotWaterInitialHoldHoursKey, "13"),
+            (ControllerSettingDefaults.WeishauptHotWaterInitialChargeMinutesKey, "14"),
+            (ControllerSettingDefaults.ForecastHorizonHoursKey, ""),
+            (ControllerSettingDefaults.ForecastHorizonHoursKey, "73")
+        };
+        foreach (var (key, value) in invalidValues)
+        {
+            var before = await store.GetSettingAsync(key);
+            await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateSettingAsync(key, value));
+            Assert.Equal(before, await store.GetSettingAsync(key));
+        }
+        await service.UpdateSettingAsync(ControllerSettingDefaults.BatteryMaximumChargePowerWattsKey, "4000");
+        await service.UpdateSettingAsync(ControllerSettingDefaults.BatteryTotalCapacityKwhKey, "19.2");
+        // A valid final draft must not be blocked by the hidden legacy reserve of 25%.
+        await service.UpdateSettingAsync(ControllerSettingDefaults.BatteryPlanningMinimumStateOfChargePercentKey, "30");
+        Assert.Equal("30", (await store.GetSettingAsync(ControllerSettingDefaults.BatteryPlanningMinimumStateOfChargePercentKey))?.Value);
+    }
+
+    [Fact]
     public async Task UpdateSettingAsyncPersistsKnownSettingWithDefaultSensitivity()
     {
         var settingStore = new InMemoryControllerSettingStore(ControllerSettingDefaults.CreateDefaultSettings(NowUtc));

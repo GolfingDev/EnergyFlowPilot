@@ -101,7 +101,10 @@ public sealed class ComparableDayPriceEstimator
         var tibberSlots = await tibberPriceForecastProvider.GetPriceForecastAsync(dayStartUtc, dayEndUtc, cancellationToken);
         var tibberPrices = tibberSlots
             .Where(slot => slot.TimeSlot.StartsAtUtc >= dayStartUtc && slot.TimeSlot.StartsAtUtc < dayEndUtc)
-            .ToDictionary(slot => TimeZoneInfo.ConvertTime(slot.TimeSlot.StartsAtUtc, timeZone).TimeOfDay, slot => slot.TotalPricePerKwh);
+            // The repeated autumn hour has two UTC slots per local quarter hour. For estimates use
+            // their mean, independent of enumeration order; never turn these estimates into grid purchases.
+            .GroupBy(slot => TimeZoneInfo.ConvertTime(slot.TimeSlot.StartsAtUtc, timeZone).TimeOfDay)
+            .ToDictionary(group => group.Key, group => group.Average(slot => slot.TotalPricePerKwh));
 
         if (tibberPrices.Count > 0)
         {
@@ -124,7 +127,7 @@ public sealed class ComparableDayPriceEstimator
         }
 
         // One small indexed query per slot; past days never change, so the result is cached for the process lifetime.
-        var loggedPrices = new Dictionary<TimeSpan, decimal>();
+        var loggedSamples = new List<(TimeSpan LocalTime, decimal Price)>();
         for (var slotStartUtc = dayStartUtc; slotStartUtc < dayEndUtc; slotStartUtc = slotStartUtc.Add(SlotDuration))
         {
             var decisions = await decisionLogRepository.GetDecisionsAsync(slotStartUtc, slotStartUtc.Add(SlotDuration).AddTicks(-1), 1, cancellationToken);
@@ -133,7 +136,7 @@ public sealed class ComparableDayPriceEstimator
 
             if (price is not null)
             {
-                loggedPrices[TimeZoneInfo.ConvertTime(slotStartUtc, timeZone).TimeOfDay] = price.Value;
+                loggedSamples.Add((TimeZoneInfo.ConvertTime(slotStartUtc, timeZone).TimeOfDay, price.Value));
             }
         }
 
@@ -142,6 +145,8 @@ public sealed class ComparableDayPriceEstimator
             PastDayPriceCache.TryRemove(oldDay, out _);
         }
 
+        var loggedPrices = loggedSamples.GroupBy(sample => sample.LocalTime)
+            .ToDictionary(group => group.Key, group => group.Average(sample => sample.Price));
         PastDayPriceCache[dayStartUtc] = loggedPrices;
         return loggedPrices;
     }

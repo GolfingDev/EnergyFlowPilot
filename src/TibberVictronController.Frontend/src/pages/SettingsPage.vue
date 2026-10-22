@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { isEverydaySetting, usesCents, settingInputValue, settingStoredValue, secretPresentation, settingUpdatePayload } from './settingsPresentation';
+import { isEverydaySetting, usesCents, settingInputValue, settingStoredValue, secretPresentation, settingUpdatePayload, numericControlErrors } from './settingsPresentation';
 
 interface ControllerStatusResponseDto {
   status: string;
@@ -511,7 +511,7 @@ function getNumericDraftValue(key: string): number | null {
 }
 
 function getFieldErrors(key: string): string[] {
-  const errors: string[] = [];
+  const errors: string[] = numericControlErrors(key, getDraftValue(key));
   const numericValue = getNumericDraftValue(key);
   const provider = getDraftValue('electricityPrices.provider') || 'tibber';
   const requiredForProvider = provider === 'octopusGermany'
@@ -561,16 +561,12 @@ function getFieldErrors(key: string): string[] {
       break;
     }
     case 'battery.targetEndStateOfChargePercent': {
-      const planningMinimum = getNumericDraftValue('battery.planningMinimumStateOfChargePercent');
-      const planningMaximum = getNumericDraftValue('battery.planningMaximumStateOfChargePercent');
-      if (numericValue !== null && planningMinimum !== null && planningMaximum !== null && (numericValue < planningMinimum || numericValue > planningMaximum)) {
-        errors.push('Der Ziel-SoC muss innerhalb des Planungsbereichs liegen.');
-      }
+      // Retained legacy value, deliberately independent of today's planning boundaries.
       break;
     }
     case 'battery.roundTripEfficiencyPercent':
-      if (numericValue !== null && (numericValue < 50 || numericValue > 100)) {
-        errors.push('Der Wirkungsgrad muss zwischen 50 und 100 % liegen.');
+      if (numericValue !== null && (numericValue <= 0 || numericValue > 100)) {
+        errors.push('Der Wirkungsgrad muss größer als 0 und höchstens 100 % sein.');
       }
       break;
     case 'battery.maximumChargePowerWatts':

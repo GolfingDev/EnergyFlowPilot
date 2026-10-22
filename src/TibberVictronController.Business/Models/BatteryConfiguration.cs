@@ -72,19 +72,19 @@ public sealed record BatteryConfiguration
         var configuredPlanningMinimumStateOfChargePercent = values.PlanningMinimumStateOfChargePercent ?? minimumStateOfChargePercent;
         var configuredPlanningMaximumStateOfChargePercent = values.PlanningMaximumStateOfChargePercent ?? 100m;
 
-        if (configuredTargetEndStateOfChargePercent < minimumStateOfChargePercent || configuredTargetEndStateOfChargePercent > 100m)
+        if (configuredTargetEndStateOfChargePercent < 0m || configuredTargetEndStateOfChargePercent > 100m)
         {
-            throw new ArgumentOutOfRangeException(nameof(values.TargetEndStateOfChargePercent), "Die Ziel-Endreserve muss zwischen minimalem Akkuladestand und 100 Prozent liegen.");
+            throw new ArgumentOutOfRangeException(nameof(values.TargetEndStateOfChargePercent), "Der alte Endreservewert muss zwischen 0 und 100 Prozent liegen.");
         }
 
-        if (configuredPlanningMinimumStateOfChargePercent < minimumStateOfChargePercent || configuredPlanningMinimumStateOfChargePercent > configuredTargetEndStateOfChargePercent)
+        if (configuredPlanningMinimumStateOfChargePercent < minimumStateOfChargePercent || configuredPlanningMinimumStateOfChargePercent >= configuredPlanningMaximumStateOfChargePercent)
         {
-            throw new ArgumentOutOfRangeException(nameof(values.PlanningMinimumStateOfChargePercent), "Die Planungsreserve muss zwischen minimalem Akkuladestand und Ziel-Endreserve liegen.");
+            throw new ArgumentOutOfRangeException(nameof(values.PlanningMinimumStateOfChargePercent), "Die Planungsreserve muss mindestens dem harten Minimum entsprechen und unter dem Planungsmaximum liegen.");
         }
 
-        if (configuredPlanningMaximumStateOfChargePercent < configuredTargetEndStateOfChargePercent || configuredPlanningMaximumStateOfChargePercent > 100m)
+        if (configuredPlanningMaximumStateOfChargePercent > 100m)
         {
-            throw new ArgumentOutOfRangeException(nameof(values.PlanningMaximumStateOfChargePercent), "Das Planungs-Maximum muss zwischen Ziel-Endreserve und 100 Prozent liegen.");
+            throw new ArgumentOutOfRangeException(nameof(values.PlanningMaximumStateOfChargePercent), "Das Planungsmaximum darf hoechstens 100 Prozent betragen.");
         }
 
         if (values.WearCostPerKwh < 0m)
@@ -135,7 +135,7 @@ public sealed record BatteryConfiguration
     public decimal RoundTripEfficiencyPercent { get; }
 
     /// <summary>
-    /// Gets the configured reserve that should remain explainable at the end of the planning horizon.
+    /// Gets the retained legacy end-reserve value; it does not constrain or influence current planning.
     /// </summary>
     public decimal TargetEndStateOfChargePercent { get; }
 

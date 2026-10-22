@@ -25,7 +25,7 @@ public sealed class BatteryConfigurationTests
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new BatteryConfiguration(10m, minimumStateOfChargePercent: 10m, maximumChargePowerWatts: 3000, maximumDischargePowerWatts: 3000, roundTripEfficiencyPercent: 0m));
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => new BatteryConfiguration(10m, minimumStateOfChargePercent: 20m, targetEndStateOfChargePercent: 10m));
+            () => new BatteryConfiguration(10m, minimumStateOfChargePercent: 20m, targetEndStateOfChargePercent: -1m));
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new BatteryConfiguration(new BatteryConfigurationValues
             {
@@ -38,6 +38,7 @@ public sealed class BatteryConfigurationTests
             {
                 TotalCapacityKwh = 10m,
                 TargetEndStateOfChargePercent = 25m,
+                PlanningMinimumStateOfChargePercent = 20m,
                 PlanningMaximumStateOfChargePercent = 20m
             }));
     }
@@ -50,6 +51,25 @@ public sealed class BatteryConfigurationTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new BatteryConfiguration(10m, invalidMinimumStateOfChargePercent));
+    }
+
+    [Fact]
+    public void LegacyEndReserveDoesNotConstrainThePlanningRange()
+    {
+        foreach (var (minimum, maximum) in new[] { (30m, 95m), (15m, 20m) })
+        {
+            var configuration = new BatteryConfiguration(new BatteryConfigurationValues
+            {
+                TotalCapacityKwh = 10m, MinimumStateOfChargePercent = 10m,
+                PlanningMinimumStateOfChargePercent = minimum,
+                PlanningMaximumStateOfChargePercent = maximum, TargetEndStateOfChargePercent = 25m
+            });
+            Assert.Equal(minimum, configuration.PlanningMinimumStateOfChargePercent);
+            Assert.Equal(maximum, configuration.PlanningMaximumStateOfChargePercent);
+            Assert.Equal(25m, configuration.TargetEndStateOfChargePercent);
+        }
+        Assert.Equal(10m, new BatteryConfiguration(10m, minimumStateOfChargePercent: 20m,
+            targetEndStateOfChargePercent: 10m).TargetEndStateOfChargePercent);
     }
 
     [Fact]

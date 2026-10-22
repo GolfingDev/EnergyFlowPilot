@@ -821,8 +821,13 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             reasons = stabilizedDecision.Reasons;
         }
 
+        var configuration = await dependencies.BatteryConfigurationProvider.GetBatteryConfigurationAsync(cancellationToken);
+        var previousDecision = (await dependencies.DecisionLogRepository.GetRecentDecisionsAsync(1, cancellationToken)).FirstOrDefault();
+        var gridCredit = GridChargeEnergyCredit.Update(previousDecision, batteryState,
+            configuration, dependencies.TibberPriceForecastProvider.Source);
         var inputSummaryJson = JsonSerializer.Serialize(new
         {
+            GridChargeEnergyCredit = gridCredit,
             ElectricityPriceProvider = dependencies.TibberPriceForecastProvider.Source,
             BatteryStateOfChargePercent = batteryState.StateOfChargePercent,
             BatteryMeasuredAtUtc = batteryState.MeasuredAtUtc,

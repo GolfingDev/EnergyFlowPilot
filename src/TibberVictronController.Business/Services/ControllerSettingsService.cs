@@ -41,6 +41,7 @@ public sealed class ControllerSettingsService : IControllerSettingsService
         if (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey)
             throw new ArgumentException("Der Anbieterwechsel-Zeitpunkt wird automatisch gesetzt.", nameof(key));
         var normalizedValue = NormalizeValue(definition, value);
+        ControllerSettingValueValidation.Validate(definition.Key, normalizedValue);
         if (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderKey && normalizedValue is not ("tibber" or "octopusGermany"))
             throw new ArgumentException("Die Strompreisquelle muss tibber oder octopusGermany sein.", nameof(value));
         var updatedSetting = new ControllerSetting(

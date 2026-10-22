@@ -137,13 +137,19 @@ public sealed class BatteryForecastService : IBatteryForecastService
             consumptionForecast = ApplyCurrentNetLoad(consumptionForecast, pvForecast, effectiveStartsAtUtc, currentNetLoadWatts);
         }
 
+        var previousDecision = decisionLogRepository is null ? null :
+            (await decisionLogRepository.GetRecentDecisionsAsync(1, cancellationToken)).FirstOrDefault();
+        var gridCredit = GridChargeEnergyCredit.Update(previousDecision, batteryState,
+            batteryConfiguration, tibberPriceForecastProvider.Source);
+
         return batteryForecastSimulator.Simulate(
             relevantPriceForecast,
             pvForecast,
             consumptionForecast,
             batteryState,
             batteryConfiguration,
-            feedInCompensationPricePerKwh);
+            feedInCompensationPricePerKwh,
+            gridCredit.EnergyKwh);
     }
 
     /// <summary>

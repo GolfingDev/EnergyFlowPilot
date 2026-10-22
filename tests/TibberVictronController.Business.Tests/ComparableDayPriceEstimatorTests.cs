@@ -22,6 +22,66 @@ public sealed class ComparableDayPriceEstimatorTests
     }
 
     [Fact]
+    public async Task AutumnComparableDayAveragesBothOccurrencesOfTheRepeatedHour()
+    {
+        var source = LocalToUtc(new DateTime(2026, 10, 25));
+        var provider = new DayPriceProvider(source, slot => slot < source.AddHours(3) ? .2m : .4m)
+            { SlotCount = 100 };
+        var start = LocalToUtc(new DateTime(2026, 10, 31, 23, 45, 0));
+        var known = new[] { new TibberPriceForecastSlot(new ForecastTimeSlot(start, start.AddMinutes(15)), .1m, "EUR") };
+        var result = await new ComparableDayPriceEstimator(provider, new LoggedPriceRepository(null), Berlin)
+            .CompleteAsync(known, start.AddMinutes(15).AddHours(24), start);
+        Assert.Equal(97, result.Count);
+        Assert.All(result.Where(slot => slot.IsEstimated && TimeZoneInfo.ConvertTime(slot.TimeSlot.StartsAtUtc, Berlin).Hour == 2),
+            slot => Assert.Equal(.3m, slot.TotalPricePerKwh));
+        Assert.Equal(.4m, result[^1].TotalPricePerKwh);
+    }
+
+    [Fact]
+    public async Task AutumnLoggedPricesUseTheSameDuplicateHourPolicyAsPublishedPrices()
+    {
+        var source = LocalToUtc(new DateTime(2027, 10, 31));
+        var start = LocalToUtc(new DateTime(2027, 11, 6, 23, 45, 0));
+        var known = new[] { new TibberPriceForecastSlot(new ForecastTimeSlot(start, start.AddMinutes(15)), .1m, "EUR") };
+        var history = new LoggedPriceRepository(.4m)
+            { PriceAt = time => time < source.AddHours(3) ? .2m : .4m };
+        var result = await new ComparableDayPriceEstimator(new DayPriceProvider(source.AddDays(-30), _ => 0m), history, Berlin)
+            .CompleteAsync(known, start.AddMinutes(15).AddHours(24), start);
+        Assert.Equal(97, result.Count);
+        Assert.All(result.Where(slot => slot.IsEstimated && TimeZoneInfo.ConvertTime(slot.TimeSlot.StartsAtUtc, Berlin).Hour == 2),
+            slot => Assert.Equal(.3m, slot.TotalPricePerKwh));
+    }
+
+    [Fact]
+    public async Task SpringComparableDayStopsAtMissingHourRatherThanInventingPrices()
+    {
+        var source = LocalToUtc(new DateTime(2026, 3, 29));
+        var start = LocalToUtc(new DateTime(2026, 4, 4, 23, 45, 0));
+        var known = new[] { new TibberPriceForecastSlot(new ForecastTimeSlot(start, start.AddMinutes(15)), .1m, "EUR") };
+        var result = await new ComparableDayPriceEstimator(
+                new DayPriceProvider(source, _ => .2m) { SlotCount = 92 }, new LoggedPriceRepository(null), Berlin)
+            .CompleteAsync(known, start.AddHours(5), start);
+        Assert.Equal(9, result.Count); // midnight to 01:45; no comparable 02:00 price
+        Assert.All(result.Skip(1), slot => Assert.True(slot.IsEstimated));
+    }
+
+    [Theory]
+    [InlineData("2026-10-25", 100)]
+    [InlineData("2026-03-29", 92)]
+    public async Task TargetDstDayUsesContinuousUtcSlots(string date, int expectedCount)
+    {
+        var day = DateTime.Parse(date);
+        var start = LocalToUtc(day).AddMinutes(-15);
+        var source = LocalToUtc(day.AddDays(-7));
+        var known = new[] { new TibberPriceForecastSlot(new ForecastTimeSlot(start, start.AddMinutes(15)), .1m, "EUR") };
+        var result = await new ComparableDayPriceEstimator(new DayPriceProvider(source, _ => .2m),
+            new LoggedPriceRepository(null), Berlin).CompleteAsync(known, LocalToUtc(day.AddDays(1)), start);
+        Assert.Equal(expectedCount + 1, result.Count);
+        for (var index = 1; index < result.Count; index++)
+            Assert.Equal(result[index - 1].TimeSlot.EndsAtUtc, result[index].TimeSlot.StartsAtUtc);
+    }
+
+    [Fact]
     public async Task CompleteAsyncEstimatesFridayWithThursdayPricesFromTibber()
     {
         // Thursday 2026-10-15 before 13:00: Tibber only knows Thursday, the plan must reach into Friday morning.
@@ -102,6 +162,7 @@ public sealed class ComparableDayPriceEstimatorTests
     private sealed class DayPriceProvider : ITibberPriceForecastProvider
     {
         public string Source { get; init; } = "tibber";
+        public int SlotCount { get; init; } = 96;
         private readonly DateTimeOffset dayStartUtc;
         private readonly Func<DateTimeOffset, decimal> price;
 
@@ -113,7 +174,7 @@ public sealed class ComparableDayPriceEstimatorTests
 
         public Task<IReadOnlyList<TibberPriceForecastSlot>> GetPriceForecastAsync(DateTimeOffset startsAtUtc, DateTimeOffset endsAtUtc, CancellationToken cancellationToken = default)
         {
-            var slots = Enumerable.Range(0, 96)
+            var slots = Enumerable.Range(0, SlotCount)
                 .Select(index => dayStartUtc.AddMinutes(15 * index))
                 .Where(start => start >= startsAtUtc && start < endsAtUtc)
                 .Select(start => new TibberPriceForecastSlot(new ForecastTimeSlot(start, start.AddMinutes(15)), price(start), "EUR"))
@@ -127,6 +188,7 @@ public sealed class ComparableDayPriceEstimatorTests
     private sealed class LoggedPriceRepository : IDecisionLogRepository
     {
         public string InputSummaryJson { get; init; } = "{}";
+        public Func<DateTimeOffset, decimal>? PriceAt { get; init; }
         private readonly decimal? price;
 
         public LoggedPriceRepository(decimal? price)
@@ -147,7 +209,7 @@ public sealed class ComparableDayPriceEstimatorTests
                         fromUtc.AddMinutes(15),
                         new CurrentBatteryDecision(new BatteryDecisionInstruction(BatteryDecisionState.Idle, chargeSource: null), 0),
                         stateOfChargePercent: 50m,
-                        tibberPricePerKwh: price,
+                        tibberPricePerKwh: PriceAt?.Invoke(fromUtc) ?? price,
                         tibberPriceCurrency: "EUR",
                         gridImportWatts: null,
                         gridExportWatts: null,
