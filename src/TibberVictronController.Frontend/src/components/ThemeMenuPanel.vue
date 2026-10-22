@@ -51,11 +51,12 @@ function previewStyle(option: EnergyFlowThemeDefinition): Record<string, string>
           :aria-pressed="props.activeName === option.name"
           @click="emit('select', option.name)"
         >
-          <span class="theme-tile__preview" :style="previewStyle(option)" aria-hidden="true">
+          <span class="theme-tile__preview" :style="previewStyle(option)" :class="{ 'theme-tile__preview--tiles': option.name === 'tileLab', 'theme-tile__preview--flow': option.name === 'energyCenter' }" aria-hidden="true">
             <span class="theme-tile__bar" />
             <span class="theme-tile__cards">
               <span class="theme-tile__card"><span class="theme-tile__line theme-tile__line--primary" /></span>
               <span class="theme-tile__card"><span class="theme-tile__line theme-tile__line--success" /><span class="theme-tile__line theme-tile__line--warning" /></span>
+              <template v-if="option.name === 'tileLab'"><span v-for="tile in 4" :key="tile" class="theme-tile__card"><span class="theme-tile__line theme-tile__line--primary" /></span></template>
             </span>
           </span>
           <span class="theme-tile__text">
@@ -153,4 +154,7 @@ function previewStyle(option: EnergyFlowThemeDefinition): Record<string, string>
 .theme-tile__text strong { display: flex; align-items: center; gap: 6px; font-size: 0.86rem; }
 .theme-tile__check { margin-left: auto; color: var(--efp-primary); }
 .theme-tile__text small { color: var(--efp-muted); font-size: 0.74rem; line-height: 1.35; }
+.theme-tile__preview--tiles .theme-tile__cards { grid-template-columns: repeat(3, 1fr); gap: 3px; }
+.theme-tile__preview--tiles .theme-tile__card { padding: 3px; }
+.theme-tile__preview--flow .theme-tile__cards { grid-template-columns: 2fr 1fr; }
 </style>

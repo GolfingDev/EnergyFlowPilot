@@ -1871,3 +1871,6 @@
 .qm-tab-panel > * {
   height: 100%;
 }
+
+.dashboard-page--energyCenter, .dashboard-page--tileLab { max-width: 1880px; padding: 20px; }
+@media (max-width: 650px) { .dashboard-page--energyCenter, .dashboard-page--tileLab { padding: 12px; } }

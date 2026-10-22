@@ -14,6 +14,8 @@ import LiveEnergyFlowPanel from '../components/dashboard/LiveEnergyFlowPanel.vue
 import SchematicEnergyFlowPanel from '../components/dashboard/SchematicEnergyFlowPanel.vue';
 import E3dcSupplementPanel from '../components/dashboard/E3dcSupplementPanel.vue';
 import LeitstandDashboard from '../components/leitstand/LeitstandDashboard.vue';
+import OrbitDashboard from '../components/orbit/OrbitDashboard.vue';
+import EnergyWorkspaceDashboard from '../components/workspace/EnergyWorkspaceDashboard.vue';
 import { formatCurrency, formatDateTime, formatNumber, formatPercent, formatPower, formatPrice, getDecisionLabel } from '../components/dashboard/dashboardFormatters';
 import { getEnergyFlowTheme } from '../themeRegistry';
 import type {
@@ -111,14 +113,9 @@ const currentConsumptionWatts = computed(() => {
 });
 const activeTheme = computed(() => getEnergyFlowTheme(theme.global.name.value));
 const usesMissionDashboard = computed(() => false);
-const usesLeitstandDashboard = computed(() =>
-  activeTheme.value.name === 'leitstandLight' ||
-  activeTheme.value.name === 'leitstandDark' ||
-  activeTheme.value.name === 'leitstandNextLight' ||
-  activeTheme.value.name === 'leitstandNextDark');
-const usesNextLeitstandDashboard = computed(() =>
-  activeTheme.value.name === 'leitstandNextLight' ||
-  activeTheme.value.name === 'leitstandNextDark');
+const usesLeitstandDashboard = computed(() => activeTheme.value.name === 'leitstandLight' || activeTheme.value.name === 'leitstandDark');
+const usesOrbitDashboard = computed(() => activeTheme.value.name === 'orbit');
+const usesWorkspaceDashboard = computed(() => activeTheme.value.name === 'energyCenter' || activeTheme.value.name === 'tileLab');
 const usesPresetDashboard = computed(() => false);
 const usesControlCenterDashboard = computed(() => false);
 const usesControlChartsDashboard = computed(() => false);
@@ -919,7 +916,7 @@ onBeforeUnmount(() => {
     <EnergyLoadingOverlay :model-value="showLoadingOverlay" title="Loading forecast"
       subtitle="Calculating price, PV and battery plan..." :size="200" />
 
-    <DashboardHeader v-if="!usesControlCenterDashboard && !usesMissionDashboard && !usesLeitstandDashboard" :status="status" :is-loading="isLoading" :auto-refresh-label="autoRefreshLabel"
+    <DashboardHeader v-if="!usesControlCenterDashboard && !usesMissionDashboard && !usesLeitstandDashboard && !usesOrbitDashboard && !usesWorkspaceDashboard" :status="status" :is-loading="isLoading" :auto-refresh-label="autoRefreshLabel"
       @refresh="loadDashboard" />
 
     <DashboardErrorPanels :errors="loadErrors" />
@@ -927,13 +924,31 @@ onBeforeUnmount(() => {
     <LeitstandDashboard
       v-if="usesLeitstandDashboard"
       :dark="activeTheme.dark"
-      :next="usesNextLeitstandDashboard"
       :status="status"
       :decision-log-entries="decisionLogEntries"
       :manual-charge="manualCharge"
       :is-manual-charge-busy="isManualChargeBusy"
       @start-manual-charge="startLeitstandManualCharge"
       @stop-manual-charge="stopManualCharge"
+    />
+
+    <OrbitDashboard
+      v-else-if="usesOrbitDashboard"
+      :status="status"
+      :decision-log-entries="decisionLogEntries"
+      :manual-charge="manualCharge"
+      :is-manual-charge-busy="isManualChargeBusy"
+      @start-manual-charge="startLeitstandManualCharge"
+      @stop-manual-charge="stopManualCharge"
+    />
+
+    <EnergyWorkspaceDashboard
+      v-else-if="usesWorkspaceDashboard"
+      :variant="activeTheme.name === 'tileLab' ? 'tiles' : 'flow'"
+      :status="status" :forecast="forecast" :savings="savings" :savings-period="savingsPeriod"
+      :savings-loading="isSavingsLoading" :savings-error="loadErrors.find(error => error.source === 'Ersparnis')?.message ?? null"
+      :decision-log-entries="decisionLogEntries" :manual-charge="manualCharge" :is-manual-charge-busy="isManualChargeBusy"
+      @change-savings-period="changeSavingsPeriod" @start-manual-charge="startLeitstandManualCharge" @stop-manual-charge="stopManualCharge"
     />
 
     <template v-else-if="usesMissionDashboard">
