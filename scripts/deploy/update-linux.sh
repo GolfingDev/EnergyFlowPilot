@@ -145,12 +145,16 @@ publish_backend_to_staging() {
   rm -rf "${API_STAGING_DIR}"
   install -d -m 0755 "${API_STAGING_DIR}"
 
-  dotnet restore "${API_PROJECT_PATH}"
+  # Persistent build servers (MSBuild nodes, Roslyn compiler server) outlive this script by 10+ minutes and
+  # would inherit the deploy lock (fd 8), keeping later updates waiting long after this one finished.
+  # Hence no build servers, and fd 8 is closed for the dotnet processes as a second safeguard.
+  dotnet restore "${API_PROJECT_PATH}" --disable-build-servers 8>&-
   dotnet publish "${API_PROJECT_PATH}" \
     --configuration Release \
     --runtime "${PUBLISH_RUNTIME}" \
     --self-contained false \
-    --output "${API_STAGING_DIR}"
+    --disable-build-servers \
+    --output "${API_STAGING_DIR}" 8>&-
 
   chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${API_STAGING_DIR}"
 }
