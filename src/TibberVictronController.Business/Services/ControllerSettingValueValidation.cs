@@ -8,10 +8,20 @@ internal static class ControllerSettingValueValidation
 {
     public static void Validate(string key, string? value)
     {
+        if (key is ControllerSettingDefaults.E3dcRscpEnabledKey or ControllerSettingDefaults.JointBatteryEnabledKey or ControllerSettingDefaults.JointBatteryExecutionEnabledKey &&
+            !bool.TryParse(value, out _))
+            throw new ArgumentException("Der Schalter fuer lokalen E3/DC-Zugriff oder gemeinsame Vorschau muss true oder false sein.");
+        if (key == ControllerSettingDefaults.E3dcRscpKeyKey && value is not null && System.Text.Encoding.UTF8.GetByteCount(value) > 32)
+            throw new ArgumentException("Der RSCP-Schluessel darf maximal 32 UTF-8-Bytes enthalten.");
         // Cross-field relationships belong to the complete configuration/draft. The settings API
         // saves individual fields, so checking intermediate combinations here would prevent valid edits.
         (decimal Min, decimal Max, bool Integer)? rule = key switch
         {
+            ControllerSettingDefaults.E3dcRscpPortKey => (1m, 65535m, true),
+            ControllerSettingDefaults.JointBatteryGridLimitKey => (0m, 100000m, true),
+            ControllerSettingDefaults.JointBatteryPhase1LimitKey or ControllerSettingDefaults.JointBatteryPhase2LimitKey or
+            ControllerSettingDefaults.JointBatteryPhase3LimitKey or ControllerSettingDefaults.JointBatteryVictronInputLimitKey => (0m, 100000m, true),
+            ControllerSettingDefaults.E3dcPlanningMaximumSocKey or ControllerSettingDefaults.E3dcEfficiencyKey => (1m, 100m, false),
             ControllerSettingDefaults.BatteryMaximumChargePowerWattsKey or
             ControllerSettingDefaults.BatteryMaximumDischargePowerWattsKey => (1m, int.MaxValue, true),
             ControllerSettingDefaults.BatteryTotalCapacityKwhKey => (0m, decimal.MaxValue, false),

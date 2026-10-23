@@ -53,6 +53,17 @@
 49. Scale the consumption profile per hour with the hourly outdoor temperature instead of one factor per day, because the heat pump runs most in cold nights and mornings.
 50. Revisit the consumption scale limit (0.5 to 2.0) once a winter of daily summaries exists; a frosty day after mild weeks can need more than twice the learned consumption.
 
+## Gemeinsame Victron-/E3/DC-Steuerung
+
+Anforderung: `docs/20-domain/battery-decision-engine.md`, Abschnitt „Gemeinsame Steuerung von Victron und E3/DC“. Diagnose und Momentaufnahme: `docs/30-operations/e3dc-rscp.md`.
+
+1. Implementiert: nativer RSCP-Lese-/Schreibadapter, verschluesselte Zugangsdaten, vollstaendige Rahmen, CRC und Sitzungsfristen; ausschliesslich fluechtige Leistungsbefehle.
+2. Implementiert: getrennte Kapazitaeten, Reserven, effektive Grenzen und zwei Energiezustaende in der wirtschaftlichen Planung; numerische dynamische Programmierung statt aggregiertem SoC.
+3. Implementiert: gemeinsames Rohdaten-Verbrauchsmodell mit Temperaturkorrektur. Offen: langfristige gemeinsame Tagessummen und gemeinsame Energie-/Ersparnisabrechnung.
+4. Implementiert: koordinierte Ausfuehrung, Richtungswechsel, Befehlsruecklesung, Rampen, Last-/Phasengrenzen, Schutz vor konkurrierenden Schreibern, persistierte Wiederherstellung und Linux-Prozesswatchdog mit separatem Stop-Helfer.
+5. Implementiert: Dashboard fuer beide Speicher, gemeinsame Projektion fuer bestehenden Forecast und Live-Entscheidung, getrennte Betriebsereignisse fuer Planung und Ausfuehrung.
+6. Offen vor Aktivierung: bestaetigte elektrische Anschlussgrenzen, Deployment auf dem Raspberry Pi und kontrollierte Hardwareabnahme inklusive PV-/Entlademodus, Kommunikationsverlust, Prozessabbruch und Neustart. Default bleibt deaktiviert. Ein vollstaendiger Netzwerkverlust ist nicht als physisch abgesichert nachgewiesen.
+
 ## Rule
 
 Backlog items should remain small enough to implement and verify in one focused step.

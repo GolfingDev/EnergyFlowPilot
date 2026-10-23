@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using TibberVictronController.Api.Configuration;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
+using TibberVictronController.Api.JointBattery;
 
 namespace TibberVictronController.Api.ManualCharge;
 
@@ -62,6 +63,8 @@ public static class ManualChargeEndpoints
         IUtcClock utcClock,
         CancellationToken cancellationToken)
     {
+        if (await JointBatteryOwnership.BlocksLegacyAsync(controllerSettingStore, cancellationToken))
+            return TypedResults.Conflict(new ManualChargeErrorDto("Die gemeinsame Akkusteuerung ist aktiv oder wird wiederhergestellt. Eine unabhaengige Victron-Ladung ist gesperrt."));
         if (request.DurationMinutes is < 1 or > 1440)
         {
             return TypedResults.BadRequest(new ManualChargeErrorDto("Die manuelle Ladedauer muss zwischen 1 und 1440 Minuten liegen."));

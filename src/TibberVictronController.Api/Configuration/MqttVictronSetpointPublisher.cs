@@ -1,5 +1,7 @@
 using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Models;
+using TibberVictronController.Business.Abstractions;
+using TibberVictronController.Api.JointBattery;
 using TibberVictronController.Dal.Victron;
 
 namespace TibberVictronController.Api.Configuration;
@@ -20,15 +22,18 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
     private readonly IVictronMqttControlClient mqttControlClient;
     private readonly VictronSetpointRefreshState refreshState;
     private readonly ILogger<MqttVictronSetpointPublisher> logger;
+    private readonly IControllerSettingStore? controllerSettings;
 
     public MqttVictronSetpointPublisher(
         DatabaseVictronMqttSettingsProvider settingsProvider,
         IVictronMqttControlClient mqttControlClient,
         VictronSetpointRefreshState refreshState,
         ILogger<MqttVictronSetpointPublisher> logger,
-        ISupplementaryGridChargeSafety chargeSafety, DecisionCalculationTrigger? calculationTrigger = null)
+        ISupplementaryGridChargeSafety chargeSafety, DecisionCalculationTrigger? calculationTrigger = null,
+        IControllerSettingStore? controllerSettings = null)
     {
         this.chargeSafety = chargeSafety;
+        this.controllerSettings = controllerSettings;
         this.calculationTrigger = calculationTrigger;
         this.settingsProvider = settingsProvider;
         this.mqttControlClient = mqttControlClient;
@@ -39,6 +44,7 @@ public sealed class MqttVictronSetpointPublisher : IVictronSetpointPublisher
     public async Task PublishAsync(CurrentBatteryDecisionResult decisionResult, CancellationToken cancellationToken = default)
     {
         using var publication = await refreshState.AcquirePublicationAsync(cancellationToken);
+        if (refreshState.JointControlActive || await JointBatteryOwnership.BlocksLegacyAsync(controllerSettings, cancellationToken)) return;
         var settings = await settingsProvider.GetSettingsAsync(cancellationToken);
         var topics = VictronMqttTopicFactory.Create(settings);
         var effectiveTargetPowerWatts = CalculateEffectiveTargetPowerWatts(decisionResult, mqttControlClient, topics, logger);

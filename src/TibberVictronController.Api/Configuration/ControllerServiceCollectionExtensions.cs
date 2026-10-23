@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
+using TibberVictronController.Api.JointBattery;
+using TibberVictronController.Dal.E3dc;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Dashboard;
 using TibberVictronController.Business.Decisions;
@@ -46,7 +49,21 @@ public static class ControllerServiceCollectionExtensions
         services.AddSignalR();
         services.AddDbContext<ControllerDbContext>(options => options.UseSqlite(connectionString));
         services.AddScoped<ControllerDbInitializer>();
-        services.AddScoped<IControllerSettingStore, EfControllerSettingStore>();
+        services.AddDataProtection().SetApplicationName("EnergyFlowPilot");
+        services.AddScoped<EfControllerSettingStore>();
+        services.AddScoped<IControllerSettingStore>(provider => new ProtectedRscpSettingStore(
+            provider.GetRequiredService<EfControllerSettingStore>(), provider.GetRequiredService<IDataProtectionProvider>()));
+        services.AddScoped<IE3dcTelemetrySource, E3dcRscpTelemetrySource>();
+        services.AddScoped<IE3dcPowerControl, E3dcRscpPowerControl>();
+        services.AddScoped<IJointBatteryHardware, JointBatteryHardware>();
+        services.AddScoped<JointBatteryExecutionCoordinator>();
+        services.AddSingleton<JointBatteryExecutionState>();
+        services.AddSingleton<SystemdJointBatteryWatchdog>();
+        services.AddSingleton<IJointBatteryWatchdog>(sp => sp.GetRequiredService<SystemdJointBatteryWatchdog>());
+        services.AddHostedService<JointBatteryExecutionBackgroundService>();
+        services.AddScoped<JointBatteryShadowCalculation>();
+        services.AddSingleton<JointBatteryRuntimeState>();
+        services.AddHostedService<JointBatteryShadowBackgroundService>();
         services.AddScoped<DatabaseMqttDeviceSettingsProvider>();
         services.AddScoped<DatabaseVictronMqttSettingsProvider>();
         services.AddScoped<DatabaseHagerEnergySettingsProvider>();
@@ -103,7 +120,8 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IHistoricalConsumptionProvider, AverageDailyConsumptionForecastProvider>();
         services.AddSingleton<PriceDriverCache>();
         services.AddHttpClient<IPriceDriverProvider, PriceDriverProvider>();
-        services.AddScoped<IBatteryForecastService, BatteryForecastService>();
+        services.AddScoped<BatteryForecastService>();
+        services.AddScoped<IBatteryForecastService, JointAwareBatteryForecastService>();
         services.AddScoped(serviceProvider => new CurrentBatteryDecisionServiceDependencies
         {
             GridChargeGuard = serviceProvider.GetRequiredService<SupplementaryGridChargeGuard>(),
@@ -116,7 +134,8 @@ public static class ControllerServiceCollectionExtensions
             ControllerSettingStore = serviceProvider.GetRequiredService<IControllerSettingStore>(),
             DecisionLogRepository = serviceProvider.GetRequiredService<IDecisionLogRepository>()
         });
-        services.AddScoped<ICurrentBatteryDecisionService, CurrentBatteryDecisionService>();
+        services.AddScoped<CurrentBatteryDecisionService>();
+        services.AddScoped<ICurrentBatteryDecisionService, JointAwareBatteryDecisionService>();
         services.AddScoped(serviceProvider => new DashboardSummaryServiceDependencies
         {
             UtcClock = serviceProvider.GetRequiredService<IUtcClock>(),

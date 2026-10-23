@@ -55,6 +55,10 @@ public sealed class VictronMqttTopics
         }
         .Concat(HouseConsumptionTopics)
         .Concat(AcOutPowerTopics)
+        .Concat(AcOutPowerTopics.Select(topic => topic.Replace("/Ac/Out/", "/Ac/ActiveIn/", StringComparison.Ordinal)))
+        .Concat(ExternalEssAcPowerSetpointTopics.Select(topic => topic.StartsWith("W/", StringComparison.Ordinal) ? "N/" + topic[2..] : topic))
+        .Concat(GridPowerTopic.EndsWith("/Ac/Power", StringComparison.Ordinal)
+            ? Enumerable.Range(1, 3).Select(phase => GridPowerTopic[..^"/Ac/Power".Length] + $"/Ac/L{phase}/Power") : [])
         .Concat(new[]
         {
             Hub4ModeReadTopic,

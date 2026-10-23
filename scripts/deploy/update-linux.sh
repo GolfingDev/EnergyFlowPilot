@@ -196,6 +196,20 @@ deploy_files() {
     return "${deploy_status}"
   fi
 
+  # The new binary must be present before adding hooks that use its stop-only entry point.
+  install -d "/etc/systemd/system/${SERVICE_NAME}.d"
+  cat > "/etc/systemd/system/${SERVICE_NAME}.d/joint-battery.conf" <<EOF
+[Service]
+Type=notify
+NotifyAccess=main
+WatchdogSec=5
+WatchdogSignal=SIGKILL
+TimeoutStartSec=90
+TimeoutStopSec=20
+ExecStartPre=/usr/bin/dotnet ${API_PUBLISH_DIR}/TibberVictronController.Api.dll --joint-stop
+ExecStopPost=/usr/bin/dotnet ${API_PUBLISH_DIR}/TibberVictronController.Api.dll --joint-stop
+EOF
+  systemctl daemon-reload
   systemctl start "${SERVICE_NAME}"
 
   if systemctl list-unit-files | grep -q "^nginx.service"; then

@@ -8,6 +8,7 @@ namespace TibberVictronController.Business.Services;
 /// </summary>
 public sealed class ControllerSettingsService : IControllerSettingsService
 {
+    private static readonly SemaphoreSlim UpdateGate = new(1, 1);
     private readonly IControllerSettingStore controllerSettingStore;
     private readonly IUtcClock utcClock;
 
@@ -37,7 +38,23 @@ public sealed class ControllerSettingsService : IControllerSettingsService
         string? value,
         CancellationToken cancellationToken = default)
     {
+        await UpdateGate.WaitAsync(cancellationToken);
+        try { return await UpdateCoreAsync(key, value, cancellationToken); }
+        finally { UpdateGate.Release(); }
+    }
+
+    private async Task<ControllerSetting> UpdateCoreAsync(string key, string? value, CancellationToken cancellationToken)
+    {
         var definition = GetRequiredDefinition(key);
+        if ((definition.Key.StartsWith("victron.", StringComparison.Ordinal) && definition.Key != ControllerSettingDefaults.VictronDryRunKey) ||
+            definition.Key.StartsWith("e3dc.rscp.", StringComparison.Ordinal))
+        {
+            foreach (var flag in new[] { ControllerSettingDefaults.JointBatteryExecutionEnabledKey, ControllerSettingDefaults.JointBatteryRecoveryPendingKey })
+                if (bool.TryParse((await controllerSettingStore.GetSettingAsync(flag, cancellationToken))?.Value, out var active) && active)
+                    throw new ArgumentException("Zuerst die gemeinsame Steuerung deaktivieren und ihre Ruecknahme abwarten, bevor Geraeteadressen oder Hardwarezugang geaendert werden.");
+        }
+        if (definition.Key == ControllerSettingDefaults.JointBatteryRecoveryPendingKey)
+            throw new ArgumentException("Der Wiederherstellungsstatus wird ausschliesslich von der gemeinsamen Steuerung gesetzt.", nameof(key));
         if (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey)
             throw new ArgumentException("Der Anbieterwechsel-Zeitpunkt wird automatisch gesetzt.", nameof(key));
         var normalizedValue = NormalizeValue(definition, value);

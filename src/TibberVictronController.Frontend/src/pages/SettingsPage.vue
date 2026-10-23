@@ -95,6 +95,21 @@ const sectionDefinitions: SectionDefinition[] = [
 ];
 
 const fieldDefinitions: FieldDefinition[] = [
+  { key: 'e3dc.rscp.enabled', section: 'sources', subgroup: 'Lokaler E3/DC-Zugang', category: 'important' },
+  { key: 'e3dc.rscp.host', section: 'sources', subgroup: 'Lokaler E3/DC-Zugang', category: 'important' },
+  { key: 'e3dc.rscp.port', section: 'sources', subgroup: 'Lokaler E3/DC-Zugang', category: 'normal' },
+  { key: 'e3dc.rscp.user', section: 'sources', subgroup: 'Lokaler E3/DC-Zugang', category: 'critical' },
+  { key: 'e3dc.rscp.password', section: 'sources', subgroup: 'Lokaler E3/DC-Zugang', category: 'critical' },
+  { key: 'e3dc.rscp.key', section: 'sources', subgroup: 'Lokaler E3/DC-Zugang', category: 'critical' },
+  { key: 'jointBattery.shadowEnabled', section: 'control', subgroup: 'Gemeinsame Akku-Vorschau', category: 'important' },
+  { key: 'jointBattery.executionEnabled', section: 'control', subgroup: 'Gemeinsame Akkusteuerung', category: 'critical' },
+  { key: 'jointBattery.phase1MaximumImportWatts', section: 'control', subgroup: 'Anschlussgrenzen', category: 'critical' },
+  { key: 'jointBattery.phase2MaximumImportWatts', section: 'control', subgroup: 'Anschlussgrenzen', category: 'critical' },
+  { key: 'jointBattery.phase3MaximumImportWatts', section: 'control', subgroup: 'Anschlussgrenzen', category: 'critical' },
+  { key: 'jointBattery.victronMaximumAcInputWatts', section: 'control', subgroup: 'Anschlussgrenzen', category: 'critical' },
+  { key: 'jointBattery.maximumGridImportWatts', section: 'control', subgroup: 'Gemeinsame Akku-Vorschau', category: 'important' },
+  { key: 'jointBattery.e3dc.maximumSocPercent', section: 'battery', subgroup: 'E3/DC-Vorschau', category: 'important' },
+  { key: 'jointBattery.e3dc.roundTripEfficiencyPercent', section: 'battery', subgroup: 'E3/DC-Vorschau', category: 'important' },
   { key: 'decision.minimumSavingsPerKwh', section: 'control', subgroup: 'Wirtschaftliche Steuerung', category: 'important', helpText: 'Mindestvorteil für Netzladung und Verschieben von Akkuenergie. 3 bedeutet 3 ct/kWh, nicht 3 EUR. Verluste und konfigurierte Verschleißkosten werden zusätzlich berücksichtigt. Kein maximaler Einkaufspreis.' },
   { key: 'battery.wearCostPerKwh', section: 'control', subgroup: 'Wirtschaftliche Steuerung', category: 'important', helpText: 'Zusätzliche Verschleißkosten für netzgeladene Energie. Einmal anhand der Batterie kalkulieren; nur im erweiterten Modus sichtbar.' },
   { key: 'electricityPrices.provider', section: 'forecast', subgroup: 'Strompreise', category: 'critical', helpText: 'Tibber bleibt Standard. Octopus erst mit aktivem dynamicOctopus-Vertrag auswählen; kein Anbieter-Fallback.' },

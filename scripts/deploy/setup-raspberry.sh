@@ -217,7 +217,12 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
+WatchdogSec=5
+WatchdogSignal=SIGKILL
+TimeoutStartSec=90
+TimeoutStopSec=20
 User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
 WorkingDirectory=${API_PUBLISH_DIR}
@@ -225,6 +230,8 @@ EnvironmentFile=${ENV_FILE}
 Environment=HOME=${INSTALL_ROOT}
 Environment=DOTNET_CLI_HOME=${DATA_ROOT}/.dotnet
 ExecStart=/usr/bin/dotnet ${API_PUBLISH_DIR}/TibberVictronController.Api.dll
+ExecStartPre=/usr/bin/dotnet ${API_PUBLISH_DIR}/TibberVictronController.Api.dll --joint-stop
+ExecStopPost=/usr/bin/dotnet ${API_PUBLISH_DIR}/TibberVictronController.Api.dll --joint-stop
 Restart=always
 RestartSec=10
 SyslogIdentifier=${APP_NAME}-api

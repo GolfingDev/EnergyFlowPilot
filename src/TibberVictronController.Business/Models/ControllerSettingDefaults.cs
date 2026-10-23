@@ -5,6 +5,22 @@ namespace TibberVictronController.Business.Models;
 /// </summary>
 public static class ControllerSettingDefaults
 {
+    public const string E3dcRscpEnabledKey = "e3dc.rscp.enabled";
+    public const string E3dcRscpHostKey = "e3dc.rscp.host";
+    public const string E3dcRscpPortKey = "e3dc.rscp.port";
+    public const string E3dcRscpUserKey = "e3dc.rscp.user";
+    public const string E3dcRscpPasswordKey = "e3dc.rscp.password";
+    public const string E3dcRscpKeyKey = "e3dc.rscp.key";
+    public const string JointBatteryEnabledKey = "jointBattery.shadowEnabled";
+    public const string JointBatteryExecutionEnabledKey = "jointBattery.executionEnabled";
+    public const string JointBatteryRecoveryPendingKey = "jointBattery.recoveryPending";
+    public const string JointBatteryPhase1LimitKey = "jointBattery.phase1MaximumImportWatts";
+    public const string JointBatteryPhase2LimitKey = "jointBattery.phase2MaximumImportWatts";
+    public const string JointBatteryPhase3LimitKey = "jointBattery.phase3MaximumImportWatts";
+    public const string JointBatteryVictronInputLimitKey = "jointBattery.victronMaximumAcInputWatts";
+    public const string JointBatteryGridLimitKey = "jointBattery.maximumGridImportWatts";
+    public const string E3dcPlanningMaximumSocKey = "jointBattery.e3dc.maximumSocPercent";
+    public const string E3dcEfficiencyKey = "jointBattery.e3dc.roundTripEfficiencyPercent";
     public const string WeishauptHotWaterEnabledKey = "weishauptHotWater.enabled";
     public const string WeishauptHotWaterCheapPriceKey = "weishauptHotWater.cheapPricePerKwh";
     public const string WeishauptHotWaterPvSurplusKey = "weishauptHotWater.pvSurplusWatts";
@@ -126,6 +142,22 @@ public static class ControllerSettingDefaults
 
     private static readonly ControllerSettingDefinition[] Definitions =
     {
+        new(E3dcRscpEnabledKey, "false", ControllerSettingSensitivity.Normal),
+        new(E3dcRscpHostKey, "127.0.0.1", ControllerSettingSensitivity.Normal),
+        new(E3dcRscpPortKey, "5033", ControllerSettingSensitivity.Normal),
+        new(E3dcRscpUserKey, null, ControllerSettingSensitivity.Sensitive),
+        new(E3dcRscpPasswordKey, null, ControllerSettingSensitivity.Sensitive),
+        new(E3dcRscpKeyKey, null, ControllerSettingSensitivity.Sensitive),
+        new(JointBatteryEnabledKey, "false", ControllerSettingSensitivity.Normal),
+        new(JointBatteryExecutionEnabledKey, "false", ControllerSettingSensitivity.Normal),
+        new(JointBatteryRecoveryPendingKey, "false", ControllerSettingSensitivity.Normal),
+        new(JointBatteryPhase1LimitKey, "0", ControllerSettingSensitivity.Normal),
+        new(JointBatteryPhase2LimitKey, "0", ControllerSettingSensitivity.Normal),
+        new(JointBatteryPhase3LimitKey, "0", ControllerSettingSensitivity.Normal),
+        new(JointBatteryVictronInputLimitKey, "0", ControllerSettingSensitivity.Normal),
+        new(JointBatteryGridLimitKey, "0", ControllerSettingSensitivity.Normal),
+        new(E3dcPlanningMaximumSocKey, "95", ControllerSettingSensitivity.Normal),
+        new(E3dcEfficiencyKey, "90", ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterCheapPriceKey, "0.20", ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterPvSurplusKey, "2000", ControllerSettingSensitivity.Normal),

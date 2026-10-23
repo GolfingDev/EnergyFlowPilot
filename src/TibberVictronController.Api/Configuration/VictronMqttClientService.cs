@@ -33,6 +33,7 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
     private readonly DecisionCalculationTrigger calculationTrigger;
     private readonly SignificantTelemetryChangeDetector telemetryChangeDetector;
     private readonly ConcurrentDictionary<string, decimal> latestValuesByTopic = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (decimal Value, DateTimeOffset At)> latestSamplesByTopic = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim connectionLock = new(1, 1);
     private IMqttClient? mqttClient;
     private VictronMqttSettings? activeSettings;
@@ -85,6 +86,22 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
     public bool TryGetLatestValue(string topic, out decimal value)
     {
         return latestValuesByTopic.TryGetValue(topic, out value);
+    }
+
+    public bool TryGetLatestSample(string topic, out decimal value, out DateTimeOffset measuredAtUtc)
+    {
+        var found = latestSamplesByTopic.TryGetValue(topic, out var sample);
+        value = sample.Value; measuredAtUtc = sample.At;
+        return found;
+    }
+
+    public async Task RequestValueAsync(string readTopic, CancellationToken token = default)
+    {
+        if (!readTopic.StartsWith("N/", StringComparison.Ordinal))
+            throw new ArgumentException("Eine Victron-Leseanfrage benoetigt ein N-Topic.");
+        await EnsureConnectedAsync(token);
+        var client = mqttClient ?? throw new InvalidOperationException("Victron MQTT ist nicht verbunden.");
+        await client.PublishAsync(new MqttApplicationMessageBuilder().WithTopic("R/" + readTopic[2..]).Build(), token);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -189,6 +206,7 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             var snapshotStore = serviceProvider.GetRequiredService<MqttTelemetrySnapshotStore>();
             snapshotStore.Clear(preserveLatestValues: true);
             latestValuesByTopic.Clear();
+            latestSamplesByTopic.Clear();
             Interlocked.Exchange(ref receivedTelemetryMessageCount, 0);
 
             var client = new MqttClientFactory().CreateMqttClient();
@@ -269,6 +287,7 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
 
         var measuredAtUtc = DateTimeOffset.UtcNow;
         latestValuesByTopic[eventArguments.ApplicationMessage.Topic] = value;
+        latestSamplesByTopic[eventArguments.ApplicationMessage.Topic] = (value, measuredAtUtc);
         Interlocked.Increment(ref receivedTelemetryMessageCount);
         runtimeStatus.MarkMessageReceived(measuredAtUtc);
 

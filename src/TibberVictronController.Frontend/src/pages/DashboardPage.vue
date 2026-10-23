@@ -13,6 +13,8 @@ import ForecastChartPanel from '../components/dashboard/ForecastChartPanel.vue';
 import LiveEnergyFlowPanel from '../components/dashboard/LiveEnergyFlowPanel.vue';
 import SchematicEnergyFlowPanel from '../components/dashboard/SchematicEnergyFlowPanel.vue';
 import E3dcSupplementPanel from '../components/dashboard/E3dcSupplementPanel.vue';
+import JointBatteryShadowPanel from '../components/dashboard/JointBatteryShadowPanel.vue';
+import type { JointBatteryShadowDto } from '../components/dashboard/dashboardTypes';
 import LeitstandDashboard from '../components/leitstand/LeitstandDashboard.vue';
 import OrbitDashboard from '../components/orbit/OrbitDashboard.vue';
 import EnergyWorkspaceDashboard from '../components/workspace/EnergyWorkspaceDashboard.vue';
@@ -47,6 +49,7 @@ const forecast = ref<BatteryForecastResponseDto | null>(null);
 const savings = ref<BatterySavingsResponseDto | null>(null);
 const manualCharge = ref<ManualChargeStatusResponseDto | null>(null);
 const e3dcTelemetry = ref<E3dcTelemetryResponseDto | null>(null);
+const jointBatteryShadow = ref<JointBatteryShadowDto | null>(null);
 const loadErrors = ref<DashboardLoadError[]>([]);
 const isLoading = ref(false);
 const isManualChargeBusy = ref(false);
@@ -516,7 +519,8 @@ async function loadSlowDashboardData(force = false): Promise<void> {
     loadForecast(force),
     loadSavings(force),
     loadDecisionHistory(force),
-    loadE3dcTelemetry()
+    loadE3dcTelemetry(),
+    loadJointBatteryShadow()
   ]);
 }
 
@@ -529,6 +533,15 @@ async function loadE3dcTelemetry(): Promise<void> {
   } catch {
     // E3/DC ist optional — kein Fehler anzeigen, wenn nicht konfiguriert
     e3dcTelemetry.value = null;
+  }
+}
+
+async function loadJointBatteryShadow(): Promise<void> {
+  try {
+    jointBatteryShadow.value = await fetchJson<JointBatteryShadowDto>('/api/joint-battery/shadow');
+  } catch {
+    // Clear old proposals on transport failure; cached simulation targets must never look current.
+    jointBatteryShadow.value = null;
   }
 }
 
@@ -913,6 +926,7 @@ onBeforeUnmount(() => {
 
 <template>
   <v-container class="dashboard-page" :class="dashboardLayoutClass" fluid>
+    <JointBatteryShadowPanel :state="jointBatteryShadow" />
     <EnergyLoadingOverlay :model-value="showLoadingOverlay" title="Loading forecast"
       subtitle="Calculating price, PV and battery plan..." :size="200" />
 

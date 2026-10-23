@@ -1,5 +1,6 @@
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Dal.Victron;
+using TibberVictronController.Api.JointBattery;
 
 namespace TibberVictronController.Api.Configuration;
 
@@ -61,6 +62,8 @@ public sealed class VictronSetpointRefreshBackgroundService : BackgroundService
         }
 
         using var publication = await refreshState.AcquirePublicationAsync(cancellationToken);
+        if (refreshState.JointControlActive || await JointBatteryOwnership.BlocksLegacyAsync(
+            scope.ServiceProvider.GetService<IControllerSettingStore>(), cancellationToken)) return;
         if (!refreshState.TryGet(utcClock.UtcNow, out var snapshot))
         {
             return;

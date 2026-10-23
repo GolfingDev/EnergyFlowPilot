@@ -155,3 +155,18 @@ export interface SavingsPeriodOption {
   label: string;
   value: SavingsPeriod;
 }
+export interface JointBatteryShadowDto {
+  execution: { status: string; updatedAtUtc: string; ownsControl: boolean; victronTargetWatts: number; e3dcTargetWatts: number;
+    victronMeasuredWatts: number; e3dcMeasuredWatts: number; validUntilUtc: string | null };
+  isShadow: boolean;
+  status: string;
+  message: string;
+  updatedAtUtc: string;
+  calculatedAtUtc: string | null;
+  maximumGridImportWatts: number | null;
+  localTelemetry: { measuredAtUtc: string; socPercent: number; usableCapacityKwh: number; reserveKwh: number } | null;
+  warnings: string[];
+  batteries: { id: string; socPercent: number; capacityKwh: number; reserveKwh: number; measuredPowerWatts: number }[];
+  slots: { startsAtUtc: string; endsAtUtc: string; pricePerKwh: number; currency: string; isPriceEstimated: boolean;
+    reason: string; targetLimited: boolean; targets: { id: string; signedPowerWatts: number; socBeforePercent: number; socAfterPercent: number }[] }[];
+}

@@ -5,6 +5,8 @@ namespace TibberVictronController.Api.Configuration;
 /// </summary>
 public sealed class VictronSetpointRefreshState
 {
+    // Read/written while holding the publication gate. Covers a failed release as well as active control.
+    public bool JointControlActive { get; set; }
     private readonly SemaphoreSlim publicationGate = new(1, 1);
 
     // Serializes complete write batches so a concurrent refresh cannot restore a target stopped by a decision.
