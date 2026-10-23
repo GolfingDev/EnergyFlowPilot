@@ -137,6 +137,65 @@ public sealed class JointBatteryShadowTests
     }
 
     [Fact]
+    public async Task ManualChargeEndsAtTargetAndHandsBackToThePlan()
+    {
+        var settings = await ReadyForExecutionAsync();
+        var state = new JointBatteryExecutionState();
+        var clock = new Clock();
+        var batteries = new[] { ManualUnit("victron", 19.2m, 21.42m), ManualUnit("e3dc", 14.01m, 11.2m) };
+        var store = new JointManualChargeStore(settings, clock);
+        await store.StartAsync(2m, 0, CancellationToken.None);
+        // Baseline 2 kWh below the current content: the target is already reached.
+        await store.SaveBaselineAsync(TibberVictronController.Business.Decisions.JointManualCharge.StoredEnergyKwh(batteries) - 2m, CancellationToken.None);
+        state.LastLive = new JointBatteryLiveSnapshot(Now, batteries, [0, 0, 0], [0], 0, 0, new([14720, 14720, 14720], 14720, 1, 0));
+        var events = new Events();
+        using var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings).AddSingleton<IUtcClock>(clock)
+            .AddSingleton<IOperationalEventRepository>(events).BuildServiceProvider();
+        var worker = new JointBatteryExecutionBackgroundService(services.GetRequiredService<IServiceScopeFactory>(), state,
+            new VictronSetpointRefreshState(), NullLogger<JointBatteryExecutionBackgroundService>.Instance, new Watchdog());
+
+        await worker.TickAsync(CancellationToken.None);
+
+        Assert.Null(await store.ReadAsync(CancellationToken.None));
+        Assert.Contains("abgeschlossen", state.ManualChargeResult);
+        Assert.Contains(events.Saved, e => e.Category == "JointBatteryManualCharge");
+        // Back on the plan, which is missing here: blocked without claiming the site.
+        Assert.Contains("Plan fehlt", state.Current.Message);
+        Assert.False(state.Current.OwnsControl);
+    }
+
+    [Fact]
+    public async Task ManualChargeNeedsActiveJointControlAndItsStateIsNotEditableViaSettings()
+    {
+        var settings = new Settings();
+        var service = new JointManualChargeService(settings, new Clock(), new JointBatteryExecutionState());
+        Assert.Contains("gemeinsame Steuerung", await service.TryStartAsync(new(2m, null), CancellationToken.None));
+        Assert.False((await service.GetStatusAsync(CancellationToken.None)).IsActive);
+
+        var settingsService = new TibberVictronController.Business.Services.ControllerSettingsService(settings, new Clock());
+        await Assert.ThrowsAsync<ArgumentException>(() => settingsService.UpdateSettingAsync(ControllerSettingDefaults.JointManualChargeTargetKwhKey, "5"));
+    }
+
+    private static JointBatteryUnit ManualUnit(string id, decimal capacity, decimal soc) => new(id,
+        new BatteryConfiguration(new BatteryConfigurationValues { TotalCapacityKwh = capacity, MinimumStateOfChargePercent = 10,
+            PlanningMinimumStateOfChargePercent = 10, PlanningMaximumStateOfChargePercent = 95 }), new(soc, Now), 0);
+
+    private static async Task<Settings> ReadyForExecutionAsync()
+    {
+        var settings = new Settings();
+        foreach (var (key, value) in new[] {
+            (ControllerSettingDefaults.JointBatteryExecutionEnabledKey, "true"), (ControllerSettingDefaults.VictronDryRunKey, "false"),
+            (ControllerSettingDefaults.E3dcRscpEnabledKey, "true"), (ControllerSettingDefaults.E3dcRscpHostKey, "192.0.2.10"),
+            (ControllerSettingDefaults.E3dcRscpPortKey, "5033"), (ControllerSettingDefaults.E3dcRscpUserKey, "test-user"),
+            (ControllerSettingDefaults.E3dcRscpPasswordKey, "test-password"), (ControllerSettingDefaults.E3dcRscpKeyKey, "test-key"),
+            (ControllerSettingDefaults.VictronControlModeKey, "externalEss"), (ControllerSettingDefaults.JointBatteryPhase1LimitKey, "14720"),
+            (ControllerSettingDefaults.JointBatteryPhase2LimitKey, "14720"), (ControllerSettingDefaults.JointBatteryPhase3LimitKey, "14720"),
+            (ControllerSettingDefaults.JointBatteryVictronInputLimitKey, "14720") })
+            await settings.SaveSettingAsync(new(key, value, ControllerSettingSensitivity.Normal, Now));
+        return settings;
+    }
+
+    [Fact]
     public async Task MissingPlanShowsThePreviewFailureReason()
     {
         var settings = new Settings();

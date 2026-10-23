@@ -55,6 +55,8 @@ public sealed class ControllerSettingsService : IControllerSettingsService
         }
         if (definition.Key == ControllerSettingDefaults.JointBatteryRecoveryPendingKey)
             throw new ArgumentException("Der Wiederherstellungsstatus wird ausschliesslich von der gemeinsamen Steuerung gesetzt.", nameof(key));
+        if (definition.Key.StartsWith(ControllerSettingDefaults.JointManualChargePrefix, StringComparison.Ordinal))
+            throw new ArgumentException("Die manuelle Ladung beider Akkus wird ueber das Dashboard gestartet und beendet.", nameof(key));
         if (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey)
             throw new ArgumentException("Der Anbieterwechsel-Zeitpunkt wird automatisch gesetzt.", nameof(key));
         var normalizedValue = NormalizeValue(definition, value);

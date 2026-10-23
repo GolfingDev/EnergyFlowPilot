@@ -1,9 +1,23 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import { formatDateTime, formatNumber, formatPercent, formatPower, formatPrice } from './dashboardFormatters';
 import type { JointBatteryShadowDto } from './dashboardTypes';
 
-const props = defineProps<{ state: JointBatteryShadowDto | null; recoveryBusy?: boolean }>();
-const emit = defineEmits<{ confirmRecovery: [] }>();
+const props = defineProps<{ state: JointBatteryShadowDto | null; recoveryBusy?: boolean; manualChargeBusy?: boolean }>();
+const emit = defineEmits<{
+  confirmRecovery: [];
+  startManualCharge: [targetKwh: number, maximumPowerKw: number | null];
+  stopManualCharge: [];
+}>();
+
+const manualTargetKwh = ref<number | string>(2);
+const manualMaximumKw = ref<number | string>('');
+
+function startManualCharge(): void {
+  const target = Number(manualTargetKwh.value);
+  const maximum = manualMaximumKw.value === '' || manualMaximumKw.value === null ? null : Number(manualMaximumKw.value);
+  emit('startManualCharge', target, maximum);
+}
 
 function confirmRecovery(): void {
   // Releasing the lock without device confirmation is a safety decision; require an explicit acknowledgement.
@@ -40,6 +54,28 @@ function powerLabel(watts: number): string {
         Gemessen: Victron {{ powerLabel(state.execution.victronMeasuredWatts) }} · E3/DC {{ powerLabel(state.execution.e3dcMeasuredWatts) }}<br>
         Ausführungsstand: {{ formatDateTime(state.execution.updatedAtUtc) }}
       </p>
+      <div v-if="!state.isShadow || state.manualCharge.isActive" class="mt-3">
+        <strong>Manuell laden (beide Akkus, unabhängig vom Preis)</strong>
+        <template v-if="state.manualCharge.isActive">
+          <v-progress-linear class="mt-2" color="success" height="8" rounded
+            :model-value="state.manualCharge.targetKwh > 0 ? Math.min(100, state.manualCharge.chargedKwh / state.manualCharge.targetKwh * 100) : 0" />
+          <p class="mt-1">
+            {{ formatNumber(state.manualCharge.chargedKwh, 2) }} von {{ formatNumber(state.manualCharge.targetKwh, 2) }} kWh geladen
+            · {{ state.manualCharge.maximumPowerWatts > 0 ? `höchstens ${formatPower(state.manualCharge.maximumPowerWatts)}` : 'maximale zulässige Leistung' }}
+            <template v-if="state.manualCharge.expiresAtUtc"> · endet spätestens {{ formatDateTime(state.manualCharge.expiresAtUtc) }}</template>
+          </p>
+          <v-btn size="small" variant="tonal" :loading="manualChargeBusy" @click="emit('stopManualCharge')">Manuelle Ladung beenden</v-btn>
+        </template>
+        <div v-else class="d-flex flex-wrap ga-2 align-center mt-2">
+          <v-text-field v-model="manualTargetKwh" label="Lademenge" suffix="kWh" type="number" min="0.1" step="0.5"
+            density="compact" hide-details style="max-width: 9rem" />
+          <v-text-field v-model="manualMaximumKw" label="Höchstleistung (optional)" suffix="kW" type="number" min="0.1" step="0.5"
+            density="compact" hide-details style="max-width: 13rem" />
+          <v-btn size="small" color="primary" variant="flat" :loading="manualChargeBusy"
+            :disabled="!(Number(manualTargetKwh) > 0)" @click="startManualCharge">Laden starten</v-btn>
+        </div>
+        <p v-if="state.manualCharge.lastResult && !state.manualCharge.isActive" class="text-caption mt-1">{{ state.manualCharge.lastResult }}</p>
+      </div>
       <p v-if="state.calculatedAtUtc" class="text-caption">Berechnet: {{ formatDateTime(state.calculatedAtUtc) }} · Netzbudget: {{ state.maximumGridImportWatts ? formatPower(state.maximumGridImportWatts) : 'keine zusätzliche Gesamtgrenze' }}</p>
       <v-row v-if="state.batteries.length" class="mt-2">
         <v-col v-for="battery in state.batteries" :key="battery.id" cols="12" sm="6">

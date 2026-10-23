@@ -105,6 +105,17 @@ Geschrieben wird ausschliesslich der fluechtige RSCP-Leistungsbefehl: Modus 1 ne
 
 Bei Fehlern, abgelaufenen Plaenen oder Abschaltung stoppt zuerst Victron, danach E3/DC. Erst neutrale Messwerte beider Speicher erlauben die Rueckgabe von E3/DC an Automatik und das Loeschen der Wiederherstellungspflicht. Scheitert dies, bleiben Einzelakku-Schreiber gesperrt. Nach Fehlern gilt eine Wiederanlaufsperre von 30 Sekunden. Beim Neustart erfolgt zuerst die ausstehende Ruecknahme; scheitert sie, startet der Dienst trotzdem mit gesperrter Einzelakku-Steuerung. Ist die Hardware nicht erreichbar, kann auch der separate Helfer keinen sicheren physikalischen Zustand garantieren; ein vollstaendiger Netzwerkausfall ist damit nicht als beherrscht nachgewiesen.
 
+### Manuelle Ladung beider Akkus
+
+Bei eingeschalteter gemeinsamer Steuerung (ohne globalen Shadow-Modus) kann im Dashboard eine Lademenge in kWh vorgegeben werden, optional mit einer Hoechstleistung (`POST`/`DELETE /api/joint-battery/manual-charge`). Betreiberentscheidung vom 23.10.2026:
+
+- Gemessen wird die **im Akku gespeicherte** Energie: Zuwachs von Ladestand x Kapazitaet beider Akkus seit Beginn. Ladeverluste zaehlen nicht mit. Der Ausgangswert wird gespeichert, sodass ein Neustart die Ladung nicht verfaelscht.
+- Beide Akkus laden gleichzeitig, aufgeteilt nach freiem Platz und aktuellen Leistungsgrenzen (beim E3/DC die gemeldete wirksame Grenze). Ist einer voll, laedt der andere weiter.
+- Ohne Hoechstleistung wird so schnell geladen, wie Geraete-, Phasen- und Victron-Zuleitungsgrenzen erlauben; mit Angabe wird die Summe beider Akkus begrenzt.
+- Obergrenze ist das Planungsmaximum je Akku, wie bei geplanter Netzladung.
+- Die Ladung ersetzt waehrend ihrer Dauer den wirtschaftlichen Plan und laedt unabhaengig vom Preis. Sie endet bei erreichter Menge, wenn beide Akkus ihr Planungsmaximum erreicht haben, nach einer Sicherheitsfrist von 6 Stunden, per Stopp im Dashboard oder beim Ausschalten der gemeinsamen Steuerung bzw. Aktivieren des Shadow-Modus. Danach uebernimmt im selben Takt wieder der Plan. Der Plan kann die geladene Energie spaeter wirtschaftlich wieder nutzen.
+- Der Zustand liegt in den internen Einstellungen `jointBattery.manualCharge.*`, die die Einstellungs-API nicht aendern darf. Ende und Grund werden als Betriebsereignis `JointBatteryManualCharge` protokolliert.
+
 ### Anzeige, Verbrauchsmodell und Geheimnisse
 
 Das Dashboard und `GET /api/joint-battery/shadow` zeigen getrennte Messwerte, geplante Ziele, letzte Ausfuehrungsvorgaben und deren Alter. Veraltete Plaene liefern keine gueltigen Ziele. Der bestehende Victron-Forecast und die Live-Entscheidung werden bei gemeinsamer Steuerung aus demselben Plan bzw. Ausfuehrungszustand projiziert; ein zweiter Optimierer steuert dann nicht parallel.

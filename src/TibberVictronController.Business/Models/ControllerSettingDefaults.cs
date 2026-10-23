@@ -14,6 +14,14 @@ public static class ControllerSettingDefaults
     public const string JointBatteryEnabledKey = "jointBattery.shadowEnabled";
     public const string JointBatteryExecutionEnabledKey = "jointBattery.executionEnabled";
     public const string JointBatteryRecoveryPendingKey = "jointBattery.recoveryPending";
+    // Internal state of a manual joint charge; written only by the joint manual-charge service, never via the settings API.
+    public const string JointManualChargePrefix = "jointBattery.manualCharge.";
+    public const string JointManualChargeTargetKwhKey = JointManualChargePrefix + "targetKwh";
+    public const string JointManualChargeMaximumPowerWattsKey = JointManualChargePrefix + "maximumPowerWatts";
+    public const string JointManualChargeExpiresAtUtcKey = JointManualChargePrefix + "expiresAtUtc";
+    public const string JointManualChargeBaselineKwhKey = JointManualChargePrefix + "baselineKwh";
+    // Normal settings need a non-empty value; this marker means "baseline not captured yet".
+    public const string JointManualChargeNoBaseline = "none";
     public const string JointBatteryPhase1LimitKey = "jointBattery.phase1MaximumImportWatts";
     public const string JointBatteryPhase2LimitKey = "jointBattery.phase2MaximumImportWatts";
     public const string JointBatteryPhase3LimitKey = "jointBattery.phase3MaximumImportWatts";
@@ -151,6 +159,10 @@ public static class ControllerSettingDefaults
         new(JointBatteryEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(JointBatteryExecutionEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(JointBatteryRecoveryPendingKey, "false", ControllerSettingSensitivity.Normal),
+        new(JointManualChargeTargetKwhKey, "0", ControllerSettingSensitivity.Normal),
+        new(JointManualChargeMaximumPowerWattsKey, "0", ControllerSettingSensitivity.Normal),
+        new(JointManualChargeExpiresAtUtcKey, "1970-01-01T00:00:00.0000000+00:00", ControllerSettingSensitivity.Normal),
+        new(JointManualChargeBaselineKwhKey, JointManualChargeNoBaseline, ControllerSettingSensitivity.Normal),
         new(JointBatteryPhase1LimitKey, "0", ControllerSettingSensitivity.Normal),
         new(JointBatteryPhase2LimitKey, "0", ControllerSettingSensitivity.Normal),
         new(JointBatteryPhase3LimitKey, "0", ControllerSettingSensitivity.Normal),

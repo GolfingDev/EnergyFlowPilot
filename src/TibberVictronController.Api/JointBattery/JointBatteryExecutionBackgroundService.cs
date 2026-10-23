@@ -101,6 +101,13 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
             var pending = await Flag(ControllerSettingDefaults.JointBatteryRecoveryPendingKey);
             var dryRunSetting = (await settings.GetSettingAsync(ControllerSettingDefaults.VictronDryRunKey, cycle.Token))?.Value;
             var dryRun = !bool.TryParse(dryRunSetting, out var dry) || dry;
+            if (!enabled || dryRun)
+            {
+                // Switching joint control off (or to dry-run) also ends a manual charge; it must not resume later unnoticed.
+                var manualStore = new JointManualChargeStore(settings, clock);
+                if (await manualStore.ReadAsync(cycle.Token) is not null)
+                    await FinishManualChargeAsync(services, manualStore, "Manuelle Ladung beendet, weil die gemeinsame Steuerung ausgeschaltet oder im Shadow-Modus ist.", cycle.Token);
+            }
             if ((pending && !ownership.JointControlActive) || ((!enabled || dryRun) && (pending || ownership.JointControlActive)))
             {
                 ownership.JointControlActive = true;
@@ -164,6 +171,14 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
                 return (null, "Bestaetigte Anschluss- und Phasengrenzen fehlen.");
         }
 
+        // An operator's manual charge replaces the plan; when it ends, this same tick falls back to the plan.
+        var manualStore = new JointManualChargeStore(settings, clock);
+        if (await manualStore.ReadAsync(token) is { } manual)
+        {
+            var manualCommand = await PrepareManualChargeAsync(services, manualStore, manual, clock, token);
+            if (manualCommand is not null) return (manualCommand, null);
+        }
+
         var runtime = services.GetService<JointBatteryRuntimeState>()?.Current;
         var plan = runtime?.Plan;
         if (plan is null)
@@ -184,6 +199,42 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
         var validUntil = slot.TimeSlot.EndsAtUtc < planExpiry ? slot.TimeSlot.EndsAtUtc : planExpiry;
         return (new JointBatteryCommand(slot.Targets.Single(t => t.Id == "victron").SignedPowerWatts,
             slot.Targets.Single(t => t.Id == "e3dc").SignedPowerWatts, slot.ChargeSource, validUntil, slot.Reason), null);
+    }
+
+    /// <returns>The manual charge command, or null when the charge has just ended and the plan takes over again.</returns>
+    private async Task<JointBatteryCommand?> PrepareManualChargeAsync(IServiceProvider services, JointManualChargeStore store,
+        JointManualChargeRequest manual, IUtcClock clock, CancellationToken token)
+    {
+        var now = clock.UtcNow;
+        // Progress normally comes from the coordinator's reading of the previous tick. Before the first step
+        // (or after a pause) both batteries are read once; reading writes nothing to the devices.
+        var live = state.LastLive;
+        if (live is null || now - live.MeasuredAtUtc > TimeSpan.FromSeconds(5))
+        {
+            live = await services.GetRequiredService<IJointBatteryHardware>().ReadAsync(token);
+            state.LastLive = live;
+        }
+        if (manual.BaselineKwh is null)
+        {
+            var baseline = JointManualCharge.StoredEnergyKwh(live.Batteries);
+            await store.SaveBaselineAsync(baseline, token);
+            manual = manual with { BaselineKwh = baseline };
+        }
+
+        // Short validity: every tick re-evaluates progress, so a stale manual command must not outlive a stalled loop.
+        var step = JointManualCharge.Evaluate(manual, live.Batteries, now, now.AddSeconds(15));
+        if (step.Command is not null) return step.Command;
+        await FinishManualChargeAsync(services, store, step.Message, token);
+        return null;
+    }
+
+    private async Task FinishManualChargeAsync(IServiceProvider services, JointManualChargeStore store, string message, CancellationToken token)
+    {
+        await store.StopAsync(token);
+        state.ManualChargeResult = message;
+        logger.LogInformation("{Message}", message);
+        await services.GetRequiredService<IOperationalEventRepository>().SaveEventAsync(new OperationalEvent(Guid.NewGuid(),
+            services.GetRequiredService<IUtcClock>().UtcNow, "JointBatteryManualCharge", "Information", message, "{}"), token);
     }
 
     private static Task SaveRecoveryAsync(IControllerSettingStore settings, IUtcClock clock, bool pending, CancellationToken token) =>

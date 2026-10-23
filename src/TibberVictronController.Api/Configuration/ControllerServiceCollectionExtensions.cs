@@ -66,6 +66,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<JointBatteryExecutionCoordinator>();
         services.AddSingleton<JointBatteryExecutionState>();
         services.AddScoped<JointBatteryRecoveryOverride>();
+        services.AddScoped<JointManualChargeService>();
         services.AddSingleton<SystemdJointBatteryWatchdog>();
         services.AddSingleton<IJointBatteryWatchdog>(sp => sp.GetRequiredService<SystemdJointBatteryWatchdog>());
         services.AddHostedService<JointBatteryExecutionBackgroundService>();

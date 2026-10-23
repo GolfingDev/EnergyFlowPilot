@@ -155,11 +155,20 @@ export interface SavingsPeriodOption {
   label: string;
   value: SavingsPeriod;
 }
+export interface JointManualChargeDto {
+  isActive: boolean;
+  targetKwh: number;
+  chargedKwh: number;
+  maximumPowerWatts: number;
+  expiresAtUtc: string | null;
+  lastResult: string | null;
+}
 export interface JointBatteryShadowDto {
   execution: { status: string; updatedAtUtc: string; ownsControl: boolean; victronTargetWatts: number; e3dcTargetWatts: number;
     victronMeasuredWatts: number; e3dcMeasuredWatts: number; validUntilUtc: string | null };
   isShadow: boolean;
   recoveryPending: boolean;
+  manualCharge: JointManualChargeDto;
   status: string;
   message: string;
   updatedAtUtc: string;

@@ -9,8 +9,9 @@ public static class JointBatteryEndpoints
     public static IEndpointRouteBuilder MapJointBatteryEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/joint-battery/shadow", async (JointBatteryRuntimeState state, JointBatteryExecutionState executionState,
-            IUtcClock clock, IControllerSettingStore settings, CancellationToken cancellationToken) =>
+            IUtcClock clock, IControllerSettingStore settings, JointManualChargeService manualCharge, CancellationToken cancellationToken) =>
         {
+            var manualChargeStatus = await manualCharge.GetStatusAsync(cancellationToken);
             var recoveryPending = bool.TryParse((await settings.GetSettingAsync(ControllerSettingDefaults.JointBatteryRecoveryPendingKey, cancellationToken))?.Value,
                 out var pending) && pending;
             var current = state.Current;
@@ -36,7 +37,22 @@ public static class JointBatteryEndpoints
                     s.PricePerKwh, s.Currency, s.IsPriceEstimated, s.ChargeSource?.ToString() ?? "None", s.TargetLimited, s.Reason,
                     s.Targets.Select(t => new JointBatteryTargetDto(t.Id, t.SignedPowerWatts, t.SocBeforePercent, t.SocAfterPercent)).ToArray())).ToArray() ?? [],
                 new(execution.Status, execution.UpdatedAtUtc, execution.OwnsControl, execution.VictronTargetWatts, execution.E3dcTargetWatts,
-                    execution.VictronMeasuredWatts, execution.E3dcMeasuredWatts, execution.ValidUntilUtc), recoveryPending));
+                    execution.VictronMeasuredWatts, execution.E3dcMeasuredWatts, execution.ValidUntilUtc), recoveryPending, manualChargeStatus));
+        }).WithTags("JointBattery");
+
+        endpoints.MapPost("/api/joint-battery/manual-charge", async Task<Results<Ok<JointManualChargeDto>, Conflict<JointBatteryMessageDto>>> (
+            JointManualChargeRequestDto request, JointManualChargeService manualCharge, CancellationToken cancellationToken) =>
+        {
+            var rejection = await manualCharge.TryStartAsync(request, cancellationToken);
+            return rejection is null
+                ? TypedResults.Ok(await manualCharge.GetStatusAsync(cancellationToken))
+                : TypedResults.Conflict(new JointBatteryMessageDto(rejection));
+        }).WithTags("JointBattery");
+
+        endpoints.MapDelete("/api/joint-battery/manual-charge", async (JointManualChargeService manualCharge, CancellationToken cancellationToken) =>
+        {
+            await manualCharge.StopAsync(cancellationToken);
+            return TypedResults.Ok(await manualCharge.GetStatusAsync(cancellationToken));
         }).WithTags("JointBattery");
 
         // Manual confirmation for a release the controller cannot complete itself (device permanently unreachable).
@@ -55,7 +71,7 @@ public static class JointBatteryEndpoints
 public sealed record JointBatteryShadowDto(bool IsShadow, string Status, string Message, DateTimeOffset UpdatedAtUtc,
     E3dcLocalDto? LocalTelemetry, DateTimeOffset? CalculatedAtUtc, int? MaximumGridImportWatts,
     IReadOnlyList<string> Warnings, IReadOnlyList<JointBatteryUnitDto> Batteries, IReadOnlyList<JointBatterySlotDto> Slots, JointBatteryExecutionDto Execution,
-    bool RecoveryPending);
+    bool RecoveryPending, JointManualChargeDto ManualCharge);
 public sealed record JointBatteryMessageDto(string Message);
 public sealed record JointBatteryExecutionDto(string Status, DateTimeOffset UpdatedAtUtc, bool OwnsControl,
     int VictronTargetWatts, int E3dcTargetWatts, int VictronMeasuredWatts, int E3dcMeasuredWatts, DateTimeOffset? ValidUntilUtc);

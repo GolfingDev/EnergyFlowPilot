@@ -51,6 +51,7 @@ const manualCharge = ref<ManualChargeStatusResponseDto | null>(null);
 const e3dcTelemetry = ref<E3dcTelemetryResponseDto | null>(null);
 const jointBatteryShadow = ref<JointBatteryShadowDto | null>(null);
 const isJointRecoveryBusy = ref(false);
+const isJointManualChargeBusy = ref(false);
 const loadErrors = ref<DashboardLoadError[]>([]);
 const isLoading = ref(false);
 const isManualChargeBusy = ref(false);
@@ -546,6 +547,33 @@ async function loadJointBatteryShadow(): Promise<void> {
   }
 }
 
+async function startJointManualCharge(targetKwh: number, maximumPowerKw: number | null): Promise<void> {
+  await runJointManualCharge(() => postJson<unknown>('/api/joint-battery/manual-charge', { targetKwh, maximumPowerKw }));
+}
+
+async function stopJointManualCharge(): Promise<void> {
+  await runJointManualCharge(() => deleteJson<unknown>('/api/joint-battery/manual-charge'));
+}
+
+async function runJointManualCharge(request: () => Promise<unknown>): Promise<void> {
+  if (isJointManualChargeBusy.value) {
+    return;
+  }
+
+  isJointManualChargeBusy.value = true;
+  try {
+    await request();
+    await loadJointBatteryShadow();
+  } catch (error) {
+    loadErrors.value.push({
+      source: 'Manuelle Ladung beider Akkus',
+      ...createLoadError(error)
+    });
+  } finally {
+    isJointManualChargeBusy.value = false;
+  }
+}
+
 async function confirmJointBatteryRecovery(): Promise<void> {
   if (isJointRecoveryBusy.value) {
     return;
@@ -947,7 +975,9 @@ onBeforeUnmount(() => {
 <template>
   <v-container class="dashboard-page" :class="dashboardLayoutClass" fluid>
     <JointBatteryShadowPanel :state="jointBatteryShadow" :recovery-busy="isJointRecoveryBusy"
-      @confirm-recovery="confirmJointBatteryRecovery" />
+      :manual-charge-busy="isJointManualChargeBusy"
+      @confirm-recovery="confirmJointBatteryRecovery"
+      @start-manual-charge="startJointManualCharge" @stop-manual-charge="stopJointManualCharge" />
     <EnergyLoadingOverlay :model-value="showLoadingOverlay" title="Loading forecast"
       subtitle="Calculating price, PV and battery plan..." :size="200" />
 

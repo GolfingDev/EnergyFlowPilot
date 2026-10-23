@@ -9,6 +9,7 @@ public sealed class JointBatteryExecutionCoordinator(IJointBatteryHardware hardw
     public async Task StepAsync(JointBatteryCommand desired, CancellationToken token)
     {
         var live = await hardware.ReadAsync(token);
+        state.LastLive = live;
         var command = JointBatteryLiveLimiter.Limit(desired, live, clock.UtcNow);
         var direction = Math.Sign(command.VictronWatts + command.E3dcWatts);
         if (state.Direction != direction)
