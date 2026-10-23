@@ -31,7 +31,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
                 catch (Exception error)
                 {
-                    logger.LogWarning("Gemeinsame Ausfuehrung gestoppt. Fehlertyp={ErrorType}", error.GetType().Name);
+                    logger.LogWarning("Gemeinsame Ausfuehrung gestoppt. Fehlertyp={ErrorType} Detail={Detail}", error.GetType().Name, Detail(error) ?? "-");
                     // The loop is alive; pulse before the separately budgeted failure handling.
                     await PulseAsync(stoppingToken);
                     try { await HandleFailureAsync(error); }
@@ -58,6 +58,14 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
             catch (Exception error) { logger.LogWarning("Ruecknahme beim Beenden bleibt ausstehend. Fehlertyp={ErrorType}", error.GetType().Name); }
         }
     }
+
+    /// <summary>
+    /// Messages of these types come from our own checks (coordinator, limiter, hardware readback, RSCP adapter) and
+    /// contain only fixed German texts, dbus paths and power values. Other types (sockets, HTTP) may carry addresses
+    /// or credentials, so only their type name is reported.
+    /// </summary>
+    private static string? Detail(Exception error) =>
+        error is InvalidOperationException or TimeoutException or InvalidDataException or ArgumentException ? error.Message : null;
 
     private async Task PulseAsync(CancellationToken token)
     {
@@ -213,9 +221,10 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
             }
         }
         catch (Exception cleanupError) { logger.LogWarning("Gemeinsame Ruecknahme bleibt ausstehend. Fehlertyp={ErrorType}", cleanupError.GetType().Name); }
-        state.Set(new(restored ? "Blocked" : "Restoring", restored ? "Gemeinsame Steuerung nach Fehler gestoppt; erneuter Versuch fruehestens nach 30 Sekunden." :
+        var cause = $" Ursache ({error.GetType().Name}): {Detail(error) ?? "siehe Fehlertyp"}";
+        state.Set(new(restored ? "Blocked" : "Restoring", restored ? "Gemeinsame Steuerung nach Fehler gestoppt; erneuter Versuch fruehestens nach 30 Sekunden." + cause :
             "Gemeinsame Ruecknahme noch nicht bestaetigt; Einzelakku-Steuerung bleibt gesperrt. Ist ein Geraet dauerhaft nicht erreichbar, " +
-            "gemeinsame Steuerung deaktivieren und die Ruecknahme nach Pruefung vor Ort im Dashboard manuell bestaetigen.",
+            "gemeinsame Steuerung deaktivieren und die Ruecknahme nach Pruefung vor Ort im Dashboard manuell bestaetigen." + cause,
             clock.UtcNow, ownership.JointControlActive));
         try { await LogAsync(services, timeout.Token, error.GetType().Name); }
         catch (Exception logError) { logger.LogWarning("Gemeinsamer Fehlerstatus konnte nicht gespeichert werden. Fehlertyp={ErrorType}", logError.GetType().Name); }

@@ -25,18 +25,23 @@ public sealed class JointBatteryHardware(IServiceProvider services) : IJointBatt
         var requested = Clock.UtcNow;
         foreach (var topic in topics) await Client.RequestValueAsync(topic, token);
         var until = Clock.UtcNow.AddSeconds(1.5);
-        while (topics.Any(t => !Client.TryGetLatestSample(t, out _, out var at) || at < requested))
+        bool Missing(string t) => !Client.TryGetLatestSample(t, out _, out var at) || at < requested;
+        while (topics.Any(Missing))
         {
-            if (Clock.UtcNow >= until) throw new TimeoutException("Victron bestaetigt die aktuellen Leseanfragen nicht.");
+            if (Clock.UtcNow >= until)
+                throw new TimeoutException("Victron beantwortet Leseanfragen nicht: " + string.Join(", ", topics.Where(Missing).Select(DevicePath)) + ".");
             await Task.Delay(50, token);
         }
     }
     private decimal RawValue(string topic)
     {
         if (!Client.TryGetLatestSample(topic, out var value, out var at) || Clock.UtcNow - at > TimeSpan.FromSeconds(3) || at > Clock.UtcNow.AddSeconds(2))
-            throw new InvalidOperationException("Ein aktueller Victron-Wert fehlt.");
+            throw new InvalidOperationException($"Ein aktueller Victron-Wert fehlt: {DevicePath(topic)}.");
         return value;
     }
+
+    // Diagnostics show the dbus path without the "N/<portal id>/" prefix: the portal id is not needed to locate the value.
+    private static string DevicePath(string topic) => string.Join('/', topic.Split('/').Skip(2));
     private int Value(string topic) => checked((int)Math.Round(RawValue(topic)));
     private static string ReadTopic(string write) => write.StartsWith("W/", StringComparison.Ordinal) ? "N/" + write[2..] :
         throw new InvalidOperationException("Ein Victron-Schreibtopic ist ungueltig.");
@@ -92,8 +97,10 @@ public sealed class JointBatteryHardware(IServiceProvider services) : IJointBatt
         }
         foreach (var item in expected) await Client.PublishValueAsync(item.Write, item.Value, token);
         await RefreshAsync(expected.Select(p => ReadTopic(p.Write)).ToArray(), token);
-        if (expected.Any(p => Value(ReadTopic(p.Write)) != p.Value))
-            throw new InvalidOperationException("Victron bestaetigt die gemeinsamen Sollwerte nicht.");
+        var mismatches = expected.Select(p => (p.Write, p.Value, Actual: Value(ReadTopic(p.Write)))).Where(p => p.Actual != p.Value).ToArray();
+        if (mismatches.Length > 0)
+            throw new InvalidOperationException("Victron bestaetigt die gemeinsamen Sollwerte nicht: " +
+                string.Join(", ", mismatches.Select(m => $"{DevicePath(m.Write)} soll {m.Value}, ist {m.Actual}")) + ".");
     }
 
     public Task<E3dcPowerAcknowledgement> SetE3dcAsync(E3dcPowerCommand command, CancellationToken token) =>
