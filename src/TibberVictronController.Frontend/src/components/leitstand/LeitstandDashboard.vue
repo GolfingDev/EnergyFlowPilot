@@ -179,13 +179,13 @@ const visibleSegments = computed(() => (summary.value?.planSegments ?? [])
 /* ---------- Plan chart geometry (one scale per band, labels only at values the chart reaches) ---------- */
 const plan = computed(() => {
   const slots = summary.value?.planSlots ?? [];
-  const width = 760;
-  const left = 44;
-  const right = 56;
-  const socTop = 22;
-  const socHeight = 118;
-  const priceTop = 172;
-  const priceHeight = 96;
+  const width = 1120;
+  const left = 58;
+  const right = 70;
+  const socTop = 30;
+  const socHeight = 190;
+  const priceTop = 270;
+  const priceHeight = 140;
   const step = slots.length > 0 ? (width - left - right) / slots.length : 0;
   const maxPvKw = Math.max(4, ...slots.map((slot) => slot.expectedPvYieldKwh * 4));
   const maxPrice = Math.max(0.5, ...slots.map((slot) => slot.pricePerKwh));
@@ -204,7 +204,7 @@ const plan = computed(() => {
   const labels = slots
     .map((slot, index) => ({ date: new Date(slot.startsAtUtc), index }))
     .filter(({ date }) => date.getMinutes() === 0 && date.getHours() % 6 === 0)
-    .map(({ date, index }) => ({ x: left + step * index, text: `${date.getDate()}.${date.getMonth() + 1}. ${String(date.getHours()).padStart(2, '0')}:00` }));
+    .map(({ date, index }) => ({ x: left + step * index, text: `${String(date.getHours()).padStart(2, '0')}:00`, day: `${date.getDate()}.${date.getMonth() + 1}.` }));
   const firstStart = slots.length > 0 ? new Date(slots[0].startsAtUtc).getTime() : 0;
   const slotMs = slots.length > 0 ? new Date(slots[0].endsAtUtc).getTime() - firstStart : 1;
   const nowX = left + Math.min(1, Math.max(0, (Date.now() - firstStart) / slotMs)) * step;
@@ -521,10 +521,10 @@ onBeforeUnmount(() => {
         <span v-if="summary" class="ls-muted">Stand {{ time(summary.createdAtUtc) }} Uhr</span>
       </div>
       <p v-if="firstEstimatedSlot" class="ls-muted">Ab {{ dayTime(firstEstimatedSlot.startsAtUtc) }} sind die Preise geschätzt (Balken mit gestricheltem Rand). Für diese Zeitfenster wird noch keine Netzladung geplant; nach Veröffentlichung wird neu gerechnet.</p>
-      <div class="ls-split">
+      <div class="ls-plan-layout">
         <div class="ls-panel ls-chart-panel">
-          <div class="ls-chart">
-            <svg v-if="plan.hasData" :viewBox="`0 0 ${plan.width} 300`" role="img" aria-label="Plan: Ladezustand, PV und Strompreis je Viertelstunde">
+          <div class="ls-chart ls-plan-chart" tabindex="0" aria-label="48-Stunden-Plan, auf schmalen Bildschirmen horizontal scrollbar">
+            <svg v-if="plan.hasData" :viewBox="`0 0 ${plan.width} 460`" role="img" aria-label="Plan: Ladezustand, PV und Strompreis je Viertelstunde">
               <text class="ls-band" :x="plan.left" :y="plan.socTop - 8">Ladezustand und PV</text>
               <g v-for="value in [0, 50, 100]" :key="`s${value}`">
                 <line class="ls-grid" :x1="plan.left" :x2="plan.width - plan.right" :y1="plan.socY(value)" :y2="plan.socY(value)" />
@@ -545,7 +545,9 @@ onBeforeUnmount(() => {
               <rect v-for="(bar, index) in plan.bars" :key="`b${index}`" class="ls-chart-hit" :class="{ 'ls-price--estimated': bar.estimated }" :x="bar.x" :y="bar.y" :width="bar.width" :height="bar.height" rx="1.5" :style="{ fill: categoryVar(bar.category) }" tabindex="0">
                 <title>{{ planSlotTooltip(summary?.planSlots[index]) }}</title>
               </rect>
-              <text v-for="label in plan.labels" :key="label.text + label.x" class="ls-axis" :x="label.x" y="292" text-anchor="middle">{{ label.text }}</text>
+              <text v-for="label in plan.labels" :key="label.x" class="ls-axis" :x="label.x" y="432" text-anchor="middle">
+                <tspan :x="label.x">{{ label.text }}</tspan><tspan :x="label.x" dy="18">{{ label.day }}</tspan>
+              </text>
               <line class="ls-now" :x1="plan.nowX" :x2="plan.nowX" :y1="plan.socTop - 2" :y2="plan.priceTop + plan.priceHeight" />
               <text class="ls-now-label" :x="plan.nowX + 4" :y="plan.socTop + 10">jetzt</text>
             </svg>
@@ -556,11 +558,12 @@ onBeforeUnmount(() => {
               <i :style="{ background: categoryVar(category) }" />{{ leitstandCategoryLabels[category] }}
             </span>
             <span><i class="ls-legend__line" />Ladezustand Victron</span>
+            <span><i class="ls-legend__pv" />PV-Leistung</span>
           </div>
         </div>
         <div class="ls-panel">
           <h3>Nächste Schritte</h3>
-          <ol class="ls-steps">
+          <ol class="ls-steps ls-plan-steps">
             <li v-for="segment in visibleSegments" :key="segment.startsAtUtc" class="ls-step">
               <span class="ls-step__time">{{ dayTime(segment.startsAtUtc) }}–{{ time(segment.endsAtUtc) }}</span>
               <span class="ls-step__bar" :style="{ background: categoryVar(segment.category) }" />
@@ -827,7 +830,14 @@ h3 { font-size: 1.05rem; margin-bottom: 10px; }
 .ls-check--warning .ls-check__mark { background: var(--ls-warning); }
 .ls-check--critical .ls-check__mark { background: var(--ls-critical); }
 
-.ls-chart-panel { display: grid; gap: 10px; }
+.ls-chart-panel { display: grid; gap: 10px; min-width: 0; }
+.ls-plan-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.ls-chart.ls-plan-chart svg { min-width: 900px; }
+.ls-plan-chart .ls-axis, .ls-plan-chart .ls-now-label { font-size: 12px; }
+.ls-plan-chart .ls-band { font-size: 14px; }
+.ls-plan-chart .ls-soc { stroke-width: 3; }
+.ls-plan-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
+@media (max-width: 700px) { .ls-plan-steps { grid-template-columns: minmax(0, 1fr); } }
 .ls-chart { width: 100%; overflow-x: auto; }
 .ls-chart svg { display: block; width: 100%; min-width: 640px; height: auto; }
 .ls-axis { fill: var(--ls-muted); font-family: var(--ls-font-data); font-size: 10px; }
@@ -846,6 +856,7 @@ h3 { font-size: 1.05rem; margin-bottom: 10px; }
 .ls-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.82rem; color: var(--ls-muted); }
 .ls-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .ls-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.ls-legend .ls-legend__pv { height: 3px; background: var(--ls-pvCharge); }
 .ls-legend .ls-legend__line { height: 3px; background: var(--ls-accent); }
 
 .ls-steps { list-style: none; margin: 0; padding: 0; }

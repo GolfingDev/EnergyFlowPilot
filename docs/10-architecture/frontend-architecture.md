@@ -64,3 +64,8 @@ Do not build one card per field. Use compact setting rows inside a section inste
 Do not add category chips to every field. Safety-critical settings use a subtle visual marker only.
 
 Do not add gradients, glassmorphism, or loud decorative effects to settings surfaces.
+
+
+### Lesbarkeit des 48-Stunden-Plans
+
+Der Leitstand zeigt den Plan über die gesamte Inhaltsbreite mit vergrößerten Diagrammbereichen und Beschriftungen. Uhrzeit und Datum stehen getrennt an der Zeitachse. Die nächsten Schritte folgen darunter, auf breiten Bildschirmen zweispaltig. Auf schmalen Bildschirmen bleibt das Diagramm horizontal scrollbar, damit Viertelstunden-Balken und Beschriftungen lesbar bleiben; die Seite selbst darf dadurch keinen horizontalen Überlauf erhalten. Die Darstellung gilt für den hellen und dunklen Leitstand sowie eingebettete Leitstand-Ansichten.
