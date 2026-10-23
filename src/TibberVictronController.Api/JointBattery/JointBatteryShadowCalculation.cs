@@ -46,7 +46,12 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
         }
     }
 
-    public async Task<JointBatteryPlan> CalculateAsync(E3dcLocalTelemetry e3dc, CancellationToken token)
+    /// <summary>
+    /// Loads the slow, slowly changing inputs first (prices, PV, 14-day history, temperatures) and reads both
+    /// batteries only immediately before planning. On the Raspberry Pi the slow part can exceed the planner's
+    /// 30 s freshness limit, so measurements taken up front were always stale by the time the plan was computed.
+    /// </summary>
+    public async Task<(JointBatteryPlan Plan, E3dcLocalTelemetry Telemetry)> CalculateAsync(CancellationToken token)
     {
         var clock = services.GetRequiredService<IUtcClock>();
         var settings = services.GetRequiredService<IControllerSettingStore>();
@@ -54,25 +59,13 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
         async Task<decimal> Setting(string key) => decimal.Parse(
             (await settings.GetSettingAsync(key, token))?.Value ?? throw new InvalidOperationException("Eine Einstellung fuer die gemeinsame Vorschau fehlt."),
             CultureInfo.InvariantCulture);
-        var mqtt = await ReadFreshVictronSnapshotAsync(token);
-        var checkedAt = clock.UtcNow;
-        foreach (var (date, name) in new[] { (mqtt.BatterySocMeasuredAtUtc, "Ladestand"), (mqtt.BatteryPowerMeasuredAtUtc, "Akkuleistung"),
-            (mqtt.GridPowerMeasuredAtUtc, "Netzleistung") })
-            if (date is null || checkedAt - date.Value > TimeSpan.FromSeconds(30) || date > checkedAt.AddSeconds(5))
-                throw new InvalidOperationException($"Die gemeinsame Vorschau benoetigt frische Victron-Messwerte ({name} fehlt oder ist aelter als 30 Sekunden).");
-        if (mqtt.BatterySocPercent is null || mqtt.BatteryPowerWatts is null || mqtt.GridPowerWatts is null)
-            throw new InvalidOperationException("Fuer die gemeinsame Vorschau fehlen Victron-Messwerte.");
+
+        // 1. Slow inputs without live battery data.
         var primary = await services.GetRequiredService<IBatteryConfigurationProvider>().GetBatteryConfigurationAsync(token);
-        var reservePercent = e3dc.ReserveKwh / e3dc.UsableCapacityKwh * 100m;
-        var secondary = new BatteryConfiguration(new BatteryConfigurationValues {
-            TotalCapacityKwh = e3dc.UsableCapacityKwh, MinimumStateOfChargePercent = reservePercent,
-            PlanningMinimumStateOfChargePercent = reservePercent,
-            PlanningMaximumStateOfChargePercent = await Setting(ControllerSettingDefaults.E3dcPlanningMaximumSocKey),
-            MaximumChargePowerWatts = e3dc.MaximumChargeWatts,
-            MaximumDischargePowerWatts = e3dc.MaximumDischargeWatts,
-            RoundTripEfficiencyPercent = await Setting(ControllerSettingDefaults.E3dcEfficiencyKey),
-            MinimumSavingsPerKwh = primary.MinimumSavingsPerKwh, WearCostPerKwh = primary.WearCostPerKwh
-        });
+        var e3dcMaximumSoc = await Setting(ControllerSettingDefaults.E3dcPlanningMaximumSocKey);
+        var e3dcEfficiency = await Setting(ControllerSettingDefaults.E3dcEfficiencyKey);
+        var gridLimit = checked((int)await Setting(ControllerSettingDefaults.JointBatteryGridLimitKey));
+        var feedInCompensation = await Setting(ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey);
         var start = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute / 15 * 15, 0, TimeSpan.Zero);
         var prices = (await services.GetRequiredService<IElectricityPriceForecastProvider>().GetPriceForecastAsync(start, start.AddHours(48), token))
             .Where(p => p.TimeSlot.StartsAtUtc >= start && p.TimeSlot.EndsAtUtc <= start.AddHours(48)).OrderBy(p => p.TimeSlot.StartsAtUtc).ToArray();
@@ -93,6 +86,30 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
             return new ConsumptionForecastSlot(price.TimeSlot, model.GetSlotConsumptionKwh(DateOnly.FromDateTime(local.DateTime),
                 local.Hour * 4 + local.Minute / 15, price.TimeSlot.Duration) ?? fallbackDaily / 24m * (decimal)price.TimeSlot.Duration.TotalHours);
         }).ToArray();
+        var loadDuration = clock.UtcNow - now;
+
+        // 2. Live readings of both batteries, as late as possible.
+        var e3dc = await services.GetRequiredService<IE3dcTelemetrySource>().ReadAsync(token);
+        var mqtt = await ReadFreshVictronSnapshotAsync(token);
+        var checkedAt = clock.UtcNow;
+        foreach (var (date, name) in new[] { (mqtt.BatterySocMeasuredAtUtc, "Ladestand"), (mqtt.BatteryPowerMeasuredAtUtc, "Akkuleistung"),
+            (mqtt.GridPowerMeasuredAtUtc, "Netzleistung") })
+            if (date is null || checkedAt - date.Value > TimeSpan.FromSeconds(30) || date > checkedAt.AddSeconds(5))
+                throw new InvalidOperationException($"Die gemeinsame Vorschau benoetigt frische Victron-Messwerte ({name} fehlt oder ist aelter als 30 Sekunden).");
+        if (mqtt.BatterySocPercent is null || mqtt.BatteryPowerWatts is null || mqtt.GridPowerWatts is null)
+            throw new InvalidOperationException("Fuer die gemeinsame Vorschau fehlen Victron-Messwerte.");
+
+        // 3. Plan from the fresh readings.
+        var reservePercent = e3dc.ReserveKwh / e3dc.UsableCapacityKwh * 100m;
+        var secondary = new BatteryConfiguration(new BatteryConfigurationValues {
+            TotalCapacityKwh = e3dc.UsableCapacityKwh, MinimumStateOfChargePercent = reservePercent,
+            PlanningMinimumStateOfChargePercent = reservePercent,
+            PlanningMaximumStateOfChargePercent = e3dcMaximumSoc,
+            MaximumChargePowerWatts = e3dc.MaximumChargeWatts,
+            MaximumDischargePowerWatts = e3dc.MaximumDischargeWatts,
+            RoundTripEfficiencyPercent = e3dcEfficiency,
+            MinimumSavingsPerKwh = primary.MinimumSavingsPerKwh, WearCostPerKwh = primary.WearCostPerKwh
+        });
         var grossNetLoadWatts = mqtt.GridPowerWatts.Value - mqtt.BatteryPowerWatts.Value - e3dc.BatteryPowerWatts;
         var adjusted = BatteryForecastService.ApplyCurrentNetLoad(consumption, pv, start, grossNetLoadWatts);
         if (clock.UtcNow >= start.AddMinutes(15))
@@ -102,12 +119,14 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
                 new("e3dc", secondary, new(e3dc.SocPercent, e3dc.MeasuredAtUtc), e3dc.BatteryPowerWatts,
                     e3dc.EffectiveChargeLimitWatts, e3dc.EffectiveDischargeLimitWatts)],
             Prices = prices, Pv = pv, Consumption = adjusted,
-            MaximumGridImportWatts = checked((int)await Setting(ControllerSettingDefaults.JointBatteryGridLimitKey)),
-            FeedInCompensationPerKwh = await Setting(ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey)
+            MaximumGridImportWatts = gridLimit,
+            FeedInCompensationPerKwh = feedInCompensation
         }, token);
-        return plan with { Warnings = [.. plan.Warnings,
+        return (plan with { Warnings = [.. plan.Warnings,
             .. (model.HasProfile ? Array.Empty<string>() : new[] { "Verbrauchsvorschau verwendet mangels geeigneter Messdaten ein gleichmaessiges Ersatzprofil." }),
             .. (temperatures is null ? new[] { "Temperaturdaten fehlen; gemeinsamer Verbrauchsforecast ohne Temperaturkorrektur." } : Array.Empty<string>()),
-            "Der E3/DC-Wirkungsgrad ist eine konfigurierbare Annahme, kein ausgelesener Messwert." ] };
+            .. (loadDuration > TimeSpan.FromSeconds(20)
+                ? new[] { $"Laden der Prognosedaten dauerte {loadDuration.TotalSeconds:F0} Sekunden." } : Array.Empty<string>()),
+            "Der E3/DC-Wirkungsgrad ist eine konfigurierbare Annahme, kein ausgelesener Messwert." ] }, e3dc);
     }
 }

@@ -56,7 +56,8 @@ public sealed class JointBatteryShadowBackgroundService(IServiceScopeFactory sco
             return;
         }
         // Keep the previous, still time-bounded plan available while its replacement is calculated.
-        var plan = await services.GetRequiredService<JointBatteryShadowCalculation>().CalculateAsync(local, token);
+        // The calculation reads both batteries again right before planning; the read above only proves access.
+        var (plan, planTelemetry) = await services.GetRequiredService<JointBatteryShadowCalculation>().CalculateAsync(token);
         // Logging is required for review, but only once per price slot. No simulated decision enters the production log.
         var first = plan.Slots.FirstOrDefault();
         if (first is not null && first.TimeSlot.StartsAtUtc != lastLoggedSlot)
@@ -66,6 +67,6 @@ public sealed class JointBatteryShadowBackgroundService(IServiceScopeFactory sco
                 JsonSerializer.Serialize(new { first.TimeSlot, first.Targets, first.Reason, plan.MaximumGridImportWatts })), token);
             lastLoggedSlot = first.TimeSlot.StartsAtUtc;
         }
-        state.Set(new("Shadow", "Gemeinsame Vorschau aktiv. Es werden keine Hardwarebefehle gesendet.", clock.UtcNow, local, plan));
+        state.Set(new("Shadow", "Gemeinsame Vorschau aktiv. Es werden keine Hardwarebefehle gesendet.", clock.UtcNow, planTelemetry, plan));
     }
 }
