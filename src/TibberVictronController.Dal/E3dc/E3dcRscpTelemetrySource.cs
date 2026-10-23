@@ -17,7 +17,10 @@ public sealed class E3dcRscpTelemetrySource(IControllerSettingStore settings, IU
             snapshot.ReserveKwh >= snapshot.UsableCapacityKwh || snapshot.MaximumChargeWatts is <= 0 or > 100000 ||
             snapshot.MaximumDischargeWatts is <= 0 or > 100000 ||
             snapshot.EffectiveChargeLimitWatts < 0 || snapshot.EffectiveDischargeLimitWatts < 0)
-            throw new InvalidDataException("Die lokalen E3/DC-Grenzen sind unplausibel.");
+            throw new InvalidDataException(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"Die lokalen E3/DC-Grenzen sind unplausibel: SoC {snapshot.SocPercent} %, Kapazitaet {snapshot.UsableCapacityKwh} kWh, " +
+                $"Reserve {snapshot.ReserveKwh} kWh, Lade-/Entladegrenze {snapshot.MaximumChargeWatts}/{snapshot.MaximumDischargeWatts} W, " +
+                $"wirksam {snapshot.EffectiveChargeLimitWatts}/{snapshot.EffectiveDischargeLimitWatts} W."));
         return snapshot;
     }
 

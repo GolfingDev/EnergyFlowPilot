@@ -51,7 +51,10 @@ internal sealed class E3dcRscpConnection(TcpClient client, RscpProtocol protocol
             var protocol = new RscpProtocol(client.GetStream(), access.Key);
             var auth = await protocol.ExchangeAsync(RscpValue.Container(1,
                 new(2, 13, Encoding.UTF8.GetBytes(access.User)), new(3, 13, Encoding.UTF8.GetBytes(access.Password))), 0x00800001, token);
-            if (auth.Number() <= 0) throw new InvalidDataException("Die RSCP-Anmeldung wurde abgelehnt.");
+            // The AUTH response carries the granted user level; 0 means no access.
+            var level = auth.Number();
+            if (level <= 0)
+                throw new InvalidDataException($"Die RSCP-Anmeldung wurde abgelehnt (Benutzerstufe {level}). RSCP-Benutzer und -Passwort (Portal-Zugang) pruefen.");
             return new(client, protocol);
         }
         catch { client.Dispose(); throw; }

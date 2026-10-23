@@ -188,6 +188,47 @@ public sealed class RscpProtocolTests
         Assert.Equal(2, logins);
     }
 
+    [Fact]
+    public async Task RejectedLoginNamesDeviceErrorInsteadOfGenericFailure()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var server = Task.Run(async () => {
+            using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
+            var device = new FakeDevice(peer.GetStream());
+            Assert.Equal(1u, await device.ReceiveAsync(timeout.Token));
+            // RSCP_ERR_ACCESS_DENIED as error value on the AUTH response tag.
+            await device.ReplyAsync(new(0x00800001, 255, BitConverter.GetBytes(2u)), timeout.Token);
+        }, timeout.Token);
+        var clock = new Clock();
+        var settings = new FakeControllerSettingStore(ControllerSettingDefaults.CreateDefaultSettings(clock.UtcNow));
+        foreach (var (key, value) in new[] {
+            (ControllerSettingDefaults.E3dcRscpHostKey, "127.0.0.1"), (ControllerSettingDefaults.E3dcRscpPortKey, port.ToString()),
+            (ControllerSettingDefaults.E3dcRscpUserKey, "test-user"), (ControllerSettingDefaults.E3dcRscpPasswordKey, "test-password"),
+            (ControllerSettingDefaults.E3dcRscpKeyKey, "test-only-key") })
+            await settings.SaveSettingAsync(new(key, value, ControllerSettingSensitivity.Sensitive, clock.UtcNow));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => new E3dcRscpTelemetrySource(settings, clock).ReadAsync(timeout.Token));
+        await server;
+        Assert.Contains("ACCESS_DENIED", error.Message);
+        Assert.Contains("Anmeldung abgelehnt", error.Message);
+        Assert.DoesNotContain("test-password", error.Message);
+    }
+
+    [Fact]
+    public void AllRscpNumberTypesAreReadAndUnknownTypesNameTagAndType()
+    {
+        Assert.Equal(-2, new RscpValue(1, 4, BitConverter.GetBytes((short)-2)).Number());
+        Assert.Equal(5_000_000_000m, new RscpValue(1, 8, BitConverter.GetBytes(5_000_000_000L)).Number());
+        Assert.Equal(278.0607m, Math.Round(new RscpValue(1, 11, BitConverter.GetBytes(278.0607d)).Number(), 4));
+        var error = Assert.Throws<InvalidDataException>(() => new RscpValue(0x03800026, 13, [1, 2]).Number());
+        Assert.Contains("0x03800026", error.Message);
+        Assert.Contains("Typ 13", error.Message);
+        Assert.Contains("6 NOT_AVAILABLE", Assert.Throws<InvalidDataException>(() =>
+            new RscpValue(0x01800041, 255, BitConverter.GetBytes(6u)).Number()).Message);
+    }
+
     /// <summary>Device side of one RSCP connection with its own sending cipher chain.</summary>
     private sealed class FakeDevice
     {
@@ -204,9 +245,9 @@ public sealed class RscpProtocolTests
             encrypt.Init(true, new ParametersWithIV(new KeyParameter(key), Enumerable.Repeat((byte)255, 32).ToArray()));
         }
 
-        private async Task<uint> ReceiveAsync(CancellationToken token) => Assert.Single(await reader.ReadFrameAsync(token)).Tag;
+        internal async Task<uint> ReceiveAsync(CancellationToken token) => Assert.Single(await reader.ReadFrameAsync(token)).Tag;
 
-        private async Task ReplyAsync(RscpValue value, CancellationToken token)
+        internal async Task ReplyAsync(RscpValue value, CancellationToken token)
         {
             var frame = RscpProtocol.Frame(RscpProtocol.EncodeValue(value));
             var padded = new byte[(frame.Length + 31) / 32 * 32]; frame.CopyTo(padded, 0);

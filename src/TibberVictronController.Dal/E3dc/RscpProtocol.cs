@@ -11,20 +11,62 @@ internal sealed record RscpValue(uint Tag, byte Type, byte[] Data)
     internal static RscpValue Request(uint tag) => new(tag, 0, []);
     internal static RscpValue Container(uint tag, params RscpValue[] children) => new(tag, 14,
         children.SelectMany(RscpProtocol.EncodeValue).ToArray());
+    internal const byte ErrorType = 255;
+
+    // Firmware versions differ in the numeric type they report for the same tag, so all RSCP number types are accepted.
     internal decimal Number() => Type switch
     {
         1 or 3 when Data.Length == 1 => Data[0],
         2 when Data.Length == 1 => (sbyte)Data[0],
+        4 when Data.Length == 2 => BinaryPrimitives.ReadInt16LittleEndian(Data),
         5 when Data.Length == 2 => BinaryPrimitives.ReadUInt16LittleEndian(Data),
         6 when Data.Length == 4 => BinaryPrimitives.ReadInt32LittleEndian(Data),
         7 when Data.Length == 4 => BinaryPrimitives.ReadUInt32LittleEndian(Data),
-        10 when Data.Length == 4 => (decimal)BinaryPrimitives.ReadSingleLittleEndian(Data),
-        _ => throw new InvalidDataException("Die RSCP-Antwort hat keinen gueltigen Zahlenwert.")
+        8 when Data.Length == 8 => BinaryPrimitives.ReadInt64LittleEndian(Data),
+        9 when Data.Length == 8 => BinaryPrimitives.ReadUInt64LittleEndian(Data),
+        10 when Data.Length == 4 && float.IsFinite(BinaryPrimitives.ReadSingleLittleEndian(Data)) =>
+            (decimal)BinaryPrimitives.ReadSingleLittleEndian(Data),
+        11 when Data.Length == 8 && double.IsFinite(BinaryPrimitives.ReadDoubleLittleEndian(Data)) =>
+            (decimal)BinaryPrimitives.ReadDoubleLittleEndian(Data),
+        ErrorType => throw new InvalidDataException($"Die E3/DC-Anlage meldet fuer Tag {RscpProtocol.TagName(Tag)} den Fehler {DescribeError()}."),
+        _ => throw new InvalidDataException(
+            $"Die RSCP-Antwort fuer Tag {RscpProtocol.TagName(Tag)} hat keinen gueltigen Zahlenwert (Typ {Type}, {Data.Length} Bytes).")
     };
-    internal IReadOnlyList<RscpValue> Children() => Type == 14 ? RscpProtocol.DecodeValues(Data) :
-        throw new InvalidDataException("Der erwartete RSCP-Container fehlt.");
+
+    internal IReadOnlyList<RscpValue> Children() => Type switch
+    {
+        14 => RscpProtocol.DecodeValues(Data),
+        ErrorType => throw new InvalidDataException($"Die E3/DC-Anlage meldet fuer Tag {RscpProtocol.TagName(Tag)} den Fehler {DescribeError()}."),
+        _ => throw new InvalidDataException($"Fuer Tag {RscpProtocol.TagName(Tag)} wurde ein RSCP-Container erwartet, erhalten wurde Typ {Type}.")
+    };
+
     internal RscpValue Required(uint tag) => Children().SingleOrDefault(v => v.Tag == tag) ??
-        throw new InvalidDataException("Ein benoetigter RSCP-Messwert fehlt.");
+        throw new InvalidDataException($"Der RSCP-Messwert {RscpProtocol.TagName(tag)} fehlt in der Antwort {RscpProtocol.TagName(Tag)}.");
+
+    /// <summary>RSCP error payloads carry a numeric code; names follow the published RSCP tag list.</summary>
+    internal string DescribeError()
+    {
+        if (Data.Length is not (1 or 2 or 4)) return "unbekannt";
+        var code = Data.Length switch
+        {
+            1 => Data[0],
+            2 => BinaryPrimitives.ReadUInt16LittleEndian(Data),
+            _ => BinaryPrimitives.ReadUInt32LittleEndian(Data)
+        };
+        var name = code switch
+        {
+            1 => "NOT_HANDLED",
+            2 => "ACCESS_DENIED (Benutzer, Passwort oder Berechtigung pruefen)",
+            3 => "FORMAT",
+            4 => "AGAIN",
+            5 => "OUT_OF_BOUNDS",
+            6 => "NOT_AVAILABLE",
+            7 => "UNKNOWN_TAG",
+            8 => "ALREADY_IN_USE",
+            _ => "unbekannt"
+        };
+        return $"{code} {name}";
+    }
 }
 
 /// <summary>
@@ -59,12 +101,21 @@ internal sealed class RscpProtocol
         for (var offset = 0; offset < padded.Length; offset += 32)
             encrypt.ProcessBlock(padded, offset, ciphertext, offset);
         await stream.WriteAsync(ciphertext, token);
-        var response = (await ReadFrameAsync(token)).SingleOrDefault(v => v.Tag == responseTag)
-            ?? throw new InvalidDataException("Die RSCP-Antwort passt nicht zur Anfrage.");
-        if (response.Type == 255)
-            throw new InvalidDataException("Die E3/DC-Anlage hat die RSCP-Abfrage abgelehnt.");
+        var values = await ReadFrameAsync(token);
+        var response = values.SingleOrDefault(v => v.Tag == responseTag) ?? throw new InvalidDataException(
+            $"Die RSCP-Antwort passt nicht zur Anfrage: erwartet {TagName(responseTag)}, erhalten " +
+            $"{string.Join(", ", values.Select(v => $"{TagName(v.Tag)} (Typ {v.Type})"))}.");
+        if (response.Type == RscpValue.ErrorType)
+        {
+            // Authentication failures arrive as an error value on the AUTH response tag.
+            var hint = responseTag == 0x00800001 ? " Anmeldung abgelehnt: RSCP-Benutzer und -Passwort (Portal-Zugang) pruefen." : "";
+            throw new InvalidDataException(
+                $"Die E3/DC-Anlage hat die RSCP-Abfrage {TagName(request.Tag)} abgelehnt (Fehler {response.DescribeError()}).{hint}");
+        }
         return response;
     }
+
+    internal static string TagName(uint tag) => $"0x{tag:X8}";
 
     internal async Task<IReadOnlyList<RscpValue>> ReadFrameAsync(CancellationToken token)
     {
@@ -74,7 +125,8 @@ internal sealed class RscpProtocol
         var plain = new byte[32];
         decrypt.ProcessBlock(first, 0, plain, 0);
         if (plain[0] != 0xE3 || plain[1] != 0xDC || plain[2] != 0 || (plain[3] & 15) != 1 || (plain[3] & 0xE0) != 0)
-            throw new InvalidDataException("Der RSCP-Rahmenkopf ist ungueltig.");
+            // A wrong RSCP key decrypts to random bytes, so the fixed frame header is the first thing that fails.
+            throw new InvalidDataException("Der RSCP-Rahmenkopf ist ungueltig. Meist ist der RSCP-Schluessel falsch (am Geraet unter Personalisieren > Benutzerprofil gesetzt).");
         var hasCrc = (plain[3] & 16) != 0;
         if (!hasCrc) throw new InvalidDataException("Die RSCP-Antwort hat keine Pruefsumme.");
         var payloadLength = BinaryPrimitives.ReadUInt16LittleEndian(plain.AsSpan(16));

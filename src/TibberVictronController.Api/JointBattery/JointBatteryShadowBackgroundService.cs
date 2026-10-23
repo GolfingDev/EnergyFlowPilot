@@ -23,10 +23,14 @@ public sealed class JointBatteryShadowBackgroundService(IServiceScopeFactory sco
             catch (Exception exception)
             {
                 failures = Math.Min(3, failures + 1);
-                // Neither configuration values nor exception messages are logged: connection/auth errors may contain secrets.
-                logger.LogWarning("Gemeinsame Akku-Vorschau fehlgeschlagen. Fehlertyp={ErrorType}", exception.GetType().Name);
-                state.Set(new("Blocked", "Die gemeinsame Vorschau ist wegen fehlender oder ungueltiger Daten gesperrt (" + exception.GetType().Name + ").",
-                    DateTimeOffset.UtcNow, state.Current.LocalTelemetry, null));
+                // Configuration values and foreign exception messages are never logged: connection/auth errors may contain
+                // secrets. InvalidDataException is raised only by our RSCP adapter with fixed German texts (tags, types,
+                // device error codes, plausibility values) and is the only way to tell a rejected login from a data problem.
+                var detail = exception is InvalidDataException ? exception.Message : null;
+                logger.LogWarning("Gemeinsame Akku-Vorschau fehlgeschlagen. Fehlertyp={ErrorType} Detail={Detail}",
+                    exception.GetType().Name, detail ?? "-");
+                state.Set(new("Blocked", "Die gemeinsame Vorschau ist wegen fehlender oder ungueltiger Daten gesperrt (" + exception.GetType().Name + ")." +
+                    (detail is null ? "" : " " + detail), DateTimeOffset.UtcNow, state.Current.LocalTelemetry, null));
             }
             try { await Task.Delay(TimeSpan.FromSeconds(failures == 0 ? 30 : Math.Min(60, 15 * (1 << failures))), stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
