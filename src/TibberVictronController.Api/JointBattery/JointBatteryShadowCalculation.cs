@@ -114,10 +114,10 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
         var adjusted = BatteryForecastService.ApplyCurrentNetLoad(consumption, pv, start, grossNetLoadWatts);
         if (clock.UtcNow >= start.AddMinutes(15))
             throw new InvalidOperationException("Der Preiszeitabschnitt ist waehrend der Vorschau abgelaufen. Die Planung wird erneut angefordert.");
+        var (e3dcCharge, e3dcDischarge) = await E3dcLimitPolicy.ActiveLimitsAsync(settings, e3dc, token);
         var plan = new JointBatteryPlanner().Calculate(new JointBatteryPlanInput {
             NowUtc = clock.UtcNow, Batteries = [new("victron", primary, new(mqtt.BatterySocPercent.Value, mqtt.BatterySocMeasuredAtUtc!.Value), (int)mqtt.BatteryPowerWatts.Value),
-                new("e3dc", secondary, new(e3dc.SocPercent, e3dc.MeasuredAtUtc), e3dc.BatteryPowerWatts,
-                    e3dc.EffectiveChargeLimitWatts, e3dc.EffectiveDischargeLimitWatts)],
+                new("e3dc", secondary, new(e3dc.SocPercent, e3dc.MeasuredAtUtc), e3dc.BatteryPowerWatts, e3dcCharge, e3dcDischarge)],
             Prices = prices, Pv = pv, Consumption = adjusted,
             MaximumGridImportWatts = gridLimit,
             FeedInCompensationPerKwh = feedInCompensation

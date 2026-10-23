@@ -174,7 +174,8 @@ export interface JointBatteryShadowDto {
   updatedAtUtc: string;
   calculatedAtUtc: string | null;
   maximumGridImportWatts: number | null;
-  localTelemetry: { measuredAtUtc: string; socPercent: number; usableCapacityKwh: number; reserveKwh: number } | null;
+  localTelemetry: { measuredAtUtc: string; socPercent: number; usableCapacityKwh: number; reserveKwh: number;
+    effectiveChargeLimitWatts: number; effectiveDischargeLimitWatts: number } | null;
   warnings: string[];
   batteries: { id: string; socPercent: number; capacityKwh: number; reserveKwh: number; measuredPowerWatts: number }[];
   slots: { startsAtUtc: string; endsAtUtc: string; pricePerKwh: number; currency: string; isPriceEstimated: boolean;

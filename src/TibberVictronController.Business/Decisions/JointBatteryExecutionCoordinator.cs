@@ -33,42 +33,52 @@ public sealed class JointBatteryExecutionCoordinator(IJointBatteryHardware hardw
         // Ramp increases only. A budget reduction or stop is immediate, not delayed by the ramp.
         static int Ramp(int old, int target) => Math.Sign(target) * Math.Min(Math.Abs(target), Math.Abs(old) + 250);
         command = command with { VictronWatts = Ramp(previous.VictronTargetWatts, command.VictronWatts), E3dcWatts = Ramp(previous.E3dcTargetWatts, command.E3dcWatts) };
-        if ((previous.Status != "Starting" && ((previous.VictronTargetWatts == 0 && command.VictronWatts != 0) || (previous.E3dcTargetWatts == 0 && command.E3dcWatts != 0))) ||
-            Math.Abs(previous.VictronTargetWatts - command.VictronWatts) > 500 || Math.Abs(previous.E3dcTargetWatts - command.E3dcWatts) > 500)
-            state.SettlingSinceUtc = clock.UtcNow;
         var e3dcMode = command.E3dcWatts == 0 ? E3dcPowerMode.Idle : command.E3dcWatts < 0 ? E3dcPowerMode.Discharge :
             command.ChargeSource == BatteryChargeSource.PV ? E3dcPowerMode.ChargePv : E3dcPowerMode.ChargeGrid;
-        var ack = await hardware.SetE3dcAsync(new(e3dcMode, Math.Abs(command.E3dcWatts)), token);
+        var requestedE3dc = Math.Abs(command.E3dcWatts);
+        var ack = await hardware.SetE3dcAsync(new(e3dcMode, requestedE3dc), token);
+
+        // The E3/DC answers with the power it actually grants. Less than requested is its own limit (e.g. the 97 W it
+        // reports at the reserve), not a rejection: continue with the granted power and report it. More than requested
+        // is never plausible. All site limits were computed for the full request, so a smaller grant is always safe.
+        if (ack.EchoPowerWatts < 0 || ack.EchoPowerWatts > requestedE3dc)
+            throw new InvalidOperationException($"E3/DC bestaetigt einen unplausiblen Leistungswert ({ack.EchoPowerWatts} W bei {requestedE3dc} W angefordert).");
+        var grantedE3dc = Math.Sign(command.E3dcWatts) * ack.EchoPowerWatts;
+        var grantNote = ack.EchoPowerWatts < requestedE3dc ? $" E3/DC gibt nur {ack.EchoPowerWatts} von {requestedE3dc} W frei." : "";
+
+        // Settling restarts when a battery starts or changes notably; measured against what the E3/DC really granted.
+        if ((previous.Status != "Starting" && ((previous.VictronTargetWatts == 0 && command.VictronWatts != 0) || (previous.E3dcTargetWatts == 0 && grantedE3dc != 0))) ||
+            Math.Abs(previous.VictronTargetWatts - command.VictronWatts) > 500 || Math.Abs(previous.E3dcTargetWatts - grantedE3dc) > 500)
+            state.SettlingSinceUtc = clock.UtcNow;
+
         // EMS_MODE readback uses its own scale (0 idle, 1 discharge, 2 charge), not the SET_POWER mode numbers.
-        // Grid and PV charging both report 2.
+        // Grid and PV charging both report 2. A request granted with 0 W has no defined mode to wait for.
         var expectedMode = e3dcMode switch
         {
             E3dcPowerMode.Idle => 0,
             E3dcPowerMode.Discharge => 1,
             _ => 2
         };
-        if (ack.EchoPowerWatts != Math.Abs(command.E3dcWatts))
-            throw new InvalidOperationException("E3/DC bestaetigt den Leistungswert nicht.");
-        if (ack.OperatingMode != expectedMode)
+        if ((requestedE3dc == 0 || grantedE3dc != 0) && ack.OperatingMode != expectedMode)
         {
             state.SettlingSinceUtc ??= clock.UtcNow;
             if (clock.UtcNow - state.SettlingSinceUtc > TimeSpan.FromSeconds(90))
-                throw new InvalidOperationException("E3/DC bestaetigt den angeforderten Betriebsmodus nicht.");
+                throw new InvalidOperationException($"E3/DC bestaetigt den angeforderten Betriebsmodus nicht (erwartet {expectedMode}, gemeldet {ack.OperatingMode}).");
             await hardware.SetVictronAsync(0, token);
-            state.Set(new("Starting", "E3/DC-Betriebsmodus wird zurueckgelesen; Victron bleibt bis zur Bestaetigung neutral.",
-                clock.UtcNow, true, 0, command.E3dcWatts, live.Batteries[0].MeasuredPowerWatts, ack.MeasuredPowerWatts, command.ValidUntilUtc));
+            state.Set(new("Starting", "E3/DC-Betriebsmodus wird zurueckgelesen; Victron bleibt bis zur Bestaetigung neutral." + grantNote,
+                clock.UtcNow, true, 0, grantedE3dc, live.Batteries[0].MeasuredPowerWatts, ack.MeasuredPowerWatts, command.ValidUntilUtc));
             return;
         }
         await hardware.SetVictronAsync(command.VictronWatts, token);
         var measured = new[] { live.Batteries[0].MeasuredPowerWatts, live.Batteries[1].MeasuredPowerWatts };
-        var targets = new[] { command.VictronWatts, command.E3dcWatts };
+        var targets = new[] { command.VictronWatts, grantedE3dc };
         if (targets.Zip(measured).Any(p => Math.Sign(p.First) * p.Second < -150))
             throw new InvalidOperationException("Ein Akku arbeitet gegen die gemeinsame Sollrichtung.");
         state.SettlingSinceUtc ??= clock.UtcNow;
         if (clock.UtcNow - state.SettlingSinceUtc > TimeSpan.FromSeconds(90) && targets.Zip(measured).Any(p =>
             Math.Abs(p.First) > 100 && (Math.Sign(p.First) * p.Second < Math.Abs(p.First) * .4 || Math.Abs(p.Second) > Math.Abs(p.First) + 500)))
             throw new InvalidOperationException("Die gemessenen Leistungen folgen den gemeinsamen Sollwerten nicht.");
-        state.Set(new("Active", command.Reason, clock.UtcNow, true, command.VictronWatts, command.E3dcWatts,
+        state.Set(new("Active", command.Reason + grantNote, clock.UtcNow, true, command.VictronWatts, grantedE3dc,
             measured[0], measured[1], command.ValidUntilUtc));
     }
 

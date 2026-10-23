@@ -82,6 +82,10 @@ function powerLabel(watts: number): string {
           <strong>{{ battery.id === 'e3dc' ? 'E3/DC' : 'Victron' }}</strong>
           <p>{{ formatPercent(battery.socPercent) }} · {{ formatNumber(battery.capacityKwh, 2) }} kWh · Reserve {{ formatNumber(battery.reserveKwh, 2) }} kWh</p>
           <p>Gemessen: {{ powerLabel(battery.measuredPowerWatts) }}</p>
+          <p v-if="battery.id === 'e3dc' && state.localTelemetry" class="text-caption">
+            Vom Gerät gemeldete Grenze: Laden {{ formatPower(state.localTelemetry.effectiveChargeLimitWatts) }} ·
+            Entladen {{ formatPower(state.localTelemetry.effectiveDischargeLimitWatts) }}
+          </p>
           <p v-if="state.slots[0]">Vorschlag: {{ powerLabel(state.slots[0].targets.find(t => t.id === battery.id)?.signedPowerWatts ?? 0) }}</p>
         </v-col>
       </v-row>

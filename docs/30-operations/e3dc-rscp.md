@@ -105,6 +105,15 @@ Geschrieben wird ausschliesslich der fluechtige RSCP-Leistungsbefehl: Modus 1 ne
 
 Bei Fehlern, abgelaufenen Plaenen oder Abschaltung stoppt zuerst Victron, danach E3/DC. Erst neutrale Messwerte beider Speicher erlauben die Rueckgabe von E3/DC an Automatik und das Loeschen der Wiederherstellungspflicht. Scheitert dies, bleiben Einzelakku-Schreiber gesperrt. Nach Fehlern gilt eine Wiederanlaufsperre von 30 Sekunden. Beim Neustart erfolgt zuerst die ausstehende Ruecknahme; scheitert sie, startet der Dienst trotzdem mit gesperrter Einzelakku-Steuerung. Ist die Hardware nicht erreichbar, kann auch der separate Helfer keinen sicheren physikalischen Zustand garantieren; ein vollstaendiger Netzwerkausfall ist damit nicht als beherrscht nachgewiesen.
 
+### Gemeldete E3/DC-Leistungsgrenze (97 W)
+
+An der Notstromreserve meldet der E3/DC als wirksame Lade- und Entladegrenze (`EMS_USED_CHARGE_LIMIT`/`EMS_USED_DISCHARGE_LIMIT`) zeitweise nur ±97 W, obwohl seine Systemgrenze 3 kW betraegt. Die Ursache ist nicht geklaert; vermutet wird die aktive Stromsparfunktion. Betreiberentscheidung vom 23.10.2026: ausprobieren, was das Geraet bei hoeherer Anforderung macht.
+
+- Standard (`jointBattery.e3dc.respectReportedLimits=false`): Planung und Ausfuehrung fordern bis zur Systemgrenze an. Die Anforderung steigt wie ueblich in 250-W-Schritten, jeweils ausgehend von der zuletzt **gewaehrten** Leistung.
+- Die Leistungsquittung von `EMS_SET_POWER` gilt als tatsaechlich gewaehrte Leistung. Weniger als angefordert ist kein Fehler: Die Steuerung rechnet mit dem gewaehrten Wert weiter, und die Karte zeigt „E3/DC gibt nur X von Y W frei“. Mehr als angefordert gilt als unplausibel und stoppt die Ausfuehrung. Phasen- und Zuleitungsgrenzen werden immer fuer die volle Anforderung berechnet, daher ist eine kleinere Freigabe unkritisch.
+- Gewaehrt der E3/DC 0 W, wird nicht auf seinen Betriebsmodus gewartet; der Victron arbeitet weiter.
+- Mit `true` gilt wieder die gemeldete Grenze als Obergrenze. Die gemeldete Grenze steht auf der Dashboard-Karte.
+
 ### Manuelle Ladung beider Akkus
 
 Bei eingeschalteter gemeinsamer Steuerung (ohne globalen Shadow-Modus) kann im Dashboard eine Lademenge in kWh vorgegeben werden, optional mit einer Hoechstleistung (`POST`/`DELETE /api/joint-battery/manual-charge`). Betreiberentscheidung vom 23.10.2026:

@@ -79,8 +79,9 @@ public sealed class JointBatteryHardware(IServiceProvider services) : IJointBatt
             PlanningMinimumStateOfChargePercent = local.ReserveKwh / local.UsableCapacityKwh * 100, PlanningMaximumStateOfChargePercent = maxSoc,
             MaximumChargePowerWatts = local.MaximumChargeWatts, MaximumDischargePowerWatts = local.MaximumDischargeWatts,
             RoundTripEfficiencyPercent = efficiency });
+        var (e3dcCharge, e3dcDischarge) = await E3dcLimitPolicy.ActiveLimitsAsync(store, local, token);
         return new(at, [new("victron", primary, new(RawValue(topics.BatterySocTopic), at), Value(topics.BatteryPowerTopic), chargeLimit),
-            new("e3dc", secondary, new(local.SocPercent, local.MeasuredAtUtc), local.BatteryPowerWatts, local.EffectiveChargeLimitWatts, local.EffectiveDischargeLimitWatts)],
+            new("e3dc", secondary, new(local.SocPercent, local.MeasuredAtUtc), local.BatteryPowerWatts, e3dcCharge, e3dcDischarge)],
             phaseTopics.Select(Value).ToArray(), topics.AcOutPowerTopics.Select(Value).ToArray(), acIn.Sum(Value) - topics.AcOutPowerTopics.Sum(Value), local.OperatingMode, limits);
     }
 

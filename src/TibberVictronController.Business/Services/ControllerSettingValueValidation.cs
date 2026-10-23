@@ -8,7 +8,8 @@ internal static class ControllerSettingValueValidation
 {
     public static void Validate(string key, string? value)
     {
-        if (key is ControllerSettingDefaults.E3dcRscpEnabledKey or ControllerSettingDefaults.JointBatteryEnabledKey or ControllerSettingDefaults.JointBatteryExecutionEnabledKey &&
+        if (key is ControllerSettingDefaults.E3dcRscpEnabledKey or ControllerSettingDefaults.JointBatteryEnabledKey or ControllerSettingDefaults.JointBatteryExecutionEnabledKey
+                or ControllerSettingDefaults.E3dcRespectReportedLimitsKey &&
             !bool.TryParse(value, out _))
             throw new ArgumentException("Der Schalter fuer lokalen E3/DC-Zugriff oder gemeinsame Vorschau muss true oder false sein.");
         if (key == ControllerSettingDefaults.E3dcRscpKeyKey && value is not null && System.Text.Encoding.UTF8.GetByteCount(value) > 32)

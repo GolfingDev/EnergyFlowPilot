@@ -62,12 +62,27 @@ public sealed class JointBatteryExecutionTests
     }
 
     [Fact]
-    public async Task WrongE3dcEchoPreventsVictronStart()
+    public async Task ImplausibleE3dcEchoAboveRequestPreventsVictronStart()
     {
         var hardware = new Hardware(); var state = new JointBatteryExecutionState { NeutralSamples = 2, Direction = 1 };
         hardware.BadEcho = true;
         await Assert.ThrowsAsync<InvalidOperationException>(() => new JointBatteryExecutionCoordinator(hardware, state, new Clock()).StepAsync(Command(), CancellationToken.None));
         Assert.DoesNotContain(hardware.Commands, c => c == "Victron:250");
+    }
+
+    [Fact]
+    public async Task LowerE3dcGrantIsUsedAndReportedInsteadOfStopping()
+    {
+        // As on the device at its reserve: 97 W granted for a larger request.
+        var hardware = new Hardware { Grant = 97 }; var state = new JointBatteryExecutionState { NeutralSamples = 2, Direction = 1 };
+        await new JointBatteryExecutionCoordinator(hardware, state, new Clock()).StepAsync(Command(), CancellationToken.None);
+        Assert.Equal("Active", state.Current.Status);
+        Assert.Equal(97, state.Current.E3dcTargetWatts);
+        Assert.Equal(250, state.Current.VictronTargetWatts);
+        Assert.Contains("E3/DC gibt nur 97 von 250 W frei", state.Current.Message);
+        // The next request keeps trying above the grant (ramp from the granted power).
+        await new JointBatteryExecutionCoordinator(hardware, state, new Clock()).StepAsync(Command(), CancellationToken.None);
+        Assert.Contains("E3dc:ChargeGrid:347", hardware.Commands);
     }
 
     [Fact]
@@ -145,6 +160,7 @@ public sealed class JointBatteryExecutionTests
         internal int Primary; internal int Secondary;
         internal bool BadEcho; internal bool DelayMode; internal bool Follow = true; internal bool FailE3dc;
         internal Func<JointBatteryLiveSnapshot, JointBatteryLiveSnapshot>? Adjust;
+        internal int? Grant;
         public Task<JointBatteryLiveSnapshot> ReadAsync(CancellationToken token)
         {
             var live = Live(Primary, Secondary);
@@ -155,7 +171,8 @@ public sealed class JointBatteryExecutionTests
         {
             Commands.Add($"E3dc:{command.Mode}:{command.PowerWatts}");
             if (FailE3dc) throw new IOException("Simulierter Verbindungsabbruch");
-            var signed = command.Mode == E3dcPowerMode.Discharge ? -command.PowerWatts : command.Mode is E3dcPowerMode.ChargeGrid or E3dcPowerMode.ChargePv ? command.PowerWatts : 0;
+            var granted = Grant is { } grant ? Math.Min(grant, command.PowerWatts) : command.PowerWatts;
+            var signed = command.Mode == E3dcPowerMode.Discharge ? -granted : command.Mode is E3dcPowerMode.ChargeGrid or E3dcPowerMode.ChargePv ? granted : 0;
             if (Follow) Secondary = signed;
             // Real EMS_MODE scale: 0 idle, 1 discharge, 2 charge (grid and PV alike).
             var readback = command.Mode switch
@@ -164,7 +181,7 @@ public sealed class JointBatteryExecutionTests
                 E3dcPowerMode.Discharge => 1,
                 _ => 0
             };
-            return Task.FromResult(new E3dcPowerAcknowledgement(BadEcho ? 97 : command.PowerWatts, DelayMode ? 0 : readback, Secondary, Now));
+            return Task.FromResult(new E3dcPowerAcknowledgement(BadEcho ? command.PowerWatts + 1000 : granted, DelayMode ? 0 : readback, Secondary, Now));
         }
     }
 }
