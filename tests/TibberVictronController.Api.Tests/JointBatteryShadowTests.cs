@@ -30,8 +30,79 @@ public sealed class JointBatteryShadowTests
         var decoded = await reconstructed.GetSettingAsync(key);
         Assert.Equal("test-only-secret", decoded!.Value);
         Assert.Null(decoded.GetFrontendReadableValue());
+        // A lost key ring must not break settings reads; the credential just counts as unconfigured.
         var wrongKeys = new ProtectedRscpSettingStore(inner, new EphemeralDataProtectionProvider());
-        await Assert.ThrowsAsync<System.Security.Cryptography.CryptographicException>(() => wrongKeys.GetSettingAsync(key));
+        var unreadable = await wrongKeys.GetSettingAsync(key);
+        Assert.NotNull(unreadable);
+        Assert.False(unreadable.IsConfigured);
+        Assert.Contains(await wrongKeys.GetAllSettingsAsync(), s => s.Key == key && !s.IsConfigured);
+    }
+
+    [Theory]
+    [InlineData("normalEss", "External-ESS")]
+    [InlineData("externalEss", "Anschluss")]
+    public async Task MissingPreconditionsNeverClaimOwnershipOrCreateRecoveryObligation(string controlMode, string expectedReason)
+    {
+        // Claiming first used to persist a recovery obligation whose release could not succeed (e.g. normalEss),
+        // which locked the very settings needed to repair it.
+        var settings = new Settings();
+        foreach (var (key, value) in new[] {
+            (ControllerSettingDefaults.JointBatteryExecutionEnabledKey, "true"), (ControllerSettingDefaults.VictronDryRunKey, "false"),
+            (ControllerSettingDefaults.E3dcRscpEnabledKey, "true"), (ControllerSettingDefaults.E3dcRscpHostKey, "192.0.2.10"),
+            (ControllerSettingDefaults.E3dcRscpPortKey, "5033"), (ControllerSettingDefaults.E3dcRscpUserKey, "test-user"),
+            (ControllerSettingDefaults.E3dcRscpPasswordKey, "test-password"), (ControllerSettingDefaults.E3dcRscpKeyKey, "test-key"),
+            (ControllerSettingDefaults.VictronControlModeKey, controlMode), (ControllerSettingDefaults.JointBatteryPhase1LimitKey, "0") })
+            await settings.SaveSettingAsync(new(key, value, ControllerSettingSensitivity.Normal, Now));
+        var events = new Events();
+        using var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings)
+            .AddSingleton<IUtcClock>(new Clock()).AddSingleton<IOperationalEventRepository>(events).BuildServiceProvider();
+        var state = new JointBatteryExecutionState();
+        var ownership = new VictronSetpointRefreshState();
+        var worker = new JointBatteryExecutionBackgroundService(services.GetRequiredService<IServiceScopeFactory>(), state,
+            ownership, NullLogger<JointBatteryExecutionBackgroundService>.Instance, new Watchdog());
+        await worker.TickAsync(CancellationToken.None);
+        await worker.TickAsync(CancellationToken.None);
+        Assert.Equal("Blocked", state.Current.Status);
+        Assert.Contains(expectedReason, state.Current.Message);
+        Assert.False(state.Current.OwnsControl);
+        Assert.False(ownership.JointControlActive);
+        Assert.Null(await settings.GetSettingAsync(ControllerSettingDefaults.JointBatteryRecoveryPendingKey));
+        // A persistent blocker is logged once, not on every tick.
+        Assert.Single(events.Saved);
+    }
+
+    [Fact]
+    public async Task ManualRecoveryConfirmationRequiresDisabledExecutionAndReleasesLegacyLock()
+    {
+        var settings = new Settings();
+        await settings.SaveSettingAsync(new(ControllerSettingDefaults.JointBatteryRecoveryPendingKey, "true", ControllerSettingSensitivity.Normal, Now));
+        await settings.SaveSettingAsync(new(ControllerSettingDefaults.JointBatteryExecutionEnabledKey, "true", ControllerSettingSensitivity.Normal, Now));
+        var ownership = new VictronSetpointRefreshState { JointControlActive = true };
+        var state = new JointBatteryExecutionState { Direction = 1, NeutralSamples = 2 };
+        var events = new Events();
+        var recovery = new JointBatteryRecoveryOverride(settings, ownership, state, new Clock(), events,
+            NullLogger<JointBatteryRecoveryOverride>.Instance);
+
+        Assert.Contains("deaktivieren", await recovery.ConfirmAsync(CancellationToken.None));
+        Assert.True(ownership.JointControlActive);
+
+        await settings.SaveSettingAsync(new(ControllerSettingDefaults.JointBatteryExecutionEnabledKey, "false", ControllerSettingSensitivity.Normal, Now));
+        Assert.Null(await recovery.ConfirmAsync(CancellationToken.None));
+        Assert.False(ownership.JointControlActive);
+        Assert.Equal(0, state.Direction);
+        Assert.False(await JointBatteryOwnership.BlocksLegacyAsync(settings, CancellationToken.None));
+        Assert.Equal("JointBatteryRecoveryOverride", Assert.Single(events.Saved).Category);
+
+        Assert.Contains("keine", await recovery.ConfirmAsync(CancellationToken.None));
+    }
+
+    private sealed class Events : IOperationalEventRepository
+    {
+        internal List<OperationalEvent> Saved { get; } = [];
+        public Task SaveEventAsync(OperationalEvent operationalEvent, CancellationToken cancellationToken = default)
+        { Saved.Add(operationalEvent); return Task.CompletedTask; }
+        public Task<IReadOnlyList<OperationalEvent>> GetRecentEventsAsync(int maxCount, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<OperationalEvent>>(Saved);
     }
 
     [Fact]

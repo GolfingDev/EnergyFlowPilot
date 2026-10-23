@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http.HttpResults;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
 
@@ -7,8 +8,11 @@ public static class JointBatteryEndpoints
 {
     public static IEndpointRouteBuilder MapJointBatteryEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/joint-battery/shadow", (JointBatteryRuntimeState state, JointBatteryExecutionState executionState, IUtcClock clock) =>
+        endpoints.MapGet("/api/joint-battery/shadow", async (JointBatteryRuntimeState state, JointBatteryExecutionState executionState,
+            IUtcClock clock, IControllerSettingStore settings, CancellationToken cancellationToken) =>
         {
+            var recoveryPending = bool.TryParse((await settings.GetSettingAsync(ControllerSettingDefaults.JointBatteryRecoveryPendingKey, cancellationToken))?.Value,
+                out var pending) && pending;
             var current = state.Current;
             var expired = clock.UtcNow - current.UpdatedAtUtc > TimeSpan.FromSeconds(75) && current.Status != "Disabled";
             var plan = expired ? null : current.Plan;
@@ -32,7 +36,17 @@ public static class JointBatteryEndpoints
                     s.PricePerKwh, s.Currency, s.IsPriceEstimated, s.ChargeSource?.ToString() ?? "None", s.TargetLimited, s.Reason,
                     s.Targets.Select(t => new JointBatteryTargetDto(t.Id, t.SignedPowerWatts, t.SocBeforePercent, t.SocAfterPercent)).ToArray())).ToArray() ?? [],
                 new(execution.Status, execution.UpdatedAtUtc, execution.OwnsControl, execution.VictronTargetWatts, execution.E3dcTargetWatts,
-                    execution.VictronMeasuredWatts, execution.E3dcMeasuredWatts, execution.ValidUntilUtc)));
+                    execution.VictronMeasuredWatts, execution.E3dcMeasuredWatts, execution.ValidUntilUtc), recoveryPending));
+        }).WithTags("JointBattery");
+
+        // Manual confirmation for a release the controller cannot complete itself (device permanently unreachable).
+        endpoints.MapPost("/api/joint-battery/recovery/confirm", async Task<Results<Ok<JointBatteryMessageDto>, Conflict<JointBatteryMessageDto>>> (
+            JointBatteryRecoveryOverride recovery, CancellationToken cancellationToken) =>
+        {
+            var rejection = await recovery.ConfirmAsync(cancellationToken);
+            return rejection is null
+                ? TypedResults.Ok(new JointBatteryMessageDto("Ruecknahme manuell bestaetigt; Einzelakku-Steuerung ist wieder freigegeben."))
+                : TypedResults.Conflict(new JointBatteryMessageDto(rejection));
         }).WithTags("JointBattery");
         return endpoints;
     }
@@ -40,7 +54,9 @@ public static class JointBatteryEndpoints
 
 public sealed record JointBatteryShadowDto(bool IsShadow, string Status, string Message, DateTimeOffset UpdatedAtUtc,
     E3dcLocalDto? LocalTelemetry, DateTimeOffset? CalculatedAtUtc, int? MaximumGridImportWatts,
-    IReadOnlyList<string> Warnings, IReadOnlyList<JointBatteryUnitDto> Batteries, IReadOnlyList<JointBatterySlotDto> Slots, JointBatteryExecutionDto Execution);
+    IReadOnlyList<string> Warnings, IReadOnlyList<JointBatteryUnitDto> Batteries, IReadOnlyList<JointBatterySlotDto> Slots, JointBatteryExecutionDto Execution,
+    bool RecoveryPending);
+public sealed record JointBatteryMessageDto(string Message);
 public sealed record JointBatteryExecutionDto(string Status, DateTimeOffset UpdatedAtUtc, bool OwnsControl,
     int VictronTargetWatts, int E3dcTargetWatts, int VictronMeasuredWatts, int E3dcMeasuredWatts, DateTimeOffset? ValidUntilUtc);
 public sealed record E3dcLocalDto(DateTimeOffset MeasuredAtUtc, decimal SocPercent, int BatteryPowerWatts,

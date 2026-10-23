@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using TibberVictronController.Api.Configuration;
 using TibberVictronController.Business.Abstractions;
@@ -10,8 +11,16 @@ namespace TibberVictronController.Api.JointBattery;
 public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory scopes, JointBatteryExecutionState state,
     VictronSetpointRefreshState ownership, ILogger<JointBatteryExecutionBackgroundService> logger, IJointBatteryWatchdog watchdog) : BackgroundService
 {
+    // Hard budgets keep the gap between two watchdog pulses (tick + failure handling + 1 s pause)
+    // well below the systemd WatchdogSec, so slow I/O cannot get the whole service killed.
+    private static readonly TimeSpan CycleBudget = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan FailureBudget = TimeSpan.FromSeconds(6);
+    private static readonly TimeSpan PlanMaximumAge = TimeSpan.FromSeconds(75);
+
     private DateTimeOffset lastLoggedAt;
     private string? lastLoggedStatus;
+    private string? lastLoggedMessage;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
@@ -23,10 +32,12 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
                 catch (Exception error)
                 {
                     logger.LogWarning("Gemeinsame Ausfuehrung gestoppt. Fehlertyp={ErrorType}", error.GetType().Name);
+                    // The loop is alive; pulse before the separately budgeted failure handling.
+                    await PulseAsync(stoppingToken);
                     try { await HandleFailureAsync(error); }
                     catch (Exception cleanup) { logger.LogWarning("Gemeinsame Ruecknahme bleibt ausstehend. Fehlertyp={ErrorType}", cleanup.GetType().Name); }
                 }
-                await watchdog.PulseAsync(stoppingToken);
+                await PulseAsync(stoppingToken);
                 await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
             }
         }
@@ -48,58 +59,118 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
         }
     }
 
+    private async Task PulseAsync(CancellationToken token)
+    {
+        try { await watchdog.PulseAsync(token); }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            logger.LogWarning("Watchdog-Impuls konnte nicht gesendet werden. Fehlertyp={ErrorType}", error.GetType().Name);
+        }
+    }
+
     public async Task TickAsync(CancellationToken token)
     {
+        using var cycle = CancellationTokenSource.CreateLinkedTokenSource(token);
+        cycle.CancelAfter(CycleBudget);
         await using var scope = scopes.CreateAsyncScope();
         var services = scope.ServiceProvider;
         var settings = services.GetRequiredService<IControllerSettingStore>();
         var clock = services.GetRequiredService<IUtcClock>();
-        async Task<bool> Flag(string key) => bool.TryParse((await settings.GetSettingAsync(key, token))?.Value, out var value) && value;
-        using var lease = await ownership.AcquirePublicationAsync(token);
-        var enabled = await Flag(ControllerSettingDefaults.JointBatteryExecutionEnabledKey);
-        var pending = await Flag(ControllerSettingDefaults.JointBatteryRecoveryPendingKey);
-        var dryRunSetting = (await settings.GetSettingAsync(ControllerSettingDefaults.VictronDryRunKey, token))?.Value;
-        var dryRun = !bool.TryParse(dryRunSetting, out var dry) || dry;
-        using var cycle = CancellationTokenSource.CreateLinkedTokenSource(token);
-        cycle.CancelAfter(TimeSpan.FromSeconds(3));
-        if ((pending && !ownership.JointControlActive) || ((!enabled || dryRun) && (pending || ownership.JointControlActive)))
+        async Task<bool> Flag(string key) => bool.TryParse((await settings.GetSettingAsync(key, cycle.Token))?.Value, out var value) && value;
+
+        IDisposable lease;
+        try { lease = await ownership.AcquirePublicationAsync(cycle.Token); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
+            // A slow single-battery publication still holds the gate. Skipping one tick is safe: while joint
+            // control owns the site, legacy writers return immediately and never hold the gate this long.
+            return;
+        }
+
+        using (lease)
+        {
+            var enabled = await Flag(ControllerSettingDefaults.JointBatteryExecutionEnabledKey);
+            var pending = await Flag(ControllerSettingDefaults.JointBatteryRecoveryPendingKey);
+            var dryRunSetting = (await settings.GetSettingAsync(ControllerSettingDefaults.VictronDryRunKey, cycle.Token))?.Value;
+            var dryRun = !bool.TryParse(dryRunSetting, out var dry) || dry;
+            if ((pending && !ownership.JointControlActive) || ((!enabled || dryRun) && (pending || ownership.JointControlActive)))
+            {
+                ownership.JointControlActive = true;
+                await ReleaseAsync(services, cycle.Token);
+                return;
+            }
+            if (!enabled || dryRun)
+            {
+                state.Set(new(enabled ? "Shadow" : "Disabled", enabled ? "Gemeinsame Ausfuehrung im globalen Shadow-Modus; keine Hardwarebefehle." :
+                    "Gemeinsame Hardwareausfuehrung deaktiviert.", clock.UtcNow, false));
+                return;
+            }
+            if (state.BlockedUntilUtc is { } until && clock.UtcNow < until)
+            {
+                if (pending) await ReleaseAsync(services, cycle.Token);
+                return;
+            }
+
+            // All preconditions are checked before ownership is claimed. A claim creates a recovery obligation
+            // whose release needs working hardware access; claiming with known-missing access would lock the
+            // site (and the settings needed to repair it) until manual intervention.
+            var (command, blocker) = await PrepareAsync(services, settings, clock, cycle.Token);
+            if (command is null)
+            {
+                if (pending || ownership.JointControlActive) throw new InvalidOperationException(blocker);
+                state.Set(new("Blocked", blocker!, clock.UtcNow, false));
+                await LogAsync(services, cycle.Token);
+                return;
+            }
+
+            if (!pending) await SaveRecoveryAsync(settings, clock, true, cycle.Token);
             ownership.JointControlActive = true;
-            await ReleaseAsync(services, cycle.Token);
-            return;
+            ownership.Clear();
+            await services.GetRequiredService<JointBatteryExecutionCoordinator>().StepAsync(command, cycle.Token);
+            await LogAsync(services, cycle.Token);
         }
-        if (!enabled || dryRun)
-        {
-            state.Set(new(enabled ? "Shadow" : "Disabled", enabled ? "Gemeinsame Ausfuehrung im globalen Shadow-Modus; keine Hardwarebefehle." :
-                "Gemeinsame Hardwareausfuehrung deaktiviert.", clock.UtcNow, false));
-            return;
-        }
-        if (state.BlockedUntilUtc is { } until && clock.UtcNow < until)
-        {
-            if (pending) await ReleaseAsync(services, cycle.Token);
-            return;
-        }
-        // Claim ownership before any hardware writes, and cancel cached single-battery refreshes under the same lock.
-        if (!pending) await SaveRecoveryAsync(settings, clock, true, cycle.Token);
-        ownership.JointControlActive = true;
-        ownership.Clear();
+    }
+
+    /// <summary>Checks every start condition without touching hardware and derives the current command.</summary>
+    private async Task<(JointBatteryCommand? Command, string? Blocker)> PrepareAsync(IServiceProvider services,
+        IControllerSettingStore settings, IUtcClock clock, CancellationToken token)
+    {
+        async Task<string?> Value(string key) => (await settings.GetSettingAsync(key, token))?.Value;
+
         if (!watchdog.IsSupervised)
-            throw new InvalidOperationException("Gemeinsame Hardwareausfuehrung benoetigt den installierten systemd-Watchdog und Ruecknahme-Helfer.");
-        if (!await Flag(ControllerSettingDefaults.E3dcRscpEnabledKey))
-            throw new InvalidOperationException("Lokaler E3/DC-Zugang ist deaktiviert.");
-        var runtime = services.GetRequiredService<JointBatteryRuntimeState>().Current;
-        var plan = runtime.Plan ?? throw new InvalidOperationException("Ein gueltiger gemeinsamer Plan fehlt.");
-        if (clock.UtcNow - plan.CalculatedAtUtc > TimeSpan.FromSeconds(75))
-            throw new InvalidOperationException("Die gemeinsame Planung ist veraltet.");
-        var slot = plan.Slots.SingleOrDefault(s => s.TimeSlot.StartsAtUtc <= clock.UtcNow && s.TimeSlot.EndsAtUtc > clock.UtcNow)
-            ?? throw new InvalidOperationException("Der aktuelle gemeinsame Planzeitabschnitt fehlt.");
+            return (null, "Gemeinsame Hardwareausfuehrung benoetigt den installierten systemd-Watchdog und Ruecknahme-Helfer.");
+        if (!bool.TryParse(await Value(ControllerSettingDefaults.E3dcRscpEnabledKey), out var rscpEnabled) || !rscpEnabled)
+            return (null, "Lokaler E3/DC-Zugang ist deaktiviert.");
+        foreach (var key in new[] { ControllerSettingDefaults.E3dcRscpHostKey, ControllerSettingDefaults.E3dcRscpPortKey,
+            ControllerSettingDefaults.E3dcRscpUserKey, ControllerSettingDefaults.E3dcRscpPasswordKey, ControllerSettingDefaults.E3dcRscpKeyKey })
+        {
+            if (string.IsNullOrWhiteSpace(await Value(key)))
+                return (null, "Der lokale E3/DC-Zugang ist nicht vollstaendig konfiguriert.");
+        }
+        if (!string.Equals((await Value(ControllerSettingDefaults.VictronControlModeKey))?.Trim(), "externalEss", StringComparison.OrdinalIgnoreCase))
+            return (null, "Gemeinsame Steuerung benoetigt den eingerichteten External-ESS-Modus.");
+        foreach (var key in new[] { ControllerSettingDefaults.JointBatteryPhase1LimitKey, ControllerSettingDefaults.JointBatteryPhase2LimitKey,
+            ControllerSettingDefaults.JointBatteryPhase3LimitKey, ControllerSettingDefaults.JointBatteryVictronInputLimitKey })
+        {
+            if (!decimal.TryParse(await Value(key), NumberStyles.Number, CultureInfo.InvariantCulture, out var limit) || limit <= 0)
+                return (null, "Bestaetigte Anschluss- und Phasengrenzen fehlen.");
+        }
+
+        var plan = services.GetService<JointBatteryRuntimeState>()?.Current.Plan;
+        if (plan is null)
+            return (null, "Ein gueltiger gemeinsamer Plan fehlt.");
+        if (clock.UtcNow - plan.CalculatedAtUtc > PlanMaximumAge)
+            return (null, "Die gemeinsame Planung ist veraltet.");
+        var slot = plan.Slots.SingleOrDefault(s => s.TimeSlot.StartsAtUtc <= clock.UtcNow && s.TimeSlot.EndsAtUtc > clock.UtcNow);
+        if (slot is null)
+            return (null, "Der aktuelle gemeinsame Planzeitabschnitt fehlt.");
         if (slot.IsPriceEstimated && slot.ChargeSource == BatteryChargeSource.Grid)
-            throw new InvalidOperationException("Geschaetzte Preise erlauben keine Netzladung.");
-        var validUntil = slot.TimeSlot.EndsAtUtc < plan.CalculatedAtUtc.AddSeconds(75) ? slot.TimeSlot.EndsAtUtc : plan.CalculatedAtUtc.AddSeconds(75);
-        var command = new JointBatteryCommand(slot.Targets.Single(t => t.Id == "victron").SignedPowerWatts,
-            slot.Targets.Single(t => t.Id == "e3dc").SignedPowerWatts, slot.ChargeSource, validUntil, slot.Reason);
-        await services.GetRequiredService<JointBatteryExecutionCoordinator>().StepAsync(command, cycle.Token);
-        await LogAsync(services, cycle.Token);
+            return (null, "Geschaetzte Preise erlauben keine Netzladung.");
+
+        var planExpiry = plan.CalculatedAtUtc + PlanMaximumAge;
+        var validUntil = slot.TimeSlot.EndsAtUtc < planExpiry ? slot.TimeSlot.EndsAtUtc : planExpiry;
+        return (new JointBatteryCommand(slot.Targets.Single(t => t.Id == "victron").SignedPowerWatts,
+            slot.Targets.Single(t => t.Id == "e3dc").SignedPowerWatts, slot.ChargeSource, validUntil, slot.Reason), null);
     }
 
     private static Task SaveRecoveryAsync(IControllerSettingStore settings, IUtcClock clock, bool pending, CancellationToken token) =>
@@ -121,7 +192,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
 
     private async Task HandleFailureAsync(Exception error)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var timeout = new CancellationTokenSource(FailureBudget);
         using var lease = await ownership.AcquirePublicationAsync(timeout.Token);
         await using var scope = scopes.CreateAsyncScope();
         var services = scope.ServiceProvider;
@@ -138,7 +209,9 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
         }
         catch (Exception cleanupError) { logger.LogWarning("Gemeinsame Ruecknahme bleibt ausstehend. Fehlertyp={ErrorType}", cleanupError.GetType().Name); }
         state.Set(new(restored ? "Blocked" : "Restoring", restored ? "Gemeinsame Steuerung nach Fehler gestoppt; erneuter Versuch fruehestens nach 30 Sekunden." :
-            "Gemeinsame Ruecknahme noch nicht bestaetigt; Einzelakku-Steuerung bleibt gesperrt.", clock.UtcNow, ownership.JointControlActive));
+            "Gemeinsame Ruecknahme noch nicht bestaetigt; Einzelakku-Steuerung bleibt gesperrt. Ist ein Geraet dauerhaft nicht erreichbar, " +
+            "gemeinsame Steuerung deaktivieren und die Ruecknahme nach Pruefung vor Ort im Dashboard manuell bestaetigen.",
+            clock.UtcNow, ownership.JointControlActive));
         try { await LogAsync(services, timeout.Token, error.GetType().Name); }
         catch (Exception logError) { logger.LogWarning("Gemeinsamer Fehlerstatus konnte nicht gespeichert werden. Fehlertyp={ErrorType}", logError.GetType().Name); }
     }
@@ -146,7 +219,14 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
     private async Task LogAsync(IServiceProvider services, CancellationToken token, string? errorType = null)
     {
         var current = state.Current;
-        if (errorType is null && current.Status == lastLoggedStatus && current.UpdatedAtUtc - lastLoggedAt < TimeSpan.FromSeconds(30)) return;
+        if (errorType is null && current.Status == lastLoggedStatus)
+        {
+            // A start blocker can persist for days (e.g. missing watchdog); log it once per message, not every 30 s.
+            var unchanged = current.Status == "Blocked"
+                ? current.Message == lastLoggedMessage
+                : current.UpdatedAtUtc - lastLoggedAt < TimeSpan.FromSeconds(30);
+            if (unchanged) return;
+        }
         await services.GetRequiredService<IOperationalEventRepository>().SaveEventAsync(new OperationalEvent(Guid.NewGuid(),
             current.UpdatedAtUtc, "JointBatteryExecution", errorType is null ? "Information" : "Error", current.Message,
             JsonSerializer.Serialize(new { Execution = current, ErrorType = errorType })), token);
@@ -159,6 +239,6 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
                 projection.TibberPricePerKwh, projection.TibberPriceCurrency, Math.Max(0, projection.SiteTelemetry.CurrentGridImportWatts),
                 Math.Max(0, -projection.SiteTelemetry.CurrentGridImportWatts), projection.InputSummaryJson, projection.Reasons), token);
         }
-        lastLoggedStatus = current.Status; lastLoggedAt = current.UpdatedAtUtc;
+        lastLoggedStatus = current.Status; lastLoggedAt = current.UpdatedAtUtc; lastLoggedMessage = current.Message;
     }
 }

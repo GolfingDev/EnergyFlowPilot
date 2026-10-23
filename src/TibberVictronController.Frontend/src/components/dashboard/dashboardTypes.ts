@@ -159,6 +159,7 @@ export interface JointBatteryShadowDto {
   execution: { status: string; updatedAtUtc: string; ownsControl: boolean; victronTargetWatts: number; e3dcTargetWatts: number;
     victronMeasuredWatts: number; e3dcMeasuredWatts: number; validUntilUtc: string | null };
   isShadow: boolean;
+  recoveryPending: boolean;
   status: string;
   message: string;
   updatedAtUtc: string;

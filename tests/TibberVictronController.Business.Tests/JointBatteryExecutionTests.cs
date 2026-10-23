@@ -48,6 +48,20 @@ public sealed class JointBatteryExecutionTests
     }
 
     [Fact]
+    public async Task PvChargeIsConfirmedByEmsChargeMode()
+    {
+        // PV charging must accept EMS_MODE 2; expecting 1 left PV slots stuck in "Starting" until the 90 s abort.
+        // 4.5 kW export: PV charging is only allowed from measured surplus.
+        var hardware = new Hardware { Adjust = live => live with { PhaseGridWatts = [-1500, -1500, -1500] } };
+        var state = new JointBatteryExecutionState { NeutralSamples = 2, Direction = 1 };
+        var command = Command() with { ChargeSource = BatteryChargeSource.PV };
+        await new JointBatteryExecutionCoordinator(hardware, state, new Clock()).StepAsync(command, CancellationToken.None);
+        Assert.Equal("Active", state.Current.Status);
+        Assert.Contains("E3dc:ChargePv:250", hardware.Commands);
+        Assert.Equal(250, state.Current.VictronTargetWatts);
+    }
+
+    [Fact]
     public async Task WrongE3dcEchoPreventsVictronStart()
     {
         var hardware = new Hardware(); var state = new JointBatteryExecutionState { NeutralSamples = 2, Direction = 1 };
@@ -130,7 +144,12 @@ public sealed class JointBatteryExecutionTests
         internal readonly List<string> Commands = [];
         internal int Primary; internal int Secondary;
         internal bool BadEcho; internal bool DelayMode; internal bool Follow = true; internal bool FailE3dc;
-        public Task<JointBatteryLiveSnapshot> ReadAsync(CancellationToken token) => Task.FromResult(Live(Primary, Secondary));
+        internal Func<JointBatteryLiveSnapshot, JointBatteryLiveSnapshot>? Adjust;
+        public Task<JointBatteryLiveSnapshot> ReadAsync(CancellationToken token)
+        {
+            var live = Live(Primary, Secondary);
+            return Task.FromResult(Adjust is null ? live : Adjust(live));
+        }
         public Task SetVictronAsync(int watts, CancellationToken token) { Commands.Add("Victron:" + watts); if (Follow) Primary = watts; return Task.CompletedTask; }
         public Task<E3dcPowerAcknowledgement> SetE3dcAsync(E3dcPowerCommand command, CancellationToken token)
         {
@@ -138,8 +157,14 @@ public sealed class JointBatteryExecutionTests
             if (FailE3dc) throw new IOException("Simulierter Verbindungsabbruch");
             var signed = command.Mode == E3dcPowerMode.Discharge ? -command.PowerWatts : command.Mode is E3dcPowerMode.ChargeGrid or E3dcPowerMode.ChargePv ? command.PowerWatts : 0;
             if (Follow) Secondary = signed;
-            return Task.FromResult(new E3dcPowerAcknowledgement(BadEcho ? 97 : command.PowerWatts,
-                DelayMode ? 0 : command.Mode == E3dcPowerMode.ChargeGrid ? 2 : command.Mode is E3dcPowerMode.Idle or E3dcPowerMode.Automatic ? 0 : 1, Secondary, Now));
+            // Real EMS_MODE scale: 0 idle, 1 discharge, 2 charge (grid and PV alike).
+            var readback = command.Mode switch
+            {
+                E3dcPowerMode.ChargeGrid or E3dcPowerMode.ChargePv => 2,
+                E3dcPowerMode.Discharge => 1,
+                _ => 0
+            };
+            return Task.FromResult(new E3dcPowerAcknowledgement(BadEcho ? 97 : command.PowerWatts, DelayMode ? 0 : readback, Secondary, Now));
         }
     }
 }

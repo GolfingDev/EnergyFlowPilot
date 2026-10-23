@@ -2,7 +2,20 @@
 import { formatDateTime, formatNumber, formatPercent, formatPower, formatPrice } from './dashboardFormatters';
 import type { JointBatteryShadowDto } from './dashboardTypes';
 
-defineProps<{ state: JointBatteryShadowDto | null }>();
+const props = defineProps<{ state: JointBatteryShadowDto | null; recoveryBusy?: boolean }>();
+const emit = defineEmits<{ confirmRecovery: [] }>();
+
+function confirmRecovery(): void {
+  // Releasing the lock without device confirmation is a safety decision; require an explicit acknowledgement.
+  if (window.confirm('Beide Speicher vor Ort geprüft? Die Einzelakku-Steuerung wird ohne Gerätebestätigung wieder freigegeben.')) {
+    emit('confirmRecovery');
+  }
+}
+
+function canConfirmRecovery(): boolean {
+  return !!props.state?.recoveryPending && props.state.status !== 'Active';
+}
+
 function powerLabel(watts: number): string {
   return watts > 0 ? `Laden ${formatPower(watts)}` : watts < 0 ? `Entladen ${formatPower(-watts)}` : 'Halten';
 }
@@ -13,6 +26,15 @@ function powerLabel(watts: number): string {
     <v-card-title>Gemeinsame Akkusteuerung <v-chip size="small" :color="state.isShadow ? 'info' : state.status === 'Active' ? 'success' : 'warning'">{{ state.isShadow ? 'Simulation' : state.status }}</v-chip></v-card-title>
     <v-card-text>
       <p role="status">{{ state.message }}</p>
+      <v-alert v-if="canConfirmRecovery()" type="warning" variant="tonal" density="compact" class="mt-2">
+        Die Rücknahme der gemeinsamen Steuerung ist noch nicht bestätigt; die Einzelakku-Steuerung bleibt gesperrt.
+        Ist ein Gerät dauerhaft nicht erreichbar: gemeinsame Steuerung deaktivieren, beide Speicher vor Ort prüfen und dann bestätigen.
+        <div class="mt-2">
+          <v-btn size="small" color="warning" variant="flat" :loading="recoveryBusy" @click="confirmRecovery">
+            Rücknahme manuell bestätigen
+          </v-btn>
+        </div>
+      </v-alert>
       <p v-if="!state.isShadow" class="mt-2">
         Letzte Sollwerte: Victron {{ powerLabel(state.execution.victronTargetWatts) }} · E3/DC {{ powerLabel(state.execution.e3dcTargetWatts) }}<br>
         Gemessen: Victron {{ powerLabel(state.execution.victronMeasuredWatts) }} · E3/DC {{ powerLabel(state.execution.e3dcMeasuredWatts) }}<br>

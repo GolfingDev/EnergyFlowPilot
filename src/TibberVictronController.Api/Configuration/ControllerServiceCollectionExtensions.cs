@@ -50,15 +50,22 @@ public static class ControllerServiceCollectionExtensions
         services.AddSignalR();
         services.AddDbContext<ControllerDbContext>(options => options.UseSqlite(connectionString));
         services.AddScoped<ControllerDbInitializer>();
-        services.AddDataProtection().SetApplicationName("EnergyFlowPilot");
+        var dataProtection = services.AddDataProtection().SetApplicationName("EnergyFlowPilot");
+        // Keep the key ring beside the database: both must be backed up together, and the service HOME
+        // (default key location) is not part of the data directory.
+        if (GetDataProtectionKeyDirectory(connectionString) is { } keyDirectory)
+            dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keyDirectory));
         services.AddScoped<EfControllerSettingStore>();
         services.AddScoped<IControllerSettingStore>(provider => new ProtectedRscpSettingStore(
-            provider.GetRequiredService<EfControllerSettingStore>(), provider.GetRequiredService<IDataProtectionProvider>()));
+            provider.GetRequiredService<EfControllerSettingStore>(), provider.GetRequiredService<IDataProtectionProvider>(),
+            provider.GetService<ILogger<ProtectedRscpSettingStore>>()));
+        services.AddSingleton<E3dcRscpSession>();
         services.AddScoped<IE3dcTelemetrySource, E3dcRscpTelemetrySource>();
         services.AddScoped<IE3dcPowerControl, E3dcRscpPowerControl>();
         services.AddScoped<IJointBatteryHardware, JointBatteryHardware>();
         services.AddScoped<JointBatteryExecutionCoordinator>();
         services.AddSingleton<JointBatteryExecutionState>();
+        services.AddScoped<JointBatteryRecoveryOverride>();
         services.AddSingleton<SystemdJointBatteryWatchdog>();
         services.AddSingleton<IJointBatteryWatchdog>(sp => sp.GetRequiredService<SystemdJointBatteryWatchdog>());
         services.AddHostedService<JointBatteryExecutionBackgroundService>();
@@ -175,5 +182,16 @@ public static class ControllerServiceCollectionExtensions
         services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<VictronMqttClientService>());
 
         return services;
+    }
+
+    private static string? GetDataProtectionKeyDirectory(string connectionString)
+    {
+        var dataSource = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connectionString).DataSource;
+        // In-memory databases (tests) have no durable location; the framework default is sufficient there.
+        if (string.IsNullOrWhiteSpace(dataSource) || dataSource == ":memory:" ||
+            dataSource.Contains("mode=memory", StringComparison.OrdinalIgnoreCase))
+            return null;
+        var databaseDirectory = Path.GetDirectoryName(Path.GetFullPath(dataSource));
+        return string.IsNullOrEmpty(databaseDirectory) ? null : Path.Combine(databaseDirectory, "data-protection-keys");
     }
 }

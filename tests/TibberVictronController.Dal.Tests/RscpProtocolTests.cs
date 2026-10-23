@@ -97,7 +97,7 @@ public sealed class RscpProtocolTests
     [Theory]
     [InlineData(E3dcPowerMode.ChargeGrid, 4, 2)]
     [InlineData(E3dcPowerMode.Discharge, 2, 1)]
-    [InlineData(E3dcPowerMode.ChargePv, 3, 1)]
+    [InlineData(E3dcPowerMode.ChargePv, 3, 2)]
     public async Task PowerAdapterWritesOnlyEphemeralModeAndPositiveInt32Power(E3dcPowerMode mode, int wireMode, int readMode)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -147,6 +147,89 @@ public sealed class RscpProtocolTests
         Assert.Equal(500, result.EchoPowerWatts);
         Assert.Equal(readMode, result.OperatingMode);
         Assert.Equal(mode == E3dcPowerMode.Discharge ? -495 : 495, result.MeasuredPowerWatts);
+    }
+
+    [Fact]
+    public async Task SharedSessionReusesOneLoginAndReconnectsAfterDeviceClosesIt()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var logins = 0;
+        var server = Task.Run(async () => {
+            // First session: one login serves two commands, then the device drops the connection.
+            using (var peer = await listener.AcceptTcpClientAsync(timeout.Token))
+            {
+                var device = new FakeDevice(peer.GetStream());
+                await device.ExpectLoginAsync(timeout.Token); logins++;
+                await device.ServeIdleCommandAsync(timeout.Token);
+                await device.ServeIdleCommandAsync(timeout.Token);
+            }
+            using (var peer = await listener.AcceptTcpClientAsync(timeout.Token))
+            {
+                var device = new FakeDevice(peer.GetStream());
+                await device.ExpectLoginAsync(timeout.Token); logins++;
+                await device.ServeIdleCommandAsync(timeout.Token);
+            }
+        }, timeout.Token);
+        var clock = new Clock();
+        var settings = new FakeControllerSettingStore(ControllerSettingDefaults.CreateDefaultSettings(clock.UtcNow));
+        foreach (var (key, value) in new[] {
+            (ControllerSettingDefaults.E3dcRscpHostKey, "127.0.0.1"), (ControllerSettingDefaults.E3dcRscpPortKey, port.ToString()),
+            (ControllerSettingDefaults.E3dcRscpUserKey, "test-user"), (ControllerSettingDefaults.E3dcRscpPasswordKey, "test-password"),
+            (ControllerSettingDefaults.E3dcRscpKeyKey, "test-only-key") })
+            await settings.SaveSettingAsync(new(key, value, ControllerSettingSensitivity.Sensitive, clock.UtcNow));
+        using var session = new E3dcRscpSession();
+        var control = new E3dcRscpPowerControl(settings, clock, session);
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(0, (await control.ApplyAsync(new(E3dcPowerMode.Idle, 0), timeout.Token)).EchoPowerWatts);
+        await server;
+        Assert.Equal(2, logins);
+    }
+
+    /// <summary>Device side of one RSCP connection with its own sending cipher chain.</summary>
+    private sealed class FakeDevice
+    {
+        private readonly Stream stream;
+        private readonly RscpProtocol reader;
+        private readonly CbcBlockCipher encrypt = new(new RijndaelEngine(256));
+
+        internal FakeDevice(Stream stream)
+        {
+            this.stream = stream;
+            reader = new RscpProtocol(stream, "test-only-key");
+            var key = Enumerable.Repeat((byte)255, 32).ToArray();
+            Encoding.UTF8.GetBytes("test-only-key").CopyTo(key, 0);
+            encrypt.Init(true, new ParametersWithIV(new KeyParameter(key), Enumerable.Repeat((byte)255, 32).ToArray()));
+        }
+
+        private async Task<uint> ReceiveAsync(CancellationToken token) => Assert.Single(await reader.ReadFrameAsync(token)).Tag;
+
+        private async Task ReplyAsync(RscpValue value, CancellationToken token)
+        {
+            var frame = RscpProtocol.Frame(RscpProtocol.EncodeValue(value));
+            var padded = new byte[(frame.Length + 31) / 32 * 32]; frame.CopyTo(padded, 0);
+            var cipher = new byte[padded.Length];
+            for (var i = 0; i < padded.Length; i += 32) encrypt.ProcessBlock(padded, i, cipher, i);
+            await stream.WriteAsync(cipher, token);
+        }
+
+        internal async Task ExpectLoginAsync(CancellationToken token)
+        {
+            Assert.Equal(1u, await ReceiveAsync(token));
+            await ReplyAsync(new(0x00800001, 3, [10]), token);
+        }
+
+        internal async Task ServeIdleCommandAsync(CancellationToken token)
+        {
+            Assert.Equal(0x01000030u, await ReceiveAsync(token));
+            await ReplyAsync(new(0x01800030, 7, BitConverter.GetBytes(0u)), token);
+            Assert.Equal(0x01000011u, await ReceiveAsync(token));
+            await ReplyAsync(new(0x01800011, 3, [0]), token);
+            Assert.Equal(0x01000002u, await ReceiveAsync(token));
+            await ReplyAsync(new(0x01800002, 6, BitConverter.GetBytes(0)), token);
+        }
     }
 
     private sealed class FragmentedStream(byte[] data) : MemoryStream(data)

@@ -197,16 +197,21 @@ deploy_files() {
   fi
 
   # The new binary must be present before adding hooks that use its stop-only entry point.
+  # Empty ExecStartPre=/ExecStopPost= lines reset hooks from the base unit, so they never run twice.
+  # The "-" prefix keeps a failed pre-start release from blocking the service: the started process
+  # keeps single-battery control locked and offers the manual recovery confirmation in the dashboard.
   install -d "/etc/systemd/system/${SERVICE_NAME}.d"
   cat > "/etc/systemd/system/${SERVICE_NAME}.d/joint-battery.conf" <<EOF
 [Service]
 Type=notify
 NotifyAccess=main
-WatchdogSec=5
+WatchdogSec=15
 WatchdogSignal=SIGKILL
 TimeoutStartSec=90
 TimeoutStopSec=20
-ExecStartPre=/usr/bin/dotnet ${API_PUBLISH_DIR}/TibberVictronController.Api.dll --joint-stop
+ExecStartPre=
+ExecStartPre=-/usr/bin/dotnet ${API_PUBLISH_DIR}/TibberVictronController.Api.dll --joint-stop
+ExecStopPost=
 ExecStopPost=/usr/bin/dotnet ${API_PUBLISH_DIR}/TibberVictronController.Api.dll --joint-stop
 EOF
   systemctl daemon-reload

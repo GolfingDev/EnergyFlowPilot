@@ -18,7 +18,7 @@ public static class GuiMetadataCatalog
     {
         return definition.Key switch
         {
-            ControllerSettingDefaults.E3dcRscpEnabledKey => CreateSetting(definition, "Lokales E3/DC-Lesen aktiv", "Liest RSCP-Messwerte. Dieser Zugang sendet keine Steuerbefehle.", "E3dc", "boolean", null),
+            ControllerSettingDefaults.E3dcRscpEnabledKey => CreateSetting(definition, "Lokaler E3/DC-Zugang aktiv", "Liest RSCP-Messwerte. Steuerbefehle sendet dieser Zugang nur, wenn zusaetzlich die gemeinsame Steuerung aktiviert und der globale Shadow-Modus aus ist.", "E3dc", "boolean", null),
             ControllerSettingDefaults.E3dcRscpHostKey => CreateSetting(definition, "Lokale E3/DC-Adresse", "IP-Adresse oder Hostname im Heimnetz.", "E3dc", "text", null),
             ControllerSettingDefaults.E3dcRscpPortKey => CreateSetting(definition, "RSCP-Port", "Normalerweise 5033; getrennt vom Modbus-Port.", "E3dc", "number", null),
             ControllerSettingDefaults.E3dcRscpUserKey => CreateSetting(definition, "RSCP-Benutzer", "Lokaler Benutzerzugang. Wird verschluesselt gespeichert.", "E3dc", "password", null),
@@ -26,7 +26,7 @@ public static class GuiMetadataCatalog
             ControllerSettingDefaults.E3dcRscpKeyKey => CreateSetting(definition, "RSCP-Schluessel", "Am Geraet gesetztes RSCP-Passwort; maximal 32 UTF-8-Bytes. Wird verschluesselt gespeichert.", "E3dc", "password", null),
             ControllerSettingDefaults.JointBatteryEnabledKey => CreateSetting(definition, "Gemeinsame Akku-Vorschau", "Berechnet getrennte Ziele fuer beide Akkus. Fuehrt auch bei ausgeschaltetem Victron-Shadow-Modus keine gemeinsamen Hardwarebefehle aus.", "E3dc", "boolean", null),
             ControllerSettingDefaults.JointBatteryExecutionEnabledKey => CreateSetting(definition, "Beide Akkus gemeinsam steuern", "Aktiviert die koordinierte Ausfuehrung. Globaler Shadow-Modus hat Vorrang. Benoetigt bestaetigte Anschlussgrenzen, lokalen RSCP-Zugang und Linux-Watchdog; unabhaengige Victron-Regelung wird dann gesperrt.", "E3dc", "boolean", null),
-            ControllerSettingDefaults.JointBatteryRecoveryPendingKey => CreateSetting(definition, "Ruecknahme ausstehend", "Interner Wiederherstellungsstatus; wird automatisch gesetzt und kann nicht manuell geloescht werden.", "E3dc", "text", null),
+            ControllerSettingDefaults.JointBatteryRecoveryPendingKey => CreateSetting(definition, "Ruecknahme ausstehend", "Interner Wiederherstellungsstatus; wird automatisch gesetzt. Gelingt die Ruecknahme dauerhaft nicht, nach Pruefung vor Ort im Dashboard manuell bestaetigen.", "E3dc", "text", null),
             ControllerSettingDefaults.JointBatteryPhase1LimitKey => CreateSetting(definition, "Maximaler Netzbezug L1", "Bestaetigte Anschlussgrenze in Watt. 0 bedeutet unbekannt und sperrt die Hardwareausfuehrung.", "E3dc", "number", "W"),
             ControllerSettingDefaults.JointBatteryPhase2LimitKey => CreateSetting(definition, "Maximaler Netzbezug L2", "Bestaetigte Anschlussgrenze in Watt. Kein automatischer Rueckschluss aus der Akkuleistung.", "E3dc", "number", "W"),
             ControllerSettingDefaults.JointBatteryPhase3LimitKey => CreateSetting(definition, "Maximaler Netzbezug L3", "Bestaetigte Anschlussgrenze in Watt. Kein automatischer Rueckschluss aus der Akkuleistung.", "E3dc", "number", "W"),

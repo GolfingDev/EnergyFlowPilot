@@ -57,10 +57,10 @@
 
 Anforderung: `docs/20-domain/battery-decision-engine.md`, Abschnitt „Gemeinsame Steuerung von Victron und E3/DC“. Diagnose und Momentaufnahme: `docs/30-operations/e3dc-rscp.md`.
 
-1. Implementiert: nativer RSCP-Lese-/Schreibadapter, verschluesselte Zugangsdaten, vollstaendige Rahmen, CRC und Sitzungsfristen; ausschliesslich fluechtige Leistungsbefehle.
+1. Implementiert: nativer RSCP-Lese-/Schreibadapter mit gemeinsam genutzter Verbindung, verschluesselte Zugangsdaten (Schluesselbund neben der Datenbank), vollstaendige Rahmen, CRC und Fristen; ausschliesslich fluechtige Leistungsbefehle.
 2. Implementiert: getrennte Kapazitaeten, Reserven, effektive Grenzen und zwei Energiezustaende in der wirtschaftlichen Planung; numerische dynamische Programmierung statt aggregiertem SoC.
 3. Implementiert: gemeinsames Rohdaten-Verbrauchsmodell mit Temperaturkorrektur. Offen: langfristige gemeinsame Tagessummen und gemeinsame Energie-/Ersparnisabrechnung.
-4. Implementiert: koordinierte Ausfuehrung, Richtungswechsel, Befehlsruecklesung, Rampen, Last-/Phasengrenzen, Schutz vor konkurrierenden Schreibern, persistierte Wiederherstellung und Linux-Prozesswatchdog mit separatem Stop-Helfer.
+4. Implementiert: koordinierte Ausfuehrung, Richtungswechsel, Befehlsruecklesung, Rampen, Last-/Phasengrenzen, Schutz vor konkurrierenden Schreibern, persistierte Wiederherstellung und Linux-Prozesswatchdog (15 s, budgetierte Zyklen) mit separatem Stop-Helfer. Uebernahme erst nach erfuellten Startbedingungen; manuelle Ruecknahme-Bestaetigung als Notausgang.
 5. Implementiert: Dashboard fuer beide Speicher, gemeinsame Projektion fuer bestehenden Forecast und Live-Entscheidung, getrennte Betriebsereignisse fuer Planung und Ausfuehrung.
 6. Offen vor Aktivierung: bestaetigte elektrische Anschlussgrenzen, Deployment auf dem Raspberry Pi und kontrollierte Hardwareabnahme inklusive PV-/Entlademodus, Kommunikationsverlust, Prozessabbruch und Neustart. Default bleibt deaktiviert. Ein vollstaendiger Netzwerkverlust ist nicht als physisch abgesichert nachgewiesen.
 

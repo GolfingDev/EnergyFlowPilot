@@ -43,7 +43,7 @@ public static class JointBatteryStopCommand
         catch (Exception error)
         {
             services.GetRequiredService<ILoggerFactory>().CreateLogger("JointBatteryStop").LogError(
-                "Gemeinsame Ruecknahme nicht bestaetigt; Neustart bleibt gesperrt. Fehlertyp={ErrorType}", error.GetType().Name);
+                "Gemeinsame Ruecknahme nicht bestaetigt; Einzelakku-Steuerung bleibt bis zur Ruecknahme oder manuellen Bestaetigung gesperrt. Fehlertyp={ErrorType}", error.GetType().Name);
         }
         finally
         {

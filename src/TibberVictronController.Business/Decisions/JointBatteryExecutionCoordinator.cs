@@ -38,7 +38,14 @@ public sealed class JointBatteryExecutionCoordinator(IJointBatteryHardware hardw
         var e3dcMode = command.E3dcWatts == 0 ? E3dcPowerMode.Idle : command.E3dcWatts < 0 ? E3dcPowerMode.Discharge :
             command.ChargeSource == BatteryChargeSource.PV ? E3dcPowerMode.ChargePv : E3dcPowerMode.ChargeGrid;
         var ack = await hardware.SetE3dcAsync(new(e3dcMode, Math.Abs(command.E3dcWatts)), token);
-        var expectedMode = e3dcMode == E3dcPowerMode.Idle ? 0 : e3dcMode == E3dcPowerMode.ChargeGrid ? 2 : 1;
+        // EMS_MODE readback uses its own scale (0 idle, 1 discharge, 2 charge), not the SET_POWER mode numbers.
+        // Grid and PV charging both report 2.
+        var expectedMode = e3dcMode switch
+        {
+            E3dcPowerMode.Idle => 0,
+            E3dcPowerMode.Discharge => 1,
+            _ => 2
+        };
         if (ack.EchoPowerWatts != Math.Abs(command.E3dcWatts))
             throw new InvalidOperationException("E3/DC bestaetigt den Leistungswert nicht.");
         if (ack.OperatingMode != expectedMode)

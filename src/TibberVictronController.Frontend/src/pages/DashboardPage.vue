@@ -50,6 +50,7 @@ const savings = ref<BatterySavingsResponseDto | null>(null);
 const manualCharge = ref<ManualChargeStatusResponseDto | null>(null);
 const e3dcTelemetry = ref<E3dcTelemetryResponseDto | null>(null);
 const jointBatteryShadow = ref<JointBatteryShadowDto | null>(null);
+const isJointRecoveryBusy = ref(false);
 const loadErrors = ref<DashboardLoadError[]>([]);
 const isLoading = ref(false);
 const isManualChargeBusy = ref(false);
@@ -545,6 +546,25 @@ async function loadJointBatteryShadow(): Promise<void> {
   }
 }
 
+async function confirmJointBatteryRecovery(): Promise<void> {
+  if (isJointRecoveryBusy.value) {
+    return;
+  }
+
+  isJointRecoveryBusy.value = true;
+  try {
+    await postJson<{ message: string }>('/api/joint-battery/recovery/confirm', {});
+    await loadJointBatteryShadow();
+  } catch (error) {
+    loadErrors.value.push({
+      source: 'Gemeinsame Akkusteuerung',
+      ...createLoadError(error)
+    });
+  } finally {
+    isJointRecoveryBusy.value = false;
+  }
+}
+
 async function loadDecisionHistory(force = false): Promise<void> {
   const historyUrl = createDecisionHistoryUrl();
   void force;
@@ -926,7 +946,8 @@ onBeforeUnmount(() => {
 
 <template>
   <v-container class="dashboard-page" :class="dashboardLayoutClass" fluid>
-    <JointBatteryShadowPanel :state="jointBatteryShadow" />
+    <JointBatteryShadowPanel :state="jointBatteryShadow" :recovery-busy="isJointRecoveryBusy"
+      @confirm-recovery="confirmJointBatteryRecovery" />
     <EnergyLoadingOverlay :model-value="showLoadingOverlay" title="Loading forecast"
       subtitle="Calculating price, PV and battery plan..." :size="200" />
 
