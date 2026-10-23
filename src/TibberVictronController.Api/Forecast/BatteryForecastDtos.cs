@@ -24,7 +24,8 @@ public sealed record BatteryForecastEntryDto(
     string DecisionState,
     string? ChargeSource,
     int TargetPowerWatts,
-    IReadOnlyList<BatteryDecisionReasonDto> Reasons);
+    IReadOnlyList<BatteryDecisionReasonDto> Reasons,
+    bool IsPriceEstimated = false);
 
 /// <summary>
 /// Frontend DTO for a structured Decision Engine reason.

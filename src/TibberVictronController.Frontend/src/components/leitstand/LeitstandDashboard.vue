@@ -31,6 +31,7 @@ const summaryRefreshMilliseconds = 15_000;
 const reviewRefreshMilliseconds = 300_000;
 
 const summary = ref<DashboardSummaryDto | null>(null);
+const firstEstimatedSlot = computed(() => summary.value?.planSlots.find(slot => slot.isPriceEstimated));
 const review = ref<DashboardReviewDto | null>(null);
 const summaryError = ref<string | null>(null);
 const reviewError = ref<string | null>(null);
@@ -198,12 +199,12 @@ const plan = computed(() => {
   const socLine = slots.map((slot, index) => `${center(index)},${socY(slot.stateOfChargeAfterPercent)}`).join(' ');
   const bars = slots.map((slot, index) => {
     const height = slot.pricePerKwh <= 0 ? 2 : slot.pricePerKwh / maxPrice * priceHeight;
-    return { x: left + step * index + 1, y: priceTop + priceHeight - height, width: Math.max(1, step - 2), height, category: slot.category };
+    return { x: left + step * index + 1, y: priceTop + priceHeight - height, width: Math.max(1, step - 2), height, category: slot.category, estimated: slot.isPriceEstimated };
   });
   const labels = slots
     .map((slot, index) => ({ date: new Date(slot.startsAtUtc), index }))
-    .filter(({ date }) => date.getMinutes() === 0 && date.getHours() % 3 === 0)
-    .map(({ date, index }) => ({ x: left + step * index, text: `${String(date.getHours()).padStart(2, '0')}:00` }));
+    .filter(({ date }) => date.getMinutes() === 0 && date.getHours() % 6 === 0)
+    .map(({ date, index }) => ({ x: left + step * index, text: `${date.getDate()}.${date.getMonth() + 1}. ${String(date.getHours()).padStart(2, '0')}:00` }));
   const firstStart = slots.length > 0 ? new Date(slots[0].startsAtUtc).getTime() : 0;
   const slotMs = slots.length > 0 ? new Date(slots[0].endsAtUtc).getTime() - firstStart : 1;
   const nowX = left + Math.min(1, Math.max(0, (Date.now() - firstStart) / slotMs)) * step;
@@ -246,7 +247,7 @@ const reviewChart = computed(() => {
   });
   const labels = hours
     .map((hour, index) => ({ date: new Date(hour.startsAtUtc), index }))
-    .filter(({ date }, position) => hours.length <= 12 || date.getHours() % 3 === 0 || position === 0)
+    .filter(({ date }, position) => hours.length <= 12 || date.getHours() % 6 === 0 || position === 0)
     .map(({ date, index }) => ({ x: left + step * index + step / 2, text: `${String(date.getHours()).padStart(2, '0')}` }));
 
   return { width, left, right, socTop, socHeight, zero, upHeight, downHeight, maxUp, maxDown, socY, socPoints, bars, labels, hasData: hours.length > 0 };
@@ -324,7 +325,7 @@ function planSlotTooltip(slot: DashboardPlanSlotDto | undefined): string {
   return [
     `${dayTime(slot.startsAtUtc)}–${time(slot.endsAtUtc)}`,
     leitstandCategoryLabels[slot.category],
-    `Preis: ${price(slot.pricePerKwh)} €/kWh`,
+    `Preis: ${price(slot.pricePerKwh)} €/kWh (${slot.isPriceEstimated ? 'geschätzt' : 'veröffentlicht'})`,
     `SoC danach: ${percent(slot.stateOfChargeAfterPercent)}`,
     `PV: ${kwh(slot.expectedPvYieldKwh)} · Verbrauch: ${kwh(slot.expectedConsumptionKwh)}`
   ].join('\n');
@@ -516,9 +517,10 @@ onBeforeUnmount(() => {
     <!-- Plan -->
     <section class="ls-zone" aria-labelledby="ls-plan">
       <div class="ls-zone__head">
-        <h2 id="ls-plan">Plan nächste 24 Stunden</h2>
+        <h2 id="ls-plan">Plan nächste 48 Stunden</h2>
         <span v-if="summary" class="ls-muted">Stand {{ time(summary.createdAtUtc) }} Uhr</span>
       </div>
+      <p v-if="firstEstimatedSlot" class="ls-muted">Ab {{ dayTime(firstEstimatedSlot.startsAtUtc) }} sind die Preise geschätzt (Balken mit gestricheltem Rand). Für diese Zeitfenster wird noch keine Netzladung geplant; nach Veröffentlichung wird neu gerechnet.</p>
       <div class="ls-split">
         <div class="ls-panel ls-chart-panel">
           <div class="ls-chart">
@@ -540,7 +542,7 @@ onBeforeUnmount(() => {
                 <line class="ls-grid" :x1="plan.left" :x2="plan.width - plan.right" :y1="plan.priceTop + plan.priceHeight - value / plan.priceTicks[2] * plan.priceHeight" :y2="plan.priceTop + plan.priceHeight - value / plan.priceTicks[2] * plan.priceHeight" />
                 <text class="ls-axis" :x="plan.left - 6" :y="plan.priceTop + plan.priceHeight - value / plan.priceTicks[2] * plan.priceHeight + 3" text-anchor="end">{{ numberFormat(2).format(value) }}</text>
               </g>
-              <rect v-for="(bar, index) in plan.bars" :key="`b${index}`" class="ls-chart-hit" :x="bar.x" :y="bar.y" :width="bar.width" :height="bar.height" rx="1.5" :style="{ fill: categoryVar(bar.category) }" tabindex="0">
+              <rect v-for="(bar, index) in plan.bars" :key="`b${index}`" class="ls-chart-hit" :class="{ 'ls-price--estimated': bar.estimated }" :x="bar.x" :y="bar.y" :width="bar.width" :height="bar.height" rx="1.5" :style="{ fill: categoryVar(bar.category) }" tabindex="0">
                 <title>{{ planSlotTooltip(summary?.planSlots[index]) }}</title>
               </rect>
               <text v-for="label in plan.labels" :key="label.text + label.x" class="ls-axis" :x="label.x" y="292" text-anchor="middle">{{ label.text }}</text>
@@ -894,4 +896,5 @@ details.ls-panel summary { cursor: pointer; font-family: var(--ls-font-display);
 .ls-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .ls-chart-hit:focus-visible { stroke: var(--ls-accent); stroke-width: 2px; outline: none; }
+.ls-price--estimated { stroke: var(--ls-fg); stroke-width: .8; stroke-dasharray: 2 2; fill-opacity: .55; }
 </style>

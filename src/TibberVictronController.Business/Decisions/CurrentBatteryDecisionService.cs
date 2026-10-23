@@ -11,7 +11,8 @@ namespace TibberVictronController.Business.Decisions;
 public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionService
 {
     private static readonly TimeSpan SiteTelemetryMaxAge = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan DecisionLookahead = TimeSpan.FromHours(24);
+    // Include the next afternoon/evening when evaluating a cheap overnight charge.
+    private static readonly TimeSpan DecisionLookahead = TimeSpan.FromHours(48);
     private static readonly TimeSpan ActiveDischargeTargetMaxAge = TimeSpan.FromMinutes(2);
     private const int MaximumPlausiblePowerWatts = 100_000;
 

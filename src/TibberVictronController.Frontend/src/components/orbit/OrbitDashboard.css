@@ -96,3 +96,5 @@
 .orbit-plan-totals dd small { font-size: 12px; color: var(--muted); }
 @media (max-width: 900px) { .orbit-operating-values { gap: 0 12px; } .orbit-operating-values dd { font-size: 17px; } }
 @media (max-width: 600px) { .orbit-hero { padding-top: 24px; } .orbit-operating-values dd { font-size: 19px; } .orbit-plan-totals { grid-template-columns: 1fr; gap: 14px; } .orbit-plan-totals > div { display: flex; justify-content: space-between; align-items: center; gap: 15px; } .orbit-plan-totals dd { margin: 0; font-size: 22px; white-space: nowrap; } }
+
+.orbit-price-bar--estimated { background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(255,255,255,.45) 3px 5px) !important; }

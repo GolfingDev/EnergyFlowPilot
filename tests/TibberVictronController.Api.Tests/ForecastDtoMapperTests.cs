@@ -7,8 +7,10 @@ public sealed class ForecastDtoMapperTests
 {
     private static readonly DateTimeOffset StartsAtUtc = new(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
 
-    [Fact]
-    public void MapConvertsForecastDomainModelToFrontendDto()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MapConvertsForecastDomainModelToFrontendDto(bool estimated)
     {
         var timeSlot = new ForecastTimeSlot(StartsAtUtc, StartsAtUtc.AddMinutes(15));
         var decision = new CurrentBatteryDecision(
@@ -24,7 +26,8 @@ public sealed class ForecastDtoMapperTests
             StateOfChargeBeforePercent: 55m,
             StateOfChargeAfterPercent: 58m,
             decision,
-            new[] { new BatteryDecisionReason("TestRule", "Testbegruendung") });
+            new[] { new BatteryDecisionReason("TestRule", "Testbegruendung") },
+            IsPriceEstimated: estimated);
         var result = new BatteryForecastResult(
             new BatteryState(55m, StartsAtUtc),
             new BatteryConfiguration(10m),
@@ -35,6 +38,7 @@ public sealed class ForecastDtoMapperTests
         Assert.Equal(55m, dto.InitialStateOfChargePercent);
         Assert.Equal(10m, dto.BatteryTotalCapacityKwh);
         Assert.Single(dto.Entries);
+        Assert.Equal(estimated, dto.Entries[0].IsPriceEstimated);
         Assert.Equal("Charge", dto.Entries[0].DecisionState);
         Assert.Equal("Grid", dto.Entries[0].ChargeSource);
         Assert.Equal(1200, dto.Entries[0].TargetPowerWatts);

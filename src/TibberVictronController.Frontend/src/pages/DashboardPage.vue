@@ -477,7 +477,7 @@ function createForecastUrl(): string {
 
   const parameters = new URLSearchParams({
     startsAtUtc: startsAtUtc.toISOString(),
-    hours: '24'
+    hours: '48'
   });
 
   return `/api/forecast?${parameters.toString()}`;

@@ -42,6 +42,7 @@ public static class BatteryForecastDtoMapper
             entry.Decision.Instruction.DecisionState.ToString(),
             entry.Decision.Instruction.ChargeSource?.ToString(),
             entry.Decision.TargetPowerWatts,
-            entry.Reasons.Select(reason => new BatteryDecisionReasonDto(reason.RuleName, reason.Message)).ToArray());
+            entry.Reasons.Select(reason => new BatteryDecisionReasonDto(reason.RuleName, reason.Message)).ToArray(),
+            entry.IsPriceEstimated);
     }
 }

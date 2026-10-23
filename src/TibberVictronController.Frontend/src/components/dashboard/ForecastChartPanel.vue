@@ -19,6 +19,7 @@ const props = defineProps<{
 
 const forecastChartCanvas = ref<HTMLCanvasElement | null>(null);
 const forecastChartEntries = computed(() => props.forecast?.entries ?? []);
+const firstEstimatedEntry = computed(() => forecastChartEntries.value.find(entry => entry.isPriceEstimated));
 const nextForecastEntries = computed(() => props.forecast?.entries.slice(0, 8) ?? []);
 let forecastChart: Chart | null = null;
 
@@ -63,9 +64,10 @@ async function renderForecastChart(): Promise<void> {
           data: entries.map((entry) => entry.tibberPricePerKwh),
           yAxisID: 'price',
           backgroundColor: entries.map((entry) => getForecastBarColor(entry)),
-          borderColor: entries.map((entry) => getForecastBarColor(entry)),
           borderRadius: 4,
-          borderWidth: 1,
+          borderWidth: entries.map(entry => entry.isPriceEstimated ? 2 : 0),
+          borderSkipped: false,
+          borderColor: entries.map(entry => entry.isPriceEstimated ? textColor : getForecastBarColor(entry)),
           order: 4
         },
         {
@@ -240,7 +242,7 @@ function formatForecastChartTooltipLine(
 
   switch (item.dataset.label) {
     case 'Strompreis':
-      return `Preis: ${formatPrice(entry.tibberPricePerKwh, entry.tibberPriceCurrency)}`;
+      return `Preis: ${formatPrice(entry.tibberPricePerKwh, entry.tibberPriceCurrency)} (${entry.isPriceEstimated ? 'geschätzt' : 'veröffentlicht'})`;
     case 'SoC':
       return `SoC: ${formatPercent(entry.stateOfChargeAfterPercent)}`;
     case 'PV':
@@ -304,6 +306,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <p v-if="firstEstimatedEntry">Ab {{ formatDateTime(firstEstimatedEntry.startsAtUtc) }} sind die Preise geschätzt (Balken mit Rand). Für diese Zeitfenster wird noch keine Netzladung geplant; nach Veröffentlichung wird neu gerechnet.</p>
     <div v-if="forecastChartEntries.length" class="forecast-chart">
       <canvas ref="forecastChartCanvas"
         aria-label="Forecast-Chart mit Strompreisen, Batterieentscheidungen, PV, Verbrauch und erwartetem SoC"></canvas>

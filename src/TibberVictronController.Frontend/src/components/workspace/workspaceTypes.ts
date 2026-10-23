@@ -3,4 +3,5 @@ export interface TrendSeries {
   color: string;
   points: Array<{ x: number; y: number | null }>;
   fill?: boolean;
+  dashed?: boolean;
 }

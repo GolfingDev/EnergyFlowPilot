@@ -29,6 +29,7 @@ export interface DashboardCheckDto {
 }
 
 export interface DashboardPlanSlotDto {
+  isPriceEstimated: boolean;
   startsAtUtc: string;
   endsAtUtc: string;
   pricePerKwh: number;

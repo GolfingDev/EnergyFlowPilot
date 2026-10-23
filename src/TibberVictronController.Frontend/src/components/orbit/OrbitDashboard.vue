@@ -32,6 +32,7 @@ const signedTarget = computed(() => summary.value == null ? null : summary.value
 const state = computed(() => summary.value ? leitstandCategoryLabels[summary.value.current.category] : 'Warte auf Energiedaten');
 const checks = computed(() => summary.value?.checks.filter(c => c.severity !== 'ok') ?? []);
 const segments = computed(() => summary.value?.planSegments.filter(s => Date.parse(s.endsAtUtc) > now.value).slice(0, 4) ?? []);
+const firstEstimatedSlot = computed(() => summary.value?.planSlots.find(slot => slot.isPriceEstimated));
 const nextSegment = computed(() => summary.value?.planSegments.find(s => Date.parse(s.startsAtUtc) > now.value));
 const currentSegment = computed(() => summary.value?.planSegments.find(s => Date.parse(s.startsAtUtc) <= now.value && Date.parse(s.endsAtUtc) > now.value));
 const planTotals = computed(() => {
@@ -153,16 +154,17 @@ onBeforeUnmount(() => { request?.abort(); window.clearInterval(timer); });
     </section>
 
     <section class="orbit-plan" aria-labelledby="orbit-plan-title">
-      <header class="orbit-section-heading"><div><h2 id="orbit-plan-title">24-Stunden-Plan</h2><p v-if="planTotals" class="orbit-plan-period">{{ dateTime(planTotals.startsAtUtc) }} – {{ dateTime(planTotals.endsAtUtc) }}</p></div><span class="orbit-small">PROGNOSE, KEINE MESSUNG</span></header>
+      <header class="orbit-section-heading"><div><h2 id="orbit-plan-title">48-Stunden-Plan</h2><p v-if="planTotals" class="orbit-plan-period">{{ dateTime(planTotals.startsAtUtc) }} – {{ dateTime(planTotals.endsAtUtc) }}</p></div><span class="orbit-small">PROGNOSE, KEINE MESSUNG</span></header>
+      <p v-if="firstEstimatedSlot" class="orbit-plan-period">Ab {{ dateTime(firstEstimatedSlot.startsAtUtc) }} sind die Preise geschätzt (schraffiert). Für diese Zeitfenster wird noch keine Netzladung geplant; nach Veröffentlichung wird neu gerechnet.</p>
       <dl class="orbit-plan-totals" aria-label="Energieprognose für den gesamten Planzeitraum">
         <div><dt>Erwarteter Verbrauch</dt><dd>{{ format(planTotals?.consumptionKwh, 2) }} <small>kWh</small></dd></div>
         <div><dt>Erwarteter PV-Ertrag</dt><dd>{{ format(planTotals?.pvKwh, 2) }} <small>kWh</small></dd></div>
         <div><dt>Geplante Netzenergie für Speicher</dt><dd>{{ format(planTotals?.gridKwh, 2) }} <small>kWh</small></dd></div>
       </dl>
       <div v-if="slots.length" class="orbit-price-strip" aria-label="Preisprognose, Balken nach geplanter Aktion eingefärbt">
-        <span v-for="slot in slots" tabindex="0" role="img" :key="slot.startsAtUtc" class="orbit-price-bar" :style="{ height: `${barHeight(slot.pricePerKwh)}%`, background: categoryColors[slot.category] }"
-          :aria-label="`${time(slot.startsAtUtc)}: ${format(slot.pricePerKwh * priceScale, 2)} ${priceUnit}, ${leitstandCategoryLabels[slot.category]}`"
-          :title="`${time(slot.startsAtUtc)} · ${format(slot.pricePerKwh * priceScale, 2)} ${priceUnit} · ${leitstandCategoryLabels[slot.category]}`" />
+        <span v-for="slot in slots" tabindex="0" role="img" :key="slot.startsAtUtc" class="orbit-price-bar" :class="{ 'orbit-price-bar--estimated': slot.isPriceEstimated }" :style="{ height: `${barHeight(slot.pricePerKwh)}%`, background: categoryColors[slot.category] }"
+          :aria-label="`${time(slot.startsAtUtc)}: ${format(slot.pricePerKwh * priceScale, 2)} ${priceUnit} (${slot.isPriceEstimated ? 'geschätzt' : 'veröffentlicht'}), ${leitstandCategoryLabels[slot.category]}`"
+          :title="`${time(slot.startsAtUtc)} · ${format(slot.pricePerKwh * priceScale, 2)} ${priceUnit} · ${slot.isPriceEstimated ? 'geschätzt' : 'veröffentlicht'} · ${leitstandCategoryLabels[slot.category]}`" />
       </div>
       <p v-else class="orbit-empty">Die Preis- und Ladeplanung erscheint, sobald eine Prognose verfügbar ist.</p>
       <div v-if="slots.length" class="orbit-chart-times"><span>{{ time(slots[0].startsAtUtc) }}</span><span>Strompreis · relative Höhe, einschließlich negativer Preise</span><span>{{ time(slots[slots.length - 1].endsAtUtc) }}</span></div>

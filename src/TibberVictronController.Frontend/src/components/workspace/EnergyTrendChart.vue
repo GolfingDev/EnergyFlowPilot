@@ -17,7 +17,7 @@ async function render(): Promise<void> {
       // A missing hourly bucket must remain an outage, never a continuous line.
       return previous && point.x - previous.x > (props.gapMinutes ?? 90) * 60_000
         ? [{ x: previous.x + 1, y: null }, point] : [point];
-    }), borderColor: s.color,
+    }), borderColor: s.color, borderDash: s.dashed ? [5, 4] : [],
       backgroundColor: `${s.color}30`, fill: s.fill ?? false, borderWidth: 2, pointRadius: 0, pointHitRadius: 8,
       tension: .15, spanGaps: false })) },
     options: {

@@ -46,7 +46,15 @@ const balance = computed(() => [
   { label: 'Batterie entladen', value: availableSavings.value ? `${n(availableSavings.value.aggregate.dischargedEnergyKwh, 2)} kWh` : '–', hint: 'Aus dem Victron-Speicher abgegebene Energie' }
 ]);
 const chart = (label: string, color: string, points: TrendSeries['points'], fill = false): TrendSeries[] => [{ label, color, points, fill }];
-const priceSeries = computed(() => chart('Strompreis · Prognose', '#548c85', (props.forecast?.entries ?? []).map(e => ({ x: Date.parse(e.startsAtUtc), y: e.tibberPricePerKwh * priceScale.value }))));
+const firstEstimatedEntry = computed(() => props.forecast?.entries.find(entry => entry.isPriceEstimated));
+const priceSeries = computed<TrendSeries[]>(() => [false, true].map(estimated => ({
+  label: estimated ? 'Strompreis · geschätzt' : 'Strompreis · veröffentlicht',
+  color: estimated ? '#946b25' : '#548c85', dashed: estimated,
+  points: (props.forecast?.entries ?? []).map(entry => ({
+    x: Date.parse(entry.startsAtUtc),
+    y: Boolean(entry.isPriceEstimated) === estimated ? entry.tibberPricePerKwh * priceScale.value : null
+  }))
+})));
 const pvSeries = computed(() => chart('PV-Ertrag · Prognose', '#d5a136', (props.forecast?.entries ?? []).map(e => ({ x: Date.parse(e.startsAtUtc), y: e.expectedPvYieldKwh })), true));
 const socSeries = computed(() => chart('Victron-Ladezustand · gemessen', '#2187a3', (review.value?.hours ?? []).map(h => ({ x: Date.parse(h.startsAtUtc), y: h.batterySocEndPercent }))));
 const gridSeries = computed<TrendSeries[]>(() => [
@@ -93,6 +101,7 @@ onBeforeUnmount(() => { summaryRequest?.abort(); reviewRequest?.abort(); window.
       <div><p>ENERGYFLOWPILOT <span>/ {{ variant === 'flow' ? 'ENERGIEZENTRALE' : 'KACHELWERK' }}</span></p><h1>{{ variant === 'flow' ? 'Energieübersicht' : 'Energie & Analyse' }}</h1></div>
       <div class="workspace-header-actions"><span class="workspace-status" :class="{ 'workspace-status--stale': stale }"><i />{{ stale ? 'Live-Daten fehlen oder sind veraltet' : 'Live-Daten aktuell' }}</span><button class="workspace-refresh" aria-label="Dashboard-Daten aktualisieren" @click="loadSummary(); loadReview()"><v-icon icon="mdi-refresh" size="19" /></button></div>
     </header>
+    <p v-if="firstEstimatedEntry" class="workspace-error">Ab {{ stamp(firstEstimatedEntry.startsAtUtc) }} sind die Preise geschätzt (gestrichelt). Für diese Zeitfenster wird noch keine Netzladung geplant; nach Veröffentlichung wird neu gerechnet.</p>
     <p v-if="summaryError" class="workspace-error" role="alert">{{ summaryError }} Letzte Daten können veraltet sein.</p>
 
     <div v-if="variant === 'flow'" class="workspace-flow-grid">

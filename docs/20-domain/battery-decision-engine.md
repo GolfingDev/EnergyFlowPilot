@@ -73,7 +73,7 @@ Forecast charging decisions are cost-optimal over the whole horizon (`BatterySoc
 
 In External ESS mode the Multi controls its AC-in power to the published setpoint and supplies AC-out loads in addition, so the battery power equals the setpoint minus the AC-out load. On this site the whole house phase L1, including the wallbox share, is on AC-out. The setpoint is therefore the signed battery target plus the measured AC-out power per phase (`vebus/276/Ac/Out/L{n}/P`). The setpoint refresh rebuilds it every 5 seconds with the current AC-out load. Without this, an idle battery still covered L1, a discharge delivered its target plus the L1 load, and a planned grid charge could turn into a discharge while L1 drew more than the charge power.
 - there is no end-of-horizon reserve (`END_SOC_RESERVE` is no longer produced): the horizon end only reflects when Tibber publishes prices, and the plan is recalculated as soon as they are known
-- missing prices up to 24 h ahead are estimated from a comparable day (`ComparableDayPriceEstimator`): Tuesday to Friday use the previous day, Saturday, Sunday and Monday the same weekday one week earlier; past prices come from the decision log, the current day from Tibber; negative estimated prices are set to 0
+- missing prices up to 48 h ahead are estimated from a comparable day (`ComparableDayPriceEstimator`): Tuesday to Friday use the previous day, Saturday, Sunday and Monday the same weekday one week earlier; past prices come from the decision log, the current day from Tibber; negative estimated prices are set to 0
 - the comparable-day estimate is then replaced by a weather-based estimate (`WeatherPriceEstimator`) where inputs are available:
   - a linear model learns the German spot price from a wind index (turbine curve over five northern locations, Open-Meteo `wind_speed_100m`), the irradiance over five southern and central locations, 23 local hour dummies, and Saturday and Sunday
   - training data: 42 days of hourly weather and Energy-Charts day-ahead prices (`PriceDriverProvider`, three requests per hour at most, cached including failures)
@@ -322,3 +322,12 @@ The engine should depend on abstractions, for example:
 - `IClock`
 - `IDecisionLogRepository`
 - `IControllerConfigurationProvider`
+
+
+### Planungshorizont und Preisqualität
+
+Dashboard, Forecast-Standardabfrage und automatische Entscheidung verwenden einen Horizont von bis zu 48 Stunden. Dadurch kann eine günstige Nacht auch Bedarf am folgenden Nachmittag und Abend decken. Fehlen veröffentlichte Preise, ergänzen die bestehenden Schätzer den Zeitraum, soweit Vergleichsdaten verfügbar sind; fehlen auch diese, darf der sichtbare Plan kürzer bleiben. Die tatsächlichen Zeitgrenzen stehen am Plan bzw. in den Slots.
+
+Geschätzte Preise werden in allen Dashboard-Varianten sichtbar von veröffentlichten Preisen unterschieden, inklusive Preisstatus im Tooltip. Ein Hinweis nennt den Beginn der Schätzung und erklärt, dass für diese Slots keine Netzladung geplant wird. Die Sperre gilt weiterhin sowohl im Forecast als auch für die daraus abgeleitete automatische Entscheidung. Sobald veröffentlichte Preise verfügbar sind, wird neu geplant. Ein längerer Horizont erzwingt keine Vollladung: Preisvorteil, Wirkungsgrad, Ladeleistung, PV und Planungsgrenzen bleiben maßgeblich.
+
+Der E3/DC-Konfliktschutz bleibt unabhängig vom wirtschaftlichen Plan aktiv. Eine wirtschaftlich sinnvolle Netzladung ist keine Freigabe, Energie aus dem Zweitspeicher zu beziehen.

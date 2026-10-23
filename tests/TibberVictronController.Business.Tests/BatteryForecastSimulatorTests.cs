@@ -8,6 +8,45 @@ public sealed class BatteryForecastSimulatorTests
     private static readonly DateTimeOffset ForecastStartsAtUtc = new(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void OvernightChargingIncludesDemandBeyondTheFirst24Hours()
+    {
+        // Starting at 10:00, the following afternoon lies outside the old horizon.
+        // Only the extended plan can use the preceding cheap night to cover that demand.
+        var prices = Enumerable.Repeat(0.25m, 192).ToArray();
+        var consumption = new decimal[192];
+        for (var index = 56; index < 72; index++) prices[index] = 0.10m;
+        for (var index = 112; index < 128; index++)
+        {
+            prices[index] = 0.50m;
+            consumption[index] = 0.75m;
+        }
+        var configuration = new BatteryConfiguration(new BatteryConfigurationValues
+        {
+            TotalCapacityKwh = 10m,
+            MinimumStateOfChargePercent = 10m,
+            PlanningMinimumStateOfChargePercent = 10m,
+            PlanningMaximumStateOfChargePercent = 90m,
+            MaximumChargePowerWatts = 4000,
+            MaximumDischargePowerWatts = 4000,
+            RoundTripEfficiencyPercent = 100m
+        });
+        var simulator = new BatteryForecastSimulator();
+        BatteryForecastResult Simulate(int count) => simulator.Simulate(
+            CreatePriceForecast(prices.Take(count).ToArray()),
+            CreatePvForecast(new decimal[count]),
+            CreateConsumptionForecast(consumption.Take(count).ToArray()),
+            new BatteryState(10m, ForecastStartsAtUtc), configuration, 0.08m);
+
+        var shortPlan = Simulate(96);
+        var extendedPlan = Simulate(192);
+
+        Assert.DoesNotContain(shortPlan.Entries, entry => entry.Decision.Instruction.ChargeSource == BatteryChargeSource.Grid);
+        Assert.Contains(extendedPlan.Entries.Skip(56).Take(16), entry => entry.Decision.Instruction.ChargeSource == BatteryChargeSource.Grid);
+        Assert.InRange(extendedPlan.Entries[71].StateOfChargeAfterPercent, 89m, 90m);
+        Assert.Contains(extendedPlan.Entries.Skip(112).Take(16), entry => entry.Decision.Instruction.DecisionState == BatteryDecisionState.Discharge);
+    }
+
+    [Fact]
     public void SimulateChoosesCheapestSlotsAndUpdatesStateOfChargeSlotBySlot()
     {
         var simulator = new BatteryForecastSimulator();

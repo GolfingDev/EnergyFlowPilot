@@ -14,7 +14,8 @@ namespace TibberVictronController.Business.Dashboard;
 public sealed class DashboardSummaryService : IDashboardSummaryService
 {
     private static readonly TimeSpan LiveSampleMaxAge = TimeSpan.FromMinutes(2);
-    private static readonly TimeSpan PlanHorizon = TimeSpan.FromHours(24);
+    // Include the next afternoon/evening when evaluating a cheap overnight charge.
+    private static readonly TimeSpan PlanHorizon = TimeSpan.FromHours(48);
     private static readonly TimeSpan MaximumSampleGap = TimeSpan.FromMinutes(1);
     private const decimal BatteryActivityThresholdWatts = 100m;
     private const decimal FeedInThresholdWatts = 50m;

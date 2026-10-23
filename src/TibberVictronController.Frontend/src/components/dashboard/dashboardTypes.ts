@@ -61,6 +61,7 @@ export interface BatteryForecastReasonDto {
 }
 
 export interface BatteryForecastEntryDto {
+  isPriceEstimated: boolean;
   startsAtUtc: string;
   endsAtUtc: string;
   tibberPricePerKwh: number;
