@@ -2,13 +2,50 @@ using System.Globalization;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Models;
+using TibberVictronController.Api.Configuration;
 using TibberVictronController.Dal.Mqtt;
+using TibberVictronController.Dal.Victron;
 
 namespace TibberVictronController.Api.JointBattery;
 
-/// <summary>Loads independent live inputs for the shadow planner; never resolves a command publisher.</summary>
+/// <summary>Loads independent live inputs for the shadow planner; sends only MQTT read requests, never device commands.</summary>
 public sealed class JointBatteryShadowCalculation(IServiceProvider services)
 {
+    /// <summary>
+    /// The Victron connection runs with "suppress-republish": values are only published when they change. An idle
+    /// battery's SoC can therefore be minutes old although it is current. Explicit read requests refresh exactly the
+    /// timestamps the planner checks, so the freshness rule stays strict without rejecting a quiet battery.
+    /// </summary>
+    private async Task<MqttTelemetrySnapshot> ReadFreshVictronSnapshotAsync(CancellationToken token)
+    {
+        var store = services.GetRequiredService<MqttTelemetrySnapshotStore>();
+        var client = services.GetService<IVictronMqttControlClient>();
+        var settingsProvider = services.GetService<DatabaseVictronMqttSettingsProvider>();
+        if (client is null || settingsProvider is null) return store.GetSnapshot();
+
+        var topics = VictronMqttTopicFactory.Create(await settingsProvider.GetSettingsAsync(token));
+        var requestedAt = DateTimeOffset.UtcNow;
+        foreach (var topic in new[] { topics.BatterySocTopic, topics.BatteryPowerTopic, topics.GridPowerTopic })
+            await client.RequestValueAsync(topic, token);
+
+        // Wall-clock wait (not IUtcClock): the answers are stamped with the receive time of the MQTT client.
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(token);
+        wait.CancelAfter(TimeSpan.FromSeconds(3));
+        while (true)
+        {
+            var snapshot = store.GetSnapshot();
+            if (new[] { snapshot.BatterySocMeasuredAtUtc, snapshot.BatteryPowerMeasuredAtUtc, snapshot.GridPowerMeasuredAtUtc }
+                .All(at => at >= requestedAt))
+                return snapshot;
+            try { await Task.Delay(100, wait.Token); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                // No answer in time: the caller's freshness check reports which value is missing.
+                return store.GetSnapshot();
+            }
+        }
+    }
+
     public async Task<JointBatteryPlan> CalculateAsync(E3dcLocalTelemetry e3dc, CancellationToken token)
     {
         var clock = services.GetRequiredService<IUtcClock>();
@@ -17,10 +54,12 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
         async Task<decimal> Setting(string key) => decimal.Parse(
             (await settings.GetSettingAsync(key, token))?.Value ?? throw new InvalidOperationException("Eine Einstellung fuer die gemeinsame Vorschau fehlt."),
             CultureInfo.InvariantCulture);
-        var mqtt = services.GetRequiredService<MqttTelemetrySnapshotStore>().GetSnapshot();
-        foreach (var date in new[] { mqtt.BatterySocMeasuredAtUtc, mqtt.BatteryPowerMeasuredAtUtc, mqtt.GridPowerMeasuredAtUtc })
-            if (date is null || now - date.Value > TimeSpan.FromSeconds(30) || date > now.AddSeconds(5))
-                throw new InvalidOperationException("Die gemeinsame Vorschau benoetigt frische Victron-Messwerte.");
+        var mqtt = await ReadFreshVictronSnapshotAsync(token);
+        var checkedAt = clock.UtcNow;
+        foreach (var (date, name) in new[] { (mqtt.BatterySocMeasuredAtUtc, "Ladestand"), (mqtt.BatteryPowerMeasuredAtUtc, "Akkuleistung"),
+            (mqtt.GridPowerMeasuredAtUtc, "Netzleistung") })
+            if (date is null || checkedAt - date.Value > TimeSpan.FromSeconds(30) || date > checkedAt.AddSeconds(5))
+                throw new InvalidOperationException($"Die gemeinsame Vorschau benoetigt frische Victron-Messwerte ({name} fehlt oder ist aelter als 30 Sekunden).");
         if (mqtt.BatterySocPercent is null || mqtt.BatteryPowerWatts is null || mqtt.GridPowerWatts is null)
             throw new InvalidOperationException("Fuer die gemeinsame Vorschau fehlen Victron-Messwerte.");
         var primary = await services.GetRequiredService<IBatteryConfigurationProvider>().GetBatteryConfigurationAsync(token);

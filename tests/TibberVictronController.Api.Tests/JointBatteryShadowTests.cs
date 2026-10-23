@@ -72,6 +72,33 @@ public sealed class JointBatteryShadowTests
     }
 
     [Fact]
+    public async Task MissingPlanShowsThePreviewFailureReason()
+    {
+        var settings = new Settings();
+        foreach (var (key, value) in new[] {
+            (ControllerSettingDefaults.JointBatteryExecutionEnabledKey, "true"), (ControllerSettingDefaults.VictronDryRunKey, "false"),
+            (ControllerSettingDefaults.E3dcRscpEnabledKey, "true"), (ControllerSettingDefaults.E3dcRscpHostKey, "192.0.2.10"),
+            (ControllerSettingDefaults.E3dcRscpPortKey, "5033"), (ControllerSettingDefaults.E3dcRscpUserKey, "test-user"),
+            (ControllerSettingDefaults.E3dcRscpPasswordKey, "test-password"), (ControllerSettingDefaults.E3dcRscpKeyKey, "test-key"),
+            (ControllerSettingDefaults.VictronControlModeKey, "externalEss"), (ControllerSettingDefaults.JointBatteryPhase1LimitKey, "14720"),
+            (ControllerSettingDefaults.JointBatteryPhase2LimitKey, "14720"), (ControllerSettingDefaults.JointBatteryPhase3LimitKey, "14720"),
+            (ControllerSettingDefaults.JointBatteryVictronInputLimitKey, "14720") })
+            await settings.SaveSettingAsync(new(key, value, ControllerSettingSensitivity.Normal, Now));
+        var runtime = new JointBatteryRuntimeState();
+        runtime.Set(new("Blocked", "Vorschau-Testgrund.", Now, null, null));
+        using var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings).AddSingleton<IUtcClock>(new Clock())
+            .AddSingleton<IOperationalEventRepository>(new Events()).AddSingleton(runtime).BuildServiceProvider();
+        var state = new JointBatteryExecutionState();
+        var worker = new JointBatteryExecutionBackgroundService(services.GetRequiredService<IServiceScopeFactory>(), state,
+            new VictronSetpointRefreshState(), NullLogger<JointBatteryExecutionBackgroundService>.Instance, new Watchdog());
+        await worker.TickAsync(CancellationToken.None);
+        Assert.Equal("Blocked", state.Current.Status);
+        Assert.Contains("Plan fehlt", state.Current.Message);
+        Assert.Contains("Ursache: Vorschau-Testgrund.", state.Current.Message);
+        Assert.False(state.Current.OwnsControl);
+    }
+
+    [Fact]
     public async Task ManualRecoveryConfirmationRequiresDisabledExecutionAndReleasesLegacyLock()
     {
         var settings = new Settings();

@@ -156,9 +156,14 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
                 return (null, "Bestaetigte Anschluss- und Phasengrenzen fehlen.");
         }
 
-        var plan = services.GetService<JointBatteryRuntimeState>()?.Current.Plan;
+        var runtime = services.GetService<JointBatteryRuntimeState>()?.Current;
+        var plan = runtime?.Plan;
         if (plan is null)
-            return (null, "Ein gueltiger gemeinsamer Plan fehlt.");
+        {
+            // The planner runs in the preview worker; surface its failure reason instead of a bare "plan missing".
+            var cause = runtime is { Status: "Blocked" } ? " Ursache: " + runtime.Message : " Die Planung laeuft alle 30 Sekunden; bitte kurz warten.";
+            return (null, "Ein gueltiger gemeinsamer Plan fehlt." + cause);
+        }
         if (clock.UtcNow - plan.CalculatedAtUtc > PlanMaximumAge)
             return (null, "Die gemeinsame Planung ist veraltet.");
         var slot = plan.Slots.SingleOrDefault(s => s.TimeSlot.StartsAtUtc <= clock.UtcNow && s.TimeSlot.EndsAtUtc > clock.UtcNow);
