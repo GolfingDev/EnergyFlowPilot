@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.DataProtection;
 using TibberVictronController.Api.JointBattery;
 using TibberVictronController.Dal.E3dc;
 using TibberVictronController.Business.Abstractions;
+using TibberVictronController.Business.Models;
 using TibberVictronController.Business.Dashboard;
 using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Homematic;
