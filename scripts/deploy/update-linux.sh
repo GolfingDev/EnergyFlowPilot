@@ -320,8 +320,24 @@ EnergyFlowPilot Update abgeschlossen.
 EOF
 }
 
+acquire_deploy_lock() {
+  # A manual run and the cron auto-update must not build into the same bin/obj folders at once
+  # (seen as "GenerateDepsFile ... being used by another process"). This lock is separate from the
+  # auto-update lock, so auto-update-linux.sh calling this script cannot deadlock on its own lock.
+  local lock_file="${DEPLOY_LOCK_FILE:-/var/lock/${APP_NAME}-deploy.lock}"
+  exec 8>"${lock_file}"
+  if ! flock -n 8; then
+    echo "Ein anderes Update laeuft bereits; warte bis zu 15 Minuten auf dessen Ende ..."
+    if ! flock -w 900 8; then
+      echo "Das laufende Update ist nach 15 Minuten nicht beendet. Abbruch." >&2
+      exit 1
+    fi
+  fi
+}
+
 main() {
   require_root
+  acquire_deploy_lock
   validate_environment
   update_repository
   publish_backend_to_staging

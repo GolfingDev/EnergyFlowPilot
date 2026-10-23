@@ -217,6 +217,49 @@ public sealed class RscpProtocolTests
     }
 
     [Fact]
+    public async Task NegativeUsedDischargeLimitFromDeviceIsNormalizedToMagnitude()
+    {
+        // Values as read from the S10 (S10_2026_027) on 23.10.2026: EMS_USED_DISCHARGE_LIMIT arrives as -97 W.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        static RscpValue Float(uint tag, float value) => new(tag, 10, BitConverter.GetBytes(value));
+        static RscpValue Int(uint tag, int value) => new(tag, 6, BitConverter.GetBytes(value));
+        var server = Task.Run(async () => {
+            using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
+            var device = new FakeDevice(peer.GetStream());
+            await device.ExpectLoginAsync(timeout.Token);
+            async Task Serve(uint request, RscpValue reply)
+            {
+                Assert.Equal(request, await device.ReceiveAsync(timeout.Token));
+                await device.ReplyAsync(reply, timeout.Token);
+            }
+            await Serve(0x03040000, RscpValue.Container(0x03840000, Float(0x03800001, 11.16328f), Float(0x03800026, 278.0607f), Float(0x03800046, 50.4f)));
+            await Serve(0x1B000009, RscpValue.Container(0x1B800009, Float(0x1B040033, 1513f)));
+            await Serve(0x01000234, RscpValue.Container(0x01800234, Int(0x01800235, 3000), Int(0x01800236, 3000)));
+            await Serve(0x0100008B, RscpValue.Container(0x0180008B, new RscpValue(0x01000105, 1, [1])));
+            await Serve(0x01000002, Int(0x01800002, 0));
+            await Serve(0x01000041, Int(0x01800041, 97));
+            // Sign as reported by the device.
+            await Serve(0x01000045, Int(0x01800045, -97));
+            await Serve(0x01000011, new RscpValue(0x01800011, 2, [1]));
+        }, timeout.Token);
+        var clock = new Clock();
+        var settings = new FakeControllerSettingStore(ControllerSettingDefaults.CreateDefaultSettings(clock.UtcNow));
+        foreach (var (key, value) in new[] {
+            (ControllerSettingDefaults.E3dcRscpHostKey, "127.0.0.1"), (ControllerSettingDefaults.E3dcRscpPortKey, port.ToString()),
+            (ControllerSettingDefaults.E3dcRscpUserKey, "test-user"), (ControllerSettingDefaults.E3dcRscpPasswordKey, "test-password"),
+            (ControllerSettingDefaults.E3dcRscpKeyKey, "test-only-key") })
+            await settings.SaveSettingAsync(new(key, value, ControllerSettingSensitivity.Sensitive, clock.UtcNow));
+        var result = await new E3dcRscpTelemetrySource(settings, clock).ReadAsync(timeout.Token);
+        await server;
+        Assert.Equal(97, result.EffectiveChargeLimitWatts);
+        Assert.Equal(97, result.EffectiveDischargeLimitWatts);
+        Assert.InRange(result.UsableCapacityKwh, 14.01m, 14.02m);
+    }
+
+    [Fact]
     public void AllRscpNumberTypesAreReadAndUnknownTypesNameTagAndType()
     {
         Assert.Equal(-2, new RscpValue(1, 4, BitConverter.GetBytes((short)-2)).Number());

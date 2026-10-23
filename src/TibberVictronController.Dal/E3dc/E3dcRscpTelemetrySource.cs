@@ -38,9 +38,14 @@ public sealed class E3dcRscpTelemetrySource(IControllerSettingStore settings, IU
         var charge = checked((int)specifications.Required(0x01800235).Number());
         var discharge = checked((int)specifications.Required(0x01800236).Number());
         var powerSettings = await Read(0x0100008B);
+        var batteryPower = await Number(0x01000002);
+        var usedChargeLimit = await Number(0x01000041);
+        // EMS_USED_DISCHARGE_LIMIT is reported in discharge direction (negative, e.g. -97 W on S10_2026_027).
+        // The model stores limits as magnitudes, so the sign is normalized here and nowhere else.
+        var usedDischargeLimit = Math.Abs(await Number(0x01000045));
         return new E3dcLocalTelemetry(startedAt, battery.Required(0x03800001).Number(),
-            await Number(0x01000002), capacity, reserve, charge, discharge,
-            await Number(0x01000041), await Number(0x01000045), await Number(0x01000011),
+            batteryPower, capacity, reserve, charge, discharge,
+            usedChargeLimit, usedDischargeLimit, await Number(0x01000011),
             powerSettings.Required(0x01000105).Number() != 0);
     }
 }
