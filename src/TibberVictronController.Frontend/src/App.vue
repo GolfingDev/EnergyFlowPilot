@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useTheme } from 'vuetify';
 import GeneralOverlay from './components/GeneralOverlay.vue'
 import ThemeMenuPanel from './components/ThemeMenuPanel.vue';
+import BuildInfo from './components/BuildInfo.vue';
 import {
   defaultEnergyFlowTheme,
   getEnergyFlowTheme,
@@ -201,13 +202,17 @@ function toggleExecutiveSidebar(): void {
 
     <v-app-bar class="top-bar" elevation="0" height="74">
       <div class="top-bar__inner">
-        <h1 v-if="usesExecutiveShell" class="top-bar__title">{{ pageTitle }}</h1>
+        <div v-if="usesExecutiveShell" class="top-bar__title">
+          <h1 class="top-bar__page-title">{{ pageTitle }}</h1>
+          <BuildInfo />
+        </div>
 
         <button class="top-bar__brand" type="button" aria-label="EnergyFlowPilot Startseite" @click="isLoading = true">
           <img class="top-bar__logo" src="/Logo.png" alt="" />
           <div class="top-bar__copy">
             <span class="top-bar__eyebrow">EnergyFlowPilot</span>
             <strong>Smart energy flow control for your home.</strong>
+            <BuildInfo />
           </div>
         </button>
 

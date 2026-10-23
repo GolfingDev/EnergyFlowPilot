@@ -47,6 +47,8 @@
   font-weight: 760;
 }
 
+.top-bar__page-title { margin: 0; font: inherit; }
+
 .executive-sidebar {
   position: fixed;
   inset: 0 auto 0 0;

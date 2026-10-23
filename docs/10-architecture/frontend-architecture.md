@@ -69,3 +69,10 @@ Do not add gradients, glassmorphism, or loud decorative effects to settings surf
 ### Lesbarkeit des 48-Stunden-Plans
 
 Der Leitstand zeigt den Plan über die gesamte Inhaltsbreite mit vergrößerten Diagrammbereichen und Beschriftungen. Uhrzeit und Datum stehen getrennt an der Zeitachse. Die nächsten Schritte folgen darunter, auf breiten Bildschirmen zweispaltig. Auf schmalen Bildschirmen bleibt das Diagramm horizontal scrollbar, damit Viertelstunden-Balken und Beschriftungen lesbar bleiben; die Seite selbst darf dadurch keinen horizontalen Überlauf erhalten. Die Darstellung gilt für den hellen und dunklen Leitstand sowie eingebettete Leitstand-Ansichten.
+
+
+### Build-Kennung im Kopfbereich
+
+Alle Designs zeigen im globalen Kopfbereich eine kompakte Build-Information: kurze Git-Commit-Kennung und Erstellungszeitpunkt des Frontend-Artefakts in Europe/Berlin. Im normalen Kopf steht sie unter dem Produktnamen, bei den Layouts mit Seitenleiste unter dem Seitentitel. Der Tooltip enthält die volle Commit-Kennung, den Commit-Zeitpunkt und die Build-Zeit. Das Datum ist die Erstellungszeit des Frontends, keine behauptete Veröffentlichungs- oder Serverstartzeit.
+
+Vite bettet die Metadaten automatisch beim Build ein; die vorhandenen Installations- und Update-Skripte verwenden bereits diesen Build. Ein Browser-Reload verändert diese Angaben nicht. Entwicklungsbetrieb wird ausdrücklich als „Entwicklung“ markiert, lokale Änderungen mit einem Stern. Ohne Git-Metadaten erscheint „unbekannt“. Die Kennung beschreibt das geladene Frontend-Artefakt, nicht eine separat geprüfte Backend-Version.
