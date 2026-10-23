@@ -176,9 +176,35 @@ const visibleSegments = computed(() => (summary.value?.planSegments ?? [])
   .filter((segment) => new Date(segment.endsAtUtc).getTime() > Date.now())
   .slice(0, 7));
 
+// Keep a selected instant anchored while live refreshes advance the available forecast.
+const planWindowHours = ref(48);
+const planWindowStartUtc = ref<number | null>(null);
+const planWindowSlotCount = computed(() => planWindowHours.value * 4);
+const planMaximumStart = computed(() => Math.max(0, (summary.value?.planSlots.length ?? 0) - planWindowSlotCount.value));
+const planStartIndex = computed({
+  get: () => {
+    if (planWindowStartUtc.value === null) return 0;
+    const index = (summary.value?.planSlots ?? []).findIndex(slot => Date.parse(slot.startsAtUtc) >= planWindowStartUtc.value!);
+    return Math.min(planMaximumStart.value, index < 0 ? planMaximumStart.value : index);
+  },
+  set: (index: number) => {
+    const slot = summary.value?.planSlots[Math.max(0, Math.min(planMaximumStart.value, index))];
+    planWindowStartUtc.value = slot ? Date.parse(slot.startsAtUtc) : null;
+  }
+});
+const visiblePlanSlots = computed(() => (summary.value?.planSlots ?? []).slice(planStartIndex.value, planStartIndex.value + planWindowSlotCount.value));
+const planWindowLabel = computed(() => {
+  const slots = visiblePlanSlots.value;
+  return slots.length ? `${dayTime(slots[0].startsAtUtc)} – ${dayTime(slots[slots.length - 1].endsAtUtc)}` : 'Kein Plan verfügbar';
+});
+function changePlanWindow(hours: number): void {
+  planWindowHours.value = hours;
+  if (hours === 48) planWindowStartUtc.value = null;
+}
+
 /* ---------- Plan chart geometry (one scale per band, labels only at values the chart reaches) ---------- */
 const plan = computed(() => {
-  const slots = summary.value?.planSlots ?? [];
+  const slots = visiblePlanSlots.value;
   const width = 1120;
   const left = 58;
   const right = 70;
@@ -203,16 +229,20 @@ const plan = computed(() => {
   });
   const labels = slots
     .map((slot, index) => ({ date: new Date(slot.startsAtUtc), index }))
-    .filter(({ date }) => date.getMinutes() === 0 && date.getHours() % 6 === 0)
-    .map(({ date, index }) => ({ x: left + step * index, text: `${String(date.getHours()).padStart(2, '0')}:00`, day: `${date.getDate()}.${date.getMonth() + 1}.` }));
+    .filter(({ date, index }) => index === 0 || (planWindowHours.value === 1
+      ? true
+      : date.getMinutes() === 0 && date.getHours() % (planWindowHours.value <= 6 ? 1 : planWindowHours.value <= 12 ? 2 : planWindowHours.value <= 24 ? 3 : 6) === 0))
+    .map(({ date, index }) => ({ x: left + step * index, text: timeFormat.format(date), day: `${date.getDate()}.${date.getMonth() + 1}.` }));
   const firstStart = slots.length > 0 ? new Date(slots[0].startsAtUtc).getTime() : 0;
   const slotMs = slots.length > 0 ? new Date(slots[0].endsAtUtc).getTime() - firstStart : 1;
-  const nowX = left + Math.min(1, Math.max(0, (Date.now() - firstStart) / slotMs)) * step;
+  const now = Date.now();
+  const end = slots.length ? Date.parse(slots[slots.length - 1].endsAtUtc) : 0;
+  const nowX = now >= firstStart && now < end ? left + (now - firstStart) / slotMs * step : null;
   const lastSoc = slots.length > 0 ? { x: center(slots.length - 1), y: socY(slots[slots.length - 1].stateOfChargeAfterPercent) } : null;
 
   return {
     width, left, right, socTop, socHeight, priceTop, priceHeight, maxPvKw, priceTicks, socY, pvY,
-    pvLine, pvArea, socLine, bars, labels, nowX, lastSoc, hasData: slots.length > 1
+    pvLine, pvArea, socLine, bars, labels, nowX, lastSoc, hasData: slots.length > 0
   };
 });
 
@@ -523,7 +553,22 @@ onBeforeUnmount(() => {
       <p v-if="firstEstimatedSlot" class="ls-muted">Ab {{ dayTime(firstEstimatedSlot.startsAtUtc) }} sind die Preise geschätzt (Balken mit gestricheltem Rand). Für diese Zeitfenster wird noch keine Netzladung geplant; nach Veröffentlichung wird neu gerechnet.</p>
       <div class="ls-plan-layout">
         <div class="ls-panel ls-chart-panel">
-          <div class="ls-chart ls-plan-chart" tabindex="0" aria-label="48-Stunden-Plan, auf schmalen Bildschirmen horizontal scrollbar">
+          <div class="ls-plan-controls">
+            <div class="ls-tabs ls-plan-zoom" role="group" aria-label="Zeitspanne im Plan">
+              <button v-for="hours in [1, 3, 6, 12, 24, 48]" :key="hours" type="button" class="ls-tab"
+                :class="{ 'ls-tab--active': planWindowHours === hours }" :aria-pressed="planWindowHours === hours"
+                @click="changePlanWindow(hours)">{{ hours }} h</button>
+            </div>
+            <div class="ls-plan-navigation" role="group" aria-label="Zeitfenster verschieben">
+              <button type="button" class="ls-tab" aria-label="Eine Stunde zurück" :disabled="planStartIndex === 0" @click="planStartIndex -= 4">←</button>
+              <button type="button" class="ls-tab" :disabled="planStartIndex === 0" @click="planWindowStartUtc = null">Zum Planbeginn</button>
+              <button type="button" class="ls-tab" aria-label="Eine Stunde vor" :disabled="planStartIndex >= planMaximumStart" @click="planStartIndex += 4">→</button>
+            </div>
+          </div>
+          <p class="ls-plan-range" aria-live="polite">{{ planWindowLabel }} <span class="ls-muted">· Viertelstundenwerte</span></p>
+          <input v-if="planMaximumStart > 0" v-model.number="planStartIndex" class="ls-plan-slider" type="range" min="0" :max="planMaximumStart" step="1"
+            aria-label="Beginn des sichtbaren Planzeitfensters" :aria-valuetext="planWindowLabel" />
+          <div class="ls-chart ls-plan-chart" tabindex="0" :aria-label="`Plan: ${planWindowLabel}, auf schmalen Bildschirmen horizontal scrollbar`">
             <svg v-if="plan.hasData" :viewBox="`0 0 ${plan.width} 460`" role="img" aria-label="Plan: Ladezustand, PV und Strompreis je Viertelstunde">
               <text class="ls-band" :x="plan.left" :y="plan.socTop - 8">Ladezustand und PV</text>
               <g v-for="value in [0, 50, 100]" :key="`s${value}`">
@@ -543,13 +588,13 @@ onBeforeUnmount(() => {
                 <text class="ls-axis" :x="plan.left - 6" :y="plan.priceTop + plan.priceHeight - value / plan.priceTicks[2] * plan.priceHeight + 3" text-anchor="end">{{ numberFormat(2).format(value) }}</text>
               </g>
               <rect v-for="(bar, index) in plan.bars" :key="`b${index}`" class="ls-chart-hit" :class="{ 'ls-price--estimated': bar.estimated }" :x="bar.x" :y="bar.y" :width="bar.width" :height="bar.height" rx="1.5" :style="{ fill: categoryVar(bar.category) }" tabindex="0">
-                <title>{{ planSlotTooltip(summary?.planSlots[index]) }}</title>
+                <title>{{ planSlotTooltip(visiblePlanSlots[index]) }}</title>
               </rect>
               <text v-for="label in plan.labels" :key="label.x" class="ls-axis" :x="label.x" y="432" text-anchor="middle">
                 <tspan :x="label.x">{{ label.text }}</tspan><tspan :x="label.x" dy="18">{{ label.day }}</tspan>
               </text>
-              <line class="ls-now" :x1="plan.nowX" :x2="plan.nowX" :y1="plan.socTop - 2" :y2="plan.priceTop + plan.priceHeight" />
-              <text class="ls-now-label" :x="plan.nowX + 4" :y="plan.socTop + 10">jetzt</text>
+              <line v-if="plan.nowX !== null" class="ls-now" :x1="plan.nowX" :x2="plan.nowX" :y1="plan.socTop - 2" :y2="plan.priceTop + plan.priceHeight" />
+              <text v-if="plan.nowX !== null" class="ls-now-label" :x="plan.nowX + 4" :y="plan.socTop + 10">jetzt</text>
             </svg>
             <p v-else class="ls-muted">Kein Plan verfügbar.</p>
           </div>
@@ -831,6 +876,11 @@ h3 { font-size: 1.05rem; margin-bottom: 10px; }
 .ls-check--critical .ls-check__mark { background: var(--ls-critical); }
 
 .ls-chart-panel { display: grid; gap: 10px; min-width: 0; }
+.ls-plan-controls { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; }
+.ls-plan-zoom, .ls-plan-navigation { display: flex; flex-wrap: wrap; gap: 4px; }
+.ls-plan-navigation .ls-tab:disabled { opacity: .4; cursor: default; }
+.ls-plan-range { margin: 0; font-family: var(--ls-font-data); font-size: .85rem; }
+.ls-plan-slider { width: 100%; accent-color: var(--ls-accent); cursor: pointer; }
 .ls-plan-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .ls-chart.ls-plan-chart svg { min-width: 900px; }
 .ls-plan-chart .ls-axis, .ls-plan-chart .ls-now-label { font-size: 12px; }

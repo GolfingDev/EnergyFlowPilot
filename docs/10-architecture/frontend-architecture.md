@@ -76,3 +76,10 @@ Der Leitstand zeigt den Plan über die gesamte Inhaltsbreite mit vergrößerten 
 Alle Designs zeigen im globalen Kopfbereich eine kompakte Build-Information: kurze Git-Commit-Kennung und Erstellungszeitpunkt des Frontend-Artefakts in Europe/Berlin. Im normalen Kopf steht sie unter dem Produktnamen, bei den Layouts mit Seitenleiste unter dem Seitentitel. Der Tooltip enthält die volle Commit-Kennung, den Commit-Zeitpunkt und die Build-Zeit. Das Datum ist die Erstellungszeit des Frontends, keine behauptete Veröffentlichungs- oder Serverstartzeit.
 
 Vite bettet die Metadaten automatisch beim Build ein; die vorhandenen Installations- und Update-Skripte verwenden bereits diesen Build. Ein Browser-Reload verändert diese Angaben nicht. Entwicklungsbetrieb wird ausdrücklich als „Entwicklung“ markiert, lokale Änderungen mit einem Stern. Ohne Git-Metadaten erscheint „unbekannt“. Die Kennung beschreibt das geladene Frontend-Artefakt, nicht eine separat geprüfte Backend-Version.
+
+
+### Zeitlicher Zoom im Plan
+
+Der Leitstand bietet Zeitspannen von 1, 3, 6, 12, 24 und 48 Stunden. Pfeile verschieben den sichtbaren Beginn um jeweils eine Stunde, ein zugänglicher Schieberegler um einzelne Viertelstunden. „Zum Planbeginn“ setzt den Ausschnitt zurück; 48 Stunden stellt die Gesamtansicht wieder her. Die Anzeige nennt die tatsächlichen Zeitgrenzen.
+
+Der Zoom filtert vorhandene Plan-Slots ohne neue Prognoseabfrage und ohne Änderungen an der Steuerung. Tooltip, Preisstatus und Kurven verwenden denselben Ausschnitt; Zeitachsenbeschriftungen passen sich der Zeitspanne an. Die Jetzt-Markierung erscheint nur, wenn der aktuelle Zeitpunkt im Ausschnitt liegt. Bei Live-Aktualisierungen bleibt ein ausgewählter Zeitpunkt verankert, soweit er noch im verfügbaren Plan liegt; die Auswahl wird an den Planrändern begrenzt.
