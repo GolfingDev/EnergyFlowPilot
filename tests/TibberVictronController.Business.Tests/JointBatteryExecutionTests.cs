@@ -62,6 +62,30 @@ public sealed class JointBatteryExecutionTests
     }
 
     [Fact]
+    public async Task UnderDeliveryAfterSettlingIsReportedNotStopped()
+    {
+        // Seen on the device: the E3/DC confirms the power but delivers far less; that must not stop the joint charge.
+        var hardware = new Hardware { Follow = false, Primary = 240, Secondary = 50 };
+        var state = new JointBatteryExecutionState { NeutralSamples = 2, Direction = 1, SettlingSinceUtc = Now.AddSeconds(-100) };
+        state.Set(new("Active", "", Now, true, 250, 250));
+        await new JointBatteryExecutionCoordinator(hardware, state, new Clock()).StepAsync(Command(250, 250), CancellationToken.None);
+        Assert.Equal("Active", state.Current.Status);
+        Assert.Contains("E3/DC folgt nur teilweise: Soll 250 W, gemessen 50 W", state.Current.Message);
+        Assert.DoesNotContain("Victron folgt", state.Current.Message);
+    }
+
+    [Fact]
+    public async Task OvershootAfterSettlingStopsAndNamesTheBattery()
+    {
+        var hardware = new Hardware { Follow = false, Primary = 900, Secondary = 250 };
+        var state = new JointBatteryExecutionState { NeutralSamples = 2, Direction = 1, SettlingSinceUtc = Now.AddSeconds(-100) };
+        state.Set(new("Active", "", Now, true, 250, 250));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new JointBatteryExecutionCoordinator(hardware, state, new Clock()).StepAsync(Command(250, 250), CancellationToken.None));
+        Assert.Contains("Victron ueberschreitet den Sollwert deutlich: Soll 250 W, gemessen 900 W", error.Message);
+    }
+
+    [Fact]
     public async Task ImplausibleE3dcEchoAboveRequestPreventsVictronStart()
     {
         var hardware = new Hardware(); var state = new JointBatteryExecutionState { NeutralSamples = 2, Direction = 1 };

@@ -112,6 +112,7 @@ An der Notstromreserve meldet der E3/DC als wirksame Lade- und Entladegrenze (`E
 - Standard (`jointBattery.e3dc.respectReportedLimits=false`): Planung und Ausfuehrung fordern bis zur Systemgrenze an. Die Anforderung steigt wie ueblich in 250-W-Schritten, jeweils ausgehend von der zuletzt **gewaehrten** Leistung.
 - Die Leistungsquittung von `EMS_SET_POWER` gilt als tatsaechlich gewaehrte Leistung. Weniger als angefordert ist kein Fehler: Die Steuerung rechnet mit dem gewaehrten Wert weiter, und die Karte zeigt „E3/DC gibt nur X von Y W frei“. Mehr als angefordert gilt als unplausibel und stoppt die Ausfuehrung. Phasen- und Zuleitungsgrenzen werden immer fuer die volle Anforderung berechnet, daher ist eine kleinere Freigabe unkritisch.
 - Gewaehrt der E3/DC 0 W, wird nicht auf seinen Betriebsmodus gewartet; der Victron arbeitet weiter.
+- Nach der 90-Sekunden-Anlaufphase gilt nur noch eine deutliche Ueberschreitung (mehr als Soll + 500 W) oder die Gegenrichtung als Fehler. Liefert ein Akku weniger als 40 % des Sollwerts (am Geraet beobachtet: E3/DC quittiert die Leistung, laedt aber deutlich weniger), steht das als „… folgt nur teilweise: Soll X W, gemessen Y W“ auf der Karte, ohne die Steuerung zu stoppen.
 - Mit `true` gilt wieder die gemeldete Grenze als Obergrenze. Die gemeldete Grenze steht auf der Dashboard-Karte.
 
 ### Manuelle Ladung beider Akkus

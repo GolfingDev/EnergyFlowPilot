@@ -72,13 +72,28 @@ public sealed class JointBatteryExecutionCoordinator(IJointBatteryHardware hardw
         await hardware.SetVictronAsync(command.VictronWatts, token);
         var measured = new[] { live.Batteries[0].MeasuredPowerWatts, live.Batteries[1].MeasuredPowerWatts };
         var targets = new[] { command.VictronWatts, grantedE3dc };
-        if (targets.Zip(measured).Any(p => Math.Sign(p.First) * p.Second < -150))
-            throw new InvalidOperationException("Ein Akku arbeitet gegen die gemeinsame Sollrichtung.");
+        string[] names = ["Victron", "E3/DC"];
+        for (var i = 0; i < 2; i++)
+            if (Math.Sign(targets[i]) * measured[i] < -150)
+                throw new InvalidOperationException($"{names[i]} arbeitet gegen die gemeinsame Sollrichtung: Soll {targets[i]} W, gemessen {measured[i]} W.");
+
+        // After settling, only an overshoot is unsafe (it can exceed the phase and feed-line limits the command was
+        // sized for). Delivering less than the target is harmless - the battery just charges or discharges less - and
+        // happens e.g. when the E3/DC confirms a power but limits it internally. It is reported, not treated as a fault.
         state.SettlingSinceUtc ??= clock.UtcNow;
-        if (clock.UtcNow - state.SettlingSinceUtc > TimeSpan.FromSeconds(90) && targets.Zip(measured).Any(p =>
-            Math.Abs(p.First) > 100 && (Math.Sign(p.First) * p.Second < Math.Abs(p.First) * .4 || Math.Abs(p.Second) > Math.Abs(p.First) + 500)))
-            throw new InvalidOperationException("Die gemessenen Leistungen folgen den gemeinsamen Sollwerten nicht.");
-        state.Set(new("Active", command.Reason + grantNote, clock.UtcNow, true, command.VictronWatts, grantedE3dc,
+        var followNote = "";
+        if (clock.UtcNow - state.SettlingSinceUtc > TimeSpan.FromSeconds(90))
+        {
+            for (var i = 0; i < 2; i++)
+            {
+                if (Math.Abs(targets[i]) <= 100) continue;
+                if (Math.Abs(measured[i]) > Math.Abs(targets[i]) + 500)
+                    throw new InvalidOperationException($"{names[i]} ueberschreitet den Sollwert deutlich: Soll {targets[i]} W, gemessen {measured[i]} W.");
+                if (Math.Sign(targets[i]) * measured[i] < Math.Abs(targets[i]) * .4)
+                    followNote += $" {names[i]} folgt nur teilweise: Soll {targets[i]} W, gemessen {measured[i]} W.";
+            }
+        }
+        state.Set(new("Active", command.Reason + grantNote + followNote, clock.UtcNow, true, command.VictronWatts, grantedE3dc,
             measured[0], measured[1], command.ValidUntilUtc));
     }
 
