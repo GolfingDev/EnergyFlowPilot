@@ -72,6 +72,71 @@ public sealed class JointBatteryShadowTests
     }
 
     [Fact]
+    public async Task VictronSetpointReadbackToleratesOneStaleAnswerAfterWrite()
+    {
+        // Seen on the device: wrote 218, the first read request still answered the previous 216.
+        var settings = new Settings();
+        foreach (var setting in ControllerSettingDefaults.CreateDefaultSettings(Now))
+            await settings.SaveSettingAsync(setting);
+        await settings.SaveSettingAsync(new(ControllerSettingDefaults.VictronControlModeKey, "externalEss", ControllerSettingSensitivity.Normal, Now));
+        var victron = new LaggingVictron();
+        using var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings)
+            .AddSingleton<IUtcClock>(new SystemUtcClock()).AddSingleton<IVictronMqttControlClient>(victron)
+            .AddSingleton<TibberVictronController.Dal.Victron.DatabaseVictronMqttSettingsProvider>().BuildServiceProvider();
+
+        await new JointBatteryHardware(services).SetVictronAsync(0, CancellationToken.None);
+
+        Assert.True(victron.StaleAnswers > 0);
+        Assert.All(victron.Written, write => Assert.Equal(write.Value, victron.Current("N/" + write.Key[2..])));
+    }
+
+    /// <summary>Answers the first read after a write with the previous value, like dbus-mqtt on the device.</summary>
+    private sealed class LaggingVictron : IVictronMqttControlClient
+    {
+        private readonly Dictionary<string, decimal> device = [];
+        private readonly Dictionary<string, decimal> pending = [];
+        private readonly Dictionary<string, (decimal Value, DateTimeOffset At)> samples = [];
+        internal Dictionary<string, int> Written { get; } = [];
+        internal int StaleAnswers { get; private set; }
+
+        internal decimal Current(string readTopic) => device.GetValueOrDefault(readTopic, 216);
+
+        public Task PublishValueAsync(string topic, int value, CancellationToken cancellationToken = default)
+        {
+            Written[topic] = value;
+            pending["N/" + topic[2..]] = value;
+            return Task.CompletedTask;
+        }
+
+        public Task RequestValueAsync(string readTopic, CancellationToken token = default)
+        {
+            if (pending.Remove(readTopic, out var value))
+            {
+                // First answer: the write is not applied yet. It becomes visible from the next read on.
+                StaleAnswers++;
+                samples[readTopic] = (Current(readTopic), DateTimeOffset.UtcNow);
+                device[readTopic] = value;
+            }
+            else samples[readTopic] = (Current(readTopic), DateTimeOffset.UtcNow);
+            return Task.CompletedTask;
+        }
+
+        public bool TryGetLatestValue(string topic, out decimal value)
+        {
+            var found = samples.TryGetValue(topic, out var sample);
+            value = sample.Value;
+            return found;
+        }
+
+        public bool TryGetLatestSample(string topic, out decimal value, out DateTimeOffset measuredAtUtc)
+        {
+            var found = samples.TryGetValue(topic, out var sample);
+            (value, measuredAtUtc) = sample;
+            return found;
+        }
+    }
+
+    [Fact]
     public async Task MissingPlanShowsThePreviewFailureReason()
     {
         var settings = new Settings();

@@ -9,6 +9,10 @@ namespace TibberVictronController.Api.JointBattery;
 /// <summary>Explicit command readback and fresh AC-side measurements for the shared execution coordinator.</summary>
 public sealed class JointBatteryHardware(IServiceProvider services) : IJointBatteryHardware
 {
+    // Fits the 4 s execution cycle: write, then up to ~1.5 s of re-reads, each read itself bounded to 1.5 s.
+    private static readonly TimeSpan ReadbackDeadline = TimeSpan.FromSeconds(1.5);
+    private static readonly TimeSpan ReadbackRetryDelay = TimeSpan.FromMilliseconds(150);
+
     private IVictronMqttControlClient Client => services.GetRequiredService<IVictronMqttControlClient>();
     private IUtcClock Clock => services.GetRequiredService<IUtcClock>();
 
@@ -96,11 +100,21 @@ public sealed class JointBatteryHardware(IServiceProvider services) : IJointBatt
             expected.Add((topics.ExternalEssAcPowerSetpointTopics[i], share + load));
         }
         foreach (var item in expected) await Client.PublishValueAsync(item.Write, item.Value, token);
-        await RefreshAsync(expected.Select(p => ReadTopic(p.Write)).ToArray(), token);
-        var mismatches = expected.Select(p => (p.Write, p.Value, Actual: Value(ReadTopic(p.Write)))).Where(p => p.Actual != p.Value).ToArray();
-        if (mismatches.Length > 0)
-            throw new InvalidOperationException("Victron bestaetigt die gemeinsamen Sollwerte nicht: " +
-                string.Join(", ", mismatches.Select(m => $"{DevicePath(m.Write)} soll {m.Value}, ist {m.Actual}")) + ".");
+
+        // dbus-mqtt can answer a read request with the value from before our write was applied (seen on the
+        // device: wrote 218, read back the previous 216). A single readback is therefore not a rejection;
+        // re-read until the written values appear and fail only if they never do within the deadline.
+        var deadline = Clock.UtcNow.Add(ReadbackDeadline);
+        while (true)
+        {
+            await RefreshAsync(expected.Select(p => ReadTopic(p.Write)).ToArray(), token);
+            var mismatches = expected.Select(p => (p.Write, p.Value, Actual: Value(ReadTopic(p.Write)))).Where(p => p.Actual != p.Value).ToArray();
+            if (mismatches.Length == 0) return;
+            if (Clock.UtcNow >= deadline)
+                throw new InvalidOperationException("Victron bestaetigt die gemeinsamen Sollwerte nicht: " +
+                    string.Join(", ", mismatches.Select(m => $"{DevicePath(m.Write)} soll {m.Value}, ist {m.Actual}")) + ".");
+            await Task.Delay(ReadbackRetryDelay, token);
+        }
     }
 
     public Task<E3dcPowerAcknowledgement> SetE3dcAsync(E3dcPowerCommand command, CancellationToken token) =>
