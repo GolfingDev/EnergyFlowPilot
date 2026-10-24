@@ -21,10 +21,13 @@ public sealed class JointAwareBatteryDecisionService(IServiceProvider services) 
             throw new InvalidOperationException("Aktuelle Messwerte fuer die gemeinsame Akkusteuerung fehlen.");
         var active = execution.Status == "Active" && now - execution.UpdatedAtUtc < TimeSpan.FromSeconds(5) && execution.ValidUntilUtc > now;
         var target = active ? execution.VictronTargetWatts : 0;
-        var slot = services.GetRequiredService<JointBatteryRuntimeState>().Current.Plan?.Slots.FirstOrDefault(s => s.TimeSlot.StartsAtUtc <= now && s.TimeSlot.EndsAtUtc > now);
+        var plan = services.GetRequiredService<JointBatteryRuntimeState>().Current.Plan;
+        var slot = plan?.Slots.FirstOrDefault(s => s.TimeSlot.StartsAtUtc <= now && s.TimeSlot.EndsAtUtc > now);
         var decision = new CurrentBatteryDecision(new(target > 0 ? BatteryDecisionState.Charge : target < 0 ? BatteryDecisionState.Discharge : BatteryDecisionState.Idle,
             target > 0 ? slot?.ChargeSource ?? BatteryChargeSource.Grid : null), Math.Abs(target));
-        var summary = JsonSerializer.Serialize(new { ControlSource = "JointBattery", Execution = execution });
+        var summary = JsonSerializer.Serialize(new { ControlSource = "JointBattery",
+            ElectricityPriceProvider = plan?.PriceSource,
+            IsPriceEstimated = slot?.IsPriceEstimated ?? true, Execution = execution });
         return new(now, now, now.AddSeconds(5), decision, new(mqtt.BatterySocPercent.Value, mqtt.BatterySocMeasuredAtUtc.Value),
             new((int)mqtt.GridPowerWatts.Value, 0, mqtt.GridPowerMeasuredAtUtc.Value, (int?)mqtt.BatteryPowerWatts), slot?.PricePerKwh, slot?.Currency,
             [new("JointBattery." + execution.Status, execution.Message)], summary);

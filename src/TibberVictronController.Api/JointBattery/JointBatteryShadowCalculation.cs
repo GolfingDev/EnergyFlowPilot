@@ -73,11 +73,12 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
             prices.Zip(prices.Skip(1)).Any(pair => pair.First.TimeSlot.EndsAtUtc != pair.Second.TimeSlot.StartsAtUtc))
             throw new InvalidOperationException("Fuer die gemeinsame Vorschau fehlen lueckenlose aktuelle Preise.");
         var end = prices[^1].TimeSlot.EndsAtUtc;
-        var pv = await services.GetRequiredService<IWeatherForecastProvider>().GetPvYieldForecastAsync(start, end, token);
+        var weather = services.GetRequiredService<IWeatherForecastProvider>();
+        var pv = await weather.GetPvYieldForecastAsync(start, end, token);
         var history = await services.GetRequiredService<ILiveConsumptionRepository>().GetSamplesAsync(now.AddDays(-14), now, token);
         var zone = TimeZoneInfo.FindSystemTimeZoneById((await settings.GetSettingAsync(ControllerSettingDefaults.ConsumptionForecastTimeZoneKey, token))?.Value ?? "Europe/Berlin");
         IReadOnlyList<HourlyTemperature>? temperatures = null;
-        try { temperatures = await services.GetRequiredService<ITemperatureProvider>().GetHourlyTemperaturesAsync(now.AddDays(-14), end.AddDays(1), token); }
+        try { temperatures = await services.GetRequiredService<ITemperatureProvider>().GetHourlyTemperaturesAsync(now.AddDays(-14), end.AddHours(24), token); }
         catch (Exception exception) when (exception is not OperationCanceledException) { }
         var model = JointConsumptionProfile.Learn(history, zone, now, temperatures);
         var fallbackDaily = await Setting(ControllerSettingDefaults.ConsumptionForecastAverageDailyConsumptionKwhKey);
@@ -86,6 +87,35 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
             return new ConsumptionForecastSlot(price.TimeSlot, model.GetSlotConsumptionKwh(DateOnly.FromDateTime(local.DateTime),
                 local.Hour * 4 + local.Minute / 15, price.TimeSlot.Duration) ?? fallbackDaily / 24m * (decimal)price.TimeSlot.Duration.TotalHours);
         }).ToArray();
+        JointBatteryContinuation? continuation = null;
+        string? continuationWarning = null;
+        try
+        {
+            var localToday = TimeZoneInfo.ConvertTime(now, zone).Date;
+            DateTimeOffset MidnightUtc(DateTime date) => new(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(date, DateTimeKind.Unspecified), zone), TimeSpan.Zero);
+            var historical = await services.GetRequiredService<JointBatteryPriceHistory>().GetAsync(
+                services.GetRequiredService<IDecisionLogRepository>(),
+                new(MidnightUtc(localToday.AddDays(-14)), MidnightUtc(localToday),
+                    services.GetRequiredService<IElectricityPriceForecastProvider>().Source, prices[0].Currency), token);
+            // This extra day carries no invented executable prices: only its net demand caps the terminal energy value.
+            var futurePv = (await weather.GetPvYieldForecastAsync(end, end.AddHours(24), token)).ToDictionary(p => p.TimeSlot);
+            var followingDay = new List<(decimal ConsumptionKwh, decimal PvKwh)>();
+            for (var at = end; at < end.AddHours(24); at = at.AddMinutes(15))
+            {
+                var slot = new ForecastTimeSlot(at, at.AddMinutes(15));
+                var local = TimeZoneInfo.ConvertTime(at, zone);
+                if (!futurePv.TryGetValue(slot, out var yield) || !yield.IsForecastAvailable) break;
+                var demand = model.GetSlotConsumptionKwh(DateOnly.FromDateTime(local.DateTime), local.Hour * 4 + local.Minute / 15, slot.Duration)
+                    ?? fallbackDaily / 96m;
+                followingDay.Add((demand, yield.ExpectedPvYieldKwh));
+            }
+            continuation = JointBatteryContinuationEstimator.Estimate(historical, zone, followingDay);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Supplemental history/PV must not disable the existing live plan or bypass freshness checks.
+            continuationWarning = "Restenergiebewertung nicht verfuegbar; bestehende Planung ohne zusaetzliche Bevorratung.";
+        }
         var loadDuration = clock.UtcNow - now;
 
         // 2. Live readings of both batteries, as late as possible.
@@ -120,9 +150,12 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
                 new("e3dc", secondary, new(e3dc.SocPercent, e3dc.MeasuredAtUtc), e3dc.BatteryPowerWatts, e3dcCharge, e3dcDischarge)],
             Prices = prices, Pv = pv, Consumption = adjusted,
             MaximumGridImportWatts = gridLimit,
-            FeedInCompensationPerKwh = feedInCompensation
+            FeedInCompensationPerKwh = feedInCompensation,
+            Continuation = continuation
         }, token);
-        return (plan with { Warnings = [.. plan.Warnings,
+        return (plan with { PriceSource = services.GetRequiredService<IElectricityPriceForecastProvider>().Source,
+            Warnings = [.. plan.Warnings,
+            .. (continuationWarning is null ? Array.Empty<string>() : new[] { continuationWarning }),
             .. (model.HasProfile ? Array.Empty<string>() : new[] { "Verbrauchsvorschau verwendet mangels geeigneter Messdaten ein gleichmaessiges Ersatzprofil." }),
             .. (temperatures is null ? new[] { "Temperaturdaten fehlen; gemeinsamer Verbrauchsforecast ohne Temperaturkorrektur." } : Array.Empty<string>()),
             .. (loadDuration > TimeSpan.FromSeconds(20)

@@ -41,6 +41,20 @@ public sealed class JointBatteryPlanner
         var ga = a.Grid(); var gb = b.Grid();
         var costs = new double[prices.Length + 1][];
         costs[^1] = new double[ga.Length * gb.Length];
+        var continuation = input.Continuation;
+        if (continuation is { ValuePerDeliveredKwh: < 0 } or { MaximumDeliveredEnergyKwh: < 0 })
+            throw new ArgumentException("Der Restenergiewert und der Folgebedarf duerfen nicht negativ sein.");
+        if (continuation is not null)
+        {
+            // Reward energy only once, at the horizon boundary, after discharge losses and only up to shared future demand.
+            // Purchase hurdles/wear remain in the normal transitions; there is no separate cheap-price fill rule.
+            for (var i = 0; i < ga.Length; i++)
+            for (var j = 0; j < gb.Length; j++)
+            {
+                var deliverable = Math.Max(0, ga[i] - a.Reserve) * a.Eta + Math.Max(0, gb[j] - b.Reserve) * b.Eta;
+                costs[^1][i * gb.Length + j] = -Math.Min(deliverable, (double)continuation.MaximumDeliveredEnergyKwh) * (double)continuation.ValuePerDeliveredKwh;
+            }
+        }
         var net = prices.Select(p => (double)(load[p.TimeSlot] - pv[p.TimeSlot])).ToArray();
         var budget = input.MaximumGridImportWatts == 0 ? double.PositiveInfinity : input.MaximumGridImportWatts / 1000d;
         var penaltyPerKwh = (double)input.Batteries.Max(u => u.Configuration.MinimumSavingsPerKwh + u.Configuration.WearCostPerKwh);
@@ -105,12 +119,16 @@ public sealed class JointBatteryPlanner
             var reason = total > 0 ? "Gemeinsame Kostenplanung: Ladefenster mit getrennten Energievorräten, Verlusten, Reserven und Leistungsgrenzen."
                 : total < 0 ? "Gemeinsame Kostenplanung: Hausbedarf aus den getrennt verfuegbaren Akkuenergien decken."
                 : "Gemeinsame Kostenplanung: Energie halten; derzeit kein vorteilhafter zulaessiger Energiefluss.";
+            if (continuation is { ValuePerDeliveredKwh: > 0, MaximumDeliveredEnergyKwh: > 0 })
+                reason += " Der Plan beruecksichtigt auch vorsichtig bewertete Restenergie fuer den Folgetag nach Ende der veroeffentlichten Preise.";
             slots.Add(new(prices[i].TimeSlot, prices[i].TotalPricePerKwh, prices[i].Currency, prices[i].IsEstimated, source, targets, reason, false,
                 pv[prices[i].TimeSlot], load[prices[i].TimeSlot]));
             currentA = afterA; currentB = afterB;
         }
         return new(input.NowUtc, input.Batteries, slots, input.MaximumGridImportWatts,
-            ["Numerische Planung mit zwei Energiezustaenden und interpolierten Folgekosten; keine analytisch exakte Optimierung."]);
+            ["Numerische Planung mit zwei Energiezustaenden und interpolierten Folgekosten; keine analytisch exakte Optimierung.",
+             continuation is null ? "Keine belastbare Preis- oder Folgeprognose; keine zusaetzliche Bevorratung ueber den Preishorizont hinaus."
+                : FormattableString.Invariant($"Restenergiewert: {continuation.HistoricalDays} historische Tage, typischer Preis {continuation.HistoricalTypicalPricePerKwh:F4} EUR/kWh; nach 15 % Unsicherheitsabschlag {continuation.ValuePerDeliveredKwh:F4} EUR je spaeter abgegebener kWh, begrenzt auf {continuation.MaximumDeliveredEnergyKwh:F2} kWh prognostizierten Netto-Folgebedarf.")]);
     }
 
     private static double[] Candidates(Unit unit, double[] grid, double energy)

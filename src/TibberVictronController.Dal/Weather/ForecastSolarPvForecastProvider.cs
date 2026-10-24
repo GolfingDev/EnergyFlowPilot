@@ -51,7 +51,8 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
         return planeForecasts[0]
             .Select((slot, index) => new PvYieldForecastSlot(
                 slot.TimeSlot,
-                planeForecasts.Sum(planeForecast => planeForecast[index].ExpectedPvYieldKwh)))
+                planeForecasts.Sum(planeForecast => planeForecast[index].ExpectedPvYieldKwh)) {
+                    IsForecastAvailable = planeForecasts.All(planeForecast => planeForecast[index].IsForecastAvailable) })
             .ToArray();
     }
 
@@ -324,6 +325,8 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
             .OrderBy(point => point.TimestampUtc)
             .ToArray();
         var intervals = CreateEnergyIntervals(orderedPoints);
+        var firstForecastDay = TimeZoneInfo.ConvertTime(orderedPoints[0].TimestampUtc, forecastTimeZone).Date;
+        var lastForecastDay = TimeZoneInfo.ConvertTime(orderedPoints[^1].TimestampUtc, forecastTimeZone).Date;
         var forecastSlots = new List<PvYieldForecastSlot>();
 
         for (var slotStartUtc = startsAtUtc; slotStartUtc < endsAtUtc; slotStartUtc = slotStartUtc.AddMinutes(15))
@@ -339,7 +342,9 @@ public sealed class ForecastSolarPvForecastProvider : IWeatherForecastProvider
 
             forecastSlots.Add(new PvYieldForecastSlot(
                 new ForecastTimeSlot(slotStartUtc, slotEndUtc),
-                Math.Round(expectedPvYieldKwh, 4, MidpointRounding.AwayFromZero)));
+                Math.Round(expectedPvYieldKwh, 4, MidpointRounding.AwayFromZero)) {
+                    IsForecastAvailable = TimeZoneInfo.ConvertTime(slotStartUtc, forecastTimeZone).Date >= firstForecastDay &&
+                        TimeZoneInfo.ConvertTime(slotStartUtc, forecastTimeZone).Date <= lastForecastDay });
         }
 
         return forecastSlots;

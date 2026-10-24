@@ -71,6 +71,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddSingleton<IJointBatteryWatchdog>(sp => sp.GetRequiredService<SystemdJointBatteryWatchdog>());
         services.AddHostedService<JointBatteryExecutionBackgroundService>();
         services.AddScoped<JointBatteryShadowCalculation>();
+        services.AddSingleton<JointBatteryPriceHistory>();
         services.AddSingleton<JointBatteryRuntimeState>();
         services.AddHostedService<JointBatteryShadowBackgroundService>();
         services.AddScoped<DatabaseMqttDeviceSettingsProvider>();

@@ -13,6 +13,24 @@ public sealed class JointBatteryShadowTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 23, 17, 0, 0, TimeSpan.Zero);
 
+    [Fact]
+    public async Task JointPriceLogsKeepThePlansSupplierWithoutDefaultingToTibberInANewScope()
+    {
+        var settings = new Settings();
+        await settings.SaveSettingAsync(new(ControllerSettingDefaults.JointBatteryExecutionEnabledKey, "true", ControllerSettingSensitivity.Normal, Now));
+        var mqtt = new TibberVictronController.Dal.Mqtt.MqttTelemetrySnapshotStore();
+        mqtt.UpdateBatterySoc(10m, Now); mqtt.UpdateGridPower(500m, Now); mqtt.UpdateBatteryPower(0m, Now);
+        var runtime = new JointBatteryRuntimeState();
+        var slot = new JointBatterySlot(new(Now, Now.AddMinutes(15)), .15m, "EUR", false, null, [], "Testplan", false);
+        runtime.Set(new("Active", "Test", Now, null, new(Now, [], [slot], 0, []) { PriceSource = "octopusGermany" }));
+        using var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings)
+            .AddSingleton<IUtcClock>(new Clock()).AddSingleton(mqtt).AddSingleton(runtime).AddSingleton<JointBatteryExecutionState>().BuildServiceProvider();
+        var result = await new JointAwareBatteryDecisionService(services).CalculateCurrentDecisionAsync();
+        using var json = System.Text.Json.JsonDocument.Parse(result.InputSummaryJson);
+        Assert.Equal("octopusGermany", json.RootElement.GetProperty("ElectricityPriceProvider").GetString());
+        Assert.False(json.RootElement.GetProperty("IsPriceEstimated").GetBoolean());
+    }
+
     [Theory]
     [InlineData(ControllerSettingDefaults.E3dcRscpUserKey)]
     [InlineData(ControllerSettingDefaults.E3dcRscpPasswordKey)]

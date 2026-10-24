@@ -5,6 +5,9 @@ namespace TibberVictronController.Business.Models;
 /// </summary>
 public sealed record PvYieldForecastSlot
 {
+    /// <summary>False when zero yield is only a placeholder outside the provider's forecast dates.</summary>
+    public bool IsForecastAvailable { get; init; } = true;
+
     /// <summary>
     /// Prevents impossible negative PV yield values from entering the Decision Engine forecast.
     /// </summary>

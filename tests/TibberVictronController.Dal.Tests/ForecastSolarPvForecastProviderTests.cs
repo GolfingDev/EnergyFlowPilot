@@ -56,6 +56,16 @@ public sealed class ForecastSolarPvForecastProviderTests
     }
 
     [Fact]
+    public async Task FuturePlaceholderZerosAreNotTreatedAsAvailablePvForecast()
+    {
+        var provider = new ForecastSolarPvForecastProvider(new HttpClient(new RecordingHttpMessageHandler(CreateSuccessfulResponse())), CreateSettingsStore());
+        var knownDay = await provider.GetPvYieldForecastAsync(new(2026, 5, 1, 18, 0, 0, TimeSpan.Zero), new(2026, 5, 1, 19, 0, 0, TimeSpan.Zero));
+        var outside = await provider.GetPvYieldForecastAsync(new(2026, 5, 2, 10, 0, 0, TimeSpan.Zero), new(2026, 5, 2, 11, 0, 0, TimeSpan.Zero));
+        Assert.All(knownDay, slot => Assert.True(slot.IsForecastAvailable));
+        Assert.All(outside, slot => { Assert.False(slot.IsForecastAvailable); Assert.Equal(0m, slot.ExpectedPvYieldKwh); });
+    }
+
+    [Fact]
     public async Task GetPvYieldForecastAsyncMapsMissingForecastSolarIntervalsToZeroYield()
     {
         var httpHandler = new RecordingHttpMessageHandler(CreateSuccessfulResponse());

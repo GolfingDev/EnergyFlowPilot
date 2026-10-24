@@ -7,6 +7,11 @@ namespace TibberVictronController.Business.Abstractions;
 /// </summary>
 public interface IDecisionLogRepository
 {
+    /// <summary>Returns distinct historical quarter-hour prices of the selected supplier and currency.</summary>
+    Task<IReadOnlyList<TibberPriceForecastSlot>> GetHistoricalPricesAsync(
+        HistoricalPriceRequest request, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<TibberPriceForecastSlot>>(Array.Empty<TibberPriceForecastSlot>());
+
     /// <summary>
     /// Saves one realtime Decision Engine decision.
     /// </summary>

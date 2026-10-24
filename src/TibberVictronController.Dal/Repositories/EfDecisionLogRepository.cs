@@ -15,6 +15,49 @@ public sealed class EfDecisionLogRepository : IDecisionLogRepository
         this.dbContext = dbContext;
     }
 
+    public async Task<IReadOnlyList<TibberPriceForecastSlot>> GetHistoricalPricesAsync(
+        HistoricalPriceRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request.FromUtc.Offset != TimeSpan.Zero || request.ToUtc.Offset != TimeSpan.Zero || request.ToUtc <= request.FromUtc)
+            throw new ArgumentException("Der historische Preiszeitraum muss ein gueltiger UTC-Zeitraum sein.");
+        // Aggregate in SQLite: reading every controller tick (and its JSON/reasons) for 14 days would be very expensive.
+        // Source and currency are filtered before aggregation; untagged legacy logs belong exclusively to Tibber.
+        var connection = dbContext.Database.GetDbConnection();
+        var close = connection.State != System.Data.ConnectionState.Open;
+        if (close) await dbContext.Database.OpenConnectionAsync(cancellationToken);
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT (DecidedAtUtc / 900000) * 900000 AS SlotStart,
+                       AVG(CAST(TibberPricePerKwh AS REAL)) AS Price
+                FROM DecisionLogEntries
+                WHERE DecidedAtUtc >= @from AND DecidedAtUtc < @to
+                  AND TibberPricePerKwh IS NOT NULL AND TibberPriceCurrency = @currency
+                  AND CASE WHEN json_valid(InputSummaryJson) AND COALESCE(json_extract(InputSummaryJson, '$.IsPriceEstimated'), 0) = 0
+                      THEN COALESCE(json_extract(InputSummaryJson, '$.ElectricityPriceProvider'),
+                          CASE WHEN json_extract(InputSummaryJson, '$.ControlSource') IS NULL THEN 'tibber' ELSE NULL END)
+                      ELSE NULL END = @source
+                GROUP BY SlotStart ORDER BY SlotStart
+                """;
+            foreach (var (name, value) in new (string, object)[] { ("@from", request.FromUtc.ToUnixTimeMilliseconds()),
+                ("@to", request.ToUtc.ToUnixTimeMilliseconds()), ("@currency", request.Currency), ("@source", request.Source) })
+            {
+                var parameter = command.CreateParameter(); parameter.ParameterName = name; parameter.Value = value;
+                command.Parameters.Add(parameter);
+            }
+            var result = new List<TibberPriceForecastSlot>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var start = DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(0));
+                result.Add(new(new(start, start.AddMinutes(15)), (decimal)reader.GetDouble(1), request.Currency));
+            }
+            return result;
+        }
+        finally { if (close) await dbContext.Database.CloseConnectionAsync(); }
+    }
+
     public async Task SaveDecisionAsync(
         DecisionLogEntry decisionLogEntry,
         CancellationToken cancellationToken = default)
