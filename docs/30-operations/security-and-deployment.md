@@ -7,6 +7,7 @@
 - Example configuration may show keys but must not contain real values.
 - Sensitive values must not be logged or returned to the frontend in plain text.
 - The SQLite database file must be protected by operating system permissions on the Raspberry Pi.
+- Remote access is only allowed with Entra sign-in enabled (roles `Admin` and `Viewer`); every state-changing request requires `Admin`. Bootstrap credentials of the sign-in live in `/etc/<app-name>/api.env`, not in the settings database. See `authentication-and-remote-access.md`.
 
 ## Hardware Rules
 

@@ -1,3 +1,4 @@
+using TibberVictronController.Api.Authentication;
 using TibberVictronController.Api.Configuration;
 using TibberVictronController.Api.Dashboard;
 using TibberVictronController.Api.Decision;
@@ -18,6 +19,7 @@ using TibberVictronController.Dal.Persistence;
 var builder = WebApplication.CreateBuilder(args.Where(argument => argument != "--joint-stop").ToArray());
 builder.Services.Configure<FileExceptionLogOptions>(builder.Configuration.GetSection("FileExceptionLogging"));
 builder.Services.AddControllerApplication(builder.Configuration);
+builder.Services.AddControllerAuthentication(builder.Configuration);
 
 var app = builder.Build();
 if (args.Contains("--joint-stop", StringComparer.Ordinal))
@@ -32,6 +34,8 @@ app.UseFileExceptionLogging();
 
 await InitializeDatabaseAsync(app);
 
+app.UseControllerAuthentication();
+app.MapAuthEndpoints();
 app.MapHealthEndpoints();
 app.MapSettingsEndpoints();
 app.MapForecastEndpoints();

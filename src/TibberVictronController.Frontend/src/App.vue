@@ -5,6 +5,7 @@ import { useTheme } from 'vuetify';
 import GeneralOverlay from './components/GeneralOverlay.vue'
 import ThemeMenuPanel from './components/ThemeMenuPanel.vue';
 import BuildInfo from './components/BuildInfo.vue';
+import { currentUser, isAdmin, logout, roleLabel } from './auth';
 import {
   defaultEnergyFlowTheme,
   getEnergyFlowTheme,
@@ -164,6 +165,7 @@ function toggleExecutiveSidebar(): void {
           <span>Status</span>
         </button>
         <button
+          v-if="isAdmin"
           type="button"
           aria-label="Einstellungen" :class="{ 'executive-sidebar__item--active': activeRouteName === 'settings' }"
           @click="openSettingsPage"
@@ -230,7 +232,7 @@ function toggleExecutiveSidebar(): void {
               <small>Raumklima, Ventile und Außentemperatur</small>
             </button>
 
-            <v-menu v-model="isSettingsMenuOpen" location="bottom center" offset="14" :close-on-content-click="false">
+            <v-menu v-if="isAdmin" v-model="isSettingsMenuOpen" location="bottom center" offset="14" :close-on-content-click="false">
               <template #activator="{ props }">
                 <button class="top-nav__item top-nav__item--menu"
                   :class="{ 'top-nav__item--active': activeRouteName === 'settings' || isSettingsMenuOpen }" v-bind="props">
@@ -268,6 +270,18 @@ function toggleExecutiveSidebar(): void {
         </div>
 
         <div class="top-bar__actions">
+          <v-menu v-if="currentUser?.authenticationEnabled" location="bottom end" offset="12">
+            <template #activator="{ props }">
+              <button class="theme-picker-button" type="button" v-bind="props" :aria-label="`Angemeldet als ${currentUser?.name ?? ''}`">
+                <v-icon :icon="isAdmin ? 'mdi-shield-account-outline' : 'mdi-account-eye-outline'" size="20" />
+                <span>{{ currentUser?.name ?? currentUser?.email }} · {{ roleLabel }}</span>
+              </button>
+            </template>
+            <v-list density="compact">
+              <v-list-item :title="currentUser?.name ?? ''" :subtitle="currentUser?.email ?? ''" />
+              <v-list-item prepend-icon="mdi-logout" title="Abmelden" @click="logout" />
+            </v-list>
+          </v-menu>
           <v-menu v-model="isThemeMenuOpen" location="bottom end" offset="12" :close-on-content-click="false">
             <template #activator="{ props }">
               <button class="theme-picker-button" type="button" v-bind="props" :aria-label="`Theme wechseln. Aktiv: ${activeTheme.label}`">
@@ -286,7 +300,7 @@ function toggleExecutiveSidebar(): void {
       <nav v-if="usesExecutiveShell" class="workspace-mobile-nav" aria-label="Hauptnavigation">
         <button type="button" :aria-current="activeRouteName === 'dashboard' ? 'page' : undefined" @click="navigateTo('dashboard')"><v-icon icon="mdi-view-dashboard-outline" size="18" />Übersicht</button>
         <button type="button" :aria-current="activeRouteName === 'heating' ? 'page' : undefined" @click="navigateTo('heating')"><v-icon icon="mdi-heat-pump-outline" size="18" />Heizung</button>
-        <button type="button" :aria-current="activeRouteName === 'settings' ? 'page' : undefined" @click="openSettingsPage"><v-icon icon="mdi-cog-outline" size="18" />Einstellungen</button>
+        <button v-if="isAdmin" type="button" :aria-current="activeRouteName === 'settings' ? 'page' : undefined" @click="openSettingsPage"><v-icon icon="mdi-cog-outline" size="18" />Einstellungen</button>
       </nav>
       <GeneralOverlay v-model="isLoading" image-src="Main.png" width="90vw" max-width="90vw" max-height="90vh" />
       <router-view />

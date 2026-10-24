@@ -15,6 +15,7 @@ import SchematicEnergyFlowPanel from '../components/dashboard/SchematicEnergyFlo
 import E3dcSupplementPanel from '../components/dashboard/E3dcSupplementPanel.vue';
 import JointBatteryShadowPanel from '../components/dashboard/JointBatteryShadowPanel.vue';
 import type { JointBatteryShadowDto } from '../components/dashboard/dashboardTypes';
+import { isAdmin } from '../auth';
 import LeitstandDashboard from '../components/leitstand/LeitstandDashboard.vue';
 import OrbitDashboard from '../components/orbit/OrbitDashboard.vue';
 import EnergyWorkspaceDashboard from '../components/workspace/EnergyWorkspaceDashboard.vue';
@@ -547,6 +548,20 @@ async function loadJointBatteryShadow(): Promise<void> {
   }
 }
 
+// Viewers see all data but may not control anything; the backend enforces this, the message explains it up front.
+function requireAdmin(source: string): boolean {
+  if (isAdmin.value) {
+    return true;
+  }
+
+  loadErrors.value.push({
+    source,
+    message: 'Nur mit der Rolle Admin möglich.',
+    details: 'Ihr Konto hat Lesezugriff. Steuerung und Einstellungen sind Administratoren vorbehalten.'
+  });
+  return false;
+}
+
 async function startJointManualCharge(targetKwh: number, maximumPowerKw: number | null): Promise<void> {
   await runJointManualCharge(() => postJson<unknown>('/api/joint-battery/manual-charge', { targetKwh, maximumPowerKw }));
 }
@@ -556,6 +571,10 @@ async function stopJointManualCharge(): Promise<void> {
 }
 
 async function runJointManualCharge(request: () => Promise<unknown>): Promise<void> {
+  if (!requireAdmin('Manuelle Ladung beider Akkus')) {
+    return;
+  }
+
   if (isJointManualChargeBusy.value) {
     return;
   }
@@ -575,6 +594,10 @@ async function runJointManualCharge(request: () => Promise<unknown>): Promise<vo
 }
 
 async function confirmJointBatteryRecovery(): Promise<void> {
+  if (!requireAdmin('Gemeinsame Akkusteuerung')) {
+    return;
+  }
+
   if (isJointRecoveryBusy.value) {
     return;
   }
@@ -913,6 +936,10 @@ function applyLiveTelemetry(telemetry: DashboardTelemetryUpdateDto): void {
 }
 
 async function startManualCharge(): Promise<void> {
+  if (!requireAdmin('Manuelle Ladung')) {
+    return;
+  }
+
   if (isManualChargeBusy.value) {
     return;
   }
@@ -941,6 +968,10 @@ async function startLeitstandManualCharge(durationMinutes: number, powerKw: numb
 }
 
 async function stopManualCharge(): Promise<void> {
+  if (!requireAdmin('Manuelle Ladung')) {
+    return;
+  }
+
   if (isManualChargeBusy.value) {
     return;
   }
@@ -975,7 +1006,7 @@ onBeforeUnmount(() => {
 <template>
   <v-container class="dashboard-page" :class="dashboardLayoutClass" fluid>
     <JointBatteryShadowPanel :state="jointBatteryShadow" :recovery-busy="isJointRecoveryBusy"
-      :manual-charge-busy="isJointManualChargeBusy"
+      :manual-charge-busy="isJointManualChargeBusy" :can-control="isAdmin"
       @confirm-recovery="confirmJointBatteryRecovery"
       @start-manual-charge="startJointManualCharge" @stop-manual-charge="stopJointManualCharge" />
     <EnergyLoadingOverlay :model-value="showLoadingOverlay" title="Loading forecast"

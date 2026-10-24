@@ -11,7 +11,9 @@ public static class HealthEndpoints
 {
     public static IEndpointRouteBuilder MapHealthEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        // Anonymous on purpose: the deployment script checks it locally after every update, before anyone signs in.
         endpoints.MapGet("/health", GetHealthAsync)
+            .AllowAnonymous()
             .WithName("GetHealth")
             .WithTags("Health");
 

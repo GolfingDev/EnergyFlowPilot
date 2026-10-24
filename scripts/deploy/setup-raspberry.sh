@@ -202,6 +202,12 @@ FileExceptionLogging__RetentionDays=14
 DOTNET_PRINT_TELEMETRY_MESSAGE=false
 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 DOTNET_BUNDLE_EXTRACT_BASE_DIR=${DATA_ROOT}/.net
+# Entra sign-in (docs/30-operations/authentication-and-remote-access.md). Enable before publishing via Tailscale Funnel.
+#Authentication__Mode=Entra
+#Authentication__TenantId=
+#Authentication__ClientId=
+#Authentication__ClientSecret=
+#Authentication__PublicBaseUrl=https://<pi-name>.<tailnet>.ts.net
 EOF
 
     chmod 0640 "${ENV_FILE}"

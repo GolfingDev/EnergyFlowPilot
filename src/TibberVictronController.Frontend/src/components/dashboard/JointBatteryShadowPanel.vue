@@ -3,7 +3,9 @@ import { ref } from 'vue';
 import { formatDateTime, formatNumber, formatPercent, formatPower, formatPrice } from './dashboardFormatters';
 import type { JointBatteryShadowDto } from './dashboardTypes';
 
-const props = defineProps<{ state: JointBatteryShadowDto | null; recoveryBusy?: boolean; manualChargeBusy?: boolean }>();
+// canControl: false for viewers; status and plan stay visible, only the operator actions are hidden.
+const props = withDefaults(defineProps<{ state: JointBatteryShadowDto | null; recoveryBusy?: boolean; manualChargeBusy?: boolean; canControl?: boolean }>(),
+  { recoveryBusy: false, manualChargeBusy: false, canControl: true });
 const emit = defineEmits<{
   confirmRecovery: [];
   startManualCharge: [targetKwh: number, maximumPowerKw: number | null];
@@ -27,7 +29,7 @@ function confirmRecovery(): void {
 }
 
 function canConfirmRecovery(): boolean {
-  return !!props.state?.recoveryPending && props.state.status !== 'Active';
+  return props.canControl && !!props.state?.recoveryPending && props.state.status !== 'Active';
 }
 
 function powerLabel(watts: number): string {
@@ -61,7 +63,7 @@ function powerLabel(watts: number): string {
         </template>
         ({{ formatPrice(state.committedSlot.pricePerKwh, state.committedSlot.currency) }})
       </p>
-      <div v-if="!state.isShadow || state.manualCharge.isActive" class="mt-3">
+      <div v-if="canControl && (!state.isShadow || state.manualCharge.isActive)" class="mt-3">
         <strong>Manuell laden (beide Akkus, unabhängig vom Preis)</strong>
         <template v-if="state.manualCharge.isActive">
           <v-progress-linear class="mt-2" color="success" height="8" rounded
