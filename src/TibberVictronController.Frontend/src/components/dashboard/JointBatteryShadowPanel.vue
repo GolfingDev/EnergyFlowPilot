@@ -54,6 +54,13 @@ function powerLabel(watts: number): string {
         Gemessen: Victron {{ powerLabel(state.execution.victronMeasuredWatts) }} · E3/DC {{ powerLabel(state.execution.e3dcMeasuredWatts) }}<br>
         Ausführungsstand: {{ formatDateTime(state.execution.updatedAtUtc) }}
       </p>
+      <p v-if="state.committedSlot" class="mt-1">
+        <strong>Festgelegt bis {{ formatDateTime(state.committedSlot.endsAtUtc) }}:</strong>
+        <template v-for="(target, index) in state.committedSlot.targets" :key="target.id">
+          {{ index > 0 ? ' · ' : ' ' }}{{ target.id === 'e3dc' ? 'E3/DC' : 'Victron' }} {{ powerLabel(target.signedPowerWatts) }}
+        </template>
+        ({{ formatPrice(state.committedSlot.pricePerKwh, state.committedSlot.currency) }})
+      </p>
       <div v-if="!state.isShadow || state.manualCharge.isActive" class="mt-3">
         <strong>Manuell laden (beide Akkus, unabhängig vom Preis)</strong>
         <template v-if="state.manualCharge.isActive">

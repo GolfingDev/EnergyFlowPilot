@@ -105,6 +105,15 @@ Geschrieben wird ausschliesslich der fluechtige RSCP-Leistungsbefehl: Modus 1 ne
 
 Bei Fehlern, abgelaufenen Plaenen oder Abschaltung stoppt zuerst Victron, danach E3/DC. Erst neutrale Messwerte beider Speicher erlauben die Rueckgabe von E3/DC an Automatik und das Loeschen der Wiederherstellungspflicht. Scheitert dies, bleiben Einzelakku-Schreiber gesperrt. Nach Fehlern gilt eine Wiederanlaufsperre von 30 Sekunden. Beim Neustart erfolgt zuerst die ausstehende Ruecknahme; scheitert sie, startet der Dienst trotzdem mit gesperrter Einzelakku-Steuerung. Ist die Hardware nicht erreichbar, kann auch der separate Helfer keinen sicheren physikalischen Zustand garantieren; ein vollstaendiger Netzwerkausfall ist damit nicht als beherrscht nachgewiesen.
 
+### Festgeschriebene Viertelstunde
+
+Betreiberentscheidung vom 24.10.2026: Sobald die Ausfuehrung eine Viertelstunde beginnt, wird deren Planentscheidung (Sollwerte beider Akkus und Ladequelle) bis zum Ende dieser Viertelstunde festgeschrieben. Die alle 30 Sekunden neu berechneten Plaene aendern sie nicht mehr; auch ein fehlender oder veralteter Plan unterbricht sie nicht. Anlass: Eine begonnene Netzladung wurde mitten in der Viertelstunde durch einen neu berechneten Plan verworfen.
+
+- Abweichungen entstehen nur durch eingestellte Grenzen, die in jedem Takt live geprueft werden: Planungsmaximum und Reserve je Akku, Phasen- und Victron-Zuleitungsgrenzen, Geraetegrenzen und keine Einspeisung durch Akkuentladung. Sie begrenzen die festgeschriebene Entscheidung, ersetzen sie aber nicht.
+- Eine manuelle Ladung hat Vorrang. Ausschalten der gemeinsamen Steuerung oder der Shadow-Modus verwerfen die Festschreibung.
+- Festschreibung und ein spaeter abweichender Plan werden je Viertelstunde einmal als Betriebsereignis `JointBatteryPlanCommitment` protokolliert. Die Dashboard-Karte zeigt „Festgelegt bis …“.
+- Die Festschreibung liegt im Arbeitsspeicher. Ein Neustart mitten in der Viertelstunde schreibt die Entscheidung des danach ersten Plans fest.
+
 ### Gemeldete E3/DC-Leistungsgrenze (97 W)
 
 An der Notstromreserve meldet der E3/DC als wirksame Lade- und Entladegrenze (`EMS_USED_CHARGE_LIMIT`/`EMS_USED_DISCHARGE_LIMIT`) zeitweise nur ±97 W, obwohl seine Systemgrenze 3 kW betraegt. Die Ursache ist nicht geklaert; vermutet wird die aktive Stromsparfunktion. Betreiberentscheidung vom 23.10.2026: ausprobieren, was das Geraet bei hoeherer Anforderung macht.

@@ -154,6 +154,41 @@ public sealed class JointBatteryShadowTests
         }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CommittedQuarterHourIsExecutedEvenWithoutAFreshPlan(bool stillRunning)
+    {
+        var settings = await ReadyForExecutionAsync();
+        var slotStart = stillRunning ? Now.AddMinutes(-5) : Now.AddMinutes(-20);
+        var state = new JointBatteryExecutionState
+        {
+            CommittedSlot = new(new ForecastTimeSlot(slotStart, slotStart.AddMinutes(15)), 0.18m, "EUR", false, BatteryChargeSource.Grid,
+                [new("victron", 1000, 10, 12), new("e3dc", 0, 11, 11)], "Festgeschriebene Testladung", false)
+        };
+        var hardware = new RecoveryHardware(false);
+        using var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings).AddSingleton<IUtcClock>(new Clock())
+            .AddSingleton(state).AddSingleton<IJointBatteryHardware>(hardware).AddScoped<JointBatteryExecutionCoordinator>()
+            .AddSingleton<IOperationalEventRepository>(new Events()).BuildServiceProvider();
+        var worker = new JointBatteryExecutionBackgroundService(services.GetRequiredService<IServiceScopeFactory>(), state,
+            new VictronSetpointRefreshState(), NullLogger<JointBatteryExecutionBackgroundService>.Instance, new Watchdog());
+
+        await worker.TickAsync(CancellationToken.None);
+
+        if (stillRunning)
+        {
+            // No plan exists at all, yet the fixed decision is executed (here: the neutral transition before charging).
+            Assert.Equal("Transition", state.Current.Status);
+            Assert.Contains("Victron:0", hardware.Commands);
+        }
+        else
+        {
+            // Its quarter hour is over: a new decision needs a plan.
+            Assert.Contains("Plan fehlt", state.Current.Message);
+            Assert.Empty(hardware.Commands);
+        }
+    }
+
     [Fact]
     public async Task ManualChargeEndsAtTargetAndHandsBackToThePlan()
     {

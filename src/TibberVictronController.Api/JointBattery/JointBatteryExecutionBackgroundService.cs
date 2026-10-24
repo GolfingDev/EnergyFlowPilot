@@ -20,6 +20,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
     private DateTimeOffset lastLoggedAt;
     private string? lastLoggedStatus;
     private string? lastLoggedMessage;
+    private DateTimeOffset? deviationLoggedFor;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -103,6 +104,8 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
             var dryRun = !bool.TryParse(dryRunSetting, out var dry) || dry;
             if (!enabled || dryRun)
             {
+                // A fixed quarter-hour decision belongs to running execution; after re-enabling, a fresh one is taken.
+                state.CommittedSlot = null;
                 // Switching joint control off (or to dry-run) also ends a manual charge; it must not resume later unnoticed.
                 var manualStore = new JointManualChargeStore(settings, clock);
                 if (await manualStore.ReadAsync(cycle.Token) is not null)
@@ -181,6 +184,22 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
 
         var runtime = services.GetService<JointBatteryRuntimeState>()?.Current;
         var plan = runtime?.Plan;
+        var now = clock.UtcNow;
+
+        // The decision of a running quarter hour is fixed (operator rule): neither a newer nor a missing/stale plan
+        // changes it. Live limits still bound it on every step inside the coordinator.
+        if (JointBatterySlotCommitment.Active(state.CommittedSlot, now) is { } committed)
+        {
+            if (JointBatterySlotCommitment.PlanDeviates(committed, plan) && deviationLoggedFor != committed.TimeSlot.StartsAtUtc)
+            {
+                deviationLoggedFor = committed.TimeSlot.StartsAtUtc;
+                var fresh = plan!.Slots.First(s => s.TimeSlot == committed.TimeSlot);
+                await SavePlanEventAsync(services, "Neuer Plan weicht fuer die laufende Viertelstunde ab; die festgeschriebene Entscheidung bleibt bestehen.",
+                    new { committed.TimeSlot, Committed = committed.Targets, NewPlan = fresh.Targets, NewReason = fresh.Reason }, token);
+            }
+            return (CommandFrom(committed), null);
+        }
+
         if (plan is null)
         {
             // The planner runs in the preview worker; surface its failure reason instead of a bare "plan missing".
@@ -195,11 +214,22 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
         if (slot.IsPriceEstimated && slot.ChargeSource == BatteryChargeSource.Grid)
             return (null, "Geschaetzte Preise erlauben keine Netzladung.");
 
-        var planExpiry = plan.CalculatedAtUtc + PlanMaximumAge;
-        var validUntil = slot.TimeSlot.EndsAtUtc < planExpiry ? slot.TimeSlot.EndsAtUtc : planExpiry;
-        return (new JointBatteryCommand(slot.Targets.Single(t => t.Id == "victron").SignedPowerWatts,
-            slot.Targets.Single(t => t.Id == "e3dc").SignedPowerWatts, slot.ChargeSource, validUntil, slot.Reason), null);
+        // First execution step of this quarter hour: fix its decision until the quarter hour ends.
+        state.CommittedSlot = slot;
+        await SavePlanEventAsync(services, "Planentscheidung fuer die Viertelstunde festgeschrieben.",
+            new { slot.TimeSlot, slot.Targets, slot.ChargeSource, slot.PricePerKwh, slot.Reason }, token);
+        return (CommandFrom(slot), null);
     }
+
+    // Valid until the end of its quarter hour; every step rebuilds and re-limits the command from live data anyway.
+    private static JointBatteryCommand CommandFrom(JointBatterySlot slot) =>
+        new(slot.Targets.Single(t => t.Id == "victron").SignedPowerWatts, slot.Targets.Single(t => t.Id == "e3dc").SignedPowerWatts,
+            slot.ChargeSource, slot.TimeSlot.EndsAtUtc, "Festgeschrieben bis zum Ende der Viertelstunde. " + slot.Reason);
+
+    private static Task SavePlanEventAsync(IServiceProvider services, string message, object details, CancellationToken token) =>
+        services.GetRequiredService<IOperationalEventRepository>().SaveEventAsync(new OperationalEvent(Guid.NewGuid(),
+            services.GetRequiredService<IUtcClock>().UtcNow, "JointBatteryPlanCommitment", "Information", message,
+            JsonSerializer.Serialize(details)), token);
 
     /// <returns>The manual charge command, or null when the charge has just ended and the plan takes over again.</returns>
     private async Task<JointBatteryCommand?> PrepareManualChargeAsync(IServiceProvider services, JointManualChargeStore store,

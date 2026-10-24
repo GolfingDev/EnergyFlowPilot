@@ -169,6 +169,7 @@ export interface JointBatteryShadowDto {
   isShadow: boolean;
   recoveryPending: boolean;
   manualCharge: JointManualChargeDto;
+  committedSlot: JointBatterySlotDto | null;
   status: string;
   message: string;
   updatedAtUtc: string;
@@ -178,6 +179,15 @@ export interface JointBatteryShadowDto {
     effectiveChargeLimitWatts: number; effectiveDischargeLimitWatts: number } | null;
   warnings: string[];
   batteries: { id: string; socPercent: number; capacityKwh: number; reserveKwh: number; measuredPowerWatts: number }[];
-  slots: { startsAtUtc: string; endsAtUtc: string; pricePerKwh: number; currency: string; isPriceEstimated: boolean;
-    reason: string; targetLimited: boolean; targets: { id: string; signedPowerWatts: number; socBeforePercent: number; socAfterPercent: number }[] }[];
+  slots: JointBatterySlotDto[];
+}
+export interface JointBatterySlotDto {
+  startsAtUtc: string;
+  endsAtUtc: string;
+  pricePerKwh: number;
+  currency: string;
+  isPriceEstimated: boolean;
+  reason: string;
+  targetLimited: boolean;
+  targets: { id: string; signedPowerWatts: number; socBeforePercent: number; socAfterPercent: number }[];
 }

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using TibberVictronController.Business.Abstractions;
+using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Models;
 
 namespace TibberVictronController.Api.JointBattery;
@@ -33,11 +34,10 @@ public static class JointBatteryEndpoints
                     b.Configuration.TotalCapacityKwh * b.Configuration.MinimumStateOfChargePercent / 100m,
                     b.Configuration.MaximumChargePowerWatts, b.Configuration.MaximumDischargePowerWatts,
                     b.MeasuredPowerWatts)).ToArray() ?? [],
-                plan?.Slots.Select(s => new JointBatterySlotDto(s.TimeSlot.StartsAtUtc, s.TimeSlot.EndsAtUtc,
-                    s.PricePerKwh, s.Currency, s.IsPriceEstimated, s.ChargeSource?.ToString() ?? "None", s.TargetLimited, s.Reason,
-                    s.Targets.Select(t => new JointBatteryTargetDto(t.Id, t.SignedPowerWatts, t.SocBeforePercent, t.SocAfterPercent)).ToArray())).ToArray() ?? [],
+                plan?.Slots.Select(ToDto).ToArray() ?? [],
                 new(execution.Status, execution.UpdatedAtUtc, execution.OwnsControl, execution.VictronTargetWatts, execution.E3dcTargetWatts,
-                    execution.VictronMeasuredWatts, execution.E3dcMeasuredWatts, execution.ValidUntilUtc), recoveryPending, manualChargeStatus));
+                    execution.VictronMeasuredWatts, execution.E3dcMeasuredWatts, execution.ValidUntilUtc), recoveryPending, manualChargeStatus,
+                JointBatterySlotCommitment.Active(executionState.CommittedSlot, clock.UtcNow) is { } committed ? ToDto(committed) : null));
         }).WithTags("JointBattery");
 
         endpoints.MapPost("/api/joint-battery/manual-charge", async Task<Results<Ok<JointManualChargeDto>, Conflict<JointBatteryMessageDto>>> (
@@ -66,12 +66,16 @@ public static class JointBatteryEndpoints
         }).WithTags("JointBattery");
         return endpoints;
     }
+
+    private static JointBatterySlotDto ToDto(JointBatterySlot s) => new(s.TimeSlot.StartsAtUtc, s.TimeSlot.EndsAtUtc,
+        s.PricePerKwh, s.Currency, s.IsPriceEstimated, s.ChargeSource?.ToString() ?? "None", s.TargetLimited, s.Reason,
+        s.Targets.Select(t => new JointBatteryTargetDto(t.Id, t.SignedPowerWatts, t.SocBeforePercent, t.SocAfterPercent)).ToArray());
 }
 
 public sealed record JointBatteryShadowDto(bool IsShadow, string Status, string Message, DateTimeOffset UpdatedAtUtc,
     E3dcLocalDto? LocalTelemetry, DateTimeOffset? CalculatedAtUtc, int? MaximumGridImportWatts,
     IReadOnlyList<string> Warnings, IReadOnlyList<JointBatteryUnitDto> Batteries, IReadOnlyList<JointBatterySlotDto> Slots, JointBatteryExecutionDto Execution,
-    bool RecoveryPending, JointManualChargeDto ManualCharge);
+    bool RecoveryPending, JointManualChargeDto ManualCharge, JointBatterySlotDto? CommittedSlot);
 public sealed record JointBatteryMessageDto(string Message);
 public sealed record JointBatteryExecutionDto(string Status, DateTimeOffset UpdatedAtUtc, bool OwnsControl,
     int VictronTargetWatts, int E3dcTargetWatts, int VictronMeasuredWatts, int E3dcMeasuredWatts, DateTimeOffset? ValidUntilUtc);
