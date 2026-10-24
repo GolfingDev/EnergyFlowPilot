@@ -5,6 +5,9 @@ namespace TibberVictronController.Business.Decisions;
 /// <summary>Rebounds the plan against present energy, measured house load, device and phase limits.</summary>
 public static class JointBatteryLiveLimiter
 {
+    // Below this, measurement noise and short PV spikes are not worth switching the batteries into charging.
+    private const int SurplusThresholdWatts = 200;
+
     public static JointBatteryCommand Limit(JointBatteryCommand desired, JointBatteryLiveSnapshot live, DateTimeOffset now)
     {
         var limits = live.Limits;
@@ -16,8 +19,32 @@ public static class JointBatteryLiveLimiter
             throw new InvalidOperationException("Bestaetigte Anschluss- und Phasengrenzen fehlen.");
         if (Math.Sign(desired.VictronWatts) * Math.Sign(desired.E3dcWatts) < 0)
             throw new InvalidOperationException("Gegenlaeufige Akku-Sollwerte sind unzulaessig.");
-        if (live.PhaseGridWatts.Sum() < -150 && live.Batteries.Any(b => b.MeasuredPowerWatts < -150))
+
+        // Site balance without both batteries ("base"): what the house and PV alone would exchange with the grid.
+        var secondary = live.Batteries[1];
+        var eta = (decimal)Math.Sqrt((double)secondary.Configuration.RoundTripEfficiencyPercent / 100d);
+        var secondaryAc = secondary.MeasuredPowerWatts * (secondary.MeasuredPowerWatts >= 0 ? 1 / eta : eta);
+        var basePhase = Enumerable.Range(0, 3).Select(i => live.PhaseGridWatts[i] -
+            (i < limits.VictronPhaseCount ? live.PrimaryAcBatteryWatts / (decimal)limits.VictronPhaseCount : 0) - secondaryAc / 3m).ToArray();
+        var baseTotal = basePhase.Sum();
+
+        // PV surplus is stored instead of exported (operator report 24.10.2026: "hold" put the E3/DC into idle, which
+        // also stops its own PV charging, and the surplus went to the grid). This is a live correction like the limits
+        // below and also applies inside a committed quarter hour. Grid charging (planned or manual) is left unchanged.
+        // Using the base balance keeps it stable: absorbing the surplus does not make the surplus disappear.
+        var surplus = -baseTotal - 100;
+        if (surplus > SurplusThresholdWatts && desired.ChargeSource != BatteryChargeSource.Grid)
+        {
+            var absorb = JointBatteryAllocator.Allocate(live.Batteries, (int)surplus, TimeSpan.FromSeconds(10), pvCharge: true);
+            var victron = Math.Max(Math.Max(0, desired.VictronWatts), absorb[0].SignedPowerWatts);
+            var e3dc = Math.Max(Math.Max(0, desired.E3dcWatts), absorb[1].SignedPowerWatts);
+            if (victron + e3dc > 0)
+                desired = desired with { VictronWatts = victron, E3dcWatts = e3dc, ChargeSource = BatteryChargeSource.PV,
+                    Reason = desired.Reason + " PV-Ueberschuss wird gespeichert." };
+        }
+        else if (live.PhaseGridWatts.Sum() < -150 && live.Batteries.Any(b => b.MeasuredPowerWatts < -150))
             return desired with { VictronWatts = 0, E3dcWatts = 0, Reason = "Akkuentladung bei Netzeinspeisung gestoppt." };
+
         var targets = new[] { desired.VictronWatts, desired.E3dcWatts };
         for (var i = 0; i < 2; i++)
         {
@@ -25,12 +52,6 @@ public static class JointBatteryLiveLimiter
             var bound = JointBatteryAllocator.Allocate([unit], targets[i], TimeSpan.FromSeconds(10), desired.ChargeSource == BatteryChargeSource.PV)[0];
             targets[i] = bound.SignedPowerWatts;
         }
-        var secondary = live.Batteries[1];
-        var eta = (decimal)Math.Sqrt((double)secondary.Configuration.RoundTripEfficiencyPercent / 100d);
-        var secondaryAc = secondary.MeasuredPowerWatts * (secondary.MeasuredPowerWatts >= 0 ? 1 / eta : eta);
-        var basePhase = Enumerable.Range(0, 3).Select(i => live.PhaseGridWatts[i] -
-            (i < limits.VictronPhaseCount ? live.PrimaryAcBatteryWatts / (decimal)limits.VictronPhaseCount : 0) - secondaryAc / 3m).ToArray();
-        var baseTotal = basePhase.Sum();
         var total = targets.Sum();
         decimal scale = 1;
         if (total > 0)

@@ -171,6 +171,33 @@ public sealed class JointBatteryExecutionTests
         Assert.Equal(0, JointBatteryLiveLimiter.Limit(Command(-500, -500), export, Now).VictronWatts);
     }
 
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(-500, -500)]
+    public void PvSurplusIsStoredInsteadOfExportedWhenHoldingOrDischarging(int victron, int e3dc)
+    {
+        // 3 kW export with idle batteries (operator report 24.10.2026: surplus went to the grid while the plan said hold).
+        var live = Live() with { PhaseGridWatts = [-1000, -1000, -1000] };
+        var limited = JointBatteryLiveLimiter.Limit(Command(victron, e3dc) with { ChargeSource = null }, live, Now);
+        Assert.Equal(BatteryChargeSource.PV, limited.ChargeSource);
+        Assert.True(limited.VictronWatts > 0 && limited.E3dcWatts > 0);
+        // Never more than the surplus itself: charging must not start drawing from the grid.
+        var acCharge = limited.VictronWatts + limited.E3dcWatts / (decimal)Math.Sqrt(.9);
+        Assert.InRange(acCharge, 2500m, 2900m);
+        Assert.Contains("PV-Ueberschuss", limited.Reason);
+    }
+
+    [Fact]
+    public void NoSurplusKeepsHoldAndGridChargeIsNotChanged()
+    {
+        Assert.Equal(0, JointBatteryLiveLimiter.Limit(Command(0, 0) with { ChargeSource = null }, Live(), Now).VictronWatts);
+        var surplus = Live() with { PhaseGridWatts = [-1000, -1000, -1000] };
+        var gridCharge = JointBatteryLiveLimiter.Limit(Command(400, 300), surplus, Now);
+        Assert.Equal(BatteryChargeSource.Grid, gridCharge.ChargeSource);
+        Assert.Equal(400, gridCharge.VictronWatts);
+        Assert.Equal(300, gridCharge.E3dcWatts);
+    }
+
     [Fact]
     public void ExpiredCommandFailsClosed()
     {
