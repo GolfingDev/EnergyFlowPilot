@@ -122,7 +122,7 @@ onBeforeUnmount(() => { request?.abort(); window.clearInterval(timer); });
 
       <div class="orbit-flow">
         <div class="orbit-flow-caption"><span>ENERGIEKREISLAUF</span><span>{{ connected ? 'LIVE' : 'WARTE AUF DATEN' }}</span></div>
-        <svg viewBox="0 0 600 480" role="img" aria-label="Energiefluss zwischen Solaranlage, Netz, Haus und Speichern">
+        <svg viewBox="0 0 600 495" role="img" aria-label="Energiefluss zwischen Solaranlage, Netz, Haus und Speichern">
           <defs><radialGradient id="orbit-glow"><stop stop-color="#d7ef87" stop-opacity=".12" /><stop offset="1" stop-color="#d7ef87" stop-opacity="0" /></radialGradient></defs>
           <circle cx="300" cy="235" r="210" fill="url(#orbit-glow)" />
           <circle cx="300" cy="235" r="170" class="orbit-track" />
@@ -131,6 +131,7 @@ onBeforeUnmount(() => { request?.abort(); window.clearInterval(timer); });
           <path v-if="connected && Math.abs(live?.gridPowerWatts ?? 0) > 50" d="M130 235H226" class="orbit-current" :class="{ 'orbit-current--reverse': (live?.gridPowerWatts ?? 0) < 0 }" />
           <path v-if="connected && Math.abs(live?.batteryPowerWatts ?? 0) > 50" d="M374 235H470" class="orbit-current" :class="{ 'orbit-current--reverse': (live?.batteryPowerWatts ?? 0) < 0 }" />
           <path v-if="connected && (live?.supplementaryPvProductionWatts ?? 0) > 50" d="M300 101V161" class="orbit-current orbit-current--solar" />
+          <path v-if="connected && Math.abs(live?.supplementaryBatteryPowerWatts ?? 0) > 50" d="M300 309V374" class="orbit-current" :class="{ 'orbit-current--reverse': (live?.supplementaryBatteryPowerWatts ?? 0) < 0 }" />
           <circle cx="300" cy="235" r="75" class="orbit-house" />
           <path d="M279 214L300 197L321 214V235H307V221H293V235H279Z" fill="none" stroke="#d7ef87" stroke-width="2" stroke-linejoin="round" />
           <text x="300" y="261" text-anchor="middle" class="orbit-house-value">{{ power(live?.houseConsumptionWatts) }}</text>
@@ -138,7 +139,7 @@ onBeforeUnmount(() => { request?.abort(); window.clearInterval(timer); });
           <g transform="translate(300 65)"><circle r="35" class="orbit-node" /><text y="8" text-anchor="middle" class="orbit-node-icon">☼</text><text y="-48" text-anchor="middle" class="orbit-svg-label">SOLAR · E3/DC</text><text y="60" text-anchor="middle" class="orbit-svg-value">{{ power(live?.supplementaryPvProductionWatts) }}</text></g>
           <g transform="translate(130 235)"><circle r="30" class="orbit-node" /><path d="M-12 10L0-15L12 10M-8 0H8M-5-7H5M0-15V16" fill="none" stroke="currentColor" stroke-width="1.5" /><text y="52" text-anchor="middle" class="orbit-svg-value">{{ power(live?.gridPowerWatts) }}</text><text y="73" text-anchor="middle" class="orbit-svg-label">{{ (live?.gridPowerWatts ?? 0) < 0 ? 'EINSPEISUNG' : 'NETZBEZUG' }}</text></g>
           <g transform="translate(470 235)"><circle r="30" class="orbit-node" /><rect x="-13" y="-8" width="24" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.5" /><path d="M14-3V3M-7 0H5" stroke="currentColor" stroke-width="2" /><text y="52" text-anchor="middle" class="orbit-svg-value">{{ power(live?.batteryPowerWatts) }}</text><text y="73" text-anchor="middle" class="orbit-svg-label">VICTRON · {{ format(soc, 0) }} %</text></g>
-          <g transform="translate(300 405)"><circle r="30" class="orbit-node" /><text y="7" text-anchor="middle" class="orbit-node-icon">↯</text><text y="52" text-anchor="middle" class="orbit-svg-value">E3/DC · {{ format(live?.supplementaryBatterySocPercent, 0) }} %</text></g>
+          <g transform="translate(300 405)"><circle r="30" class="orbit-node" /><text y="7" text-anchor="middle" class="orbit-node-icon">↯</text><text y="52" text-anchor="middle" class="orbit-svg-value">{{ power(live?.supplementaryBatteryPowerWatts) }}</text><text y="73" text-anchor="middle" class="orbit-svg-label">E3/DC · {{ format(live?.supplementaryBatterySocPercent, 0) }} %</text></g>
         </svg>
         <div class="orbit-flow-footer"><span>+ Netzbezug / Speicher lädt</span><span>− Einspeisung / Speicher entlädt</span></div>
       </div>
