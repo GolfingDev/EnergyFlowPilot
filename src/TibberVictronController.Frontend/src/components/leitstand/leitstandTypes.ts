@@ -55,6 +55,10 @@ export interface DashboardPlanSegmentDto {
 
 export interface DashboardSummaryDto {
   createdAtUtc: string;
+  overview?: {
+    category: LeitstandCategory; reason: string; pricePerKwh: number | null; currency: string | null;
+    next: { startsAtUtc: string; category: LeitstandCategory; reason: string; pricePerKwh: number; currency: string; isPriceEstimated: boolean } | null;
+  } | null;
   current: DashboardCurrentStateDto;
   live: DashboardLiveStateDto | null;
   checks: DashboardCheckDto[];

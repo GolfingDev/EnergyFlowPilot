@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import EnergyTree from './EnergyTree.vue';
+import EnergyDecisionOverview from '../dashboard/EnergyDecisionOverview.vue';
 import EnergyTrendChart from './EnergyTrendChart.vue';
 import LeitstandDashboard from '../leitstand/LeitstandDashboard.vue';
 import WeishauptEnergyPanel from '../heating/WeishauptEnergyPanel.vue';
-import { leitstandCategoryLabels, type DashboardSummaryDto, type DashboardReviewDto } from '../leitstand/leitstandTypes';
+import { type DashboardSummaryDto, type DashboardReviewDto } from '../leitstand/leitstandTypes';
 import type { BatteryForecastResponseDto, BatterySavingsResponseDto, ControllerStatusResponseDto, DecisionLogEntryResponseDto, ManualChargeStatusResponseDto, SavingsPeriod } from '../dashboard/dashboardTypes';
 import type { TrendSeries } from './workspaceTypes';
 const props = defineProps<{
@@ -101,14 +102,16 @@ onBeforeUnmount(() => { summaryRequest?.abort(); reviewRequest?.abort(); window.
       <div><p>ENERGYFLOWPILOT <span>/ {{ variant === 'flow' ? 'ENERGIEZENTRALE' : 'KACHELWERK' }}</span></p><h1>{{ variant === 'flow' ? 'Energieübersicht' : 'Energie & Analyse' }}</h1></div>
       <div class="workspace-header-actions"><span class="workspace-status" :class="{ 'workspace-status--stale': stale }"><i />{{ stale ? 'Live-Daten fehlen oder sind veraltet' : 'Live-Daten aktuell' }}</span><button class="workspace-refresh" aria-label="Dashboard-Daten aktualisieren" @click="loadSummary(); loadReview()"><v-icon icon="mdi-refresh" size="19" /></button></div>
     </header>
-    <p v-if="firstEstimatedEntry" class="workspace-error">Ab {{ stamp(firstEstimatedEntry.startsAtUtc) }} sind die Preise geschätzt (gestrichelt). Für diese Zeitfenster wird noch keine Netzladung geplant; nach Veröffentlichung wird neu gerechnet.</p>
+    <p v-if="firstEstimatedEntry" class="workspace-error">Ab {{ stamp(firstEstimatedEntry.startsAtUtc) }} sind die Preise geschätzt (gestrichelt).</p>
     <p v-if="summaryError" class="workspace-error" role="alert">{{ summaryError }} Letzte Daten können veraltet sein.</p>
+
+    <EnergyDecisionOverview :summary="summary" />
 
     <div v-if="variant === 'flow'" class="workspace-flow-grid">
       <section id="dashboard-live-flow" class="work-card flow-card">
         <header class="work-card-heading"><div><h2>Aktuelle Werte</h2><p>{{ live ? `Messung ${stamp(live.measuredAtUtc)}` : 'Warte auf die erste Messung' }}</p></div><v-icon icon="mdi-transit-connection-variant" size="20" /></header>
         <EnergyTree :live="live" :stale="stale" />
-        <div class="work-decision"><v-icon icon="mdi-battery-sync-outline" size="20" /><div><strong>{{ summary ? leitstandCategoryLabels[summary.current.category] : 'Noch keine Entscheidung vorhanden' }}</strong><p>{{ summary?.current.reason ?? 'Geräteverbindungen und Preisquelle in den Einstellungen einrichten.' }}</p></div></div>
+
       </section>
       <aside class="work-card balance-card" aria-label="Energiebilanz">
         <header class="work-card-heading"><h2>Zusammenfassung</h2><v-icon icon="mdi-chart-box-outline" size="19" /></header>
@@ -118,7 +121,7 @@ onBeforeUnmount(() => { summaryRequest?.abort(); reviewRequest?.abort(); window.
         <p class="work-footnote">{{ availableSavings ? `${availableSavings.startDate} – ${availableSavings.endDate}` : 'Noch keine Bilanz verfügbar' }} · Berechnung aus den erfassten Batteriedaten.</p>
       </aside>
       <article class="work-card metric-card"><header class="work-card-heading"><h2>Victron-Batterie</h2><v-icon icon="mdi-battery-medium" /></header><p>{{ live?.batteryPowerWatts == null ? 'Keine Messwerte' : live.batteryPowerWatts > 50 ? 'Lädt' : live.batteryPowerWatts < -50 ? 'Entlädt' : 'Ruhe' }}</p><strong class="work-value">{{ n(live?.batterySocPercent, 0) }} <small>%</small></strong><div class="work-battery-track" role="img" :aria-label="`Victron-Ladezustand ${n(live?.batterySocPercent, 0)} Prozent`"><i :style="{ width: socWidth }" /></div></article>
-      <article class="work-card metric-card"><header class="work-card-heading"><h2>Strompreis</h2><v-icon icon="mdi-currency-eur" /></header><strong class="work-value">{{ n(summary?.current.pricePerKwh == null ? null : summary.current.pricePerKwh * priceScale, 2) }} <small>{{ priceUnit }}</small></strong><EnergyTrendChart :series="priceSeries" :unit="priceUnit" label="Strompreisprognose" compact /></article>
+      <article class="work-card metric-card"><header class="work-card-heading"><h2>Strompreis</h2><v-icon icon="mdi-currency-eur" /></header><p>Preisverlauf im verfügbaren Plan</p><EnergyTrendChart :series="priceSeries" :unit="priceUnit" label="Strompreisprognose" compact /></article>
       <article class="work-card metric-card"><header class="work-card-heading"><h2>PV-Prognose</h2><v-icon icon="mdi-weather-sunny" /></header><p>Summe des verfügbaren Prognosezeitraums</p><strong class="work-value">{{ n(forecastPv, 2) }} <small>kWh</small></strong><EnergyTrendChart :series="pvSeries" unit="kWh/Intervall" label="Erwarteter PV-Ertrag pro Prognoseintervall" compact /></article>
     </div>
 
@@ -131,7 +134,7 @@ onBeforeUnmount(() => { summaryRequest?.abort(); reviewRequest?.abort(); window.
         <article class="work-card"><header class="work-card-heading"><div><h2>Netzbezug & Einspeisung</h2><p>Gemessene Energie pro Stunde</p></div><v-icon icon="mdi-transmission-tower" size="19" /></header><EnergyTrendChart :series="gridSeries" unit="kWh" label="Stündlicher Netzbezug und Einspeisung" /></article>
         <article class="work-card device-card"><header class="work-card-heading"><h2>PV & E3/DC</h2><span class="work-badge" :class="{ 'work-badge--forecast': stale }">{{ stale ? 'KEINE AKTUELLEN DATEN' : 'LIVE' }}</span></header><div class="device-illustration device-illustration--solar"><v-icon icon="mdi-solar-power-variant-outline" size="68" /><strong>{{ kw(live?.supplementaryPvProductionWatts) }}</strong></div><footer><strong>Speicher {{ n(live?.supplementaryBatterySocPercent, 0) }} %</strong><span>{{ kw(live?.supplementaryBatteryPowerWatts) }} · + Laden / − Entladen</span></footer></article>
         <article id="dashboard-forecast" class="work-card"><header class="work-card-heading"><div><h2>PV-Ertrag</h2><p>Prognose · {{ n(forecastPv, 2) }} kWh insgesamt</p></div><span class="work-badge work-badge--forecast">PROGNOSE</span></header><EnergyTrendChart :series="pvSeries" unit="kWh/Intervall" label="PV-Ertragsprognose" /></article>
-        <article class="work-card"><header class="work-card-heading"><div><h2>Strompreis</h2><p>Aktuell {{ n(summary?.current.pricePerKwh == null ? null : summary.current.pricePerKwh * priceScale, 2) }} {{ priceUnit }}</p></div><span class="work-badge work-badge--forecast">PROGNOSE</span></header><EnergyTrendChart :series="priceSeries" :unit="priceUnit" label="Strompreisprognose" /></article>
+        <article class="work-card"><header class="work-card-heading"><div><h2>Strompreis</h2><p>Veröffentlichte und geschätzte Preise</p></div><span class="work-badge work-badge--forecast">PROGNOSE</span></header><EnergyTrendChart :series="priceSeries" :unit="priceUnit" label="Strompreisprognose" /></article>
         <article class="work-card tile-balance"><header class="work-card-heading"><div><h2>Batterie · Energieverlauf</h2><p>Gemessene Energie pro Stunde · {{ reviewRange }}</p></div><v-icon icon="mdi-chart-areaspline" size="19" /></header><EnergyTrendChart :series="batterySeries" unit="kWh" label="Stündliche Lade- und Entladeenergie des Victron-Speichers" /></article>
         <article class="work-card tile-summary"><header class="work-card-heading"><h2>Bilanz {{ savingsPeriods.find(p => p.value === savingsPeriod)?.label }}</h2></header><div class="workspace-tabs" role="group" aria-label="Bilanzzeitraum"><button v-for="option in savingsPeriods" :key="option.value" :aria-pressed="savingsPeriod === option.value" @click="emit('change-savings-period', option.value)">{{ option.label }}</button></div><p v-if="savingsError" class="workspace-error">{{ savingsError }}</p><dl class="tile-balance-list"><div v-for="item in balance" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ savingsLoading ? 'Lädt …' : item.value }}</dd></div></dl><p class="work-footnote">Bilanzzeitraum und Analysezeitraum sind unabhängig. Saldo = vermiedene Bezugskosten abzüglich Ladekosten.</p></article>
       </div>
@@ -143,7 +146,7 @@ onBeforeUnmount(() => { summaryRequest?.abort(); reviewRequest?.abort(); window.
       <p v-if="reviewError" class="workspace-error">{{ reviewError }}</p><EnergyTrendChart :series="gridSeries" unit="kWh" label="Stündliche Netzenergie im ausgewählten Zeitraum" />
     </section>
     <section class="workspace-heating"><WeishauptEnergyPanel /></section>
-    <section id="dashboard-details" class="work-card workspace-system"><div><h2>{{ summary ? leitstandCategoryLabels[summary.current.category] : 'Betrieb & Verbindungen' }}</h2><p>{{ summary?.current.reason ?? 'Für Entscheidungen werden aktuelle Geräte- und Preisdaten benötigt.' }}</p><ul v-if="summary?.checks.some(c => c.severity !== 'ok')"><li v-for="check in summary.checks.filter(c => c.severity !== 'ok')" :key="check.checkId">{{ check.message }}</li></ul></div><button class="workspace-primary-button" :aria-expanded="detailsOpen" aria-controls="workspace-controls" @click="detailsOpen = !detailsOpen">{{ detailsOpen ? 'Analyse schließen' : 'Analyse & Steuerung' }}<v-icon :icon="detailsOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="18" /></button></section>
+    <section id="dashboard-details" class="work-card workspace-system"><div><h2>Analyse & Steuerung</h2><p>Verläufe, Geräteinformationen und manuelle Bedienung.</p></div><button class="workspace-primary-button" :aria-expanded="detailsOpen" aria-controls="workspace-controls" @click="detailsOpen = !detailsOpen">{{ detailsOpen ? 'Analyse schließen' : 'Analyse & Steuerung' }}<v-icon :icon="detailsOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="18" /></button></section>
     <div v-if="detailsOpen" id="workspace-controls" class="work-card workspace-controls"><LeitstandDashboard :dark="false" :status="status" :decision-log-entries="decisionLogEntries" :manual-charge="manualCharge" :is-manual-charge-busy="isManualChargeBusy" @start-manual-charge="(minutes, powerKw) => emit('start-manual-charge', minutes, powerKw)" @stop-manual-charge="emit('stop-manual-charge')" /></div>
   </div>
 </template>

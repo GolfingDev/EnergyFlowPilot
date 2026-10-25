@@ -30,7 +30,15 @@ public sealed record DashboardSummary(
     DashboardLiveState? Live,
     IReadOnlyList<DashboardCheck> Checks,
     IReadOnlyList<DashboardPlanSlot> PlanSlots,
-    IReadOnlyList<DashboardPlanSegment> PlanSegments);
+    IReadOnlyList<DashboardPlanSegment> PlanSegments)
+{
+    public DashboardDecisionOverview? Overview { get; init; }
+}
+
+public sealed record DashboardNextDecision(DateTimeOffset StartsAtUtc, DashboardActionCategory Category, string Reason,
+    decimal PricePerKwh, string Currency, bool IsPriceEstimated);
+public sealed record DashboardDecisionOverview(DashboardActionCategory Category, string Reason, decimal? PricePerKwh,
+    string? Currency, DashboardNextDecision? Next);
 
 /// <summary>
 /// Describes the latest direct decision in dashboard terms.

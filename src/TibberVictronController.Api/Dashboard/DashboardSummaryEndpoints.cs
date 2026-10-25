@@ -98,7 +98,12 @@ public static class DashboardSummaryDtoMapper
                 segment.ExpectedPvYieldKwh,
                 segment.GridEnergyKwh,
                 segment.RuleId,
-                segment.Reason)).ToArray());
+                segment.Reason)).ToArray()) {
+                Overview = summary.Overview is not { } overview ? null : new DashboardDecisionOverviewDto(
+                    ToName(overview.Category), overview.Reason, overview.PricePerKwh, overview.Currency,
+                    overview.Next is not { } next ? null : new DashboardNextDecisionDto(next.StartsAtUtc, ToName(next.Category),
+                        next.Reason, next.PricePerKwh, next.Currency, next.IsPriceEstimated))
+            };
     }
 
     public static DashboardReviewDto Map(DashboardReview review)
@@ -151,7 +156,12 @@ public sealed record DashboardSummaryDto(
     DashboardLiveStateDto? Live,
     IReadOnlyList<DashboardCheckDto> Checks,
     IReadOnlyList<DashboardPlanSlotDto> PlanSlots,
-    IReadOnlyList<DashboardPlanSegmentDto> PlanSegments);
+    IReadOnlyList<DashboardPlanSegmentDto> PlanSegments)
+{
+    public DashboardDecisionOverviewDto? Overview { get; init; }
+}
+public sealed record DashboardDecisionOverviewDto(string Category, string Reason, decimal? PricePerKwh, string? Currency, DashboardNextDecisionDto? Next);
+public sealed record DashboardNextDecisionDto(DateTimeOffset StartsAtUtc, string Category, string Reason, decimal PricePerKwh, string Currency, bool IsPriceEstimated);
 
 public sealed record DashboardCurrentStateDto(
     string Category,

@@ -156,7 +156,8 @@ public static class ControllerServiceCollectionExtensions
             TibberPriceForecastProvider = serviceProvider.GetRequiredService<IElectricityPriceForecastProvider>(),
             ControllerSettingStore = serviceProvider.GetRequiredService<IControllerSettingStore>()
         });
-        services.AddScoped<IDashboardSummaryService, DashboardSummaryService>();
+        services.AddScoped<DashboardSummaryService>();
+        services.AddScoped<IDashboardSummaryService, JointAwareDashboardSummaryService>();
         services.AddSingleton<TibberPriceForecastCache>();
         services.AddHttpClient(nameof(TibberPriceForecastProvider));
         services.AddScoped<TibberPriceForecastProvider>(serviceProvider =>

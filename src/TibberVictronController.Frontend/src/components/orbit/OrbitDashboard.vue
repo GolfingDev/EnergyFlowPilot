@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import LeitstandDashboard from '../leitstand/LeitstandDashboard.vue';
+import EnergyDecisionOverview from '../dashboard/EnergyDecisionOverview.vue';
 import { leitstandCategoryLabels, type DashboardSummaryDto, type LeitstandCategory } from '../leitstand/leitstandTypes';
 import type { ControllerStatusResponseDto, DecisionLogEntryResponseDto, ManualChargeStatusResponseDto } from '../dashboard/dashboardTypes';
 
@@ -28,13 +29,9 @@ const power = (value: number | null | undefined) => value == null ? '–' : `${f
 const time = (value: string) => new Date(value).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 const soc = computed(() => live.value?.batterySocPercent ?? null);
 const ring = computed(() => soc.value == null ? 0 : Math.max(0, Math.min(100, soc.value)));
-const signedTarget = computed(() => summary.value == null ? null : summary.value.current.category === 'discharge' ? -Math.abs(summary.value.current.targetPowerWatts) : summary.value.current.targetPowerWatts);
-const state = computed(() => summary.value ? leitstandCategoryLabels[summary.value.current.category] : 'Warte auf Energiedaten');
 const checks = computed(() => summary.value?.checks.filter(c => c.severity !== 'ok') ?? []);
 const segments = computed(() => summary.value?.planSegments.filter(s => Date.parse(s.endsAtUtc) > now.value).slice(0, 4) ?? []);
 const firstEstimatedSlot = computed(() => summary.value?.planSlots.find(slot => slot.isPriceEstimated));
-const nextSegment = computed(() => summary.value?.planSegments.find(s => Date.parse(s.startsAtUtc) > now.value));
-const currentSegment = computed(() => summary.value?.planSegments.find(s => Date.parse(s.startsAtUtc) <= now.value && Date.parse(s.endsAtUtc) > now.value));
 const planTotals = computed(() => {
   const plan = summary.value?.planSlots ?? [];
   if (!plan.length) return null;
@@ -93,30 +90,12 @@ onBeforeUnmount(() => { request?.abort(); window.clearInterval(timer); });
     <section class="orbit-hero" aria-label="Energieübersicht">
       <div class="orbit-intro">
         <h1>Speichersteuerung</h1>
-        <div class="orbit-decision">
-          <strong>{{ state }}</strong>
-          <p>{{ summary?.current.reason ?? 'Noch keine Entscheidung verfügbar. Geräteverbindungen und Preisquelle prüfen.' }}</p>
-          <span v-if="!connected && summary" class="orbit-stale">Live-Messwerte fehlen, sind veraltet oder konnten nicht aktualisiert werden.</span>
-        </div>
-        <dl class="orbit-operating-values" aria-label="Aktuelle Steuerungswerte">
-          <div><dt>Sollleistung · Victron</dt><dd>{{ power(signedTarget) }}<small>+ Laden / − Entladen</small></dd></div>
-          <div><dt>Istleistung · Victron</dt><dd>{{ power(live?.batteryPowerWatts) }}<small>{{ connected ? '+ Laden / − Entladen' : 'Keine aktuelle Messung' }}</small></dd></div>
-          <div><dt>Aktuelle Planphase bis</dt><dd>{{ currentSegment ? dateTime(currentSegment.endsAtUtc) : '–' }}</dd></div>
-          <div><dt>Geplanter Ladezustand danach</dt><dd>{{ format(currentSegment?.stateOfChargeEndPercent, 0) }} %</dd></div>
-        </dl>
+        <EnergyDecisionOverview :summary="summary" />
+        <span v-if="!connected && summary" class="orbit-stale">Live-Messwerte fehlen oder sind veraltet.</span>
         <div v-if="manualCharge?.isActive" class="orbit-manual" role="status">
           <strong>Manuelle Ladung aktiv · {{ power(manualCharge.powerWatts) }}</strong>
           <span>{{ manualCharge.expiresAtUtc ? `Bis ${dateTime(manualCharge.expiresAtUtc)}` : 'Endzeit nicht verfügbar' }} · Vorrang vor dem Automatikplan</span>
         </div>
-        <section class="orbit-upcoming" aria-label="Nächste geplante Aktion">
-          <span class="orbit-small">NÄCHSTE PLANPHASE</span>
-          <template v-if="nextSegment">
-            <strong>{{ leitstandCategoryLabels[nextSegment.category] }}</strong>
-            <p>{{ dateTime(nextSegment.startsAtUtc) }} – {{ dateTime(nextSegment.endsAtUtc) }} · {{ format(nextSegment.stateOfChargeStartPercent, 0) }} → {{ format(nextSegment.stateOfChargeEndPercent, 0) }} % SoC</p>
-            <p v-if="nextSegment.reason">{{ nextSegment.reason }}</p>
-          </template>
-          <p v-else>Noch keine weitere Planphase verfügbar.</p>
-        </section>
         <router-link to="/heating" class="orbit-link">Wärmepumpe & Verbrauch <v-icon icon="mdi-arrow-top-right" size="20" aria-hidden="true" /></router-link>
       </div>
 
@@ -150,13 +129,12 @@ onBeforeUnmount(() => { request?.abort(); window.clearInterval(timer); });
         <div><span class="orbit-small">LADEZUSTAND · VICTRON</span><strong>{{ format(soc, 0) }}<small> %</small></strong><p>Victron · Ladezustand</p></div>
         <div class="orbit-gauge" :style="{ '--charge': `${ring}%` }"><v-icon icon="mdi-battery-medium" size="30" /></div>
       </article>
-      <article class="orbit-metric"><span class="orbit-small">STROMPREIS JETZT</span><strong>{{ format(summary?.current.pricePerKwh == null ? null : summary.current.pricePerKwh * priceScale, 2) }}<small> {{ priceUnit }}</small></strong><p>{{ summary?.current.currency ?? '–' }} · aktueller Preis</p></article>
       <article class="orbit-metric"><span class="orbit-small">LADEZUSTAND · E3/DC</span><strong>{{ format(live?.supplementaryBatterySocPercent, 0) }}<small> %</small></strong><p>{{ power(live?.supplementaryBatteryPowerWatts) }} · + Laden / − Entladen</p></article>
     </section>
 
     <section class="orbit-plan" aria-labelledby="orbit-plan-title">
       <header class="orbit-section-heading"><div><h2 id="orbit-plan-title">48-Stunden-Plan</h2><p v-if="planTotals" class="orbit-plan-period">{{ dateTime(planTotals.startsAtUtc) }} – {{ dateTime(planTotals.endsAtUtc) }}</p></div><span class="orbit-small">PROGNOSE, KEINE MESSUNG</span></header>
-      <p v-if="firstEstimatedSlot" class="orbit-plan-period">Ab {{ dateTime(firstEstimatedSlot.startsAtUtc) }} sind die Preise geschätzt (schraffiert). Für diese Zeitfenster wird noch keine Netzladung geplant; nach Veröffentlichung wird neu gerechnet.</p>
+      <p v-if="firstEstimatedSlot" class="orbit-plan-period">Ab {{ dateTime(firstEstimatedSlot.startsAtUtc) }} sind die Preise geschätzt (schraffiert).</p>
       <dl class="orbit-plan-totals" aria-label="Energieprognose für den gesamten Planzeitraum">
         <div><dt>Erwarteter Verbrauch</dt><dd>{{ format(planTotals?.consumptionKwh, 2) }} <small>kWh</small></dd></div>
         <div><dt>Erwarteter PV-Ertrag</dt><dd>{{ format(planTotals?.pvKwh, 2) }} <small>kWh</small></dd></div>

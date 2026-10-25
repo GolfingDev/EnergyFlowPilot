@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { BatterySavingsResponseDto, ControllerStatusResponseDto, DecisionLogEntryResponseDto, ManualChargeStatusResponseDto } from '../dashboard/dashboardTypes';
 import { getDecisionLabel } from '../dashboard/dashboardFormatters';
 import LeitstandHotWaterPanel from './LeitstandHotWaterPanel.vue';
+import EnergyDecisionOverview from '../dashboard/EnergyDecisionOverview.vue';
 import {
   leitstandCategoryLabels,
   type DashboardPlanSlotDto,
@@ -97,59 +98,6 @@ const supplementaryChargeFromSiteWatts = computed(() => {
   return typeof battery === 'number' ? Math.max(0, battery - Math.max(0, live.value?.supplementaryPvProductionWatts ?? 0)) : 0;
 });
 
-const nextSegment = computed<DashboardPlanSegmentDto | null>(() => {
-  const segments = summary.value?.planSegments ?? [];
-  const now = Date.now();
-  return segments.find((segment) => new Date(segment.startsAtUtc).getTime() > now && segment.category !== current.value?.category) ?? null;
-});
-
-/** One plain sentence: what the Victron battery does, what the E3/DC does and what comes next. */
-const situationSentence = computed(() => {
-  if (!current.value) {
-    return 'Noch keine Daten.';
-  }
-
-  const battery = live.value?.batteryPowerWatts ?? 0;
-  const parts: string[] = [];
-
-  switch (current.value.category) {
-    case 'discharge':
-      parts.push(`Der Akku deckt ${kw(Math.abs(battery))} Verbrauch.`);
-      break;
-    case 'pvCharge':
-      parts.push(`Der Akku nimmt ${kw(Math.max(0, battery))} PV-Überschuss auf.`);
-      break;
-    case 'gridCharge':
-      parts.push(`Netzladung angefordert: Soll ${kw(current.value.targetPowerWatts)}. Gemessene Akkuleistung ${kw(live.value?.batteryPowerWatts)}; Netzleistung ${kw(live.value?.gridPowerWatts)} (+ Bezug / − Einspeisung).`);
-      break;
-    case 'hold':
-      parts.push('Der Akku hält seine Energie für teurere Stunden zurück.');
-      break;
-    case 'full':
-      parts.push('Der Akku ist voll.');
-      break;
-    default:
-      parts.push(current.value.ruleId === 'MIN_SOC_RESERVE' ? 'Der Akku steht auf der Reserve, der Verbrauch kommt aus dem Netz.' : 'Der Akku ist in Ruhe.');
-  }
-
-  const supplementaryBattery = live.value?.supplementaryBatteryPowerWatts;
-  if (typeof supplementaryBattery === 'number' && Math.abs(supplementaryBattery) > 50) {
-    const source = supplementaryChargeFromSiteWatts.value > 100 ? 'aus dem Hausnetz' : 'aus eigener PV';
-    parts.push(supplementaryBattery > 0
-      ? `Das E3/DC lädt mit ${kw(supplementaryBattery)} ${source}.`
-      : `Das E3/DC entlädt mit ${kw(Math.abs(supplementaryBattery))}.`);
-  }
-
-  if (nextSegment.value) {
-    parts.push(`Ab ${dayTime(nextSegment.value.startsAtUtc)}: ${leitstandCategoryLabels[nextSegment.value.category]}.`);
-  }
-
-  return parts.join(' ');
-});
-
-const severityRank: Record<LeitstandSeverity, number> = { critical: 0, warning: 1, info: 2, ok: 3 };
-const sortedChecks = computed(() => [...(summary.value?.checks ?? [])].sort((a, b) => severityRank[a.severity] - severityRank[b.severity]));
-const worstSeverity = computed<LeitstandSeverity>(() => sortedChecks.value[0]?.severity ?? 'ok');
 
 function segmentWhy(segment: DashboardPlanSegmentDto): string {
   const priceRange = segment.minimumPricePerKwh === segment.maximumPricePerKwh
@@ -468,22 +416,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="leitstand" :class="{ 'leitstand--dark': dark }">
-    <!-- Lage -->
-    <section class="ls-zone" aria-labelledby="ls-situation">
-      <h2 id="ls-situation" class="ls-eyebrow">Lage</h2>
-      <div class="ls-panel ls-situation">
-        <span class="ls-pill" :style="{ background: categoryVar(current?.category ?? 'idle') }">
-          {{ leitstandCategoryLabels[current?.category ?? 'idle'] }}
-        </span>
-        <p class="ls-situation__text">{{ situationSentence }}</p>
-        <div class="ls-situation__meta">
-          <span><span class="ls-dot" :style="{ background: `var(--ls-${worstSeverity})` }" />
-            {{ worstSeverity === 'ok' ? 'Alles in Ordnung' : worstSeverity === 'critical' ? 'Achtung, siehe Prüfung' : 'Hinweise vorhanden' }}</span>
-          <span v-if="current?.pricePerKwh != null" class="ls-num">{{ price(current.pricePerKwh) }} €/kWh</span>
-        </div>
-      </div>
-      <p v-if="summaryError" class="ls-error">{{ summaryError }}</p>
-    </section>
+    <EnergyDecisionOverview :summary="summary" />
+    <p v-if="summaryError" class="ls-error">{{ summaryError }}</p>
 
     <!-- Jetzt -->
     <section class="ls-zone" aria-labelledby="ls-now">
@@ -491,11 +425,11 @@ onBeforeUnmount(() => {
         <h2 id="ls-now">Jetzt</h2>
         <span v-if="live" class="ls-muted ls-num">gemessen {{ time(live.measuredAtUtc) }} Uhr</span>
       </div>
-      <div class="ls-split">
+      <div class="ls-now-layout">
         <div class="ls-panel ls-flow">
           <svg viewBox="0 0 720 300" role="img" aria-label="Energiefluss zwischen Netz, Haus, Victron-Akku und E3/DC">
             <rect class="ls-boundary" x="430" y="14" width="276" height="272" rx="12" />
-            <text class="ls-lbl" x="444" y="34">E3/DC · EIGENSTÄNDIG</text>
+            <text class="ls-lbl" x="444" y="34">E3/DC</text>
 
             <path class="ls-wire" :class="{ 'ls-wire--live': Math.abs(live?.gridPowerWatts ?? 0) > 30, 'ls-wire--crit': (live?.gridPowerWatts ?? 0) < -50 && (live?.batteryPowerWatts ?? 0) < -100 }" d="M170 150 L240 150" />
             <path class="ls-wire" :class="{ 'ls-wire--live': Math.abs(live?.batteryPowerWatts ?? 0) > 50, 'ls-wire--discharge': (live?.batteryPowerWatts ?? 0) < -50, 'ls-wire--pv': (live?.batteryPowerWatts ?? 0) > 50 }" d="M315 214 L315 190" />
@@ -529,16 +463,7 @@ onBeforeUnmount(() => {
               : (live?.supplementaryBatteryPowerWatts ?? 0) < -50 ? `entlädt ${kw(Math.abs(live?.supplementaryBatteryPowerWatts ?? 0))}` : 'Ruhe' }}</text>
           </svg>
         </div>
-        <div class="ls-panel ls-decision-panel">
-          <h3>Prüfung jetzt</h3>
-          <details v-if="current?.reason" class="ls-reason-details"><summary>Warum diese Entscheidung?</summary><p class="ls-decision-reason">{{ current.reason }}</p></details>
-          <ul class="ls-checks">
-            <li v-for="check in sortedChecks" :key="check.checkId" class="ls-check" :class="`ls-check--${check.severity}`">
-              <span class="ls-check__mark">{{ check.severity === 'ok' ? '✓' : check.severity === 'info' ? 'i' : '!' }}</span>
-              <span>{{ check.message }}</span>
-            </li>
-          </ul>
-        </div>
+
       </div>
     </section>
 
@@ -550,7 +475,7 @@ onBeforeUnmount(() => {
         <h2 id="ls-plan">Plan nächste 48 Stunden</h2>
         <span v-if="summary" class="ls-muted">Stand {{ time(summary.createdAtUtc) }} Uhr</span>
       </div>
-      <p v-if="firstEstimatedSlot" class="ls-muted">Ab {{ dayTime(firstEstimatedSlot.startsAtUtc) }} sind die Preise geschätzt (Balken mit gestricheltem Rand). Für diese Zeitfenster wird noch keine Netzladung geplant; nach Veröffentlichung wird neu gerechnet.</p>
+      <p v-if="firstEstimatedSlot" class="ls-muted">Ab {{ dayTime(firstEstimatedSlot.startsAtUtc) }} sind die Preise geschätzt (Balken mit gestricheltem Rand).</p>
       <div class="ls-plan-layout">
         <div class="ls-panel ls-chart-panel">
           <div class="ls-plan-controls">
@@ -852,7 +777,7 @@ h3 { font-size: 1.05rem; margin-bottom: 10px; }
 .ls-situation__meta { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.85rem; color: var(--ls-muted); }
 .ls-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 
-.ls-flow svg { width: 100%; height: auto; display: block; }
+.ls-flow svg { max-width: 820px; margin-inline: auto; width: 100%; height: auto; display: block; }
 .ls-flow text { fill: var(--ls-fg); }
 .ls-lbl { font-family: var(--ls-font-data); font-size: 11px; letter-spacing: 0.1em; fill: var(--ls-muted) !important; }
 .ls-val { font-family: var(--ls-font-display); font-size: 22px; font-weight: 600; }

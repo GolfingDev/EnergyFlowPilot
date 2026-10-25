@@ -59,6 +59,12 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
             planError = exception.Message;
         }
 
+        // A missing log price must not hide a published price already loaded for the current slot.
+        var currentPrice = planEntries.FirstOrDefault(entry => !entry.IsPriceEstimated &&
+            entry.TimeSlot.StartsAtUtc <= nowUtc && entry.TimeSlot.EndsAtUtc > nowUtc);
+        if (current.PricePerKwh is null && currentPrice is not null)
+            current = current with { PricePerKwh = currentPrice.TibberPricePerKwh, Currency = currentPrice.TibberPriceCurrency };
+
         var planSlots = planEntries
             .Select(entry => new DashboardPlanSlot(
                 entry.TimeSlot,

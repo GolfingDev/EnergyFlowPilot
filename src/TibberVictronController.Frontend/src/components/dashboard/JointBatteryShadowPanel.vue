@@ -105,13 +105,6 @@ function powerLabel(watts: number): string {
         Gemessen: Victron {{ powerLabel(state.execution.victronMeasuredWatts) }} · E3/DC {{ powerLabel(state.execution.e3dcMeasuredWatts) }}<br>
         Ausführungsstand: {{ formatDateTime(state.execution.updatedAtUtc) }}
       </p>
-      <p v-if="state.committedSlot" class="mt-1">
-        <strong>Festgelegt bis {{ formatDateTime(state.committedSlot.endsAtUtc) }}:</strong>
-        <template v-for="(target, index) in state.committedSlot.targets" :key="target.id">
-          {{ index > 0 ? ' · ' : ' ' }}{{ target.id === 'e3dc' ? 'E3/DC' : 'Victron' }} {{ powerLabel(target.signedPowerWatts) }}
-        </template>
-        ({{ formatPrice(state.committedSlot.pricePerKwh, state.committedSlot.currency) }})
-      </p>
       <p v-if="state.calculatedAtUtc" class="text-caption">Berechnet: {{ formatDateTime(state.calculatedAtUtc) }} · Netzbudget: {{ state.maximumGridImportWatts ? formatPower(state.maximumGridImportWatts) : 'keine zusätzliche Gesamtgrenze' }}</p>
       <v-row v-if="state.batteries.length" class="mt-2">
         <v-col v-for="battery in state.batteries" :key="battery.id" cols="12" sm="6">

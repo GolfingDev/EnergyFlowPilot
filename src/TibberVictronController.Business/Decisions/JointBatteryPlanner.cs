@@ -116,19 +116,15 @@ public sealed class JointBatteryPlanner
                 new(b.Source.Id, wb, (decimal)(currentB / b.Capacity * 100), (decimal)(afterB / b.Capacity * 100)) };
             var total = wa + wb;
             BatteryChargeSource? source = total <= 0 ? null : net[i] + total / 1000d * .25 > Eps ? BatteryChargeSource.Grid : BatteryChargeSource.PV;
-            var reason = total > 0 ? "Gemeinsame Kostenplanung: Ladefenster mit getrennten Energievorräten, Verlusten, Reserven und Leistungsgrenzen."
-                : total < 0 ? "Gemeinsame Kostenplanung: Hausbedarf aus den getrennt verfuegbaren Akkuenergien decken."
-                : "Gemeinsame Kostenplanung: Energie halten; derzeit kein vorteilhafter zulaessiger Energiefluss.";
-            if (continuation is { ValuePerDeliveredKwh: > 0, MaximumDeliveredEnergyKwh: > 0 })
-                reason += " Der Plan beruecksichtigt auch vorsichtig bewertete Restenergie fuer den Folgetag nach Ende der veroeffentlichten Preise.";
-            slots.Add(new(prices[i].TimeSlot, prices[i].TotalPricePerKwh, prices[i].Currency, prices[i].IsEstimated, source, targets, reason, false,
+            slots.Add(new(prices[i].TimeSlot, prices[i].TotalPricePerKwh, prices[i].Currency, prices[i].IsEstimated, source, targets, string.Empty, false,
                 pv[prices[i].TimeSlot], load[prices[i].TimeSlot]));
             currentA = afterA; currentB = afterB;
         }
-        return new(input.NowUtc, input.Batteries, slots, input.MaximumGridImportWatts,
+        var plan = new JointBatteryPlan(input.NowUtc, input.Batteries, slots, input.MaximumGridImportWatts,
             ["Numerische Planung mit zwei Energiezustaenden und interpolierten Folgekosten; keine analytisch exakte Optimierung.",
              continuation is null ? "Keine belastbare Preis- oder Folgeprognose; keine zusaetzliche Bevorratung ueber den Preishorizont hinaus."
                 : FormattableString.Invariant($"Restenergiewert: {continuation.HistoricalDays} historische Tage, typischer Preis {continuation.HistoricalTypicalPricePerKwh:F4} EUR/kWh; nach 15 % Unsicherheitsabschlag {continuation.ValuePerDeliveredKwh:F4} EUR je spaeter abgegebener kWh, begrenzt auf {continuation.MaximumDeliveredEnergyKwh:F2} kWh prognostizierten Netto-Folgebedarf.")]);
+        return JointBatteryPlanExplainer.Explain(plan, continuation);
     }
 
     private static double[] Candidates(Unit unit, double[] grid, double energy)

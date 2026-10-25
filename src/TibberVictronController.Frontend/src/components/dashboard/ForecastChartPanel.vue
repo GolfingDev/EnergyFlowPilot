@@ -306,7 +306,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <p v-if="firstEstimatedEntry">Ab {{ formatDateTime(firstEstimatedEntry.startsAtUtc) }} sind die Preise geschätzt (Balken mit Rand). Für diese Zeitfenster wird noch keine Netzladung geplant; nach Veröffentlichung wird neu gerechnet.</p>
+    <p v-if="firstEstimatedEntry">Ab {{ formatDateTime(firstEstimatedEntry.startsAtUtc) }} sind die Preise geschätzt (Balken mit Rand).</p>
     <div v-if="forecastChartEntries.length" class="forecast-chart">
       <canvas ref="forecastChartCanvas"
         aria-label="Forecast-Chart mit Strompreisen, Batterieentscheidungen, PV, Verbrauch und erwartetem SoC"></canvas>
