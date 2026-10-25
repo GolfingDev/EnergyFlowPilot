@@ -11,6 +11,7 @@ export const vuetify = createVuetify({
   theme: {
     defaultTheme: defaultEnergyFlowTheme,
     themes: {
+      horizon: { dark: true, colors: { background: '#101526', surface: '#192136', primary: '#ffb18c', secondary: '#a1b1cb', success: '#72dbd2', warning: '#f1c27d', error: '#ff8e9a' } },
       leitstandLight: { dark: false, colors: { background: '#eef1f4', surface: '#ffffff', primary: '#1f6fb2', secondary: '#5b6977', success: '#2e8540', warning: '#b26a00', error: '#c0392b' } },
       leitstandDark: { dark: true, colors: { background: '#11171d', surface: '#18212a', primary: '#5aa7e6', secondary: '#93a2b1', success: '#5cc06f', warning: '#f0a33a', error: '#ef6b5b' } },
       energyCenter: { dark: false, colors: { background: '#f0f2f1', surface: '#ffffff', primary: '#398c36', secondary: '#67786c', success: '#398c36', warning: '#a46a0a', error: '#be3b34' } },

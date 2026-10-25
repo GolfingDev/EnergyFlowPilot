@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, inject } from 'vue';
+import BatteryPair from './BatteryPair.vue';
+import JointBatteryShadowPanel from './JointBatteryShadowPanel.vue';
+import { jointBatteryUiKey } from './jointBatteryUi';
 import { leitstandCategoryLabels, type DashboardSummaryDto } from '../leitstand/leitstandTypes';
 
 const props = defineProps<{ summary: DashboardSummaryDto | null }>();
+const jointUi = inject(jointBatteryUiKey, null);
 const current = computed(() => props.summary?.overview ?? props.summary?.current);
 const next = computed(() => {
   if (props.summary?.overview) return props.summary.overview.next;
@@ -28,6 +32,7 @@ const time = (iso: string) => new Date(iso).toLocaleString('de-DE', { timeZone: 
         <small v-if="summary?.priceSource === 'energyCharts'">Börsendaten: <a href="https://api.energy-charts.info/" target="_blank" rel="noopener noreferrer">Energy-Charts · Fraunhofer ISE</a> + eigener Tarifaufschlag</small>
       </div>
     </div>
+    <BatteryPair :state="jointUi?.state.value" :live="summary?.live" />
     <div class="energy-overview-explanations">
       <div><h3>Warum?</h3><p>{{ current?.reason || 'Eine Begründung erscheint, sobald eine aktuelle Entscheidung verfügbar ist.' }}</p></div>
       <div><h3>Als Nächstes <span v-if="next">· {{ time(next.startsAtUtc) }}</span></h3>
@@ -35,12 +40,14 @@ const time = (iso: string) => new Date(iso).toLocaleString('de-DE', { timeZone: 
         <p v-else>Im verfügbaren Plan ist noch kein weiterer Zustandswechsel angekündigt.</p>
       </div>
     </div>
+    <JointBatteryShadowPanel v-if="jointUi" embedded :state="jointUi.state.value" :recovery-busy="jointUi.recoveryBusy.value" :manual-charge-busy="jointUi.manualBusy.value" :can-control="jointUi.canControl.value"
+      @confirm-recovery="jointUi.confirmRecovery" @start-manual-charge="jointUi.startManualCharge" @stop-manual-charge="jointUi.stopManualCharge" />
     <p v-for="alert in alerts" :key="alert.checkId" class="energy-overview-alert" role="alert">{{ alert.message }}</p>
   </section>
 </template>
 
 <style scoped>
-.energy-overview { padding: 20px; border: 1px solid var(--efp-border); border-radius: 12px; background: var(--efp-card); color: var(--efp-text); min-width: 0; }
+.energy-overview { padding: 20px; border: 1px solid var(--efp-border); border-radius: 12px; background: var(--efp-surface); color: var(--efp-text); min-width: 0; }
 .energy-overview-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 14px; }
 .energy-overview-label { display: block; color: var(--efp-muted); font-size: .7rem; letter-spacing: .08em; margin-bottom: 5px; }
 .energy-overview h2 { margin: 0; font-size: 1.45rem; }

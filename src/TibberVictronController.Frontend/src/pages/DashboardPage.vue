@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { HubConnectionBuilder, HttpTransportType, LogLevel, type HubConnection } from '@microsoft/signalr';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, provide, ref } from 'vue';
 import { useTheme } from 'vuetify';
 import DashboardErrorPanels from '../components/dashboard/DashboardErrorPanels.vue';
 import DashboardHeader from '../components/dashboard/DashboardHeader.vue';
@@ -14,10 +14,12 @@ import LiveEnergyFlowPanel from '../components/dashboard/LiveEnergyFlowPanel.vue
 import SchematicEnergyFlowPanel from '../components/dashboard/SchematicEnergyFlowPanel.vue';
 import E3dcSupplementPanel from '../components/dashboard/E3dcSupplementPanel.vue';
 import JointBatteryShadowPanel from '../components/dashboard/JointBatteryShadowPanel.vue';
+import { jointBatteryUiKey } from '../components/dashboard/jointBatteryUi';
 import type { JointBatteryShadowDto } from '../components/dashboard/dashboardTypes';
 import { isAdmin } from '../auth';
 import LeitstandDashboard from '../components/leitstand/LeitstandDashboard.vue';
 import OrbitDashboard from '../components/orbit/OrbitDashboard.vue';
+import HorizonDashboard from '../components/horizon/HorizonDashboard.vue';
 import EnergyWorkspaceDashboard from '../components/workspace/EnergyWorkspaceDashboard.vue';
 import { formatCurrency, formatDateTime, formatNumber, formatPercent, formatPower, formatPrice, getDecisionLabel } from '../components/dashboard/dashboardFormatters';
 import { getEnergyFlowTheme } from '../themeRegistry';
@@ -121,6 +123,7 @@ const activeTheme = computed(() => getEnergyFlowTheme(theme.global.name.value));
 const usesMissionDashboard = computed(() => false);
 const usesLeitstandDashboard = computed(() => activeTheme.value.name === 'leitstandLight' || activeTheme.value.name === 'leitstandDark');
 const usesOrbitDashboard = computed(() => activeTheme.value.name === 'orbit');
+const usesHorizonDashboard = computed(() => activeTheme.value.name === 'horizon');
 const usesWorkspaceDashboard = computed(() => activeTheme.value.name === 'energyCenter' || activeTheme.value.name === 'tileLab');
 const usesPresetDashboard = computed(() => false);
 const usesControlCenterDashboard = computed(() => false);
@@ -990,6 +993,11 @@ async function stopManualCharge(): Promise<void> {
   }
 }
 
+provide(jointBatteryUiKey, {
+  state: jointBatteryShadow, recoveryBusy: isJointRecoveryBusy, manualBusy: isJointManualChargeBusy, canControl: isAdmin,
+  confirmRecovery: confirmJointBatteryRecovery, startManualCharge: startJointManualCharge, stopManualCharge: stopJointManualCharge
+});
+
 onMounted(() => {
   void loadDashboard();
   void startLiveUpdates();
@@ -1005,14 +1013,14 @@ onBeforeUnmount(() => {
 
 <template>
   <v-container class="dashboard-page" :class="dashboardLayoutClass" fluid>
-    <JointBatteryShadowPanel :state="jointBatteryShadow" :recovery-busy="isJointRecoveryBusy"
+    <JointBatteryShadowPanel v-if="!usesLeitstandDashboard && !usesOrbitDashboard && !usesWorkspaceDashboard && !usesHorizonDashboard" :state="jointBatteryShadow" :recovery-busy="isJointRecoveryBusy"
       :manual-charge-busy="isJointManualChargeBusy" :can-control="isAdmin"
       @confirm-recovery="confirmJointBatteryRecovery"
       @start-manual-charge="startJointManualCharge" @stop-manual-charge="stopJointManualCharge" />
     <EnergyLoadingOverlay :model-value="showLoadingOverlay" title="Loading forecast"
       subtitle="Calculating price, PV and battery plan..." :size="200" />
 
-    <DashboardHeader v-if="!usesControlCenterDashboard && !usesMissionDashboard && !usesLeitstandDashboard && !usesOrbitDashboard && !usesWorkspaceDashboard" :status="status" :is-loading="isLoading" :auto-refresh-label="autoRefreshLabel"
+    <DashboardHeader v-if="!usesControlCenterDashboard && !usesMissionDashboard && !usesLeitstandDashboard && !usesOrbitDashboard && !usesWorkspaceDashboard && !usesHorizonDashboard" :status="status" :is-loading="isLoading" :auto-refresh-label="autoRefreshLabel"
       @refresh="loadDashboard" />
 
     <DashboardErrorPanels :errors="loadErrors" />
@@ -1027,6 +1035,9 @@ onBeforeUnmount(() => {
       @start-manual-charge="startLeitstandManualCharge"
       @stop-manual-charge="stopManualCharge"
     />
+
+    <HorizonDashboard v-else-if="usesHorizonDashboard" :status="status" :decision-log-entries="decisionLogEntries" :manual-charge="manualCharge" :is-manual-charge-busy="isManualChargeBusy"
+      @start-manual-charge="startLeitstandManualCharge" @stop-manual-charge="stopManualCharge" />
 
     <OrbitDashboard
       v-else-if="usesOrbitDashboard"

@@ -4,8 +4,8 @@ import { formatDateTime, formatNumber, formatPercent, formatPower, formatPrice }
 import type { JointBatteryShadowDto } from './dashboardTypes';
 
 // canControl: false for viewers; status and plan stay visible, only the operator actions are hidden.
-const props = withDefaults(defineProps<{ state: JointBatteryShadowDto | null; recoveryBusy?: boolean; manualChargeBusy?: boolean; canControl?: boolean }>(),
-  { recoveryBusy: false, manualChargeBusy: false, canControl: true });
+const props = withDefaults(defineProps<{ state: JointBatteryShadowDto | null; recoveryBusy?: boolean; manualChargeBusy?: boolean; canControl?: boolean; embedded?: boolean }>(),
+  { recoveryBusy: false, manualChargeBusy: false, canControl: true, embedded: false });
 const emit = defineEmits<{
   confirmRecovery: [];
   startManualCharge: [targetKwh: number, maximumPowerKw: number | null];
@@ -44,12 +44,12 @@ function powerLabel(watts: number): string {
 </script>
 
 <template>
-  <v-card v-if="state && state.status !== 'Disabled'" class="joint-overview mb-4" variant="outlined">
-    <div class="joint-heading">
+  <v-card v-if="state && state.status !== 'Disabled'" :class="['joint-overview', { 'mb-4': !embedded, 'joint-overview--embedded': embedded }]" :variant="embedded ? 'text' : 'outlined'">
+    <div v-if="!embedded" class="joint-heading">
       <div><strong>Gemeinsame Akkusteuerung</strong><v-chip size="x-small" :color="needsAttention ? 'warning' : state.isShadow ? 'info' : 'success'">{{ statusLabel }}</v-chip></div>
       <span class="joint-stamp">Stand {{ formatDateTime(state.updatedAtUtc) }}</span>
     </div>
-    <div class="joint-readings" aria-label="Beide Akkus im Überblick">
+    <div v-if="!embedded" class="joint-readings" aria-label="Beide Akkus im Überblick">
       <div v-for="battery in state.batteries" :key="battery.id">
         <span>{{ battery.id === 'e3dc' ? 'E3/DC' : 'Victron' }}</span>
         <strong>{{ formatPercent(battery.socPercent) }}</strong>
@@ -57,7 +57,7 @@ function powerLabel(watts: number): string {
       </div>
       <p v-if="!state.batteries.length">{{ state.localTelemetry ? `E3/DC ${formatPercent(state.localTelemetry.socPercent)}` : 'Noch keine aktuellen Akkuwerte' }}</p>
     </div>
-    <p v-if="needsAttention" class="joint-status-message" role="status">{{ state.message }}</p>
+    <p v-if="needsAttention && !embedded" class="joint-status-message" role="status">{{ state.message }}</p>
       <v-alert v-if="canConfirmRecovery()" type="warning" variant="tonal" density="compact" class="mt-2">
         Die Rücknahme der gemeinsamen Steuerung ist noch nicht bestätigt; die Einzelakku-Steuerung bleibt gesperrt.
         Ist ein Gerät dauerhaft nicht erreichbar: gemeinsame Steuerung deaktivieren, beide Speicher vor Ort prüfen und dann bestätigen.
@@ -152,6 +152,7 @@ function powerLabel(watts: number): string {
 
 <style scoped>
 .joint-overview { max-width: 1180px; margin-inline: auto; padding: 14px 18px; color: var(--efp-text); background: var(--efp-surface, var(--efp-card)); }
+.joint-overview.joint-overview--embedded { max-width: none; margin: 12px 0 0; padding: 0; border: 0; box-shadow: none; background: transparent; }
 .joint-heading, .joint-heading > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .joint-heading { justify-content: space-between; gap: 6px 16px; font-size: .88rem; }
 .joint-stamp { font-size: .72rem; color: var(--efp-muted); font-weight: 400; }

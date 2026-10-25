@@ -2,6 +2,7 @@ export type EnergyFlowThemeName =
   | 'leitstandLight'
   | 'leitstandDark'
   | 'orbit'
+  | 'horizon'
   | 'energyCenter'
   | 'tileLab';
 
@@ -14,6 +15,10 @@ export interface EnergyFlowThemeDefinition {
 }
 
 export const energyFlowThemes: EnergyFlowThemeDefinition[] = [
+  {
+    name: 'horizon', label: 'Horizont', dark: true, icon: 'mdi-chart-timeline-variant',
+    description: 'Zeit statt Kacheln: interaktive Preislandschaft und getrennte Speicherverläufe in Nachtblau, Koralle und Türkis.'
+  },
   {
     name: 'leitstandLight',
     label: 'Leitstand Hell',
@@ -58,5 +63,5 @@ export function isEnergyFlowThemeName(value: string | null): value is EnergyFlow
 }
 
 export function getEnergyFlowTheme(name: string | null): EnergyFlowThemeDefinition {
-  return energyFlowThemes.find((theme) => theme.name === name) ?? energyFlowThemes[0];
+  return energyFlowThemes.find((theme) => theme.name === name) ?? energyFlowThemes.find(theme => theme.name === defaultEnergyFlowTheme)!;
 }

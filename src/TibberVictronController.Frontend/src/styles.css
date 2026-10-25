@@ -411,3 +411,27 @@ select {
   --efp-success: #268563;
   --efp-card-accent: #e5f1f3;
 }
+
+.v-theme--horizon {
+  --efp-background: #101526;
+  --efp-background-art: #101526;
+  --efp-surface: #192136;
+  --efp-panel-background: #192136;
+  --efp-surface-muted: #141c30;
+  --efp-topbar-background: #101526;
+  --efp-nav-background: #192136;
+  --efp-border: #34405a;
+  --efp-border-soft: #29334b;
+  --efp-text: #f2f5fc;
+  --efp-muted: #a1b1cb;
+  --efp-secondary: #bac7dc;
+  --efp-primary: #ffb18c;
+  --efp-success: #72dbd2;
+  --efp-warning: #f1c27d;
+  --efp-warning-text: #f1c27d;
+  --efp-error: #ff8e9a;
+  --efp-card-accent: #26344b;
+  --efp-page-glow: transparent;
+  --efp-shadow: 0 12px 36px #040b1933;
+  --efp-strong-shadow: 0 20px 48px #040b1955;
+}
