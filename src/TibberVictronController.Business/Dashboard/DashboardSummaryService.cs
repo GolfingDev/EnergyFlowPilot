@@ -78,7 +78,10 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
         var segments = CreateSegments(planEntries);
         var checks = CreateChecks(new CheckInput(nowUtc, latestSample, current, segments, planError));
 
-        return new DashboardSummary(nowUtc, current, live, checks, planSlots, segments);
+        return new DashboardSummary(nowUtc, current, live, checks, planSlots, segments) {
+            PriceSource = (await dependencies.ControllerSettingStore.GetSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderKey, cancellationToken))?.Value ?? "tibber",
+            SupplierName = (await dependencies.ControllerSettingStore.GetSettingAsync(ControllerSettingDefaults.ElectricitySupplierNameKey, cancellationToken))?.Value is { } name && name != ControllerSettingDefaults.PriceSettingNotConfigured ? name : null
+        };
     }
 
     public async Task<DashboardReview> GetReviewAsync(

@@ -20,7 +20,7 @@ test('everyday mode highlights battery and hot-water controls, not installation 
   for (const key of ['decision.minimumSavingsPerKwh', 'battery.planningMinimumStateOfChargePercent', 'weishauptHotWater.enabled'])
     assert.equal(isEverydaySetting(key), true);
   for (const key of ['tibber.accessToken', 'octopus.apiKey', 'homematic.apiToken', 'hagerEnergy.clientSecret',
-    'electricityPrices.provider', 'battery.totalCapacityKwh', 'battery.minimumStateOfChargePercent',
+    'battery.totalCapacityKwh', 'battery.minimumStateOfChargePercent',
     'victron.host', 'victron.writeTopics.disableCharge', 'new.unknownSetting'])
     assert.equal(isEverydaySetting(key), false);
 });
@@ -46,4 +46,13 @@ test('configured secrets show a mask without loading any actual secret into the 
   assert.equal(settingUpdatePayload({ isSensitive: true, isConfigured: true }, '   '), null);
   assert.deepEqual(settingUpdatePayload({ isSensitive: true, isConfigured: true }, 'replacement-key'), { value: 'replacement-key' });
   assert.deepEqual(settingUpdatePayload({ isSensitive: false, isConfigured: true }, settingStoredValue('decision.minimumSavingsPerKwh', '3')), { value: '0.03' });
+});
+
+
+test('generic tariff settings are visible and gross surcharge uses cents without changing storage units', () => {
+  assert.equal(isEverydaySetting('electricityPrices.provider'), true);
+  assert.equal(isEverydaySetting('electricityPrices.supplierName'), true);
+  assert.equal(usesCents('energyCharts.grossSurchargePerKwh'), true);
+  assert.equal(settingInputValue('energyCharts.grossSurchargePerKwh', '0.15'), '15');
+  assert.equal(settingStoredValue('energyCharts.grossSurchargePerKwh', '15'), '0.15');
 });

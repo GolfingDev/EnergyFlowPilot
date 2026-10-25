@@ -155,6 +155,23 @@ public sealed class ControllerSettingsServiceTests
     }
 
     [Fact]
+    public async Task GenericTariffRequiresExplicitFeesAndTracksChangesOnlyWhenActive()
+    {
+        var store = new InMemoryControllerSettingStore(ControllerSettingDefaults.CreateDefaultSettings(NowUtc));
+        var service = new ControllerSettingsService(store, new FixedUtcClock(NowUtc));
+        await service.UpdateSettingAsync(ControllerSettingDefaults.ElectricitySupplierNameKey, "Beliebiger Stadtwerke-Tarif");
+        await service.UpdateSettingAsync(ControllerSettingDefaults.EnergyChartsSurchargeKey, ".15");
+        Assert.Equal(ControllerSettingDefaults.ElectricityPriceProviderNeverChanged,
+            (await store.GetSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey))!.Value);
+        await service.UpdateSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderKey, "energyCharts");
+        Assert.Equal("energyCharts", (await service.GetStatusAsync()).ElectricityPriceProvider);
+        Assert.Equal(NowUtc.ToString("O"), (await store.GetSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey))!.Value);
+        await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateSettingAsync(ControllerSettingDefaults.EnergyChartsVatKey, "200"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateSettingAsync(ControllerSettingDefaults.EnergyChartsZoneKey, "../invalid"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateSettingAsync(ControllerSettingDefaults.TariffComparisonOffersKey, "not JSON"));
+    }
+
+    [Fact]
     public async Task OctopusApiKeyIsSensitiveAndHiddenFromFrontend()
     {
         var store = new InMemoryControllerSettingStore(ControllerSettingDefaults.CreateDefaultSettings(NowUtc));

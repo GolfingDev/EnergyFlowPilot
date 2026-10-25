@@ -54,6 +54,8 @@ export interface DashboardPlanSegmentDto {
 }
 
 export interface DashboardSummaryDto {
+  priceSource?: string | null;
+  supplierName?: string | null;
   createdAtUtc: string;
   overview?: {
     category: LeitstandCategory; reason: string; pricePerKwh: number | null; currency: string | null;

@@ -170,6 +170,14 @@ public static class ControllerServiceCollectionExtensions
                 serviceProvider.GetRequiredService<TibberPriceForecastCache>());
         });
         services.AddSingleton<OctopusPriceCache>();
+        services.AddSingleton<EnergyChartsPriceCache>();
+        services.AddScoped<DynamicTariffComparisonService>();
+        services.AddHttpClient<EnergyChartsPriceForecastProvider>(client => {
+            client.Timeout = TimeSpan.FromSeconds(20);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("EnergyFlowPilot");
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        });
+        services.AddScoped<IEnergyMarketPriceProvider>(sp => sp.GetRequiredService<EnergyChartsPriceForecastProvider>());
         services.AddHttpClient<OctopusPriceForecastProvider>(client => client.Timeout = TimeSpan.FromSeconds(20));
         services.AddScoped<IElectricityPriceForecastProvider, SelectedElectricityPriceForecastProvider>();
         services.AddSingleton<ForecastSolarPvForecastCache>();

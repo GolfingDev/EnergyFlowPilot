@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import DynamicTariffComparison from '../components/settings/DynamicTariffComparison.vue';
 import { useRoute } from 'vue-router';
 import { isEverydaySetting, usesCents, settingInputValue, settingStoredValue, secretPresentation, settingUpdatePayload, numericControlErrors } from './settingsPresentation';
 
@@ -113,7 +114,11 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'jointBattery.e3dc.respectReportedLimits', section: 'battery', subgroup: 'E3/DC-Vorschau', category: 'important' },
   { key: 'decision.minimumSavingsPerKwh', section: 'control', subgroup: 'Wirtschaftliche Steuerung', category: 'important', helpText: 'Mindestvorteil für Netzladung und Verschieben von Akkuenergie. 3 bedeutet 3 ct/kWh, nicht 3 EUR. Verluste und konfigurierte Verschleißkosten werden zusätzlich berücksichtigt. Kein maximaler Einkaufspreis.' },
   { key: 'battery.wearCostPerKwh', section: 'control', subgroup: 'Wirtschaftliche Steuerung', category: 'important', helpText: 'Zusätzliche Verschleißkosten für netzgeladene Energie. Einmal anhand der Batterie kalkulieren; nur im erweiterten Modus sichtbar.' },
-  { key: 'electricityPrices.provider', section: 'forecast', subgroup: 'Strompreise', category: 'critical', helpText: 'Tibber bleibt Standard. Octopus erst mit aktivem dynamicOctopus-Vertrag auswählen; kein Anbieter-Fallback.' },
+  { key: 'electricityPrices.supplierName', section: 'forecast', subgroup: 'Strompreise', category: 'important', helpText: 'Name deines Stromanbieters, unabhängig von der technischen Preisquelle.' },
+  { key: 'energyCharts.biddingZone', section: 'forecast', subgroup: 'Energy-Charts / eigener Tarif', category: 'important' },
+  { key: 'energyCharts.grossSurchargePerKwh', section: 'forecast', subgroup: 'Energy-Charts / eigener Tarif', category: 'critical', helpText: 'Bruttoaufschlag inklusive Netzentgelten, Abgaben und Lieferantenmarge. Bei Energy-Charts erforderlich; 0 ausdrücklich eintragen, wenn kein Aufschlag gilt.' },
+  { key: 'energyCharts.vatPercent', section: 'forecast', subgroup: 'Energy-Charts / eigener Tarif', category: 'important' },
+  { key: 'electricityPrices.provider', section: 'forecast', subgroup: 'Strompreise', category: 'critical', helpText: 'Direkte Tibber-/Octopus-Schnittstelle oder Energy-Charts mit eigenem Tarifaufschlag. Anbietername frei wählbar; kein automatischer Quellenwechsel.' },
   { key: 'octopus.apiKey', section: 'forecast', subgroup: 'Octopus Deutschland', category: 'critical', helpText: 'API-Key, kein Passwort. Leer lassen behält den gespeicherten Schlüssel.' },
   { key: 'octopus.accountNumber', section: 'forecast', subgroup: 'Octopus Deutschland', category: 'important' },
   { key: 'battery.totalCapacityKwh', section: 'battery', subgroup: 'Harte Grenzen', category: 'critical' },
@@ -203,7 +208,8 @@ const fieldDefinitions: FieldDefinition[] = [
 const requiredKeys = new Set(['battery.totalCapacityKwh']);
 const electricityPriceOptions: SelectOption[] = [
   { title: 'Tibber', value: 'tibber' },
-  { title: 'Octopus Deutschland (dynamicOctopus)', value: 'octopusGermany' }
+  { title: 'Octopus Deutschland (dynamicOctopus)', value: 'octopusGermany' },
+  { title: 'Energy-Charts + eigener Tarifaufschlag', value: 'energyCharts' }
 ];
 const timezoneOptions = [
   'Europe/Berlin',
@@ -311,7 +317,7 @@ const warningMessages = computed(() => {
   }
 
   const provider = getDraftValue('electricityPrices.provider') || 'tibber';
-  const accessKeys = provider === 'octopusGermany' ? ['octopus.apiKey', 'octopus.accountNumber'] : ['tibber.accessToken'];
+  const accessKeys = provider === 'energyCharts' ? ['energyCharts.grossSurchargePerKwh'] : provider === 'octopusGermany' ? ['octopus.apiKey', 'octopus.accountNumber'] : ['tibber.accessToken'];
   if (accessKeys.some(key => !isSettingConfigured(key)))
     warnings.push('Zugang zur ausgewählten Strompreisquelle unvollständig. Unter Erweiterter Modus → Stromtarif & Prognosen einrichten.');
   return warnings;
@@ -364,7 +370,8 @@ const summaryItems = computed(() => {
     { label: 'ESS-Modus MQTT', value: getDraftValue('victron.externalEss.switchModeViaMqtt') === 'true' ? 'Aktiv' : 'Inaktiv' },
     { label: 'Netzquelle', value: formatTelemetrySource(getDraftValue('telemetry.sources.gridImportWatts') || 'victronMqtt') },
     { label: 'PV-Quelle', value: formatTelemetrySource(getDraftValue('telemetry.sources.pvProductionWatts') || 'victronMqtt') },
-    { label: 'Strompreisquelle', value: getDraftValue('electricityPrices.provider') === 'octopusGermany' ? 'Octopus Deutschland' : 'Tibber' },
+    { label: 'Stromanbieter', value: getDraftValue('electricityPrices.supplierName') || 'Nicht separat angegeben' },
+    { label: 'Strompreisquelle', value: electricityPriceOptions.find(o => o.value === getDraftValue('electricityPrices.provider'))?.title ?? 'Tibber' },
     { label: 'Victron MQTT', value: status.value?.victronMqttStatus ?? 'Unbekannt' }
   ].filter(item => showAdvanced.value || ['Mindestvorteil Akku', 'Planungsbereich', 'Nutzbare Planungskapazität', 'Strompreisquelle'].includes(item.label));
 });
@@ -527,17 +534,18 @@ function getNumericDraftValue(key: string): number | null {
 }
 
 function getFieldErrors(key: string): string[] {
+  if (key === 'energyCharts.grossSurchargePerKwh' && !getDraftValue(key).trim() && getDraftValue('electricityPrices.provider') !== 'energyCharts') return [];
   const errors: string[] = numericControlErrors(key, getDraftValue(key));
   const numericValue = getNumericDraftValue(key);
   const provider = getDraftValue('electricityPrices.provider') || 'tibber';
-  const requiredForProvider = provider === 'octopusGermany'
+  const requiredForProvider = provider === 'energyCharts' ? ['energyCharts.grossSurchargePerKwh'] : provider === 'octopusGermany'
     ? ['octopus.apiKey', 'octopus.accountNumber'] : ['tibber.accessToken'];
-  const editingAccess = ['electricityPrices.provider', 'tibber.accessToken', 'octopus.apiKey', 'octopus.accountNumber']
+  const editingAccess = ['electricityPrices.provider', 'energyCharts.grossSurchargePerKwh', 'tibber.accessToken', 'octopus.apiKey', 'octopus.accountNumber']
     .some(accessKey => getDraftValue(accessKey) !== (initialValues.value[accessKey] ?? ''));
   if (editingAccess && requiredForProvider.includes(key) && !isSettingConfigured(key))
     errors.push('Für die ausgewählte Strompreisquelle erforderlich.');
-  if (key === 'electricityPrices.provider' && !['tibber', 'octopusGermany'].includes(provider))
-    errors.push('Bitte Tibber oder Octopus Deutschland auswählen.');
+  if (key === 'electricityPrices.provider' && !['tibber', 'octopusGermany', 'energyCharts'].includes(provider))
+    errors.push('Bitte Tibber, Octopus Deutschland oder Energy-Charts auswählen.');
 
   if (requiredKeys.has(key) && !isSettingConfigured(key)) {
         errors.push('Diese Einstellung ist erforderlich.');
@@ -726,7 +734,7 @@ function initializeDrafts(): void {
   for (const [key, metadataEntry] of metadataByKey.value.entries()) {
     const setting = settingByKey.value.get(key);
     const value = setting?.value ?? metadataEntry.defaultValue ?? '';
-    nextDrafts[key] = setting?.isSensitive || (key === 'octopus.accountNumber' && value === 'not-configured') ? '' : value;
+    nextDrafts[key] = setting?.isSensitive || (['octopus.accountNumber', 'electricityPrices.supplierName', 'energyCharts.grossSurchargePerKwh'].includes(key) && value === 'not-configured') ? '' : value;
   }
 
   draftValues.value = nextDrafts;
@@ -1039,6 +1047,7 @@ watch(showAdvanced, ensureActiveSection);
               </div>
             </div>
           </div>
+          <DynamicTariffComparison v-if="activeSection.key === 'forecast'" />
         </section>
       </main>
 

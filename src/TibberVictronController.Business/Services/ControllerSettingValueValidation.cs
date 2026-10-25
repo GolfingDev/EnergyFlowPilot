@@ -8,6 +8,14 @@ internal static class ControllerSettingValueValidation
 {
     public static void Validate(string key, string? value)
     {
+        if (key == ControllerSettingDefaults.EnergyChartsSurchargeKey && value is null) return;
+        if (key == ControllerSettingDefaults.EnergyChartsZoneKey && (string.IsNullOrWhiteSpace(value) || value.Length > 16 ||
+            value.Any(c => !char.IsAsciiLetterUpper(c) && !char.IsAsciiDigit(c) && c != '-')))
+            throw new ArgumentException("Die Gebotszone muss ein gueltiger Code wie DE-LU sein.");
+        if (key == ControllerSettingDefaults.ElectricitySupplierNameKey && value?.Length > 120)
+            throw new ArgumentException("Der Anbietername darf hoechstens 120 Zeichen enthalten.");
+        if (key == ControllerSettingDefaults.TariffComparisonOffersKey)
+            DynamicTariffComparisonCalculator.ParseOffers(value);
         if (key is ControllerSettingDefaults.E3dcRscpEnabledKey or ControllerSettingDefaults.JointBatteryEnabledKey or ControllerSettingDefaults.JointBatteryExecutionEnabledKey
                 or ControllerSettingDefaults.E3dcRespectReportedLimitsKey &&
             !bool.TryParse(value, out _))
@@ -18,6 +26,8 @@ internal static class ControllerSettingValueValidation
         // saves individual fields, so checking intermediate combinations here would prevent valid edits.
         (decimal Min, decimal Max, bool Integer)? rule = key switch
         {
+            ControllerSettingDefaults.EnergyChartsSurchargeKey => (0m, 5m, false),
+            ControllerSettingDefaults.EnergyChartsVatKey => (0m, 100m, false),
             ControllerSettingDefaults.E3dcRscpPortKey => (1m, 65535m, true),
             ControllerSettingDefaults.JointBatteryGridLimitKey => (0m, 100000m, true),
             ControllerSettingDefaults.JointBatteryPhase1LimitKey or ControllerSettingDefaults.JointBatteryPhase2LimitKey or

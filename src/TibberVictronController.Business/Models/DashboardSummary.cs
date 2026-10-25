@@ -33,6 +33,8 @@ public sealed record DashboardSummary(
     IReadOnlyList<DashboardPlanSegment> PlanSegments)
 {
     public DashboardDecisionOverview? Overview { get; init; }
+    public string? PriceSource { get; init; }
+    public string? SupplierName { get; init; }
 }
 
 public sealed record DashboardNextDecision(DateTimeOffset StartsAtUtc, DashboardActionCategory Category, string Reason,

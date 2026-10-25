@@ -118,6 +118,8 @@
   align-items: start;
 }
 
+.settings-layout > * { min-width: 0; }
+
 .settings-layout--disabled {
   opacity: 0.72;
   pointer-events: none;
@@ -430,7 +432,7 @@
   }
 
   .settings-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .section-nav {

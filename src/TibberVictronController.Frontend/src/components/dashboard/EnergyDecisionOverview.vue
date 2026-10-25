@@ -23,7 +23,10 @@ const time = (iso: string) => new Date(iso).toLocaleString('de-DE', { timeZone: 
   <section class="energy-overview" aria-label="Jetzt, warum und als Nächstes">
     <div class="energy-overview-heading">
       <div><span class="energy-overview-label">JETZT · ENTSCHEIDUNG</span><h2>{{ current ? leitstandCategoryLabels[current.category] : 'Warte auf aktuelle Daten' }}</h2></div>
-      <div class="energy-overview-price"><span class="energy-overview-label">STROMPREIS JETZT</span><strong>{{ price(current?.pricePerKwh, current?.currency) }}</strong></div>
+      <div class="energy-overview-price"><span class="energy-overview-label">STROMPREIS JETZT</span><strong>{{ price(current?.pricePerKwh, current?.currency) }}</strong>
+        <small v-if="summary?.supplierName">{{ summary.supplierName }}</small>
+        <small v-if="summary?.priceSource === 'energyCharts'">Börsendaten: <a href="https://api.energy-charts.info/" target="_blank" rel="noopener noreferrer">Energy-Charts · Fraunhofer ISE</a> + eigener Tarifaufschlag</small>
+      </div>
     </div>
     <div class="energy-overview-explanations">
       <div><h3>Warum?</h3><p>{{ current?.reason || 'Eine Begründung erscheint, sobald eine aktuelle Entscheidung verfügbar ist.' }}</p></div>
@@ -41,7 +44,9 @@ const time = (iso: string) => new Date(iso).toLocaleString('de-DE', { timeZone: 
 .energy-overview-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 14px; }
 .energy-overview-label { display: block; color: var(--efp-muted); font-size: .7rem; letter-spacing: .08em; margin-bottom: 5px; }
 .energy-overview h2 { margin: 0; font-size: 1.45rem; }
+.energy-overview-price { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .energy-overview-price strong { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+.energy-overview-price small { display: block; font-size: .72rem; color: var(--efp-muted); margin-top: 4px; }
 .energy-overview-explanations { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-top: 18px; }
 .energy-overview h3 { font-size: .85rem; margin: 0 0 7px; }
 .energy-overview h3 span, .energy-overview small { font-weight: 400; color: var(--efp-muted); }

@@ -93,10 +93,20 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
         {
             var localToday = TimeZoneInfo.ConvertTime(now, zone).Date;
             DateTimeOffset MidnightUtc(DateTime date) => new(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(date, DateTimeKind.Unspecified), zone), TimeSpan.Zero);
-            var historical = await services.GetRequiredService<JointBatteryPriceHistory>().GetAsync(
-                services.GetRequiredService<IDecisionLogRepository>(),
-                new(MidnightUtc(localToday.AddDays(-14)), MidnightUtc(localToday),
-                    services.GetRequiredService<IElectricityPriceForecastProvider>().Source, prices[0].Currency), token);
+            var selectedPrices = services.GetRequiredService<IElectricityPriceForecastProvider>();
+            var historyStart = MidnightUtc(localToday.AddDays(-14));
+            var historyEnd = MidnightUtc(localToday);
+            // Generic tariffs can reconstruct past retail prices using the current tariff, avoiding mixed old markups.
+            IReadOnlyList<TibberPriceForecastSlot> historical;
+            if (selectedPrices.Source == "energyCharts")
+                historical = await selectedPrices.GetPriceForecastAsync(historyStart, historyEnd, token);
+            else
+            {
+                if (DateTimeOffset.TryParse((await settings.GetSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey, token))?.Value, out var changed) && changed > historyStart)
+                    historyStart = changed.ToUniversalTime();
+                historical = historyStart >= historyEnd ? [] : await services.GetRequiredService<JointBatteryPriceHistory>().GetAsync(
+                    services.GetRequiredService<IDecisionLogRepository>(), new(historyStart, historyEnd, selectedPrices.Source, prices[0].Currency), token);
+            }
             // This extra day carries no invented executable prices: only its net demand caps the terminal energy value.
             var futurePv = (await weather.GetPvYieldForecastAsync(end, end.AddHours(24), token)).ToDictionary(p => p.TimeSlot);
             var followingDay = new List<(decimal ConsumptionKwh, decimal PvKwh)>();

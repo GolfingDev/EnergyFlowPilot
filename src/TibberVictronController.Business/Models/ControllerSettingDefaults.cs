@@ -90,6 +90,12 @@ public static class ControllerSettingDefaults
     public const string PvForecastTimeZoneKey = "pvForecast.timeZone";
     public const string TibberApiEndpointKey = "tibber.apiEndpoint";
     public const string ElectricityPriceProviderKey = "electricityPrices.provider";
+    public const string ElectricitySupplierNameKey = "electricityPrices.supplierName";
+    public const string PriceSettingNotConfigured = "not-configured";
+    public const string EnergyChartsZoneKey = "energyCharts.biddingZone";
+    public const string EnergyChartsSurchargeKey = "energyCharts.grossSurchargePerKwh";
+    public const string EnergyChartsVatKey = "energyCharts.vatPercent";
+    public const string TariffComparisonOffersKey = "electricityPrices.comparisonOffers";
     public const string ElectricityPriceProviderChangedAtKey = "electricityPrices.providerChangedAtUtc";
     public const string OctopusApiKeyKey = "octopus.apiKey";
     public const string OctopusAccountNumberKey = "octopus.accountNumber";
@@ -232,6 +238,11 @@ public static class ControllerSettingDefaults
         new(PvForecastTimeZoneKey, "Europe/Berlin", ControllerSettingSensitivity.Normal),
         new(TibberApiEndpointKey, "https://api.tibber.com/v1-beta/gql", ControllerSettingSensitivity.Normal),
         new(ElectricityPriceProviderKey, "tibber", ControllerSettingSensitivity.Normal),
+        new(ElectricitySupplierNameKey, PriceSettingNotConfigured, ControllerSettingSensitivity.Normal),
+        new(EnergyChartsZoneKey, "DE-LU", ControllerSettingSensitivity.Normal),
+        new(EnergyChartsSurchargeKey, PriceSettingNotConfigured, ControllerSettingSensitivity.Normal),
+        new(EnergyChartsVatKey, "19", ControllerSettingSensitivity.Normal),
+        new(TariffComparisonOffersKey, "[]", ControllerSettingSensitivity.Normal),
         new(ElectricityPriceProviderChangedAtKey, ElectricityPriceProviderNeverChanged, ControllerSettingSensitivity.Normal),
         new(OctopusApiKeyKey, null, ControllerSettingSensitivity.Sensitive),
         new(OctopusAccountNumberKey, OctopusAccountNumberNotConfigured, ControllerSettingSensitivity.Normal),

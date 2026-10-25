@@ -7,7 +7,8 @@ namespace TibberVictronController.Dal.Prices;
 
 /// <summary>One scoped selection shared by all consumers. Unknown providers never silently use Tibber.</summary>
 public sealed class SelectedElectricityPriceForecastProvider(
-    IControllerSettingStore settings, TibberPriceForecastProvider tibber, OctopusPriceForecastProvider octopus)
+    IControllerSettingStore settings, TibberPriceForecastProvider tibber, OctopusPriceForecastProvider octopus,
+    EnergyChartsPriceForecastProvider energyCharts)
     : IElectricityPriceForecastProvider
 {
     private string? selectedSource;
@@ -21,7 +22,8 @@ public sealed class SelectedElectricityPriceForecastProvider(
         {
             "tibber" => await tibber.GetPriceForecastAsync(startsAtUtc, endsAtUtc, cancellationToken),
             "octopusGermany" => await octopus.GetPriceForecastAsync(startsAtUtc, endsAtUtc, cancellationToken),
-            _ => throw new InvalidOperationException("Unbekannte Strompreisquelle; tibber oder octopusGermany auswaehlen.")
+            "energyCharts" => await energyCharts.GetPriceForecastAsync(startsAtUtc, endsAtUtc, cancellationToken),
+            _ => throw new InvalidOperationException("Unbekannte Strompreisquelle; Tibber, Octopus oder Energy-Charts auswaehlen.")
         };
     }
 }

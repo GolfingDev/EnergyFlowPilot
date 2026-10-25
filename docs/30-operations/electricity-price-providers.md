@@ -1,13 +1,13 @@
 # Auswaehlbare Strompreisquellen
 
-Stand: 21.10.2026. Implementierung fuer Tibber und dynamicOctopus Deutschland.
-Kein Octopus-Konto vorhanden: bisher nur simulierte HTTP-Antworten, kein echter
-Login oder Preisabgleich. Octopus bleibt bis zur Inbetriebnahme unaktiviert.
+Stand: 25.10.2026. Preisquellen: Tibber, dynamicOctopus Deutschland und Energy-Charts mit eigenem Tarifaufschlag.
+In dieser Cloud-Pruefung waren keine Octopus-Zugangsdaten verfuegbar: simulierte HTTP-Antworten, kein echter
+Login oder Preisabgleich. Bestehende Installationen werden nicht automatisch auf eine andere Quelle umgeschaltet.
 
 ## Konfiguration und GUI
 
 - Einstellungen > Prognosen > Strompreise: `electricityPrices.provider`
-  mit `tibber` (Standard, auch bei fehlendem Setting) oder `octopusGermany`.
+  mit `tibber` (Standard, auch bei fehlendem Setting), `octopusGermany` oder `energyCharts`.
 - Tibber verwendet unveraendert seine bisherigen Zugangseinstellungen.
 - Octopus benoetigt `octopus.apiKey` (sensitive, nicht in Frontend-Leseantworten)
   und `octopus.accountNumber` (Kundennummer A-...).
@@ -100,3 +100,29 @@ Quellen:
 Die einfache Preisanleitung beschreibt noch E-Mail/Passwort. Die aktuelle
 Referenz markiert diese Felder als deprecated; fuer die Implementierung gilt
 deshalb der dokumentierte APIKey-Weg. Keine Live-Verifikation ohne Kundenkonto.
+
+
+## Beliebiger Anbieter mit Energy-Charts
+
+`electricityPrices.supplierName` ist ein frei wählbarer Anzeigename, unabhängig vom technischen Anschluss. Eine beliebige Anbieterschnittstelle lässt sich dadurch nicht automatisch anbinden: derzeit sind Tibber und Octopus direkt implementiert. Für andere börsengekoppelte Tarife kann die Preisquelle `energyCharts` verwendet werden.
+
+- Öffentlicher, fest vorgegebener Endpunkt: `https://api.energy-charts.info/price`, Parameter `bzn`, `start`, `end`; kein API-Schlüssel. Gebotszone `energyCharts.biddingZone`, Standard `DE-LU`.
+- Antwort: `unix_seconds`, `price`, `unit` (`EUR / MWh`). Nullwerte bleiben fehlende Preise. 15-, 30- und 60-Minuten-Intervalle werden nach UTC-Viertelstunden abgebildet; eine Stunde erhält vier identische veröffentlichte Preise. Doppelte/ungeordnete Zeitpunkte, unbekannte Einheiten und nicht unterstützte Lücken werden abgewiesen. Negative Preise bleiben möglich.
+- Konfigurierbarer Bruttoaufschlag `energyCharts.grossSurchargePerKwh` (API/Persistenz EUR/kWh, GUI ct/kWh), einschließlich Netzentgelten, Abgaben, Lieferantenmarge und deren Mehrwertsteuer. Der Börsenanteil wird separat mit `energyCharts.vatPercent` (Standard 19 %) versteuert.
+- Formel: `Bruttoarbeitspreis = Börsenpreis_EUR/MWh / 1000 × (1 + MwSt./100) + Bruttoaufschlag_EUR/kWh`. Beispiel: 100 EUR/MWh, 19 % MwSt., 15 ct/kWh Bruttoaufschlag ergeben 26,9 ct/kWh. Der Aufschlag wird nicht erneut versteuert. Ein monatlicher Grundpreis gehört nicht in die wirtschaftliche Bewertung einer zusätzlichen kWh; er wird im Tarifvergleich berücksichtigt.
+- Der Aufschlag ist anfangs ausdrücklich **nicht eingerichtet**, nicht null Euro. Die Oberfläche zeigt den internen Marker `not-configured` als leeres Feld; der Adapter verweigert den Abruf, bis eine Zahl einschließlich expliziter 0 eingetragen wurde. Der Anbietername ist optional und wird bei fehlendem Wert nicht im Dashboard eingeblendet.
+- Cache: 30 Minuten, nur rohe Börsenpreise, nach Gebotszone und Datum. Neue Aufschläge/Steuersätze werden auch auf gecachte Marktpreise neu angewendet. Fehler führen zu einer Minute Wiederholsperre; kein stiller Ersatz durch kostenlose, alte oder andere Anbieterpreise.
+- Datenquelle/Attribution: Energy-Charts, Fraunhofer ISE, `https://api.energy-charts.info/`. Die Preisübersicht zeigt Quelle und selbst eingetragenen Anbieter. Quellenbeleg für Format/Einheit: EVCC-Template `https://github.com/evcc-io/evcc/blob/master/templates/definition/tariff/energy-charts-api.yaml`.
+- Der Liveabruf war in dieser Cloud-Umgebung durch Proxy/DNS gesperrt. Format, Umrechnung, Ausfälle, negative Preise und Zeitumstellung wurden mit simulierten Antworten geprüft; ein erfolgreicher Liveabgleich auf der Anlage steht aus.
+
+Für die Restenergiebewertung kann der generische Adapter historische Börsenpreise mit den **heutigen** Tarifparametern umrechnen. Dies sind rekonstruierte Preise dieses Tarifmodells, keine tatsächlichen historischen Rechnungsbeträge. Eine Änderung der aktiven generischen Konditionen setzt den bestehenden Wechselzeitpunkt neu; das Vorbereiten inaktiver Konditionen beeinflusst die aktuelle Quelle nicht. Direkte Anbieterhistorien werden ab einem tatsächlichen Quellenwechsel getrennt gehalten.
+
+## Vergleich dynamischer 15-Minuten-Tarife
+
+Unter „Stromtarif & Prognosen“ gibt es einen ausklappbaren Tarifvergleich. Anbieter können frei ergänzt werden. Namensvorlagen für Tibber, Octopus, aWATTar, Ostrom und Rabot enthalten absichtlich keine ungeprüften Preiswerte und behaupten keine bestätigte 15-Minuten-Abrechnung. Es gibt keinen vollständigen automatisch gepflegten Markt- oder Regionalkatalog. Für eine belastbare Vorbelegung aller Anbieter fehlen verifizierte aktuelle Konditionen und gegebenenfalls Postleitzahl/Verbrauch; solche Werte dürfen nicht erfunden werden.
+
+Angebote werden unter `electricityPrices.comparisonOffers` als JSON gespeichert: Name, Bruttoaufschlag EUR/kWh, Grundpreis brutto EUR/Monat, Umsatzsteuer auf den Börsenanteil, bestätigtes Abrechnungsintervall, Quelle/Preisblatt, Preisstand und optional gültige PLZ. Die Oberfläche liegt in den weiterhin auf Administratoren beschränkten Einstellungen. Bearbeitung/Speichern bleibt auf Administratoren beschränkt; der reine GET-Vergleichsendpunkt ist als Lesezugriff auch für authentifizierte Betrachter zugänglich. Eine Vergleichsabfrage ändert weder den aktiven Anbieter noch dessen Preiseinstellungen.
+
+`GET /api/electricity-prices/compare?annualConsumptionKwh=4000&postalCode=12345&days=14` nutzt für alle Angebote dieselbe vollständige Marktpreisreihe der letzten abgeschlossenen 7, 14 oder 30 Tage (API 1–30), begrenzt nach Europe/Berlin einschließlich Zeitumstellung. Nur Angebote mit explizit 15 Minuten, vollständigen Preisen, Quelle und Preisstand sowie passender PLZ werden bewertet. Andere Angebote werden mit Ausschlussgrund aufgeführt. Es wird nicht automatisch bestätigt, ob das Preisblatt eines Anbieters aktuell oder korrekt übertragen ist.
+
+Das Modell unterstützt Börsenpreis plus festen Bruttoaufschlag und monatlichen Grundpreis. Die Verbrauchsverteilung ist gleichmäßig, ohne individuelle Last-/Ladestrategie, Boni, Preisgarantien oder komplexe Preisdeckel. Die Jahressumme ist `Jahresverbrauch × mittlerer Bruttoarbeitspreis + 12 × Monatsgrundpreis`. Sie ist eine klar bezeichnete Hochrechnung eines kurzen historischen Preiszeitraums, keine garantierte Jahresrechnung oder Wechsel-Empfehlung. Sortiert wird nach dieser Modell-Jahressumme, nicht allein nach dem Aufschlag.

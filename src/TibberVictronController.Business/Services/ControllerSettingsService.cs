@@ -61,8 +61,8 @@ public sealed class ControllerSettingsService : IControllerSettingsService
             throw new ArgumentException("Der Anbieterwechsel-Zeitpunkt wird automatisch gesetzt.", nameof(key));
         var normalizedValue = NormalizeValue(definition, value);
         ControllerSettingValueValidation.Validate(definition.Key, normalizedValue);
-        if (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderKey && normalizedValue is not ("tibber" or "octopusGermany"))
-            throw new ArgumentException("Die Strompreisquelle muss tibber oder octopusGermany sein.", nameof(value));
+        if (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderKey && normalizedValue is not ("tibber" or "octopusGermany" or "energyCharts"))
+            throw new ArgumentException("Die Strompreisquelle muss tibber, octopusGermany oder energyCharts sein.", nameof(value));
         if (definition.Key == ControllerSettingDefaults.WeishauptBiblockModbusPollingIntervalSecondsKey &&
             (!int.TryParse(normalizedValue, out var pollingSeconds) || pollingSeconds is < 60 or > 3600))
             throw new ArgumentException("Das Biblock-Abfrageintervall muss zwischen 60 und 3600 Sekunden liegen.", nameof(value));
@@ -72,9 +72,13 @@ public sealed class ControllerSettingsService : IControllerSettingsService
             definition.Sensitivity,
             utcClock.UtcNow);
 
-        if (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderKey)
+        var activeGenericTariffChanged = (definition.Key is ControllerSettingDefaults.EnergyChartsZoneKey or
+            ControllerSettingDefaults.EnergyChartsSurchargeKey or ControllerSettingDefaults.EnergyChartsVatKey) &&
+            (await controllerSettingStore.GetSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderKey, cancellationToken))?.Value == "energyCharts";
+        if (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderKey || activeGenericTariffChanged)
         {
-            var previous = (await controllerSettingStore.GetSettingAsync(definition.Key, cancellationToken))?.Value ?? "tibber";
+            var previous = (await controllerSettingStore.GetSettingAsync(definition.Key, cancellationToken))?.Value
+                ?? (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderKey ? "tibber" : null);
             if (previous != normalizedValue)
                 await controllerSettingStore.SaveSettingAsync(new ControllerSetting(
                     ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey, utcClock.UtcNow.ToString("O"),
@@ -130,6 +134,8 @@ public sealed class ControllerSettingsService : IControllerSettingsService
 
     private static string? NormalizeValue(ControllerSettingDefinition definition, string? value)
     {
+        if (definition.Key is ControllerSettingDefaults.ElectricitySupplierNameKey or ControllerSettingDefaults.EnergyChartsSurchargeKey && string.IsNullOrWhiteSpace(value))
+            return null;
         if (definition.Sensitivity == ControllerSettingSensitivity.Sensitive)
         {
             return string.IsNullOrWhiteSpace(value) ? null : value.Trim();

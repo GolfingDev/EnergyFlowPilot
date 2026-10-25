@@ -39,6 +39,7 @@ app.MapAuthEndpoints();
 app.MapHealthEndpoints();
 app.MapSettingsEndpoints();
 app.MapForecastEndpoints();
+app.MapTariffComparisonEndpoints();
 app.MapCurrentDecisionEndpoints();
 app.MapManualChargeEndpoints();
 app.MapSavingsEndpoints();

@@ -99,6 +99,7 @@ public static class DashboardSummaryDtoMapper
                 segment.GridEnergyKwh,
                 segment.RuleId,
                 segment.Reason)).ToArray()) {
+                PriceSource = summary.PriceSource, SupplierName = summary.SupplierName,
                 Overview = summary.Overview is not { } overview ? null : new DashboardDecisionOverviewDto(
                     ToName(overview.Category), overview.Reason, overview.PricePerKwh, overview.Currency,
                     overview.Next is not { } next ? null : new DashboardNextDecisionDto(next.StartsAtUtc, ToName(next.Category),
@@ -159,6 +160,8 @@ public sealed record DashboardSummaryDto(
     IReadOnlyList<DashboardPlanSegmentDto> PlanSegments)
 {
     public DashboardDecisionOverviewDto? Overview { get; init; }
+    public string? PriceSource { get; init; }
+    public string? SupplierName { get; init; }
 }
 public sealed record DashboardDecisionOverviewDto(string Category, string Reason, decimal? PricePerKwh, string? Currency, DashboardNextDecisionDto? Next);
 public sealed record DashboardNextDecisionDto(DateTimeOffset StartsAtUtc, string Category, string Reason, decimal PricePerKwh, string Currency, bool IsPriceEstimated);

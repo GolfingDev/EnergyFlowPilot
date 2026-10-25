@@ -1,5 +1,6 @@
 // New settings default to setup-only. Frequency and safety are separate: an everyday control may still be critical.
 const everydayKeys = new Set([
+  'electricityPrices.supplierName', 'electricityPrices.provider', 'energyCharts.biddingZone', 'energyCharts.grossSurchargePerKwh', 'energyCharts.vatPercent',
   'decision.minimumSavingsPerKwh',
   'battery.planningMinimumStateOfChargePercent',
   'battery.planningMaximumStateOfChargePercent',
@@ -14,6 +15,7 @@ const everydayKeys = new Set([
 ]);
 
 const centKeys = new Set([
+  'energyCharts.grossSurchargePerKwh',
   'decision.minimumSavingsPerKwh',
   'battery.wearCostPerKwh',
   'gridFeedIn.compensationPricePerKwh',
@@ -37,6 +39,8 @@ export const settingStoredValue = (key: string, input: string): string => usesCe
 
 // Values are in backend units. Keep the same field-level boundaries as the settings service.
 const numericControlRules: Record<string, [number, number, boolean?]> = {
+  'energyCharts.grossSurchargePerKwh': [0, 5],
+  'energyCharts.vatPercent': [0, 100],
   'battery.maximumChargePowerWatts': [1, 2147483647, true],
   'battery.maximumDischargePowerWatts': [1, 2147483647, true],
   'battery.totalCapacityKwh': [Number.MIN_VALUE, Number.MAX_VALUE],

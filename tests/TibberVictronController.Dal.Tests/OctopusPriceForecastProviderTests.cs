@@ -201,7 +201,8 @@ public sealed class OctopusPriceForecastProviderTests
             Provider = new OctopusPriceForecastProvider(new HttpClient(Handler), Settings, new OctopusPriceCache(), Clock);
         }
         public SelectedElectricityPriceForecastProvider Selector() =>
-            new(Settings, new TibberPriceForecastProvider(new HttpClient(Handler), Settings), Provider);
+            new(Settings, new TibberPriceForecastProvider(new HttpClient(Handler), Settings), Provider,
+                new EnergyChartsPriceForecastProvider(new HttpClient(Handler), Settings, Clock, new()));
     }
 
     private sealed class Clock : IUtcClock
