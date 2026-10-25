@@ -83,3 +83,12 @@ Vite bettet die Metadaten automatisch beim Build ein; die vorhandenen Installati
 Der Leitstand bietet Zeitspannen von 1, 3, 6, 12, 24 und 48 Stunden. Pfeile verschieben den sichtbaren Beginn um jeweils eine Stunde, ein zugänglicher Schieberegler um einzelne Viertelstunden. „Zum Planbeginn“ setzt den Ausschnitt zurück; 48 Stunden stellt die Gesamtansicht wieder her. Die Anzeige nennt die tatsächlichen Zeitgrenzen.
 
 Der Zoom filtert vorhandene Plan-Slots ohne neue Prognoseabfrage und ohne Änderungen an der Steuerung. Tooltip, Preisstatus und Kurven verwenden denselben Ausschnitt; Zeitachsenbeschriftungen passen sich der Zeitspanne an. Die Jetzt-Markierung erscheint nur, wenn der aktuelle Zeitpunkt im Ausschnitt liegt. Bei Live-Aktualisierungen bleibt ein ausgewählter Zeitpunkt verankert, soweit er noch im verfügbaren Plan liegt; die Auswahl wird an den Planrändern begrenzt.
+
+
+### Ruhige Standardansicht nach Einführung der gemeinsamen Steuerung
+
+Die templateübergreifende Akkuübersicht zeigt im Normalfall nur Betriebsstatus, Datenstand sowie Ladestand und gemessene Leistung beider Speicher. Sollwerte, Festlegung des Slots, Kapazitäten, Reserven, Modellannahmen und Tabellen liegen unter „Status & Planungsdetails“. Das Formular für eine neue manuelle Ladung ist separat eingeklappt. Dadurch bleibt der Einstieg in alle fünf Designs kompakt.
+
+Eine aktive manuelle Ladung samt Fortschritt bleibt sichtbar; der Stop bleibt für Administratoren unmittelbar erreichbar. Betrachter sehen den aktiven Zustand ohne Bedienrechte. Störungs-/Übergangsmeldungen und die bestehende Warnung zur ausstehenden Rücknahme werden außerhalb der technischen Details angezeigt. Die bisherige Bestätigungsabfrage für manuelle Rücknahme bleibt erhalten.
+
+Im Leitstand sind ausführliche Entscheidungsbegründungen, nächste Schritte und die Tabelle der letzten Entscheidungen zunächst geschlossen. Messfluss, Prüfhinweise und der große zeitlich konfigurierbare Plan bleiben sichtbar. Diese Änderung betrifft Darstellung und Informationshierarchie; sie ändert keine Ladeentscheidung oder Zugriffsberechtigung.

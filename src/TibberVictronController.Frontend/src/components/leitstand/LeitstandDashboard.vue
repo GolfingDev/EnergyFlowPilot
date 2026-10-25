@@ -531,7 +531,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="ls-panel ls-decision-panel">
           <h3>Prüfung jetzt</h3>
-          <p v-if="current?.reason" class="ls-decision-reason">{{ current.reason }}</p>
+          <details v-if="current?.reason" class="ls-reason-details"><summary>Warum diese Entscheidung?</summary><p class="ls-decision-reason">{{ current.reason }}</p></details>
           <ul class="ls-checks">
             <li v-for="check in sortedChecks" :key="check.checkId" class="ls-check" :class="`ls-check--${check.severity}`">
               <span class="ls-check__mark">{{ check.severity === 'ok' ? '✓' : check.severity === 'info' ? 'i' : '!' }}</span>
@@ -606,8 +606,8 @@ onBeforeUnmount(() => {
             <span><i class="ls-legend__pv" />PV-Leistung</span>
           </div>
         </div>
-        <div class="ls-panel">
-          <h3>Nächste Schritte</h3>
+        <details class="ls-panel">
+          <summary>Nächste Schritte <span class="ls-muted">· {{ visibleSegments.length }} Phasen</span></summary>
           <ol class="ls-steps ls-plan-steps">
             <li v-for="segment in visibleSegments" :key="segment.startsAtUtc" class="ls-step">
               <span class="ls-step__time">{{ dayTime(segment.startsAtUtc) }}–{{ time(segment.endsAtUtc) }}</span>
@@ -618,7 +618,7 @@ onBeforeUnmount(() => {
               </div>
             </li>
           </ol>
-        </div>
+        </details>
       </div>
     </section>
 
@@ -744,7 +744,7 @@ onBeforeUnmount(() => {
     <!-- Details -->
     <section class="ls-zone" aria-labelledby="ls-details">
       <h2 id="ls-details">Details</h2>
-      <details class="ls-panel" open>
+      <details class="ls-panel">
         <summary>Entscheidungen der letzten Minuten</summary>
         <div class="ls-log-wrap">
           <table class="ls-log">
@@ -867,6 +867,8 @@ h3 { font-size: 1.05rem; margin-bottom: 10px; }
 @keyframes ls-flow { to { stroke-dashoffset: -16; } }
 @media (prefers-reduced-motion: reduce) { .ls-wire--live { animation: none; } }
 
+.ls-reason-details { font-size: .85rem; }
+.ls-reason-details > summary { cursor: pointer; color: var(--ls-muted); }
 .ls-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .ls-check { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; align-items: start; font-size: 0.92rem; }
 .ls-check__mark { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 11px; font-weight: 700; margin-top: 2px; }
