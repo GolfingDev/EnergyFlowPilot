@@ -31,4 +31,49 @@ public sealed class JointBatterySlotCommitmentTests
         Assert.False(JointBatterySlotCommitment.PlanDeviates(committed, Plan(Slot(2950, 520))));
         Assert.False(JointBatterySlotCommitment.PlanDeviates(committed, null));
     }
+    [Fact]
+    public void VanishedPvSurplusReleasesEconomicallyPlannedSupportWithinQuarterHour()
+    {
+        var now = Start.AddMinutes(3);
+        var committed = Slot(0, 0) with { PricePerKwh = .4827m, ExpectedPvKwh = .5m, ExpectedConsumptionKwh = .4m };
+        JointBatteryUnit Unit(string id) => new(id, new BatteryConfiguration(new BatteryConfigurationValues {
+            TotalCapacityKwh = 10, MinimumStateOfChargePercent = 10, PlanningMinimumStateOfChargePercent = 10,
+            PlanningMaximumStateOfChargePercent = 95, MaximumChargePowerWatts = 3000, MaximumDischargePowerWatts = 3000
+        }), new BatteryState(95, now), 0);
+        var times = Enumerable.Range(0, 4).Select(i => new ForecastTimeSlot(Start.AddMinutes(i * 15), Start.AddMinutes((i + 1) * 15))).ToArray();
+        var pv = times.Select(t => new PvYieldForecastSlot(t, .305m)).ToArray();
+        // Screenshot: 4.03 kW house load minus 1.22 kW PV = 2.81 kW actual net demand.
+        var consumption = BatteryForecastService.ApplyCurrentNetLoad(
+            times.Select(t => new ConsumptionForecastSlot(t, .4m)).ToArray(), pv, Start, 2810);
+        var plan = new JointBatteryPlanner().Calculate(new JointBatteryPlanInput {
+            NowUtc = now, Batteries = [Unit("victron"), Unit("e3dc")],
+            Prices = times.Select((t, i) => new TibberPriceForecastSlot(t, i == 0 ? .4827m : .5149m, "EUR")).ToArray(),
+            Pv = pv, Consumption = consumption, MaximumGridImportWatts = 0
+        });
+        var replacement = JointBatterySlotCommitment.NetDemandReplacement(committed, plan, now);
+        Assert.NotNull(replacement);
+        Assert.InRange(replacement.Targets.Sum(t => t.SignedPowerWatts), -2810, -2700);
+        Assert.Contains("PV reicht aktuell nicht", replacement.Reason);
+        Assert.Equal(committed.TimeSlot, replacement.TimeSlot);
+    }
+
+    [Fact]
+    public void ReplacementRequiresFreshPlanRealDemandAndEconomicDischarge()
+    {
+        var committed = Slot(0, 0) with { ExpectedPvKwh = .5m, ExpectedConsumptionKwh = .4m };
+        var discharge = Slot(-1500, -1200) with { ExpectedPvKwh = .305m, ExpectedConsumptionKwh = 1.0075m };
+        var now = Start.AddSeconds(30);
+        JointBatterySlot? Replace(JointBatterySlot old, JointBatterySlot next, DateTimeOffset calculated) =>
+            JointBatterySlotCommitment.NetDemandReplacement(old, Plan(next) with { CalculatedAtUtc = calculated }, now);
+        Assert.NotNull(Replace(committed, discharge, Start));
+        Assert.Null(Replace(committed with { ChargeSource = BatteryChargeSource.Grid }, discharge, Start));
+        Assert.Null(Replace(committed, discharge with { Targets = Slot(0, 0).Targets }, Start));
+        Assert.Null(Replace(committed, discharge with { ExpectedConsumptionKwh = .32m }, Start));
+        Assert.Null(Replace(committed, discharge, now.AddSeconds(-76)));
+        Assert.Null(Replace(committed, discharge, now.AddSeconds(1)));
+        Assert.Null(Replace(committed, discharge with { TimeSlot = new(Start.AddMinutes(15), Start.AddMinutes(30)) }, Start));
+        Assert.Null(Replace(committed with { ExpectedConsumptionKwh = 1 }, discharge, Start));
+        Assert.Null(JointBatterySlotCommitment.NetDemandReplacement(committed, null, now));
+        Assert.Null(JointBatterySlotCommitment.NetDemandReplacement(committed, Plan(discharge), Start.AddMinutes(15)));
+    }
 }

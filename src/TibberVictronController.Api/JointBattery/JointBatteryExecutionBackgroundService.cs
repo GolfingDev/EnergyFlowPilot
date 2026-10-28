@@ -187,9 +187,17 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
         var now = clock.UtcNow;
 
         // The decision of a running quarter hour is fixed (operator rule): neither a newer nor a missing/stale plan
-        // changes it. Live limits still bound it on every step inside the coordinator.
+        // changes it, except an economically planned discharge after the assumed PV surplus disappears.
+        // Live limits still bound it on every step inside the coordinator.
         if (JointBatterySlotCommitment.Active(state.CommittedSlot, now) is { } committed)
         {
+            if (JointBatterySlotCommitment.NetDemandReplacement(committed, plan, now) is { } replacement)
+            {
+                state.CommittedSlot = replacement;
+                await SavePlanEventAsync(services, "PV-Annahme durch aktuellen Nettobedarf ersetzt; wirtschaftlich geplante Akku-Unterstuetzung freigegeben.",
+                    new { committed.TimeSlot, Previous = committed.Targets, replacement.Targets, replacement.Reason }, token);
+                return (CommandFrom(replacement), null);
+            }
             if (JointBatterySlotCommitment.PlanDeviates(committed, plan) && deviationLoggedFor != committed.TimeSlot.StartsAtUtc)
             {
                 deviationLoggedFor = committed.TimeSlot.StartsAtUtc;
@@ -224,7 +232,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
     // Valid until the end of its quarter hour; every step rebuilds and re-limits the command from live data anyway.
     private static JointBatteryCommand CommandFrom(JointBatterySlot slot) =>
         new(slot.Targets.Single(t => t.Id == "victron").SignedPowerWatts, slot.Targets.Single(t => t.Id == "e3dc").SignedPowerWatts,
-            slot.ChargeSource, slot.TimeSlot.EndsAtUtc, "Festgeschrieben bis zum Ende der Viertelstunde. " + slot.Reason);
+            slot.ChargeSource, slot.TimeSlot.EndsAtUtc, slot.Reason);
 
     private static Task SavePlanEventAsync(IServiceProvider services, string message, object details, CancellationToken token) =>
         services.GetRequiredService<IOperationalEventRepository>().SaveEventAsync(new OperationalEvent(Guid.NewGuid(),
