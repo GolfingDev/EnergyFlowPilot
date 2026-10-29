@@ -73,6 +73,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<JointBatteryShadowCalculation>();
         services.AddSingleton<JointBatteryPriceHistory>();
         services.AddSingleton<JointBatteryRuntimeState>();
+        services.AddSingleton<JointBatteryInputCache>();
         services.AddHostedService<JointBatteryShadowBackgroundService>();
         services.AddScoped<DatabaseMqttDeviceSettingsProvider>();
         services.AddScoped<DatabaseVictronMqttSettingsProvider>();

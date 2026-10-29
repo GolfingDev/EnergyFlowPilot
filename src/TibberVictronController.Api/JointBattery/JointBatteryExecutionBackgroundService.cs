@@ -13,7 +13,8 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
 {
     // Hard budgets keep the gap between two watchdog pulses (tick + failure handling + 1 s pause)
     // well below the systemd WatchdogSec, so slow I/O cannot get the whole service killed.
-    private static readonly TimeSpan CycleBudget = TimeSpan.FromSeconds(4);
+    // 6 s: one E3/DC exchange plus a Victron read that may wait 2.5 s and a setpoint readback of up to 2 s.
+    private static readonly TimeSpan CycleBudget = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan FailureBudget = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan PlanMaximumAge = TimeSpan.FromSeconds(75);
 
@@ -21,6 +22,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
     private string? lastLoggedStatus;
     private string? lastLoggedMessage;
     private DateTimeOffset? deviationLoggedFor;
+    private string? fallbackLoggedCause;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -212,26 +214,49 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
             return (CommandFrom(committed), null);
         }
 
-        if (plan is null)
+        // Operator rule: missing forecasts or data must never leave the current quarter hour without an action. Without a
+        // usable plan the batteries run in self-consumption like the devices' own automatic mode.
+        var fallbackCause = plan is null
+            ? (runtime is { Status: "Blocked" } ? runtime.Message : "Die Planung laeuft noch.")
+            : clock.UtcNow - plan.CalculatedAtUtc > PlanMaximumAge ? "Die gemeinsame Planung ist veraltet."
+            : null;
+        var slot = fallbackCause is null
+            ? plan!.Slots.SingleOrDefault(s => s.TimeSlot.StartsAtUtc <= clock.UtcNow && s.TimeSlot.EndsAtUtc > clock.UtcNow)
+            : null;
+        if (fallbackCause is null && slot is null) fallbackCause = "Der Plan enthaelt die aktuelle Viertelstunde nicht.";
+        if (fallbackCause is null && slot!.IsPriceEstimated && slot.ChargeSource == BatteryChargeSource.Grid)
+            fallbackCause = "Geschaetzte Preise erlauben keine Netzladung.";
+        if (fallbackCause is not null)
         {
-            // The planner runs in the preview worker; surface its failure reason instead of a bare "plan missing".
-            var cause = runtime is { Status: "Blocked" } ? " Ursache: " + runtime.Message : " Die Planung laeuft alle 30 Sekunden; bitte kurz warten.";
-            return (null, "Ein gueltiger gemeinsamer Plan fehlt." + cause);
+            if (fallbackLoggedCause != fallbackCause)
+            {
+                fallbackLoggedCause = fallbackCause;
+                await services.GetRequiredService<IOperationalEventRepository>().SaveEventAsync(new OperationalEvent(Guid.NewGuid(), clock.UtcNow,
+                    "JointBatteryFallback", "Warning", "Notbetrieb Eigenverbrauch ohne gueltigen Plan.", JsonSerializer.Serialize(new { Cause = fallbackCause })), token);
+            }
+            return (SelfConsumption(clock, fallbackCause), null);
         }
-        if (clock.UtcNow - plan.CalculatedAtUtc > PlanMaximumAge)
-            return (null, "Die gemeinsame Planung ist veraltet.");
-        var slot = plan.Slots.SingleOrDefault(s => s.TimeSlot.StartsAtUtc <= clock.UtcNow && s.TimeSlot.EndsAtUtc > clock.UtcNow);
-        if (slot is null)
-            return (null, "Der aktuelle gemeinsame Planzeitabschnitt fehlt.");
-        if (slot.IsPriceEstimated && slot.ChargeSource == BatteryChargeSource.Grid)
-            return (null, "Geschaetzte Preise erlauben keine Netzladung.");
+        fallbackLoggedCause = null;
+        var planned = slot!;
 
         // First execution step fixes the basic action; subsequent same-action plans may update its targets.
-        state.CommittedSlot = slot;
+        state.CommittedSlot = planned;
         await SavePlanEventAsync(services, "Planentscheidung fuer die Viertelstunde festgeschrieben.",
-            new { slot.TimeSlot, slot.Targets, slot.ChargeSource, slot.PricePerKwh, slot.Reason }, token);
-        return (CommandFrom(slot), null);
+            new { planned.TimeSlot, planned.Targets, planned.ChargeSource, planned.PricePerKwh, planned.Reason }, token);
+        return (CommandFrom(planned), null);
     }
+
+    /// <summary>
+    /// Self-consumption without a plan: both batteries are asked to discharge at their limits; the live limiter cuts
+    /// this down to the measured house demand (never export), keeps every reserve, and turns it into PV charging when
+    /// there is a surplus. No grid charging. Short validity: it is rebuilt every step until a plan is available again.
+    /// </summary>
+    private static JointBatteryCommand SelfConsumption(IUtcClock clock, string cause) =>
+        new(-SelfConsumptionRequestWatts, -SelfConsumptionRequestWatts, null, clock.UtcNow.AddSeconds(15),
+            "Notbetrieb ohne gueltigen Plan: Hausbedarf aus den Akkus decken, PV-Ueberschuss speichern, keine Netzladung. Ursache: " + cause);
+
+    // Above any battery's limit on purpose; the per-battery allocation in the live limiter applies the real limits.
+    private const int SelfConsumptionRequestWatts = 100_000;
 
     // Valid until the end of its quarter hour; every step rebuilds and re-limits the command from live data anyway.
     private static JointBatteryCommand CommandFrom(JointBatterySlot slot) =>

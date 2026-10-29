@@ -13,7 +13,7 @@ public interface IJointBatteryWatchdog
 public sealed class SystemdJointBatteryWatchdog : IJointBatteryWatchdog
 {
     // Must match WatchdogSec in the deployment scripts. The execution loop pulses before and after its
-    // budgeted steps (4 s tick, 6 s failure handling, 1 s pause), so pulses are at most ~7 s apart and
+    // budgeted steps (6 s tick, 6 s failure handling, 1 s pause), so pulses are at most ~7 s apart and
     // 15 s leaves a 2x margin. A longer interval would no longer bound how long a stalled process keeps stale setpoints.
     private const long MaximumWatchdogMicroseconds = 15_000_000;
 

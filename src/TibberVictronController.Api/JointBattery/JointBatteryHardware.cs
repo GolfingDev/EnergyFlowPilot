@@ -10,8 +10,9 @@ namespace TibberVictronController.Api.JointBattery;
 public sealed class JointBatteryHardware(IServiceProvider services) : IJointBatteryHardware
 {
     // Fits the 4 s execution cycle: write, then up to ~1.5 s of re-reads, each read itself bounded to 1.5 s.
-    private static readonly TimeSpan ReadbackDeadline = TimeSpan.FromSeconds(1.5);
-    private static readonly TimeSpan ReadbackRetryDelay = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan ReadbackDeadline = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan SampleMaximumAge = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ReadRequestTimeout = TimeSpan.FromSeconds(2.5);
 
     private IVictronMqttControlClient Client => services.GetRequiredService<IVictronMqttControlClient>();
     private IUtcClock Clock => services.GetRequiredService<IUtcClock>();
@@ -24,22 +25,40 @@ public sealed class JointBatteryHardware(IServiceProvider services) : IJointBatt
         return settings;
     }
 
+    /// <summary>
+    /// Makes sure every topic has a recent value. Powers are published by the Victron on every change and are
+    /// normally seconds old; requesting all ~13 values every second overloaded dbus-mqtt (about 200 read timeouts
+    /// per day, 28.10.2026). Only stale values are requested, lost requests are repeated once per second.
+    /// </summary>
     private async Task RefreshAsync(IReadOnlyList<string> topics, CancellationToken token)
     {
+        bool Fresh(string t) => Client.TryGetLatestSample(t, out _, out var at) &&
+            Clock.UtcNow - at <= SampleMaximumAge && at <= Clock.UtcNow.AddSeconds(2);
+        var stale = topics.Where(t => !Fresh(t)).Distinct().ToArray();
+        if (stale.Length == 0) return;
+
         var requested = Clock.UtcNow;
-        foreach (var topic in topics) await Client.RequestValueAsync(topic, token);
-        var until = Clock.UtcNow.AddSeconds(1.5);
+        foreach (var topic in stale) await Client.RequestValueAsync(topic, token);
+        var until = requested + ReadRequestTimeout;
+        var nextRetry = requested.AddSeconds(1);
         bool Missing(string t) => !Client.TryGetLatestSample(t, out _, out var at) || at < requested;
-        while (topics.Any(Missing))
+        while (stale.Any(Missing))
         {
             if (Clock.UtcNow >= until)
-                throw new TimeoutException("Victron beantwortet Leseanfragen nicht: " + string.Join(", ", topics.Where(Missing).Select(DevicePath)) + ".");
+                throw new TimeoutException("Victron beantwortet Leseanfragen nicht: " + string.Join(", ", stale.Where(Missing).Select(DevicePath)) + ".");
+            if (Clock.UtcNow >= nextRetry)
+            {
+                foreach (var topic in stale.Where(Missing)) await Client.RequestValueAsync(topic, token);
+                nextRetry = Clock.UtcNow.AddSeconds(1);
+            }
             await Task.Delay(50, token);
         }
     }
+
     private decimal RawValue(string topic)
     {
-        if (!Client.TryGetLatestSample(topic, out var value, out var at) || Clock.UtcNow - at > TimeSpan.FromSeconds(3) || at > Clock.UtcNow.AddSeconds(2))
+        // Values accepted as fresh by RefreshAsync may be up to 3 s old plus the time of this step.
+        if (!Client.TryGetLatestSample(topic, out var value, out var at) || Clock.UtcNow - at > TimeSpan.FromSeconds(5) || at > Clock.UtcNow.AddSeconds(2))
             throw new InvalidOperationException($"Ein aktueller Victron-Wert fehlt: {DevicePath(topic)}.");
         return value;
     }
@@ -102,19 +121,26 @@ public sealed class JointBatteryHardware(IServiceProvider services) : IJointBatt
         }
         foreach (var item in expected) await Client.PublishValueAsync(item.Write, item.Value, token);
 
-        // dbus-mqtt can answer a read request with the value from before our write was applied (seen on the
-        // device: wrote 218, read back the previous 216). A single readback is therefore not a rejection;
-        // re-read until the written values appear and fail only if they never do within the deadline.
+        // Confirmation without flooding dbus-mqtt: a changed value is published by the Victron on its own, and an
+        // unchanged one is already in the cache (changes are always published, so the cache is current). Only values
+        // still not matching after 0.4 s are requested explicitly. A read answer may still carry the value from before
+        // the write (seen: wrote 218, read 216), hence repeated requests until the deadline.
         var deadline = Clock.UtcNow.Add(ReadbackDeadline);
+        var nextRequest = Clock.UtcNow.AddSeconds(0.4);
+        int? Current(string write) => Client.TryGetLatestSample(ReadTopic(write), out var value, out _) ? (int)Math.Round(value) : null;
         while (true)
         {
-            await RefreshAsync(expected.Select(p => ReadTopic(p.Write)).ToArray(), token);
-            var mismatches = expected.Select(p => (p.Write, p.Value, Actual: Value(ReadTopic(p.Write)))).Where(p => p.Actual != p.Value).ToArray();
+            var mismatches = expected.Select(p => (p.Write, p.Value, Actual: Current(p.Write))).Where(p => p.Actual != p.Value).ToArray();
             if (mismatches.Length == 0) return;
             if (Clock.UtcNow >= deadline)
                 throw new InvalidOperationException("Victron bestaetigt die gemeinsamen Sollwerte nicht: " +
-                    string.Join(", ", mismatches.Select(m => $"{DevicePath(m.Write)} soll {m.Value}, ist {m.Actual}")) + ".");
-            await Task.Delay(ReadbackRetryDelay, token);
+                    string.Join(", ", mismatches.Select(m => $"{DevicePath(m.Write)} soll {m.Value}, ist {m.Actual?.ToString(CultureInfo.InvariantCulture) ?? "unbekannt"}")) + ".");
+            if (Clock.UtcNow >= nextRequest)
+            {
+                foreach (var mismatch in mismatches) await Client.RequestValueAsync(ReadTopic(mismatch.Write), token);
+                nextRequest = Clock.UtcNow.AddSeconds(0.5);
+            }
+            await Task.Delay(50, token);
         }
     }
 

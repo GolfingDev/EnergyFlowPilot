@@ -82,7 +82,26 @@ public sealed class JointBatteryExecutionTests
         state.Set(new("Active", "", Now, true, 250, 250));
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             new JointBatteryExecutionCoordinator(hardware, state, new Clock()).StepAsync(Command(250, 250), CancellationToken.None));
-        Assert.Contains("Victron ueberschreitet den Sollwert deutlich: Soll 250 W, gemessen 900 W", error.Message);
+        Assert.Contains("Victron ueberschreitet den Sollwert deutlich: Soll 250 W", error.Message);
+        Assert.Contains("gemessen 900 W", error.Message);
+    }
+
+    [Theory]
+    // The target was lowered in this step; the measurement still shows the previous one (old rule: 2500 + 500 < 3100).
+    [InlineData(-2900, -2500, -3100)]
+    // Discharging draws more DC power than the AC target (inverter losses); seen on 29.10.2026 (old rule: 2647 < 2730).
+    [InlineData(-2147, -2147, -2730)]
+    public void LoweredTargetAndInverterLossesAreNoOvershoot(int previousTarget, int target, int measured)
+    {
+        var hardware = new Hardware { Follow = false, Primary = measured };
+        var state = new JointBatteryExecutionState { NeutralSamples = 2, Direction = -1, SettlingSinceUtc = Now.AddSeconds(-100) };
+        state.Set(new("Active", "", Now, true, previousTarget, 0));
+        // House demand large enough that the limiter keeps the requested discharge.
+        hardware.Adjust = live => live with { PhaseGridWatts = [6000, 0, 0] };
+        var exception = Record.ExceptionAsync(() =>
+            new JointBatteryExecutionCoordinator(hardware, state, new Clock()).StepAsync(Command(target, 0) with { ChargeSource = null }, CancellationToken.None));
+        Assert.Null(exception.Result);
+        Assert.Equal("Active", state.Current.Status);
     }
 
     [Fact]

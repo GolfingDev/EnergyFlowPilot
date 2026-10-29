@@ -72,6 +72,8 @@ public sealed class JointBatteryExecutionCoordinator(IJointBatteryHardware hardw
         await hardware.SetVictronAsync(command.VictronWatts, token);
         var measured = new[] { live.Batteries[0].MeasuredPowerWatts, live.Batteries[1].MeasuredPowerWatts };
         var targets = new[] { command.VictronWatts, grantedE3dc };
+        // The measurement was taken before this step's setpoints, so it still reflects the previous target.
+        var previousTargets = new[] { previous.VictronTargetWatts, previous.E3dcTargetWatts };
         string[] names = ["Victron", "E3/DC"];
         for (var i = 0; i < 2; i++)
             if (Math.Sign(targets[i]) * measured[i] < -150)
@@ -87,8 +89,14 @@ public sealed class JointBatteryExecutionCoordinator(IJointBatteryHardware hardw
             for (var i = 0; i < 2; i++)
             {
                 if (Math.Abs(targets[i]) <= 100) continue;
-                if (Math.Abs(measured[i]) > Math.Abs(targets[i]) + 500)
-                    throw new InvalidOperationException($"{names[i]} ueberschreitet den Sollwert deutlich: Soll {targets[i]} W, gemessen {measured[i]} W.");
+                // Overshoot is judged against the larger of the previous and the new target: a target that was just
+                // lowered is not yet visible in a measurement taken before the step (false alarms at "Soll -3729 W,
+                // gemessen -4318 W", 29.10.2026). Targets are AC-side, measurements DC-side; discharging draws about
+                // 10-15 % more from the battery than it delivers, hence the relative allowance on top of the 500 W.
+                var sameDirectionPrevious = Math.Sign(previousTargets[i]) == Math.Sign(targets[i]) ? Math.Abs(previousTargets[i]) : 0;
+                var reference = Math.Max(Math.Abs(targets[i]), sameDirectionPrevious);
+                if (Math.Abs(measured[i]) > reference * 1.2 + 500)
+                    throw new InvalidOperationException($"{names[i]} ueberschreitet den Sollwert deutlich: Soll {targets[i]} W, zuvor {previousTargets[i]} W, gemessen {measured[i]} W.");
                 if (Math.Sign(targets[i]) * measured[i] < Math.Abs(targets[i]) * .4)
                     followNote += $" {names[i]} folgt nur teilweise: Soll {targets[i]} W, gemessen {measured[i]} W.";
             }

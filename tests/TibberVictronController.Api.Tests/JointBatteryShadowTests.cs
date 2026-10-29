@@ -167,26 +167,20 @@ public sealed class JointBatteryShadowTests
                 [new("victron", 1000, 10, 12), new("e3dc", 0, 11, 11)], "Festgeschriebene Testladung", false)
         };
         var hardware = new RecoveryHardware(false);
+        var events = new Events();
         using var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings).AddSingleton<IUtcClock>(new Clock())
             .AddSingleton(state).AddSingleton<IJointBatteryHardware>(hardware).AddScoped<JointBatteryExecutionCoordinator>()
-            .AddSingleton<IOperationalEventRepository>(new Events()).BuildServiceProvider();
+            .AddSingleton<IOperationalEventRepository>(events).BuildServiceProvider();
         var worker = new JointBatteryExecutionBackgroundService(services.GetRequiredService<IServiceScopeFactory>(), state,
             new VictronSetpointRefreshState(), NullLogger<JointBatteryExecutionBackgroundService>.Instance, new Watchdog());
 
         await worker.TickAsync(CancellationToken.None);
 
-        if (stillRunning)
-        {
-            // No plan exists at all, yet the fixed decision is executed (here: the neutral transition before charging).
-            Assert.Equal("Transition", state.Current.Status);
-            Assert.Contains("Victron:0", hardware.Commands);
-        }
-        else
-        {
-            // Its quarter hour is over: a new decision needs a plan.
-            Assert.Contains("Plan fehlt", state.Current.Message);
-            Assert.Empty(hardware.Commands);
-        }
+        // Either way the batteries are driven (here: the neutral transition that precedes any action).
+        Assert.Equal("Transition", state.Current.Status);
+        Assert.Contains("Victron:0", hardware.Commands);
+        // Without a plan, once the committed quarter hour is over, self-consumption takes over instead of standing still.
+        Assert.Equal(!stillRunning, events.Saved.Any(e => e.Category == "JointBatteryFallback"));
     }
 
     [Fact]
@@ -202,7 +196,9 @@ public sealed class JointBatteryShadowTests
         await store.SaveBaselineAsync(TibberVictronController.Business.Decisions.JointManualCharge.StoredEnergyKwh(batteries) - 2m, CancellationToken.None);
         state.LastLive = new JointBatteryLiveSnapshot(Now, batteries, [0, 0, 0], [0], 0, 0, new([14720, 14720, 14720], 14720, 1, 0));
         var events = new Events();
+        var hardware = new RecoveryHardware(false);
         using var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings).AddSingleton<IUtcClock>(clock)
+            .AddSingleton(state).AddSingleton<IJointBatteryHardware>(hardware).AddScoped<JointBatteryExecutionCoordinator>()
             .AddSingleton<IOperationalEventRepository>(events).BuildServiceProvider();
         var worker = new JointBatteryExecutionBackgroundService(services.GetRequiredService<IServiceScopeFactory>(), state,
             new VictronSetpointRefreshState(), NullLogger<JointBatteryExecutionBackgroundService>.Instance, new Watchdog());
@@ -212,9 +208,9 @@ public sealed class JointBatteryShadowTests
         Assert.Null(await store.ReadAsync(CancellationToken.None));
         Assert.Contains("abgeschlossen", state.ManualChargeResult);
         Assert.Contains(events.Saved, e => e.Category == "JointBatteryManualCharge");
-        // Back on the plan, which is missing here: blocked without claiming the site.
-        Assert.Contains("Plan fehlt", state.Current.Message);
-        Assert.False(state.Current.OwnsControl);
+        // Back on the plan, which is missing here: self-consumption keeps the batteries working.
+        Assert.Contains(events.Saved, e => e.Category == "JointBatteryFallback");
+        Assert.Contains("Victron:0", hardware.Commands);
     }
 
     [Fact]
@@ -249,7 +245,7 @@ public sealed class JointBatteryShadowTests
     }
 
     [Fact]
-    public async Task MissingPlanShowsThePreviewFailureReason()
+    public async Task MissingPlanRunsSelfConsumptionAndRecordsThePreviewFailureReason()
     {
         var settings = new Settings();
         foreach (var (key, value) in new[] {
@@ -263,16 +259,23 @@ public sealed class JointBatteryShadowTests
             await settings.SaveSettingAsync(new(key, value, ControllerSettingSensitivity.Normal, Now));
         var runtime = new JointBatteryRuntimeState();
         runtime.Set(new("Blocked", "Vorschau-Testgrund.", Now, null, null));
-        using var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings).AddSingleton<IUtcClock>(new Clock())
-            .AddSingleton<IOperationalEventRepository>(new Events()).AddSingleton(runtime).BuildServiceProvider();
         var state = new JointBatteryExecutionState();
+        var events = new Events();
+        var hardware = new RecoveryHardware(false);
+        using var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings).AddSingleton<IUtcClock>(new Clock())
+            .AddSingleton<IOperationalEventRepository>(events).AddSingleton(runtime).AddSingleton(state)
+            .AddSingleton<IJointBatteryHardware>(hardware).AddScoped<JointBatteryExecutionCoordinator>().BuildServiceProvider();
         var worker = new JointBatteryExecutionBackgroundService(services.GetRequiredService<IServiceScopeFactory>(), state,
             new VictronSetpointRefreshState(), NullLogger<JointBatteryExecutionBackgroundService>.Instance, new Watchdog());
         await worker.TickAsync(CancellationToken.None);
-        Assert.Equal("Blocked", state.Current.Status);
-        Assert.Contains("Plan fehlt", state.Current.Message);
-        Assert.Contains("Ursache: Vorschau-Testgrund.", state.Current.Message);
-        Assert.False(state.Current.OwnsControl);
+        await worker.TickAsync(CancellationToken.None);
+
+        // Operator rule (29.10.2026): a failed forecast must not leave the quarter hour without an action.
+        Assert.NotEqual("Blocked", state.Current.Status);
+        Assert.True(state.Current.OwnsControl);
+        Assert.Contains("Victron:0", hardware.Commands);
+        var fallback = Assert.Single(events.Saved, e => e.Category == "JointBatteryFallback");
+        Assert.Contains("Vorschau-Testgrund.", fallback.Details);
     }
 
     [Fact]

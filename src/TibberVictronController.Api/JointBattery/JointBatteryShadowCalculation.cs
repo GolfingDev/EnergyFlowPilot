@@ -11,6 +11,10 @@ namespace TibberVictronController.Api.JointBattery;
 /// <summary>Loads independent live inputs for the shadow planner; sends only MQTT read requests, never device commands.</summary>
 public sealed class JointBatteryShadowCalculation(IServiceProvider services)
 {
+    private static string Local(DateTimeOffset? utc) => utc is { } value
+        ? TimeZoneInfo.ConvertTime(value, TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin")).ToString("dd.MM. HH:mm", CultureInfo.InvariantCulture)
+        : "unbekannt";
+
     /// <summary>
     /// The Victron connection runs with "suppress-republish": values are only published when they change. An idle
     /// battery's SoC can therefore be minutes old although it is current. Explicit read requests refresh exactly the
@@ -60,22 +64,60 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
             (await settings.GetSettingAsync(key, token))?.Value ?? throw new InvalidOperationException("Eine Einstellung fuer die gemeinsame Vorschau fehlt."),
             CultureInfo.InvariantCulture);
 
-        // 1. Slow inputs without live battery data.
+        // 1. Slow inputs without live battery data. Operator rule: a failing forecast or data source degrades the plan
+        //    (substitute + visible warning) but never stops it - see JointPlanInputFallback.
+        var cache = services.GetService<JointBatteryInputCache>() ?? new JointBatteryInputCache();
+        var inputWarnings = new List<string>();
         var primary = await services.GetRequiredService<IBatteryConfigurationProvider>().GetBatteryConfigurationAsync(token);
         var e3dcMaximumSoc = await Setting(ControllerSettingDefaults.E3dcPlanningMaximumSocKey);
         var e3dcEfficiency = await Setting(ControllerSettingDefaults.E3dcEfficiencyKey);
         var gridLimit = checked((int)await Setting(ControllerSettingDefaults.JointBatteryGridLimitKey));
         var feedInCompensation = await Setting(ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey);
-        var start = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute / 15 * 15, 0, TimeSpan.Zero);
-        var prices = (await services.GetRequiredService<IElectricityPriceForecastProvider>().GetPriceForecastAsync(start, start.AddHours(48), token))
-            .Where(p => p.TimeSlot.StartsAtUtc >= start && p.TimeSlot.EndsAtUtc <= start.AddHours(48)).OrderBy(p => p.TimeSlot.StartsAtUtc).ToArray();
-        if (prices.Length == 0 || prices[0].TimeSlot.StartsAtUtc != start ||
-            prices.Zip(prices.Skip(1)).Any(pair => pair.First.TimeSlot.EndsAtUtc != pair.Second.TimeSlot.StartsAtUtc))
-            throw new InvalidOperationException("Fuer die gemeinsame Vorschau fehlen lueckenlose aktuelle Preise.");
+        var start = JointPlanInputFallback.QuarterStart(now);
+        var horizonEnd = start.AddHours(48);
+
+        IReadOnlyList<TibberPriceForecastSlot>? freshPrices = null;
+        try
+        {
+            freshPrices = await services.GetRequiredService<IElectricityPriceForecastProvider>().GetPriceForecastAsync(start, horizonEnd, token);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            inputWarnings.Add($"Preisabruf fehlgeschlagen ({exception.GetType().Name}); letzte bekannte Preise verwendet.");
+        }
+        var (loadedPrices, pricesFromCache) = JointPlanInputFallback.ChoosePrices(freshPrices, cache.Prices.Items, start, horizonEnd);
+        if (loadedPrices.Count == 0)
+            // Without any price for the current quarter hour there is nothing to optimise; execution then runs the
+            // self-consumption fallback, so the batteries still act.
+            throw new InvalidOperationException("Fuer die aktuelle Viertelstunde liegt kein Strompreis vor, auch kein zuvor geladener.");
+        if (pricesFromCache) inputWarnings.Add($"Aktuelle Preise nicht verfuegbar; Preise vom {Local(cache.Prices.LoadedAtUtc)} verwendet.");
+        else cache.StorePrices(freshPrices!, now);
+        var prices = loadedPrices.ToArray();
         var end = prices[^1].TimeSlot.EndsAtUtc;
+        if (end < horizonEnd.AddHours(-24)) inputWarnings.Add($"Preise liegen nur bis {Local(end)} lueckenlos vor; der Planungshorizont ist entsprechend kuerzer.");
+
         var weather = services.GetRequiredService<IWeatherForecastProvider>();
-        var pv = await weather.GetPvYieldForecastAsync(start, end, token);
-        var history = await services.GetRequiredService<ILiveConsumptionRepository>().GetSamplesAsync(now.AddDays(-14), now, token);
+        IReadOnlyList<PvYieldForecastSlot>? freshPv = null;
+        string? pvFailure = null;
+        try { freshPv = await weather.GetPvYieldForecastAsync(start, end, token); }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Forecast.Solar texts carry status codes or API messages only; other exception texts may contain URLs.
+            pvFailure = exception is TibberVictronController.Dal.Weather.ForecastSolarApiException ? exception.Message : exception.GetType().Name;
+        }
+        if (freshPv is not null) cache.StorePv(freshPv, now);
+        var (pv, pvFromCache, pvMissing) = JointPlanInputFallback.CompletePv(prices, freshPv, cache.Pv.Items);
+        if (pvFailure is not null || pvFromCache > 0 || pvMissing > 0)
+            inputWarnings.Add("PV-Prognose " + (pvFailure is null ? "unvollstaendig" : $"nicht verfuegbar ({pvFailure})") +
+                (pvFromCache > 0 ? $"; {pvFromCache} Viertelstunden aus der Prognose vom {Local(cache.Pv.LoadedAtUtc)}" : "") +
+                (pvMissing > 0 ? $"; {pvMissing} Viertelstunden ohne PV angesetzt (realer Ueberschuss wird trotzdem gespeichert)" : "") + ".");
+
+        IReadOnlyList<LiveConsumptionSample> history = [];
+        try { history = await services.GetRequiredService<ILiveConsumptionRepository>().GetSamplesAsync(now.AddDays(-14), now, token); }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            inputWarnings.Add($"Verbrauchshistorie nicht lesbar ({exception.GetType().Name}); Ersatzprofil aus dem Tagesverbrauch verwendet.");
+        }
         var zone = TimeZoneInfo.FindSystemTimeZoneById((await settings.GetSettingAsync(ControllerSettingDefaults.ConsumptionForecastTimeZoneKey, token))?.Value ?? "Europe/Berlin");
         IReadOnlyList<HourlyTemperature>? temperatures = null;
         try { temperatures = await services.GetRequiredService<ITemperatureProvider>().GetHourlyTemperaturesAsync(now.AddDays(-14), end.AddHours(24), token); }
@@ -151,20 +193,25 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
             MinimumSavingsPerKwh = primary.MinimumSavingsPerKwh, WearCostPerKwh = primary.WearCostPerKwh
         });
         var grossNetLoadWatts = mqtt.GridPowerWatts.Value - mqtt.BatteryPowerWatts.Value - e3dc.BatteryPowerWatts;
-        var adjusted = BatteryForecastService.ApplyCurrentNetLoad(consumption, pv, start, grossNetLoadWatts);
-        if (clock.UtcNow >= start.AddMinutes(15))
-            throw new InvalidOperationException("Der Preiszeitabschnitt ist waehrend der Vorschau abgelaufen. Die Planung wird erneut angefordert.");
+        // Loading the inputs takes 25-30 s on the Pi and can cross a quarter-hour boundary (33 discarded plans on
+        // 28./29.10.2026). The inputs are still valid, so the plan simply starts at the quarter hour that is now running.
+        var planStart = JointPlanInputFallback.QuarterStart(clock.UtcNow);
+        var plannedPrices = prices.Where(p => p.TimeSlot.StartsAtUtc >= planStart).ToArray();
+        if (plannedPrices.Length == 0 || plannedPrices[0].TimeSlot.StartsAtUtc != planStart)
+            throw new InvalidOperationException("Fuer die aktuelle Viertelstunde liegt kein Strompreis vor, auch kein zuvor geladener.");
+        var adjusted = BatteryForecastService.ApplyCurrentNetLoad(consumption, pv, planStart, grossNetLoadWatts);
         var (e3dcCharge, e3dcDischarge) = await E3dcLimitPolicy.ActiveLimitsAsync(settings, e3dc, token);
         var plan = new JointBatteryPlanner().Calculate(new JointBatteryPlanInput {
             NowUtc = clock.UtcNow, Batteries = [new("victron", primary, new(mqtt.BatterySocPercent.Value, mqtt.BatterySocMeasuredAtUtc!.Value), (int)mqtt.BatteryPowerWatts.Value),
                 new("e3dc", secondary, new(e3dc.SocPercent, e3dc.MeasuredAtUtc), e3dc.BatteryPowerWatts, e3dcCharge, e3dcDischarge)],
-            Prices = prices, Pv = pv, Consumption = adjusted,
+            Prices = plannedPrices, Pv = pv, Consumption = adjusted,
             MaximumGridImportWatts = gridLimit,
             FeedInCompensationPerKwh = feedInCompensation,
             Continuation = continuation
         }, token);
         return (plan with { PriceSource = services.GetRequiredService<IElectricityPriceForecastProvider>().Source,
             Warnings = [.. plan.Warnings,
+            .. inputWarnings,
             .. (continuationWarning is null ? Array.Empty<string>() : new[] { continuationWarning }),
             .. (model.HasProfile ? Array.Empty<string>() : new[] { "Verbrauchsvorschau verwendet mangels geeigneter Messdaten ein gleichmaessiges Ersatzprofil." }),
             .. (temperatures is null ? new[] { "Temperaturdaten fehlen; gemeinsamer Verbrauchsforecast ohne Temperaturkorrektur." } : Array.Empty<string>()),
