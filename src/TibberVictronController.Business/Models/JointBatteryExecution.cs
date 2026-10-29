@@ -26,7 +26,7 @@ public sealed class JointBatteryExecutionState
     public string? ManualChargeResult { get; set; }
 
     private JointBatterySlot? committedSlot;
-    /// <summary>Plan decision fixed for the quarter hour it belongs to; later plans do not change it.</summary>
+    /// <summary>Basic action fixed for its quarter hour; fresh plans may update watts and battery allocation within that action.</summary>
     public JointBatterySlot? CommittedSlot { get => Volatile.Read(ref committedSlot); set => Volatile.Write(ref committedSlot, value); }
 
     private JointBatteryLiveSnapshot? lastLive;

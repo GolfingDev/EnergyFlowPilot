@@ -76,4 +76,45 @@ public sealed class JointBatterySlotCommitmentTests
         Assert.Null(JointBatterySlotCommitment.NetDemandReplacement(committed, null, now));
         Assert.Null(JointBatterySlotCommitment.NetDemandReplacement(committed, Plan(discharge), Start.AddMinutes(15)));
     }
+    [Theory]
+    [InlineData(0, -2200, -728, -2400)]
+    [InlineData(-1500, -1500, -500, -200)]
+    [InlineData(3000, 500, 1000, 2200)]
+    [InlineData(1000, 2000, 0, 500)]
+    public void SameActionUpdatesPowerAndAllocation(int oldA, int oldB, int newA, int newB)
+    {
+        var fresh = Slot(newA, newB) with { Reason = "Aktueller Bedarf" };
+        var updated = JointBatterySlotCommitment.UpdatedTargets(Slot(oldA, oldB), Plan(fresh), Start.AddSeconds(30));
+        Assert.Same(fresh, updated);
+    }
+
+    [Theory]
+    [InlineData(-1000, 0, 1000, 0)]
+    [InlineData(1000, 0, -1000, 0)]
+    [InlineData(-1000, 0, 0, 0)]
+    [InlineData(1000, 0, 0, 0)]
+    [InlineData(0, 0, -1000, 0)]
+    [InlineData(0, 0, 1000, 0)]
+    [InlineData(-1000, 0, -2000, 500)]
+    public void DifferentBasicActionOrOpposingTargetsAreNotAccepted(int oldA, int oldB, int newA, int newB)
+    {
+        Assert.Null(JointBatterySlotCommitment.UpdatedTargets(Slot(oldA, oldB), Plan(Slot(newA, newB)), Start.AddSeconds(30)));
+    }
+
+    [Fact]
+    public void UpdatingTargetsRequiresCurrentMatchingPlanAndPreservesChargingSource()
+    {
+        var committed = Slot(1000, 500) with { ChargeSource = BatteryChargeSource.PV };
+        var fresh = Slot(500, 1000) with { ChargeSource = BatteryChargeSource.PV };
+        var now = Start.AddSeconds(30);
+        Assert.Same(fresh, JointBatterySlotCommitment.UpdatedTargets(committed, Plan(fresh), now));
+        Assert.Null(JointBatterySlotCommitment.UpdatedTargets(committed, Plan(fresh with { ChargeSource = BatteryChargeSource.Grid }), now));
+        Assert.Null(JointBatterySlotCommitment.UpdatedTargets(committed, Plan(fresh) with { CalculatedAtUtc = now.AddSeconds(-76) }, now));
+        Assert.Null(JointBatterySlotCommitment.UpdatedTargets(committed, Plan(fresh) with { CalculatedAtUtc = now.AddSeconds(1) }, now));
+        Assert.Null(JointBatterySlotCommitment.UpdatedTargets(committed, Plan(fresh), Start.AddMinutes(15)));
+        Assert.Null(JointBatterySlotCommitment.UpdatedTargets(committed, null, now));
+        Assert.Null(JointBatterySlotCommitment.UpdatedTargets(committed, Plan(fresh with { TimeSlot = new(Start.AddMinutes(15), Start.AddMinutes(30)) }), now));
+        Assert.Null(JointBatterySlotCommitment.UpdatedTargets(committed, Plan(fresh with { Targets = [fresh.Targets[0]] }), now));
+        Assert.Null(JointBatterySlotCommitment.UpdatedTargets(Slot(1000, 500), Plan(Slot(500, 1000) with { IsPriceEstimated = true }), now));
+    }
 }

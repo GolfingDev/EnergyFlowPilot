@@ -186,11 +186,15 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
         var plan = runtime?.Plan;
         var now = clock.UtcNow;
 
-        // The decision of a running quarter hour is fixed (operator rule): neither a newer nor a missing/stale plan
-        // changes it, except an economically planned discharge after the assumed PV surplus disappears.
-        // Live limits still bound it on every step inside the coordinator.
+        // Only the basic action is fixed. A fresh same-action plan updates watts and the two battery shares.
+        // Missing/stale plans retain the last targets, still bounded by live limits on every step.
         if (JointBatterySlotCommitment.Active(state.CommittedSlot, now) is { } committed)
         {
+            if (JointBatterySlotCommitment.UpdatedTargets(committed, plan, now) is { } updated)
+            {
+                state.CommittedSlot = updated;
+                return (CommandFrom(updated), null);
+            }
             if (JointBatterySlotCommitment.NetDemandReplacement(committed, plan, now) is { } replacement)
             {
                 state.CommittedSlot = replacement;
@@ -202,7 +206,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
             {
                 deviationLoggedFor = committed.TimeSlot.StartsAtUtc;
                 var fresh = plan!.Slots.First(s => s.TimeSlot == committed.TimeSlot);
-                await SavePlanEventAsync(services, "Neuer Plan weicht fuer die laufende Viertelstunde ab; die festgeschriebene Entscheidung bleibt bestehen.",
+                await SavePlanEventAsync(services, "Neuer Plan weicht fuer die laufende Viertelstunde ab; die festgeschriebene Grundaktion bleibt bestehen.",
                     new { committed.TimeSlot, Committed = committed.Targets, NewPlan = fresh.Targets, NewReason = fresh.Reason }, token);
             }
             return (CommandFrom(committed), null);
@@ -222,7 +226,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
         if (slot.IsPriceEstimated && slot.ChargeSource == BatteryChargeSource.Grid)
             return (null, "Geschaetzte Preise erlauben keine Netzladung.");
 
-        // First execution step of this quarter hour: fix its decision until the quarter hour ends.
+        // First execution step fixes the basic action; subsequent same-action plans may update its targets.
         state.CommittedSlot = slot;
         await SavePlanEventAsync(services, "Planentscheidung fuer die Viertelstunde festgeschrieben.",
             new { slot.TimeSlot, slot.Targets, slot.ChargeSource, slot.PricePerKwh, slot.Reason }, token);

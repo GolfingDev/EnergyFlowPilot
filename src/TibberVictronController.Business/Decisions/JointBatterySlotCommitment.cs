@@ -3,16 +3,32 @@ using TibberVictronController.Business.Models;
 namespace TibberVictronController.Business.Decisions;
 
 /// <summary>
-/// Operator rule (24.10.2026): once execution of a quarter hour has begun, its plan decision is fixed until the
-/// quarter hour ends. The plan is recalculated every 30 s and could otherwise flip a started charge on small input
-/// changes. A fresh economically planned discharge may replace a vanished PV surplus. Other deviations are the live limits enforced on every step (SoC bounds, phase/feed-line/device limits,
-/// no export by discharge) - those act on the fixed decision, they do not replace it.
+/// Fixes the basic action of a running quarter hour, not its watts or allocation between batteries.
+/// Fresh same-action plans may update both targets; all live limits still apply on every execution step.
 /// </summary>
 public static class JointBatterySlotCommitment
 {
     /// <returns>The committed slot if its quarter hour is still running, otherwise null (a new decision is due).</returns>
     public static JointBatterySlot? Active(JointBatterySlot? committed, DateTimeOffset nowUtc) =>
         committed is not null && committed.TimeSlot.StartsAtUtc <= nowUtc && nowUtc < committed.TimeSlot.EndsAtUtc ? committed : null;
+
+    /// <summary>Refresh power and allocation without changing direction or the permitted charging source.</summary>
+    public static JointBatterySlot? UpdatedTargets(JointBatterySlot committed, JointBatteryPlan? plan, DateTimeOffset nowUtc)
+    {
+        if (Active(committed, nowUtc) is null || plan is null || plan.CalculatedAtUtc > nowUtc ||
+            nowUtc - plan.CalculatedAtUtc > TimeSpan.FromSeconds(75)) return null;
+        var fresh = plan.Slots.FirstOrDefault(s => s.TimeSlot == committed.TimeSlot);
+        if (fresh is null || fresh.Targets.Count != committed.Targets.Count ||
+            !committed.Targets.All(t => fresh.Targets.Count(f => f.Id == t.Id) == 1)) return null;
+        var direction = Math.Sign(committed.Targets.Sum(t => t.SignedPowerWatts));
+        if (Math.Sign(fresh.Targets.Sum(t => t.SignedPowerWatts)) != direction ||
+            fresh.Targets.Any(t => Math.Sign(t.SignedPowerWatts) != 0 && Math.Sign(t.SignedPowerWatts) != direction) ||
+            fresh.ChargeSource != committed.ChargeSource ||
+            (fresh.IsPriceEstimated && fresh.ChargeSource == BatteryChargeSource.Grid)) return null;
+        // Zero in a new plan means a different basic action (hold), not permission to cancel a started action.
+        // Actual power can still fall to zero through reserve, demand, or hardware limits in the live limiter.
+        return fresh;
+    }
 
     /// <summary>
     /// A PV assumption must not lock out an economically justified discharge after real net demand appears.
