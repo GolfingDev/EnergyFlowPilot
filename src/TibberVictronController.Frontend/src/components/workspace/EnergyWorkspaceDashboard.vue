@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BatterySavingsBreakdown from "../dashboard/BatterySavingsBreakdown.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import EnergyTree from './EnergyTree.vue';
 import EnergyDecisionOverview from '../dashboard/EnergyDecisionOverview.vue';
@@ -42,9 +43,9 @@ const savingsPeriods: Array<{ value: SavingsPeriod; label: string }> = [{ value:
 const availableSavings = computed(() => props.savingsLoading || props.savingsError ? null : props.savings);
 const balance = computed(() => [
   { label: 'Batterie-Saldo', value: availableSavings.value ? new Intl.NumberFormat('de-DE', { style: 'currency', currency: availableSavings.value.currency }).format(availableSavings.value.aggregate.netSavings) : '–', hint: 'Vermiedene Bezugskosten abzüglich Ladekosten' },
-  { label: 'Aus PV geladen', value: availableSavings.value ? `${n(availableSavings.value.aggregate.pvChargedEnergyKwh, 2)} kWh` : '–', hint: 'Energie in den Victron-Speicher' },
-  { label: 'Aus Netz geladen', value: availableSavings.value ? `${n(availableSavings.value.aggregate.gridChargedEnergyKwh, 2)} kWh` : '–', hint: 'Netzenergie für den Victron-Speicher' },
-  { label: 'Batterie entladen', value: availableSavings.value ? `${n(availableSavings.value.aggregate.dischargedEnergyKwh, 2)} kWh` : '–', hint: 'Aus dem Victron-Speicher abgegebene Energie' }
+  { label: 'Aus PV geladen', value: availableSavings.value ? `${n(availableSavings.value.aggregate.pvChargedEnergyKwh, 2)} kWh` : '–', hint: 'Energie in beide Speicher' },
+  { label: 'Aus Netz geladen', value: availableSavings.value ? `${n(availableSavings.value.aggregate.gridChargedEnergyKwh, 2)} kWh` : '–', hint: 'Netzenergie für beide Speicher' },
+  { label: 'Batterie entladen', value: availableSavings.value ? `${n(availableSavings.value.aggregate.dischargedEnergyKwh, 2)} kWh` : '–', hint: 'Für den Hausverbrauch wirksame Akkuenergie' }
 ]);
 const chart = (label: string, color: string, points: TrendSeries['points'], fill = false): TrendSeries[] => [{ label, color, points, fill }];
 const firstEstimatedEntry = computed(() => props.forecast?.entries.find(entry => entry.isPriceEstimated));
@@ -117,7 +118,7 @@ onBeforeUnmount(() => { summaryRequest?.abort(); reviewRequest?.abort(); window.
         <header class="work-card-heading"><h2>Zusammenfassung</h2><v-icon icon="mdi-chart-box-outline" size="19" /></header>
         <div class="workspace-tabs" role="group" aria-label="Bilanzzeitraum"><button v-for="option in savingsPeriods" :key="option.value" :aria-pressed="savingsPeriod === option.value" @click="emit('change-savings-period', option.value)">{{ option.label }}</button></div>
         <p v-if="savingsError" class="workspace-error">{{ savingsError }}</p>
-        <div class="balance-values" :aria-busy="savingsLoading"><article v-for="item in balance" :key="item.label"><span>{{ item.label }}</span><strong>{{ savingsLoading ? 'Lädt …' : item.value }}</strong><small>{{ item.hint }}</small></article></div>
+        <BatterySavingsBreakdown :savings="availableSavings" /><div class="balance-values" :aria-busy="savingsLoading"><article v-for="item in balance" :key="item.label"><span>{{ item.label }}</span><strong>{{ savingsLoading ? 'Lädt …' : item.value }}</strong><small>{{ item.hint }}</small></article></div>
         <p class="work-footnote">{{ availableSavings ? `${availableSavings.startDate} – ${availableSavings.endDate}` : 'Noch keine Bilanz verfügbar' }} · Berechnung aus den erfassten Batteriedaten.</p>
       </aside>
       <article class="work-card metric-card"><header class="work-card-heading"><h2>Victron-Batterie</h2><v-icon icon="mdi-battery-medium" /></header><p>{{ live?.batteryPowerWatts == null ? 'Keine Messwerte' : live.batteryPowerWatts > 50 ? 'Lädt' : live.batteryPowerWatts < -50 ? 'Entlädt' : 'Ruhe' }}</p><strong class="work-value">{{ n(live?.batterySocPercent, 0) }} <small>%</small></strong><div class="work-battery-track" role="img" :aria-label="`Victron-Ladezustand ${n(live?.batterySocPercent, 0)} Prozent`"><i :style="{ width: socWidth }" /></div></article>
@@ -136,7 +137,7 @@ onBeforeUnmount(() => { summaryRequest?.abort(); reviewRequest?.abort(); window.
         <article id="dashboard-forecast" class="work-card"><header class="work-card-heading"><div><h2>PV-Ertrag</h2><p>Prognose · {{ n(forecastPv, 2) }} kWh insgesamt</p></div><span class="work-badge work-badge--forecast">PROGNOSE</span></header><EnergyTrendChart :series="pvSeries" unit="kWh/Intervall" label="PV-Ertragsprognose" /></article>
         <article class="work-card"><header class="work-card-heading"><div><h2>Strompreis</h2><p>Veröffentlichte und geschätzte Preise</p></div><span class="work-badge work-badge--forecast">PROGNOSE</span></header><EnergyTrendChart :series="priceSeries" :unit="priceUnit" label="Strompreisprognose" /></article>
         <article class="work-card tile-balance"><header class="work-card-heading"><div><h2>Batterie · Energieverlauf</h2><p>Gemessene Energie pro Stunde · {{ reviewRange }}</p></div><v-icon icon="mdi-chart-areaspline" size="19" /></header><EnergyTrendChart :series="batterySeries" unit="kWh" label="Stündliche Lade- und Entladeenergie des Victron-Speichers" /></article>
-        <article class="work-card tile-summary"><header class="work-card-heading"><h2>Bilanz {{ savingsPeriods.find(p => p.value === savingsPeriod)?.label }}</h2></header><div class="workspace-tabs" role="group" aria-label="Bilanzzeitraum"><button v-for="option in savingsPeriods" :key="option.value" :aria-pressed="savingsPeriod === option.value" @click="emit('change-savings-period', option.value)">{{ option.label }}</button></div><p v-if="savingsError" class="workspace-error">{{ savingsError }}</p><dl class="tile-balance-list"><div v-for="item in balance" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ savingsLoading ? 'Lädt …' : item.value }}</dd></div></dl><p class="work-footnote">Bilanzzeitraum und Analysezeitraum sind unabhängig. Saldo = vermiedene Bezugskosten abzüglich Ladekosten.</p></article>
+        <article class="work-card tile-summary"><header class="work-card-heading"><h2>Bilanz {{ savingsPeriods.find(p => p.value === savingsPeriod)?.label }}</h2></header><div class="workspace-tabs" role="group" aria-label="Bilanzzeitraum"><button v-for="option in savingsPeriods" :key="option.value" :aria-pressed="savingsPeriod === option.value" @click="emit('change-savings-period', option.value)">{{ option.label }}</button></div><p v-if="savingsError" class="workspace-error">{{ savingsError }}</p><BatterySavingsBreakdown :savings="availableSavings" /><dl class="tile-balance-list"><div v-for="item in balance" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ savingsLoading ? 'Lädt …' : item.value }}</dd></div></dl><p class="work-footnote">Bilanzzeitraum und Analysezeitraum sind unabhängig. Saldo = vermiedene Bezugskosten abzüglich Ladekosten.</p></article>
       </div>
       <p class="work-footnote">Live-Messwerte {{ live ? `vom ${stamp(live.measuredAtUtc)}` : 'noch nicht vorhanden' }}. Veraltete Werte sind keine aktuelle Messung. Prognosekurven sind ausdrücklich gekennzeichnet.</p>
     </template>

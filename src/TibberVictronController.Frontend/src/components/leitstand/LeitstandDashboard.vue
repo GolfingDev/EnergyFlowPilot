@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BatterySavingsBreakdown from "../dashboard/BatterySavingsBreakdown.vue";
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { BatterySavingsResponseDto, ControllerStatusResponseDto, DecisionLogEntryResponseDto, ManualChargeStatusResponseDto } from '../dashboard/dashboardTypes';
 import { getDecisionLabel } from '../dashboard/dashboardFormatters';
@@ -594,7 +595,7 @@ onBeforeUnmount(() => {
                 <small>{{ kwh(savings.aggregate.pvChargedEnergyKwh) }} PV statt Einspeisung</small></dd>
             </div>
           </dl>
-          <p class="ls-muted ls-savings__note">Energie, die aus dem Akku ins Netz oder in das E3/DC geflossen ist, zählt nicht als Ersparnis.</p>
+          <BatterySavingsBreakdown :savings="savings" />
         </div>
       </div>
       <div class="ls-panel ls-savings">

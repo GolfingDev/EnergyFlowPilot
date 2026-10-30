@@ -8,6 +8,16 @@ public static class BatterySavingsDtoMapper
     {
         return new BatterySavingsResponseDto
         {
+            Batteries = new[] { "victron", "e3dc" }.Select(id => {
+                var rows = input.DailySummaries.Where(s => s.BatteryId == id).ToArray();
+                return new BatterySavingsBatteryDto {
+                    BatteryId = id, Label = id == "victron" ? "Victron" : "E3/DC",
+                    Aggregate = rows.Length == 0 ? null : MapMetrics(BatterySavingsAggregate.FromDailySummaries(rows)),
+                    FirstRecordedDate = rows.Length == 0 ? null : rows.Min(s => s.AccountingDate),
+                    LastRecordedDate = rows.Length == 0 ? null : rows.Max(s => s.AccountingDate),
+                    MeasuredHours = Math.Round(rows.Sum(s => s.MeasuredSeconds) / 3600m, 2)
+                };
+            }).ToArray(),
             Period = input.Period,
             ReferenceDate = input.ReferenceDate,
             StartDate = input.Query.StartDate,
@@ -26,6 +36,7 @@ public static class BatterySavingsDtoMapper
 
         return new BatterySavingsDailySummaryDto
         {
+            BatteryId = summary.BatteryId,
             AccountingDate = summary.AccountingDate,
             GridChargedEnergyKwh = metrics.GridChargedEnergyKwh,
             GridChargeCost = metrics.GridChargeCost,

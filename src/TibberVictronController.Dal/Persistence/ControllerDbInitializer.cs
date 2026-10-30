@@ -25,9 +25,34 @@ public sealed class ControllerDbInitializer
 
         await dbContext.Database.EnsureCreatedAsync(cancellationToken);
         await EnsureMissingTablesAsync(cancellationToken);
+        await EnsurePerBatterySavingsAsync(cancellationToken);
         await EnsureLiveConsumptionSampleColumnsAsync(cancellationToken);
         await EnsureWeishauptEnergyColumnsAsync(cancellationToken);
         await SeedMissingDefaultSettingsAsync(initializedAtUtc, cancellationToken);
+    }
+
+    // Additive migration: keep the old table intact and import its rows explicitly as Victron-only.
+    private async Task EnsurePerBatterySavingsAsync(CancellationToken token)
+    {
+        await dbContext.Database.ExecuteSqlRawAsync("""
+CREATE TABLE IF NOT EXISTS "BatterySavingsByBattery" (
+    "BatteryId" TEXT NOT NULL,
+    "MeasuredSeconds" TEXT NOT NULL DEFAULT '0',
+    "AccountingDate" TEXT NOT NULL,
+    "Currency" TEXT NOT NULL,
+    "GridChargedEnergyKwh" TEXT NOT NULL,
+    "GridChargeCost" TEXT NOT NULL,
+    "PvChargedEnergyKwh" TEXT NOT NULL,
+    "PvOpportunityCost" TEXT NOT NULL,
+    "DischargedEnergyKwh" TEXT NOT NULL,
+    "DischargeAvoidedCost" TEXT NOT NULL,
+    "NetSavings" TEXT NOT NULL,
+    "UpdatedAtUtc" INTEGER NOT NULL,
+    PRIMARY KEY ("BatteryId", "AccountingDate", "Currency")
+);
+INSERT OR IGNORE INTO "BatterySavingsByBattery" ("BatteryId", "MeasuredSeconds", "AccountingDate", "Currency", "GridChargedEnergyKwh", "GridChargeCost", "PvChargedEnergyKwh", "PvOpportunityCost", "DischargedEnergyKwh", "DischargeAvoidedCost", "NetSavings", "UpdatedAtUtc")
+SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "GridChargeCost", "PvChargedEnergyKwh", "PvOpportunityCost", "DischargedEnergyKwh", "DischargeAvoidedCost", "NetSavings", "UpdatedAtUtc" FROM "BatterySavingsDailySummaries";
+""", token);
     }
 
     private async Task EnsureWeishauptEnergyColumnsAsync(CancellationToken cancellationToken)

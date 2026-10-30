@@ -26,6 +26,7 @@ public sealed class EfBatterySavingsRepository : IBatterySavingsRepository
 
         var existingSummary = await dbContext.BatterySavingsDailySummaries
             .SingleOrDefaultAsync(entity =>
+                entity.BatteryId == summary.BatteryId &&
                 entity.AccountingDate == summary.AccountingDate &&
                 entity.Currency == summary.Currency,
                 cancellationToken);
@@ -50,6 +51,7 @@ public sealed class EfBatterySavingsRepository : IBatterySavingsRepository
 
         return await dbContext.BatterySavingsDailySummaries
             .Where(summary =>
+                (query.BatteryId == null || summary.BatteryId == query.BatteryId) &&
                 summary.Currency == query.Currency &&
                 summary.AccountingDate >= query.StartDate &&
                 summary.AccountingDate <= query.EndDate)
@@ -102,6 +104,8 @@ public sealed class EfBatterySavingsRepository : IBatterySavingsRepository
         BatterySavingsDailySummaryEntity entity,
         BatterySavingsDailySummary summary)
     {
+        entity.BatteryId = summary.BatteryId;
+        entity.MeasuredSeconds = summary.MeasuredSeconds;
         entity.GridChargedEnergyKwh = summary.GridChargedEnergyKwh;
         entity.GridChargeCost = summary.GridChargeCost;
         entity.PvChargedEnergyKwh = summary.PvChargedEnergyKwh;
@@ -128,6 +132,6 @@ public sealed class EfBatterySavingsRepository : IBatterySavingsRepository
             UpdatedAtUtc = entity.UpdatedAtUtc
         };
 
-        return new BatterySavingsDailySummary(values);
+        return new BatterySavingsDailySummary(values) { BatteryId = entity.BatteryId, MeasuredSeconds = entity.MeasuredSeconds };
     }
 }

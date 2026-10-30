@@ -89,6 +89,22 @@ public sealed class SavingsEndpointTests
         Assert.Equal(DateOnly.MaxValue, okResult.Value.EndDate);
     }
 
+    [Fact]
+    public async Task CombinedResponseContainsBothScopesAndMissingDataIsNotZero()
+    {
+        var day = new DateOnly(2026, 5, 3);
+        var primary = CreateDailySummary(day, .25m);
+        var secondary = CreateDailySummary(day, .75m) with { BatteryId = "e3dc", MeasuredSeconds = 3600 };
+        var result = await SavingsEndpoints.GetSavingsAsync("month", day, "EUR",
+            new FakeBatterySavingsRepository([primary, secondary]), new NoopBatterySavingsAccountingService(), CancellationToken.None);
+        var value = Assert.IsType<Ok<BatterySavingsResponseDto>>(result).Value!;
+        Assert.Equal(1m, value.Aggregate.NetSavings);
+        Assert.Equal(.75m, value.Batteries.Single(b => b.BatteryId == "e3dc").Aggregate!.NetSavings);
+        Assert.Equal(1, value.Batteries.Single(b => b.BatteryId == "e3dc").MeasuredHours);
+        var missing = BatterySavingsDtoMapper.Map(new BatterySavingsDtoMappingInput { DailySummaries = [primary] });
+        Assert.Null(missing.Batteries.Single(b => b.BatteryId == "e3dc").Aggregate);
+    }
+
     private static BatterySavingsDailySummary CreateDailySummary(
         DateOnly accountingDate,
         decimal netSavings)

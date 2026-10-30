@@ -115,7 +115,7 @@ public sealed class BatterySavingsAccountingServiceTests
             Currency = "EUR"
         });
 
-        var summary = Assert.Single(savingsRepository.Summaries);
+        var summary = Assert.Single(savingsRepository.Summaries, s => s.BatteryId == "victron");
         Assert.Equal(0.0417m, summary.DischargedEnergyKwh);
         Assert.Equal(0.0125m, summary.DischargeAvoidedCost);
     }
@@ -164,6 +164,35 @@ public sealed class BatterySavingsAccountingServiceTests
             new FakeTibberPriceForecastProvider([CreatePriceSlot(0, 15, 0.30m)]), settings, new FakeUtcClock());
         await service.RefreshAsync(new BatterySavingsQuery { StartDate = new(2026, 6, 4), EndDate = new(2026, 6, 4), Currency = "EUR" });
         Assert.Equal(skipped ? 0 : 1, savings.Summaries.Count);
+    }
+
+    [Theory]
+    [InlineData(-1000, -2000, 0, 0, 0, 0, 3000)]
+    [InlineData(1000, 1000, 2500, 0, 2000, 0, 0)]
+    [InlineData(1000, 1000, 0, 2000, 0, 2000, 0)]
+    [InlineData(0, 1000, 500, 500, 500, 500, 0)]
+    [InlineData(1000, -1000, 0, 0, 0, 0, 0)]
+    [InlineData(-1000, 1000, 0, 0, 0, 0, 0)]
+    [InlineData(-1000, -1000, -500, 0, 0, 0, 1500)]
+    public async Task BothBatteriesShareSiteFlowsWithoutDoubleCounting(int primary, int secondary, int grid, int pv,
+        int gridCharge, int pvCharge, int effectiveDischarge)
+    {
+        var samples = new[] { 0, 5 }.Select(minute => new LiveConsumptionSample(1000, StartsAtUtc.AddMinutes(minute), grid, primary, 50, null) {
+            SupplementaryBatteryPowerWatts = secondary, SupplementaryPvProductionWatts = pv
+        }).ToArray();
+        var repository = new FakeBatterySavingsRepository();
+        var service = CreateService(new FakeLiveConsumptionRepository(samples), repository,
+            new FakeTibberPriceForecastProvider([CreatePriceSlot(0, 15, .30m)]));
+        await service.RefreshAsync(new BatterySavingsQuery { StartDate = new(2026, 6, 4), EndDate = new(2026, 6, 4) });
+        Assert.Equal(2, repository.Summaries.Count);
+        Assert.All(repository.Summaries, row => Assert.Equal(300, row.MeasuredSeconds));
+        var total = BatterySavingsAggregate.FromDailySummaries(repository.Summaries);
+        // Individual daily values are rounded to four decimal places.
+        Assert.InRange(total.GridChargedEnergyKwh, gridCharge / 12000m - .0001m, gridCharge / 12000m + .0001m);
+        Assert.InRange(total.PvChargedEnergyKwh, pvCharge / 12000m - .0001m, pvCharge / 12000m + .0001m);
+        Assert.InRange(total.DischargedEnergyKwh, effectiveDischarge / 12000m - .0001m, effectiveDischarge / 12000m + .0001m);
+        await service.RefreshAsync(new BatterySavingsQuery { StartDate = new(2026, 6, 4), EndDate = new(2026, 6, 4) });
+        Assert.Equal(2, repository.Summaries.Count); // Refresh is an upsert per battery, never an accumulation.
     }
 
     private static BatterySavingsAccountingService CreateService(
@@ -250,6 +279,7 @@ public sealed class BatterySavingsAccountingServiceTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Summaries.RemoveAll(existing =>
+                existing.BatteryId == summary.BatteryId &&
                 existing.AccountingDate == summary.AccountingDate &&
                 existing.Currency == summary.Currency);
             Summaries.Add(summary);

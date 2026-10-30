@@ -41,6 +41,10 @@ public sealed record BatterySavingsDailySummary
         UpdatedAtUtc = values.UpdatedAtUtc;
     }
 
+    public string BatteryId { get; init; } = "victron";
+
+    public decimal MeasuredSeconds { get; init; }
+
     public DateOnly AccountingDate { get; }
 
     public string Currency { get; }

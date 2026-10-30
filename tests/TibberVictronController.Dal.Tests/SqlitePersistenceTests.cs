@@ -18,6 +18,31 @@ public sealed class SqlitePersistenceTests : IDisposable
     }
 
     [Fact]
+    public async Task PerBatteryMigrationPreservesLegacyValuesAndSeparatesUpserts()
+    {
+        await using var db = CreateDbContext();
+        var initializer = new ControllerDbInitializer(db);
+        await initializer.InitializeAsync(SeededAtUtc);
+        await db.Database.ExecuteSqlRawAsync("""
+INSERT INTO "BatterySavingsDailySummaries" VALUES ('2026-05-03', 'EUR', '1', '0.2', '0', '0', '1', '0.5', '0.3', 0);
+""");
+        await initializer.InitializeAsync(SeededAtUtc);
+        var repository = new EfBatterySavingsRepository(db);
+        var query = new BatterySavingsQuery { StartDate = new(2026, 5, 3), EndDate = new(2026, 5, 3), BatteryId = null };
+        var legacy = Assert.Single(await repository.GetDailySummariesAsync(query));
+        Assert.Equal("victron", legacy.BatteryId);
+        Assert.Equal(.3m, legacy.NetSavings);
+        await repository.SaveDailySummaryAsync(CreateSavingsSummary(query.StartDate, .2m, .8m));
+        await repository.SaveDailySummaryAsync(CreateSavingsSummary(query.StartDate, .1m, .5m) with { BatteryId = "e3dc", MeasuredSeconds = 300 });
+        await initializer.InitializeAsync(SeededAtUtc); // Migration must not overwrite newly calculated rows.
+        var rows = await repository.GetDailySummariesAsync(query);
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(1m, BatterySavingsAggregate.FromDailySummaries(rows).NetSavings);
+        Assert.Equal(300, rows.Single(r => r.BatteryId == "e3dc").MeasuredSeconds);
+        Assert.Single(await repository.GetDailySummariesAsync(query with { BatteryId = "victron" }));
+    }
+
+    [Fact]
     public async Task InitializeAsyncCreatesDatabaseAndSeedsDefaultSettings()
     {
         await using var dbContext = CreateDbContext();

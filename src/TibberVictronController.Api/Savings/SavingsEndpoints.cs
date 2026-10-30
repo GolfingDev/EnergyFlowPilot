@@ -111,6 +111,7 @@ public static class SavingsEndpoints
 
         return new BatterySavingsQuery
         {
+            BatteryId = null,
             StartDate = dateRange.StartDate,
             EndDate = dateRange.EndDate,
             Currency = request.Currency

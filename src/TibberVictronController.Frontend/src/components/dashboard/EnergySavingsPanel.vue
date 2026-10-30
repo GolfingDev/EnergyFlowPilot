@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BatterySavingsBreakdown from "./BatterySavingsBreakdown.vue";
 import { computed } from 'vue';
 import type { BatterySavingsResponseDto, SavingsPeriod, SavingsPeriodOption } from './dashboardTypes';
 import { formatNumber } from './dashboardFormatters';
@@ -44,6 +45,7 @@ function barPct(value: number): string {
       </div>
     </div>
 
+    <BatterySavingsBreakdown :savings="loading ? null : savings" />
     <div :class="['energy-bars', { 'energy-bars--loading': loading }]">
       <template v-if="loading || savings">
         <div class="energy-bar-row">

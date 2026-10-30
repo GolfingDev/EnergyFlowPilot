@@ -95,7 +95,19 @@ export interface BatterySavingsMetricsDto {
   averageDischargePricePerKwh: number | null;
 }
 
+export interface BatterySavingsBatteryDto {
+  batteryId: string;
+  label: string;
+  aggregate: BatterySavingsMetricsDto | null;
+  firstRecordedDate: string | null;
+  lastRecordedDate: string | null;
+  measuredHours: number;
+}
+
 export interface BatterySavingsResponseDto {
+  scope?: string;
+  batteries?: BatterySavingsBatteryDto[];
+  coverageNote?: string;
   period: string;
   startDate: string;
   endDate: string;

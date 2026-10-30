@@ -2,6 +2,10 @@ namespace TibberVictronController.Dal.Entities;
 
 public sealed class BatterySavingsDailySummaryEntity
 {
+    public string BatteryId { get; set; } = "victron";
+
+    public decimal MeasuredSeconds { get; set; }
+
     public DateOnly AccountingDate { get; set; }
 
     public string Currency { get; set; } = string.Empty;

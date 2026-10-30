@@ -5,6 +5,9 @@ namespace TibberVictronController.Business.Models;
 /// </summary>
 public sealed record BatterySavingsQuery
 {
+    /// <summary>Null selects both batteries; old callers retain the Victron scope.</summary>
+    public string? BatteryId { get; init; } = "victron";
+
     public DateOnly StartDate { get; init; }
 
     public DateOnly EndDate { get; init; }

@@ -72,21 +72,22 @@ public sealed class BatterySavingsAccountingService : IBatterySavingsAccountingS
         }
 
         var feedInCompensationPricePerKwh = await GetFeedInCompensationPricePerKwhAsync(cancellationToken);
-        var movements = CreateMovements(samples, relevantPrices, feedInCompensationPricePerKwh, query.Currency);
-        var summaries = calculator.CalculateDailySummaries(movements, new BatterySavingsCalculationOptions
+        foreach (var batteryId in new[] { "victron", "e3dc" })
         {
-            ReportingTimeZone = reportingTimeZone,
-            UpdatedAtUtc = utcClock.UtcNow
-        });
-
-        foreach (var summary in summaries)
-        {
-            if (summary.AccountingDate < query.StartDate || summary.AccountingDate > query.EndDate)
+            var movements = CreateMovements(samples, relevantPrices, feedInCompensationPricePerKwh, query.Currency, batteryId);
+            var summaries = calculator.CalculateDailySummaries(movements, new BatterySavingsCalculationOptions
             {
-                continue;
+                ReportingTimeZone = reportingTimeZone,
+                UpdatedAtUtc = utcClock.UtcNow
+            });
+            foreach (var summary in summaries)
+            {
+                if (summary.AccountingDate < query.StartDate || summary.AccountingDate > query.EndDate) continue;
+                var seconds = movements.Select(m => m.TimeSlot).Distinct()
+                    .Where(t => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(t.StartsAtUtc, reportingTimeZone).DateTime) == summary.AccountingDate)
+                    .Sum(t => (decimal)t.Duration.TotalSeconds);
+                await batterySavingsRepository.SaveDailySummaryAsync(summary with { BatteryId = batteryId, MeasuredSeconds = seconds }, cancellationToken);
             }
-
-            await batterySavingsRepository.SaveDailySummaryAsync(summary, cancellationToken);
         }
     }
 
@@ -121,7 +122,7 @@ public sealed class BatterySavingsAccountingService : IBatterySavingsAccountingS
         IReadOnlyList<LiveConsumptionSample> samples,
         IReadOnlyList<TibberPriceForecastSlot> prices,
         decimal feedInCompensationPricePerKwh,
-        string currency)
+        string currency, string batteryId = "victron")
     {
         var orderedSamples = samples
             .OrderBy(sample => sample.MeasuredAtUtc)
@@ -139,6 +140,20 @@ public sealed class BatterySavingsAccountingService : IBatterySavingsAccountingS
                 continue;
             }
 
+            var jointPrice = FindPrice(prices, previous.MeasuredAtUtc.AddTicks(duration.Ticks / 2));
+            if (jointPrice is not null && !jointPrice.IsEstimated &&
+                TryJointFlows(previous, current, out var flows))
+            {
+                var offset = batteryId == "victron" ? 0 : 3;
+                var time = new ForecastTimeSlot(previous.MeasuredAtUtc, current.MeasuredAtUtc);
+                // A zero movement records observed idle intervals, distinct from missing E3/DC history.
+                movements.Add(CreateMovement(time, BatteryDecisionState.Discharge, null, flows[offset + 2],
+                    jointPrice.TotalPricePerKwh, currency, feedInCompensationPricePerKwh));
+                AddChargeMovementIfRelevant(movements, time, BatteryChargeSource.Grid, flows[offset], jointPrice.TotalPricePerKwh, currency, feedInCompensationPricePerKwh);
+                AddChargeMovementIfRelevant(movements, time, BatteryChargeSource.PV, flows[offset + 1], jointPrice.TotalPricePerKwh, currency, feedInCompensationPricePerKwh);
+                continue;
+            }
+            if (batteryId == "e3dc") continue; // Never turn missing supplementary telemetry into zero energy.
             if (previous.BatteryPowerWatts is null || current.BatteryPowerWatts is null)
             {
                 continue;
@@ -159,7 +174,7 @@ public sealed class BatterySavingsAccountingService : IBatterySavingsAccountingS
             }
 
             var price = FindPrice(prices, previous.MeasuredAtUtc.AddTicks(duration.Ticks / 2));
-            if (price is null)
+            if (price is null || price.IsEstimated)
             {
                 continue;
             }
@@ -207,6 +222,38 @@ public sealed class BatterySavingsAccountingService : IBatterySavingsAccountingS
         }
 
         return movements;
+    }
+
+    /// <summary>
+    /// Split simultaneous measured flows once at site level. Own E3/DC PV charges its battery first;
+    /// transfers are excluded on both sides, grid charging and export are apportioned, never counted twice.
+    /// </summary>
+    private static bool TryJointFlows(LiveConsumptionSample previous, LiveConsumptionSample current, out decimal[] flows)
+    {
+        flows = new decimal[6];
+        if (previous.BatteryPowerWatts is not { } p0 || current.BatteryPowerWatts is not { } p1 ||
+            previous.SupplementaryBatteryPowerWatts is not { } s0 || current.SupplementaryBatteryPowerWatts is not { } s1 ||
+            previous.GridPowerWatts is not { } g0 || current.GridPowerWatts is not { } g1 ||
+            previous.SupplementaryPvProductionWatts is not { } pv0 || current.SupplementaryPvProductionWatts is not { } pv1 ||
+            p0 * p1 < 0 || s0 * s1 < 0) return false;
+        var p = (p0 + p1) / 2; var s = (s0 + s1) / 2;
+        var grid = (g0 + g1) / 2; var ownPv = Math.Max(0, (pv0 + pv1) / 2);
+        var pc = Math.Max(0, p); var sc = Math.Max(0, s);
+        var pd = Math.Max(0, -p); var sd = Math.Max(0, -s);
+        var directPv = Math.Min(sc, ownPv);
+        var transferToSecondary = Math.Min(pd, sc - directPv);
+        var transferToPrimary = Math.Min(sd, pc);
+        pc -= transferToPrimary; sc -= transferToSecondary;
+        pd -= transferToSecondary; sd -= transferToPrimary;
+        var externalCharge = pc + sc - directPv;
+        var gridCharge = Math.Min(externalCharge, Math.Max(0, grid));
+        var pg = externalCharge > 0 ? gridCharge * pc / externalCharge : 0;
+        var sg = gridCharge - pg;
+        var discharge = pd + sd;
+        var delivered = Math.Max(0, discharge - Math.Max(0, -grid));
+        flows = [pg, pc - pg, discharge > 0 ? delivered * pd / discharge : 0,
+                 sg, sc - sg, discharge > 0 ? delivered * sd / discharge : 0];
+        return true;
     }
 
     /// <summary>

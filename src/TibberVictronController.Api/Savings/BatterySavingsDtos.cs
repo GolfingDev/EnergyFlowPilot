@@ -2,6 +2,12 @@ namespace TibberVictronController.Api.Savings;
 
 public sealed class BatterySavingsResponseDto
 {
+    public string Scope { get; init; } = "both";
+
+    public IReadOnlyList<BatterySavingsBatteryDto> Batteries { get; init; } = [];
+
+    public string CoverageNote { get; init; } = "Summe der erfassten Werte beider Speicher. Fehlende Messzeiten werden nicht hochgerechnet; historische E3/DC-Werte sind nur bei vorhandenen Messdaten und Preisen enthalten.";
+
     public string Period { get; init; } = string.Empty;
 
     public DateOnly? ReferenceDate { get; init; }
@@ -42,10 +48,22 @@ public class BatterySavingsMetricsDto
 
 public sealed class BatterySavingsDailySummaryDto : BatterySavingsMetricsDto
 {
+    public string BatteryId { get; init; } = "victron";
+
     public DateOnly AccountingDate { get; init; }
 }
 
 public sealed class BatterySavingsErrorDto
 {
     public string Message { get; init; } = string.Empty;
+}
+
+public sealed class BatterySavingsBatteryDto
+{
+    public string BatteryId { get; init; } = "";
+    public string Label { get; init; } = "";
+    public BatterySavingsMetricsDto? Aggregate { get; init; }
+    public DateOnly? FirstRecordedDate { get; init; }
+    public DateOnly? LastRecordedDate { get; init; }
+    public decimal MeasuredHours { get; init; }
 }

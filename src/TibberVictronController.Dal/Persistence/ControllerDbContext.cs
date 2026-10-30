@@ -134,8 +134,8 @@ public sealed class ControllerDbContext : DbContext
     {
         modelBuilder.Entity<BatterySavingsDailySummaryEntity>(entity =>
         {
-            entity.ToTable("BatterySavingsDailySummaries");
-            entity.HasKey(summary => new { summary.AccountingDate, summary.Currency });
+            entity.ToTable("BatterySavingsByBattery");
+            entity.HasKey(summary => new { summary.BatteryId, summary.AccountingDate, summary.Currency });
             entity.Property(summary => summary.AccountingDate)
                 .HasConversion(DateOnlyToIsoDateConverter)
                 .HasMaxLength(10);
