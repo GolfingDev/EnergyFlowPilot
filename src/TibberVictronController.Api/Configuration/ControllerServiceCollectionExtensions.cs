@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using TibberVictronController.Api.JointBattery;
 using TibberVictronController.Dal.E3dc;
+using TibberVictronController.Dal.Ocpp;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
 using TibberVictronController.Business.Dashboard;
@@ -98,6 +99,9 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IBatterySavingsRepository, EfBatterySavingsRepository>();
         services.AddScoped<IBatterySavingsAccountingService, BatterySavingsAccountingService>();
         services.AddScoped<IOperationalEventRepository, EfOperationalEventRepository>();
+        services.AddScoped<IEvChargingSessionRepository, EfEvChargingSessionRepository>();
+        services.AddSingleton<EvChargerStatusStore>();
+        services.AddSingleton<IEvChargerStatusSource>(provider => provider.GetRequiredService<EvChargerStatusStore>());
         services.AddScoped<ILiveConsumptionRepository, EfLiveConsumptionRepository>();
         services.AddScoped<IHomematicClimateRepository, EfHomematicClimateRepository>();
         services.AddScoped<IWeishauptBiblockTelemetryRepository, EfWeishauptBiblockTelemetryRepository>();

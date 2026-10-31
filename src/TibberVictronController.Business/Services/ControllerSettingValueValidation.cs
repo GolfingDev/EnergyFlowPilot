@@ -20,6 +20,12 @@ internal static class ControllerSettingValueValidation
                 or ControllerSettingDefaults.E3dcRespectReportedLimitsKey &&
             !bool.TryParse(value, out _))
             throw new ArgumentException("Der Schalter fuer lokalen E3/DC-Zugriff oder gemeinsame Vorschau muss true oder false sein.");
+        if (key == ControllerSettingDefaults.EvOcppEnabledKey && !bool.TryParse(value, out _))
+            throw new ArgumentException("Der Schalter fuer die Wallbox-Anbindung muss true oder false sein.");
+        // The id becomes part of the WebSocket URL; restricting it keeps logs and URLs unambiguous.
+        if (key == ControllerSettingDefaults.EvOcppChargePointIdKey && (string.IsNullOrWhiteSpace(value) || value.Length > 64 ||
+            value.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_' or '.' or ':'))))
+            throw new ArgumentException("Die Ladepunkt-ID darf nur Buchstaben, Ziffern sowie - _ . : enthalten und hoechstens 64 Zeichen lang sein.");
         if (key == ControllerSettingDefaults.E3dcRscpKeyKey && value is not null && System.Text.Encoding.UTF8.GetByteCount(value) > 32)
             throw new ArgumentException("Der RSCP-Schluessel darf maximal 32 UTF-8-Bytes enthalten.");
         // Cross-field relationships belong to the complete configuration/draft. The settings API

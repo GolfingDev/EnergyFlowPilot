@@ -90,7 +90,7 @@ const sectionDefinitions: SectionDefinition[] = [
   { key: 'battery', title: 'Batteriegrenzen', description: 'Planungsreserve, Ladeziel und Leistungsgrenzen. Technische Batteriedaten nur im erweiterten Modus.' },
   { key: 'heating', title: 'Warmwasser', description: 'Eigene Preis- und PV-Steuerung der Warmwasseranhebung, unabhängig von der Akku-Schwelle.' },
   { key: 'forecast', title: 'Stromtarif & Prognosen', description: 'Einrichtung von Stromanbieter, Zugangsdaten, PV-Anlage und Verbrauchsmodell.' },
-  { key: 'sources', title: 'Verbindungen', description: 'Einmalige Einrichtung von Victron, Hager, Homematic und Wärmepumpe.' },
+  { key: 'sources', title: 'Verbindungen', description: 'Einmalige Einrichtung von Victron, Hager, Homematic, Wärmepumpe und Wallbox.' },
   { key: 'operations', title: 'Betrieb & Diagnose', description: 'Simulationsmodus, Aktualisierung, Aufbewahrung und Benachrichtigungen.' },
   { key: 'advanced', title: 'Technische Details', description: 'MQTT-Topics, OAuth-Endpunkte, SMTP und technische Sonderwerte.' }
 ];
@@ -102,6 +102,8 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'e3dc.rscp.user', section: 'sources', subgroup: 'Lokaler E3/DC-Zugang', category: 'critical' },
   { key: 'e3dc.rscp.password', section: 'sources', subgroup: 'Lokaler E3/DC-Zugang', category: 'critical' },
   { key: 'e3dc.rscp.key', section: 'sources', subgroup: 'Lokaler E3/DC-Zugang', category: 'critical' },
+  { key: 'ev.ocpp.enabled', section: 'sources', subgroup: 'Wallbox (OCPP)', category: 'important' },
+  { key: 'ev.ocpp.chargePointId', section: 'sources', subgroup: 'Wallbox (OCPP)', category: 'important' },
   { key: 'jointBattery.shadowEnabled', section: 'control', subgroup: 'Gemeinsame Akku-Vorschau', category: 'important' },
   { key: 'jointBattery.executionEnabled', section: 'control', subgroup: 'Gemeinsame Akkusteuerung', category: 'critical' },
   { key: 'jointBattery.phase1MaximumImportWatts', section: 'control', subgroup: 'Anschlussgrenzen', category: 'critical' },

@@ -3,6 +3,7 @@ using TibberVictronController.Api.Configuration;
 using TibberVictronController.Api.Dashboard;
 using TibberVictronController.Api.Decision;
 using TibberVictronController.Api.Diagnostics;
+using TibberVictronController.Api.EvCharging;
 using TibberVictronController.Api.Forecast;
 using TibberVictronController.Api.HagerEnergy;
 using TibberVictronController.Api.Health;
@@ -20,6 +21,7 @@ var builder = WebApplication.CreateBuilder(args.Where(argument => argument != "-
 builder.Services.Configure<FileExceptionLogOptions>(builder.Configuration.GetSection("FileExceptionLogging"));
 builder.Services.AddControllerApplication(builder.Configuration);
 builder.Services.AddControllerAuthentication(builder.Configuration);
+builder.AddOcppListener();
 
 var app = builder.Build();
 if (args.Contains("--joint-stop", StringComparer.Ordinal))
@@ -34,6 +36,7 @@ app.UseFileExceptionLogging();
 
 await InitializeDatabaseAsync(app);
 
+app.UseOcppPortIsolation();
 app.UseControllerAuthentication();
 app.MapAuthEndpoints();
 app.MapHealthEndpoints();
@@ -52,6 +55,8 @@ app.MapWeishauptEnergyEndpoints();
 app.MapDashboardTelemetryEndpoints();
 app.MapDashboardSummaryEndpoints();
 app.MapDashboardHub();
+app.MapOcppEndpoints();
+app.MapEvChargingEndpoints();
 
 app.Run();
 

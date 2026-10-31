@@ -14,6 +14,7 @@ import LiveEnergyFlowPanel from '../components/dashboard/LiveEnergyFlowPanel.vue
 import SchematicEnergyFlowPanel from '../components/dashboard/SchematicEnergyFlowPanel.vue';
 import E3dcSupplementPanel from '../components/dashboard/E3dcSupplementPanel.vue';
 import JointBatteryShadowPanel from '../components/dashboard/JointBatteryShadowPanel.vue';
+import EvChargerPanel from '../components/dashboard/EvChargerPanel.vue';
 import { jointBatteryUiKey } from '../components/dashboard/jointBatteryUi';
 import type { JointBatteryShadowDto } from '../components/dashboard/dashboardTypes';
 import { isAdmin } from '../auth';
@@ -1635,6 +1636,9 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </template>
+
+    <!-- Self-loading and hidden while the wallbox connection is switched off, so every layout can show it. -->
+    <EvChargerPanel class="mt-4" />
   </v-container>
 </template>
 

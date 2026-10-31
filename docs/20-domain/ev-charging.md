@@ -1,6 +1,6 @@
 # EV Charging (Charge Amps Halo, BMW i4)
 
-Status: requirements and staged plan, agreed with the operator on 2026-10-31. Nothing implemented yet.
+Status: requirements and staged plan agreed with the operator on 2026-10-31. Stage 1 (OCPP, read-only) implemented.
 
 ## Goal
 
@@ -42,6 +42,21 @@ Each stage is deployable and testable on its own.
 3. **Destinations and trips.** Destinations by address (geocoding and routing via OpenStreetMap services, editable distance); one-off and weekly recurring trips; car parameters (usable capacity, consumption, arrival reserve, base state of charge). Shows the required state of charge per upcoming departure.
 4. **Charging plan and control.** Quarter-hour charging plan per rules 2 and 3; current set via OCPP SetChargingProfile (0 A pauses); planned load fed into the joint battery plan; fallback per rule 1. Requires a hardware test whether this Halo firmware accepts charging profiles during a running transaction.
 5. **Calendar.** Trips derived from calendar appointments with a location; calendar source to be decided.
+
+## Stage 1 implementation (OCPP central system)
+
+- **Listener:** separate Kestrel port `EvCharging:OcppListenPort` (default 8887, `appsettings.json`; 0 disables it), bound to `0.0.0.0` next to the regular nginx listener. Tailscale Funnel only publishes port 80, so the port is not public. A middleware isolates the two ports: the OCPP port serves only `/ocpp/...`, and `/ocpp` is refused on the regular port (and thus through nginx and Funnel).
+- **Admission:** `ev.ocpp.enabled` must be true and the charge point id (last URL segment) must equal `ev.ocpp.chargePointId`. Rejected attempts are logged and shown on the dashboard (admin only) with the id, so the operator can copy it into the settings. Subprotocol `ocpp1.6`.
+- **Messages:** BootNotification (Accepted, heartbeat 60 s), Heartbeat, StatusNotification, Authorize (every id tag accepted: stage 1 never blocks charging), Start/StopTransaction, MeterValues, DataTransfer (UnknownVendorId), firmware/diagnostics notifications. Other actions get `NotImplemented`; schema violations get `FormationViolation`; processing errors get `InternalError` so the wallbox retries.
+- **Writes to the wallbox (metering only):** after the first message, `GetConfiguration`; if needed `ChangeConfiguration` of `MeterValueSampleInterval` (10 s) and `MeterValuesSampledData` (energy, power, phase currents, with a fallback list); then `TriggerMessage` for the current status and meter values. No charging profile, no remote start or stop.
+- **Data:** sessions in table `EvChargingSessions` (AUTOINCREMENT transaction ids, duplicate starts deduplicated, a start on a connector closes a session whose stop was lost). The meter reading is persisted at most once a minute; live values (status, power, phase currents, session energy) live in memory. Power is derived from the energy register when the wallbox does not report it. Implausible wallbox timestamps (more than one day off) are replaced by the receive time.
+- **Dashboard:** wallbox card (hidden while `ev.ocpp.enabled` is false) with state, power, session energy, phase currents, last five sessions; for admins also the backend addresses of the Pi and the wallbox configuration (keys containing passwords, secrets, tokens or the authorization key are hidden). API: `GET /api/ev-charging/status`.
+
+### Setup
+
+1. Settings → Verbindungen → Wallbox (OCPP): switch on. The dashboard card then shows the backend address of the Pi, e.g. `ws://192.168.x.y:8887/ocpp/`.
+2. Halo: connect to its hotspot `HALO_<serial>` (password from the letter supplied with the Halo), open `192.168.250.1`, OCPP settings → backend URL from step 1. Check the firmware version (158 or newer).
+3. The Halo connects and is rejected at first; the card shows its id. Enter that id in the setting "Ladepunkt-ID der Wallbox". The Halo retries by itself and is then accepted.
 
 ## Open points
 

@@ -32,6 +32,10 @@ public static class ControllerSettingDefaults
     // false: request up to the E3/DC system limit and use what the device grants; true: never request more than
     // its reported effective limit (EMS_USED_CHARGE/DISCHARGE_LIMIT, e.g. 97 W at the reserve).
     public const string E3dcRespectReportedLimitsKey = "jointBattery.e3dc.respectReportedLimits";
+    public const string EvOcppEnabledKey = "ev.ocpp.enabled";
+    public const string EvOcppChargePointIdKey = "ev.ocpp.chargePointId";
+    // Normal settings need a non-empty value; this marker means "no wallbox accepted yet".
+    public const string EvOcppChargePointNotConfigured = "not-configured";
     public const string WeishauptHotWaterEnabledKey = "weishauptHotWater.enabled";
     public const string WeishauptHotWaterCheapPriceKey = "weishauptHotWater.cheapPricePerKwh";
     public const string WeishauptHotWaterPvSurplusKey = "weishauptHotWater.pvSurplusWatts";
@@ -180,6 +184,8 @@ public static class ControllerSettingDefaults
         new(E3dcPlanningMaximumSocKey, "95", ControllerSettingSensitivity.Normal),
         new(E3dcEfficiencyKey, "90", ControllerSettingSensitivity.Normal),
         new(E3dcRespectReportedLimitsKey, "false", ControllerSettingSensitivity.Normal),
+        new(EvOcppEnabledKey, "false", ControllerSettingSensitivity.Normal),
+        new(EvOcppChargePointIdKey, EvOcppChargePointNotConfigured, ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterCheapPriceKey, "0.20", ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterPvSurplusKey, "2000", ControllerSettingSensitivity.Normal),

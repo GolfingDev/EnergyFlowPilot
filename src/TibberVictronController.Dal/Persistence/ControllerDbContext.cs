@@ -40,6 +40,8 @@ public sealed class ControllerDbContext : DbContext
 
     public DbSet<ConsumptionDailySummaryEntity> ConsumptionDailySummaries => Set<ConsumptionDailySummaryEntity>();
 
+    public DbSet<EvChargingSessionEntity> EvChargingSessions => Set<EvChargingSessionEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureControllerSettings(modelBuilder);
@@ -52,6 +54,25 @@ public sealed class ControllerDbContext : DbContext
         ConfigureWeishauptBiblockTelemetrySamples(modelBuilder);
         modelBuilder.Entity<WeishauptHotWaterControlStateEntity>().ToTable("WeishauptHotWaterControlStates");
         ConfigureConsumptionDailySummaries(modelBuilder);
+        ConfigureEvChargingSessions(modelBuilder);
+    }
+
+    private static void ConfigureEvChargingSessions(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<EvChargingSessionEntity>(entity =>
+        {
+            entity.ToTable("EvChargingSessions");
+            entity.HasKey(session => session.TransactionId);
+            // AUTOINCREMENT: OCPP transaction ids must never be handed out twice, even after deleting rows.
+            entity.Property(session => session.TransactionId).ValueGeneratedOnAdd();
+            entity.Property(session => session.ChargePointId).HasMaxLength(64);
+            entity.Property(session => session.IdTag).HasMaxLength(64);
+            entity.Property(session => session.StopReason).HasMaxLength(64);
+            entity.Property(session => session.StartedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(session => session.StoppedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(session => session.LastMeterAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.HasIndex(session => session.StartedAtUtc);
+        });
     }
 
     private static void ConfigureConsumptionDailySummaries(ModelBuilder modelBuilder)
