@@ -64,6 +64,16 @@ Anforderung: `docs/20-domain/battery-decision-engine.md`, Abschnitt „Gemeinsam
 5. Implementiert: Dashboard fuer beide Speicher, gemeinsame Projektion fuer bestehenden Forecast und Live-Entscheidung, getrennte Betriebsereignisse fuer Planung und Ausfuehrung.
 6. Offen vor Aktivierung: bestaetigte elektrische Anschlussgrenzen, Deployment auf dem Raspberry Pi und kontrollierte Hardwareabnahme inklusive PV-/Entlademodus, Kommunikationsverlust, Prozessabbruch und Neustart. Default bleibt deaktiviert. Ein vollstaendiger Netzwerkverlust ist nicht als physisch abgesichert nachgewiesen.
 
+## EV charging (Charge Amps Halo, BMW i4)
+
+Requirement: `docs/20-domain/ev-charging.md`.
+
+1. Open: OCPP 1.6J central system, read-only (LAN-only endpoint, sessions and meter values, dashboard card).
+2. Open: BMW CarData read access (device-code sign-in, encrypted tokens, MQTT stream for state of charge).
+3. Open: destinations and trips (address with OpenStreetMap distance, recurring trips, car parameters, required state of charge per departure).
+4. Open: charging plan and control (quarter-hour plan, SetChargingProfile, planned load in the joint battery plan, full-power fallback when data is missing and a trip is due).
+5. Open: calendar integration.
+
 ## Rule
 
 Backlog items should remain small enough to implement and verify in one focused step.
