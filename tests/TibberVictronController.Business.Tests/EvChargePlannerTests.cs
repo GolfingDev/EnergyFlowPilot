@@ -50,7 +50,8 @@ public sealed class EvChargePlannerTests
     [Fact]
     public void BaseStateOfChargeIsReachedEvenWhenNotCheap()
     {
-        var plan = EvChargePlanner.Plan(Input(Slots(16, index => index < 8 ? 0.35 : 0.30), [], currentSoc: 40) with { BaseSocPercent = 50, FutureValuePerKwh = 0.10 });
+        // A full day of prices: the base state of charge has to be reached within it.
+        var plan = EvChargePlanner.Plan(Input(Slots(96, index => index < 8 ? 0.35 : 0.30), [], currentSoc: 40) with { BaseSocPercent = 50, FutureValuePerKwh = 0.10 });
 
         // 40 % -> 50 % = 8.1 kWh in the battery = 9 kWh at the wallbox, in the cheaper second half.
         // The 1 kWh state grid may leave a few watt hours short of exactly 50 %.
@@ -78,7 +79,7 @@ public sealed class EvChargePlannerTests
     [Fact]
     public void NoChargingWhileTheCarIsAway()
     {
-        var slots = Slots(48, index => index is >= 8 and < 16 ? 0.01 : 0.20);
+        var slots = Slots(96, index => index is >= 8 and < 16 ? 0.01 : 0.20);
         // Away from 13:00 to 17:00 UTC exactly over the cheapest quarter hours.
         var trip = Requirement(Now.AddHours(1), energyKwh: 8.1, returnAt: Now.AddHours(5));
 
@@ -98,6 +99,27 @@ public sealed class EvChargePlannerTests
 
         Assert.All(plan.Slots, slot => Assert.True(slot.PowerWatts >= EvChargePlanner.MinimumChargePowerWatts - 1));
         Assert.NotEmpty(plan.Slots);
+    }
+
+    [Fact]
+    public void UnknownStateOfChargePlansOnlyTrips()
+    {
+        var slots = Slots(96, index => index < 8 ? 0.05 : 0.30);
+        var input = new EvChargePlanInput(Now, null, null, Car, 50, 0.08, slots, []) { FutureValuePerKwh = 0.20 };
+
+        var plan = EvChargePlanner.Plan(input);
+
+        Assert.Empty(plan.Slots);
+        Assert.Contains(plan.Warnings, warning => warning.Contains("nur Fahrten"));
+    }
+
+    [Fact]
+    public void BaseStateOfChargeWaitsForPricesThatAreNotPublishedYet()
+    {
+        // Only four hours of prices known: the base state of charge can still be reached tomorrow night.
+        var plan = EvChargePlanner.Plan(Input(Slots(16, _ => 0.30), [], currentSoc: 40) with { BaseSocPercent = 50, FutureValuePerKwh = 0.10 });
+
+        Assert.Empty(plan.Slots);
     }
 
     [Fact]

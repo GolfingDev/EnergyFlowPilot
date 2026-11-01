@@ -85,6 +85,8 @@ public static class EvChargePlanner
     private const double BaseShortfallPenaltyPerKwh = 1;
     private const double EstimatedPriceHurdlePerKwh = 0.02;
     private const double FutureValueShare = 0.85;
+    // The base state of charge should be reached within a day, not necessarily before the published prices end.
+    private static readonly TimeSpan BaseSocDeadline = TimeSpan.FromHours(24);
     private static readonly (string Name, double Factor)[] ScenarioFactors = [("wenig PV", 0.5), ("erwartete PV", 1.0), ("viel PV", 1.3)];
 
     public static EvChargePlan Plan(EvChargePlanInput input)
@@ -93,7 +95,11 @@ public static class EvChargePlanner
         var efficiency = EvTripSocPlanner.ChargeEfficiency;
         var warnings = new List<string>();
         var slots = input.Slots.Where(slot => slot.EndsAtUtc > input.NowUtc).OrderBy(slot => slot.StartsAtUtc).ToArray();
-        if (input.CurrentSocPercent is null) warnings.Add("Ladestand des Autos unbekannt; geplant wird ab dem Mindest-Ladestand.");
+        // Without the car's state of charge, filling up "on suspicion" could charge a full car; only trips are planned,
+        // cautiously from the minimum state of charge.
+        var socKnown = input.CurrentSocPercent is not null;
+        if (!socKnown)
+            warnings.Add("Ladestand des Autos unbekannt: eingeplant werden nur Fahrten (vorsichtig ab dem Mindest-Ladestand), kein Auffüllen.");
         if (slots.Length == 0)
         {
             warnings.Add("Keine Preise und kein Akkuplan vorhanden; ein Ladeplan ist erst damit möglich.");
@@ -103,12 +109,16 @@ public static class EvChargePlanner
         var capacity = car.UsableCapacityKwh;
         var limit = Math.Min(input.CarTargetSocPercent ?? 100, 100) / 100d * capacity;
         var reserve = car.MinimumSocPercent / 100d * capacity;
-        var baseEnergy = Math.Min(input.BaseSocPercent / 100d * capacity, limit);
+        var baseEnergy = socKnown ? Math.Min(input.BaseSocPercent / 100d * capacity, limit) : 0;
         var start = Math.Clamp((input.CurrentSocPercent ?? car.MinimumSocPercent) / 100d * capacity, 0, capacity);
         var hours = slots.Select(slot => AvailableHours(slot, input.NowUtc, input.Trips)).ToArray();
         var departures = Departures(slots, input.Trips);
         var horizonEnd = slots[^1].EndsAtUtc;
-        var futureValue = (input.FutureValuePerKwh ?? Median(slots.Select(slot => slot.PricePerKwh)) * FutureValueShare) / efficiency;
+        var futureValue = socKnown ? (input.FutureValuePerKwh ?? Median(slots.Select(slot => slot.PricePerKwh)) * FutureValueShare) / efficiency : 0;
+        // What full power could charge between the end of the known prices and the base deadline may wait for those
+        // prices (half of it, for safety), so a cheap night tomorrow can still be used.
+        var baseDeferable = Math.Max(0, (input.NowUtc + BaseSocDeadline - horizonEnd).TotalHours) * car.ChargePowerWatts / 1000d * efficiency * 0.5;
+        var baseTarget = Math.Max(0, baseEnergy - baseDeferable);
         var terminalTarget = TerminalTripTarget(input.Trips, horizonEnd, capacity, car, efficiency);
 
         // Energy states: 1 kWh steps up to the car's limit plus the exact current, reserve and base values.
@@ -119,7 +129,7 @@ public static class EvChargePlanner
 
         double Terminal(double energy) =>
             -futureValue * Math.Min(energy, limit)
-            + BaseShortfallPenaltyPerKwh * Math.Max(0, baseEnergy - energy)
+            + BaseShortfallPenaltyPerKwh * Math.Max(0, baseTarget - energy)
             + TripShortfallPenaltyPerKwh * Math.Max(0, terminalTarget - energy);
 
         // Cost of w kWh at the wallbox in slot i: the sources are used in order of their price (the home battery's PV
@@ -196,7 +206,7 @@ public static class EvChargePlanner
 
         if (terminalTarget - current > 0.1)
             warnings.Add($"Für die nächste Fahrt nach dem Planungszeitraum fehlen voraussichtlich {terminalTarget - current:0.0} kWh.");
-        if (baseEnergy - current > 0.1 && departures.Count == 0 && terminalTarget <= 0)
+        if (baseTarget - current > 0.1 && departures.Count == 0 && terminalTarget <= 0)
             warnings.Add("Der Grund-Ladestand ist im Planungszeitraum nicht ganz erreichbar.");
 
         // Why a quarter hour charges: for a departure if the car leaves with little more than it needs (one current step
