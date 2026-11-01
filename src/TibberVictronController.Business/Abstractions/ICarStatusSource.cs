@@ -8,4 +8,6 @@ public interface ICarStatusSource
     CarSnapshot Car { get; }
 
     CarDataConnectionState Connection { get; }
+
+    CarStreamDiagnostics Stream { get; }
 }

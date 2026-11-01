@@ -74,7 +74,7 @@ Requirement: `docs/20-domain/ev-charging.md`.
 4. Charging plan and control:
    - 4a Implemented: quarter-hour charging plan (trips, PV surplus from the joint plan, base state of charge), preview on the car page.
    - 4b Implemented: time-limited SetChargingProfile/ClearChargingProfile with hardware test buttons. Open: hardware test on the Halo.
-   - 4c Open: automatic control following the plan, live PV surplus, full-power fallback when data is missing and a trip is due; master switch, default off.
+   - 4c Implemented: automatic control (plan, live PV surplus with grid allowance, cheap-price charging beyond trips, full-power fallback), master switch default off. Open: activation after the hardware test.
    - 4d Open: planned car load in the joint battery plan; subtract wallbox energy from the house consumption history.
 5. Implemented: calendar integration (Microsoft Graph application permission, places from location field or unambiguous subject patterns, automatic trips that can be hidden). Open: acceptance test with the real calendar, Exchange restriction to one mailbox.
 

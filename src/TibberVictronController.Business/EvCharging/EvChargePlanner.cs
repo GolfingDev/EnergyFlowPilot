@@ -13,13 +13,21 @@ public sealed record EvChargePlanInput(
     double BaseSocPercent,
     double FeedInPricePerKwh,
     IReadOnlyList<EvChargeSlotInput> Slots,
-    IReadOnlyList<EvTripRequirement> Trips);
+    IReadOnlyList<EvTripRequirement> Trips)
+{
+    /// <summary>Quarter hours at or below this price are filled up to the car's own limit; null disables it.</summary>
+    public double? CheapPricePerKwh { get; init; }
+
+    /// <summary>Grid power accepted to charge with PV surplus slightly below the wallbox minimum.</summary>
+    public double PvGridAllowanceWatts { get; init; }
+}
 
 public enum EvChargeReason
 {
     Trip,
     PvSurplus,
-    BaseSoc
+    BaseSoc,
+    CheapPrice
 }
 
 public sealed record EvPlannedChargeSlot(
@@ -38,13 +46,15 @@ public sealed record EvChargePlan(
     double GridKwh,
     double PvKwh,
     double GridCost,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    bool HasInputSlots = true);
 
 /// <summary>
 /// Quarter-hour charging plan for the car (rules 3 and 6 of ev-charging.md). For each departure, in order, the
 /// missing energy goes into the cheapest quarter hours before it: PV surplus counts at the feed-in price, grid at
 /// its price. Afterwards remaining PV surplus is always used (up to the car's own charge limit), and the cheapest
-/// quarter hours fill up to the base state of charge. The car is away between departure and return.
+/// quarter hours fill up to the base state of charge, and cheap quarter hours fill up to the car's own limit (operator
+/// 2026-11-01: charge beyond the trip plan whenever power is cheap). The car is away between departure and return.
 /// The wallbox cannot charge below six amps on three phases, so a planned quarter hour never goes below that.
 /// </summary>
 public static class EvChargePlanner
@@ -98,7 +108,7 @@ public static class EvChargePlanner
         {
             if (room <= 0.05) break;
             var before = slot.BatteryKwh(efficiency);
-            slot.AddPv(car, efficiency, room, onlyIfAtLeastMinimum: true);
+            slot.AddPv(car, efficiency, room, onlyIfAtLeastMinimum: true, input.PvGridAllowanceWatts);
             room -= slot.BatteryKwh(efficiency) - before;
         }
 
@@ -109,11 +119,19 @@ public static class EvChargePlanner
             Allocate(state, baseDeficit, car, efficiency, input.FeedInPricePerKwh, EvChargeReason.BaseSoc) > 0.05)
             warnings.Add("Der Grund-Ladestand ist im Planungszeitraum nicht ganz erreichbar.");
 
+        // 4. Cheap quarter hours: fill up to the car's own limit, cheapest first.
+        if (input.CheapPricePerKwh is { } cheap && slots.Count > 0)
+        {
+            var cheapRoom = limit - current + tripEnergyBefore - state.Sum(slot => slot.BatteryKwh(efficiency));
+            if (cheapRoom > 0.05)
+                Allocate(state.Where(slot => slot.Input.PricePerKwh <= cheap), cheapRoom, car, efficiency, input.FeedInPricePerKwh, EvChargeReason.CheapPrice);
+        }
+
         var planned = state.Where(slot => slot.GridKwh + slot.PvKwh > 0).Select(slot => new EvPlannedChargeSlot(
             slot.Input.StartsAtUtc, slot.Input.EndsAtUtc, (slot.GridKwh + slot.PvKwh) / slot.Hours * 1000d, slot.GridKwh, slot.PvKwh,
             slot.Input.PricePerKwh, slot.Input.IsPriceEstimated, slot.Reason)).ToArray();
         return new EvChargePlan(input.NowUtc, planned, planned.Sum(slot => slot.GridKwh), planned.Sum(slot => slot.PvKwh),
-            planned.Sum(slot => slot.GridKwh * slot.PricePerKwh), warnings);
+            planned.Sum(slot => slot.GridKwh * slot.PricePerKwh), warnings, slots.Count > 0);
     }
 
     /// <summary>Fills the deficit (battery-side kWh) from the cheapest offers; returns what could not be placed.</summary>
@@ -130,15 +148,24 @@ public static class EvChargePlanner
         {
             if (deficit <= 0.05) break;
             var before = offer.Slot.BatteryKwh(efficiency);
-            if (offer.Pv) offer.Slot.AddPv(car, efficiency, deficit, onlyIfAtLeastMinimum: false);
+            if (offer.Pv) offer.Slot.AddPv(car, efficiency, deficit, onlyIfAtLeastMinimum: false, 0);
             else offer.Slot.AddGrid(car, efficiency, deficit);
             var added = offer.Slot.BatteryKwh(efficiency) - before;
-            if (added > 0 && offer.Slot.Reason != EvChargeReason.Trip) offer.Slot.Reason = reason;
+            // A slot keeps its most important reason: trip before base state of charge before cheap price.
+            if (added > 0 && Rank(reason) > Rank(offer.Slot.Reason)) offer.Slot.Reason = reason;
             deficit -= added;
         }
 
         return Math.Max(0, deficit);
     }
+
+    private static int Rank(EvChargeReason reason) => reason switch
+    {
+        EvChargeReason.Trip => 3,
+        EvChargeReason.BaseSoc => 2,
+        EvChargeReason.CheapPrice => 1,
+        _ => 0
+    };
 
     // Hours of the slot the car can charge: not before now and not while it is away on a trip.
     private static double AvailableHours(EvChargeSlotInput slot, DateTimeOffset now, IReadOnlyList<EvTripRequirement> trips)
@@ -162,11 +189,12 @@ public static class EvChargePlanner
         private double FreeKwh(EvCarParameters car) => Math.Max(0, car.ChargePowerWatts / 1000d * Hours - GridKwh - PvKwh);
         private double MinimumKwh => MinimumChargePowerWatts / 1000d * Hours;
 
-        public void AddPv(EvCarParameters car, double efficiency, double batteryKwhWanted, bool onlyIfAtLeastMinimum)
+        public void AddPv(EvCarParameters car, double efficiency, double batteryKwhWanted, bool onlyIfAtLeastMinimum, double gridAllowanceWatts)
         {
             var pv = Math.Min(Math.Min(Input.SurplusKwh - PvKwh, FreeKwh(car)), batteryKwhWanted / efficiency);
-            // Surplus below the wallbox minimum would pull the rest from the grid; as a pure PV slot it is skipped.
-            if (pv <= 0 || onlyIfAtLeastMinimum && GridKwh + PvKwh + pv < MinimumKwh) return;
+            // Surplus below the wallbox minimum would pull the rest from the grid; as a pure PV slot it is only
+            // charged when that grid share stays within the allowance.
+            if (pv <= 0 || onlyIfAtLeastMinimum && GridKwh + PvKwh + pv + gridAllowanceWatts / 1000d * Hours < MinimumKwh) return;
             PvKwh += pv;
             RaiseToMinimum();
         }

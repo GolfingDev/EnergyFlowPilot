@@ -8,6 +8,17 @@ public sealed class CarStatusStore : ICarStatusSource
     private readonly object gate = new();
     private CarSnapshot car = CarSnapshot.Empty;
     private CarDataConnectionState connection = CarDataConnectionState.NotConfigured;
+    private CarStreamDiagnostics stream = CarStreamDiagnostics.Empty;
+
+    public CarStreamDiagnostics Stream
+    {
+        get { lock (gate) return stream; }
+    }
+
+    public void UpdateStream(Func<CarStreamDiagnostics, CarStreamDiagnostics> change)
+    {
+        lock (gate) stream = change(stream);
+    }
 
     public CarSnapshot Car
     {

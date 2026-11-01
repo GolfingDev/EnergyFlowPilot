@@ -131,6 +131,9 @@ public static class ControllerServiceCollectionExtensions
             provider.GetRequiredService<IUtcClock>()));
         services.AddScoped<CalendarTripSyncService>();
         services.AddScoped<EvChargePlanService>();
+        services.AddSingleton<EvChargingControlState>();
+        services.AddSingleton<EvChargeLoadForecast>();
+        services.AddHostedService<EvChargingControlService>();
         services.AddScoped<CalendarSyncRunner>();
         services.AddSingleton<CalendarSyncState>();
         services.AddHostedService<CalendarSyncBackgroundService>();

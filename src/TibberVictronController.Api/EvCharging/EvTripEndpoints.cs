@@ -14,6 +14,12 @@ public static class EvTripEndpoints
         endpoints.MapDelete("/api/ev-charging/trips/{id:int}", DeleteTripAsync).WithName("DeleteEvTrip").WithTags("EvCharging");
         endpoints.MapPut("/api/ev-charging/trips/{id:int}/ignored", SetIgnoredAsync).WithName("SetEvTripIgnored").WithTags("EvCharging");
         endpoints.MapGet("/api/ev-charging/charge-plan", GetChargePlanAsync).WithName("GetEvChargePlan").WithTags("EvCharging");
+        endpoints.MapGet("/api/ev-charging/control", (EvChargingControlState state) =>
+        {
+            var current = state.Current;
+            return TypedResults.Ok(new EvChargingControlDto(current.Enabled, current.Mode.ToString(), current.Amps, current.Reason,
+                current.UpdatedAtUtc == DateTimeOffset.MinValue ? null : current.UpdatedAtUtc, current.CommandProblem));
+        }).WithName("GetEvChargingControl").WithTags("EvCharging");
         endpoints.MapGet("/api/ev-charging/calendar", GetCalendarStatusAsync).WithName("GetCalendarSyncStatus").WithTags("EvCharging");
         endpoints.MapPost("/api/ev-charging/calendar/sync", SyncCalendarAsync).WithName("SyncCalendar").WithTags("EvCharging");
         return endpoints;
@@ -103,6 +109,8 @@ public static class EvTripEndpoints
 }
 
 public sealed record EvTripIgnoreRequestDto(bool Ignored);
+
+public sealed record EvChargingControlDto(bool Enabled, string Mode, double? Amps, string Reason, DateTimeOffset? UpdatedAtUtc, string? CommandProblem);
 
 public sealed record EvChargeSlotDto(
     DateTimeOffset StartsAtUtc,

@@ -33,6 +33,7 @@ public sealed class CarDataService(
     private CancellationToken stopping;
     private CancellationTokenSource? currentRound;
     private DateTimeOffset snapshotPersistedAtUtc = DateTimeOffset.MinValue;
+    private bool firstMessageLogged;
 
     public async Task<CarDataConnectionState> StartSignInAsync(CancellationToken cancellationToken)
     {
@@ -157,7 +158,13 @@ public sealed class CarDataService(
         }
 
         var topic = $"{gcid}/{vin ?? "+"}";
-        await client.SubscribeAsync(new MqttClientSubscribeOptionsBuilder().WithTopicFilter(topic).Build(), cancellationToken);
+        var subscription = await client.SubscribeAsync(new MqttClientSubscribeOptionsBuilder().WithTopicFilter(topic).Build(), cancellationToken);
+        // A refused subscription would leave a connected but silent stream; make it visible and retry later.
+        var granted = subscription.Items.FirstOrDefault()?.ResultCode.ToString() ?? "keine Antwort";
+        store.UpdateStream(current => current with { Subscription = $"{(vin is null ? "alle Fahrzeuge" : "VIN " + vin)}: {granted}" });
+        if (!granted.StartsWith("Granted", StringComparison.Ordinal))
+            throw new InvalidOperationException($"BMW lehnt das Abonnement des Datenstroms ab ({granted}). VIN in den Einstellungen eintragen statt 'auto'.");
+        firstMessageLogged = false;
         store.SetConnection(new CarDataConnectionState(CarDataConnectionStatus.Connected,
             "Mit BMW CarData verbunden. Werte kommen, sobald das Auto Daten sendet.", ConnectedSinceUtc: clock.UtcNow));
         logger.LogInformation("BMW CarData verbunden ({Vehicle}).", vin ?? "alle Fahrzeuge");
@@ -174,6 +181,23 @@ public sealed class CarDataService(
     private async Task HandleMessageAsync(string json, string? vin)
     {
         var now = clock.UtcNow;
+        var (messageVin, descriptors, problem) = CarDataMessageParser.Describe(json);
+        if (problem is null && vin is not null && messageVin is not null && !string.Equals(vin, messageVin, StringComparison.OrdinalIgnoreCase))
+            problem = "Nachricht fuer ein anderes Fahrzeug.";
+        store.UpdateStream(current => current with
+        {
+            MessagesReceived = current.MessagesReceived + 1,
+            LastMessageAtUtc = now,
+            LastDescriptors = descriptors,
+            LastProblem = problem
+        });
+        if (!firstMessageLogged)
+        {
+            firstMessageLogged = true;
+            logger.LogInformation("BMW CarData: erste Nachricht empfangen, Datenpunkte {Descriptors}{Problem}.",
+                string.Join(", ", descriptors), problem is null ? string.Empty : " – " + problem);
+        }
+
         var updated = false;
         var snapshot = store.UpdateCar(current =>
         {

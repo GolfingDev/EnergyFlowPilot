@@ -1,6 +1,6 @@
 # EV Charging (Charge Amps Halo, BMW i4)
 
-Status: requirements and staged plan agreed with the operator on 2026-10-31. Stages 1 (OCPP, read-only), 2 (BMW CarData, read-only) 3 (manual trip planning) and 5 (calendar) implemented; stage 4 is split into 4a charging plan (implemented, preview), 4b wallbox command with hardware test (implemented), 4c automatic control and 4d joint battery integration (open).
+Status: requirements and staged plan agreed with the operator on 2026-10-31. Stages 1 (OCPP, read-only), 2 (BMW CarData, read-only) 3 (manual trip planning) and 5 (calendar) implemented; stage 4 is split into 4a charging plan (implemented, preview), 4b wallbox command with hardware test (implemented), 4c automatic control (implemented, default off) and 4d joint battery integration (open).
 
 ## Goal
 
@@ -94,6 +94,21 @@ Operator requirements (2026-11-01): enter "on date X I drive to Y"; adjustable m
 - `IEvChargerControl` (implemented by the OCPP status store for the connected wallbox): `SetChargingProfile` with a TxDefaultProfile (id 70001, stack level 1, unit A, three phases) that is valid for at most one hour (`validTo`, `duration`), tried on connector 1 and then connector 0; `ClearChargingProfile` for that id ("Unknown" counts as released). 0 A pauses, otherwise 6 to 16 A.
 - **Fail-safe:** every limit expires by itself, so the wallbox returns to its own setting (full power) when the controller stops sending; this keeps rule 1 even if the controller fails. Whether the Halo honours `validTo` must be confirmed in the hardware test.
 - **Hardware test (admin, car page, wallbox card):** pause, 6, 10 or 16 A for 15 minutes, and "Freigeben"; the wallbox's answer and the following phase currents show whether the limit works.
+
+## Stage 4c implementation (automatic control)
+
+Operator requirement (2026-11-01): charge beyond the trip plan whenever power is cheap or PV is plentiful and the home batteries are full; limit the current so that little comes from the grid.
+
+- **Switch:** `ev.charging.controlEnabled`, default off; switch on only after the hardware test.
+- **Cycle (30 s):** charging plan refreshed every 5 minutes and at each new quarter hour. With the car plugged in: current of the planned quarter hour (grid part) or live PV surplus, whichever is more; otherwise pause (0 A). Without a usable plan (no prices, error) no limit at all: the wallbox charges at full power (rule 1).
+- **PV surplus live:** grid export plus the car's own power, averaged over six samples (3 minutes) so passing clouds do not toggle charging; 300 W kept free; current = floor(surplus / 690 W), 6 to 16 A. Just below the minimum, 6 A are used if at most `ev.charging.pvGridAllowanceWatts` (default 1000 W) come from the grid. The home batteries absorb PV first (joint limiter); the car gets what would be exported, i.e. surplus once the home batteries are full or at their limit.
+- **Cheap power:** quarter hours at or below the `ev.charging.cheapPercentile` (default 25 %) price of the next 24 hours (never below 0, so negative prices always count) are filled up to the car's charge limit, also without trips. Reason "günstiger Strom" in the plan.
+- **Commands:** sent only on change; renewed 5 minutes before the 15-minute validity ends; after a refusal retried after 5 minutes. Switching the automatic off releases the limit.
+- **Car page:** state chip in the charging plan card (Lädt nach Plan, PV-Überschuss, Pausiert, Volle Leistung) with the reason and command problems.
+
+## CarData stream diagnostics
+
+The car page (admin) shows the subscription result, the number of stream messages since start, the time and descriptor names (no values) of the last message, and why a message was not used. A refused subscription is an error (with the hint to enter the VIN instead of `auto`). The first message per connection is logged with its descriptor names.
 
 ## Stage 5 implementation (calendar)
 

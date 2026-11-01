@@ -32,6 +32,8 @@ internal static class ControllerSettingValueValidation
         if (key == ControllerSettingDefaults.BmwCarDataVinKey && value != ControllerSettingDefaults.BmwCarDataAutoVin &&
             (value is null || value.Length != 17 || !value.All(char.IsAsciiLetterOrDigit)))
             throw new ArgumentException("Die Fahrgestellnummer (VIN) muss 17 Zeichen lang sein oder 'auto' lauten.");
+        if (key == ControllerSettingDefaults.EvChargingControlEnabledKey && !bool.TryParse(value, out _))
+            throw new ArgumentException("Der Schalter fuer die automatische Ladesteuerung muss true oder false sein.");
         if (key == ControllerSettingDefaults.EvCalendarEnabledKey && !bool.TryParse(value, out _))
             throw new ArgumentException("Der Schalter fuer den Kalender muss true oder false sein.");
         if (key == ControllerSettingDefaults.EvCalendarMailboxKey && value != ControllerSettingDefaults.EvCalendarMailboxNotConfigured &&
@@ -74,6 +76,8 @@ internal static class ControllerSettingValueValidation
             ControllerSettingDefaults.EvCarConsumptionKey => (5m, 60m, false),
             ControllerSettingDefaults.EvCarMinimumSocKey => (0m, 80m, false),
             ControllerSettingDefaults.EvCarBaseSocKey => (0m, 100m, false),
+            ControllerSettingDefaults.EvChargingCheapPercentileKey => (0m, 100m, false),
+            ControllerSettingDefaults.EvChargingPvGridAllowanceKey => (0m, 4140m, true),
             ControllerSettingDefaults.EvTripMarginKey => (0m, 100m, false),
             ControllerSettingDefaults.EvWallboxMaximumPowerKey => (1400m, 22000m, true),
             _ => null

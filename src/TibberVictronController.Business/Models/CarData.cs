@@ -16,6 +16,20 @@ public sealed record CarSnapshot
     public DateTimeOffset? LastMessageAtUtc { get; init; }
 }
 
+/// <summary>
+/// What the CarData stream delivered, for diagnosis: message count, the descriptor names of the last message (no
+/// values) and why a message was not used.
+/// </summary>
+public sealed record CarStreamDiagnostics(
+    string? Subscription,
+    int MessagesReceived,
+    DateTimeOffset? LastMessageAtUtc,
+    IReadOnlyList<string> LastDescriptors,
+    string? LastProblem)
+{
+    public static readonly CarStreamDiagnostics Empty = new(null, 0, null, [], null);
+}
+
 public enum CarDataConnectionStatus
 {
     NotConfigured,

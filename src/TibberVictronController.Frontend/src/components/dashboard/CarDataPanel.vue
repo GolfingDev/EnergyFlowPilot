@@ -21,6 +21,7 @@ interface CarStatusDto {
   odometerKm: number | null;
   lastMessageAtUtc: string | null;
   requiredDescriptors: string[];
+  stream: { subscription: string | null; messagesReceived: number; lastMessageAtUtc: string | null; lastDescriptors: string[]; lastProblem: string | null } | null;
 }
 
 const car = ref<CarStatusDto | null>(null);
@@ -147,6 +148,13 @@ onBeforeUnmount(() => window.clearTimeout(timer));
           <v-btn v-if="signedIn" variant="text" :disabled="busy" @click="signOut">Abmelden</v-btn>
         </div>
         <p v-if="car.vin" class="car__meta mt-2">VIN {{ car.vin }}</p>
+        <div v-if="car.stream && car.connectionStatus === 'Connected'" class="car__meta mt-2">
+          Datenstrom: {{ car.stream.subscription ?? 'kein Abonnement' }} ·
+          {{ car.stream.messagesReceived }} Nachrichten seit dem Start<template v-if="car.stream.lastMessageAtUtc">, letzte {{ date(car.stream.lastMessageAtUtc) }}</template>.
+          <template v-if="car.stream.lastDescriptors.length"><br>Datenpunkte der letzten Nachricht: {{ car.stream.lastDescriptors.join(', ') }}</template>
+          <span v-if="car.stream.lastProblem" class="text-warning"><br>{{ car.stream.lastProblem }}</span>
+          <template v-if="car.stream.messagesReceived === 0"><br>Noch keine Nachricht: Im BMW-Portal unter CarData Streaming müssen die Datenpunkte ausgewählt und gespeichert sein. BMW sendet nur, wenn sich einer davon ändert (Fahren, Laden, Anstecken).</template>
+        </div>
       </template>
     </div>
   </v-card>

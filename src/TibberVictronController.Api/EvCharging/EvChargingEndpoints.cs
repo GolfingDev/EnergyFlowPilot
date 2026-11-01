@@ -81,7 +81,7 @@ public static class EvChargingEndpoints
     }
 
     private static IResult GetCar(HttpContext http, ICarStatusSource car, ControllerAuthenticationOptions authentication) =>
-        TypedResults.Ok(CarStatusDtoMapper.Map(car.Car, car.Connection, !authentication.IsEntra || http.User.IsInRole(AppRoles.Admin)));
+        TypedResults.Ok(CarStatusDtoMapper.Map(car.Car, car.Connection, car.Stream, !authentication.IsEntra || http.User.IsInRole(AppRoles.Admin)));
 
     private static async Task<IResult> StartCarSignInAsync(CarDataService carData, CancellationToken cancellationToken)
     {
@@ -252,7 +252,7 @@ public sealed record EvConnectionRejectionDto(
 
 public static class CarStatusDtoMapper
 {
-    public static CarStatusResponseDto Map(CarSnapshot car, CarDataConnectionState connection, bool isAdmin) => new(
+    public static CarStatusResponseDto Map(CarSnapshot car, CarDataConnectionState connection, CarStreamDiagnostics stream, bool isAdmin) => new(
         connection.Status.ToString(),
         ConnectionLabel(connection.Status),
         connection.Message,
@@ -270,7 +270,8 @@ public static class CarStatusDtoMapper
         car.RemainingRangeKm,
         car.OdometerKm,
         car.LastMessageAtUtc,
-        isAdmin ? Dal.BmwCarData.CarDataMessageParser.RequiredDescriptors : []);
+        isAdmin ? Dal.BmwCarData.CarDataMessageParser.RequiredDescriptors : [],
+        isAdmin ? new CarStreamDiagnosticsDto(stream.Subscription, stream.MessagesReceived, stream.LastMessageAtUtc, stream.LastDescriptors, stream.LastProblem) : null);
 
     private static string ConnectionLabel(CarDataConnectionStatus status) => status switch
     {
@@ -300,4 +301,12 @@ public sealed record CarStatusResponseDto(
     double? RemainingRangeKm,
     double? OdometerKm,
     DateTimeOffset? LastMessageAtUtc,
-    IReadOnlyList<string> RequiredDescriptors);
+    IReadOnlyList<string> RequiredDescriptors,
+    CarStreamDiagnosticsDto? Stream);
+
+public sealed record CarStreamDiagnosticsDto(
+    string? Subscription,
+    int MessagesReceived,
+    DateTimeOffset? LastMessageAtUtc,
+    IReadOnlyList<string> LastDescriptors,
+    string? LastProblem);

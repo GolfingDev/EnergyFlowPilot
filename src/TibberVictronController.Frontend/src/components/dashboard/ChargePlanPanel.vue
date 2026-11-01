@@ -10,7 +10,7 @@ interface EvChargeSlotDto {
   pvKwh: number;
   pricePerKwh: number;
   isPriceEstimated: boolean;
-  reason: 'Trip' | 'PvSurplus' | 'BaseSoc';
+  reason: 'Trip' | 'PvSurplus' | 'BaseSoc' | 'CheapPrice';
 }
 
 interface EvChargePlanDto {
@@ -34,13 +34,29 @@ interface ChargeBlock {
   reason: EvChargeSlotDto['reason'];
 }
 
+interface EvChargingControlDto {
+  enabled: boolean;
+  mode: 'Off' | 'Waiting' | 'Plan' | 'PvSurplus' | 'Paused' | 'FullPowerFallback';
+  amps: number | null;
+  reason: string;
+  updatedAtUtc: string | null;
+  commandProblem: string | null;
+}
+
 const plan = ref<EvChargePlanDto | null>(null);
+const control = ref<EvChargingControlDto | null>(null);
+const modeLabel: Record<EvChargingControlDto['mode'], string> = {
+  Off: 'Automatik aus', Waiting: 'Wartet', Plan: 'Lädt nach Plan', PvSurplus: 'Lädt mit PV-Überschuss', Paused: 'Pausiert', FullPowerFallback: 'Volle Leistung (Notbetrieb)'
+};
+const modeColor: Record<EvChargingControlDto['mode'], string | undefined> = {
+  Off: undefined, Waiting: undefined, Plan: 'primary', PvSurplus: 'success', Paused: 'warning', FullPowerFallback: 'error'
+};
 const error = ref<string | null>(null);
 let timer: number | undefined;
 
 const dateTime = new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
 const timeOnly = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
-const reasonLabel: Record<EvChargeSlotDto['reason'], string> = { Trip: 'für Fahrt', PvSurplus: 'PV-Überschuss', BaseSoc: 'Grund-Ladestand' };
+const reasonLabel: Record<EvChargeSlotDto['reason'], string> = { Trip: 'für Fahrt', PvSurplus: 'PV-Überschuss', BaseSoc: 'Grund-Ladestand', CheapPrice: 'günstiger Strom' };
 const cents = (euro: number) => `${formatNumber(euro * 100, 1)} ct/kWh`;
 
 // Adjacent quarter hours with the same reason read better as one charging block.
@@ -68,7 +84,8 @@ const blocks = computed<ChargeBlock[]>(() => {
 
 async function load(): Promise<void> {
   try {
-    const response = await fetch('/api/ev-charging/charge-plan');
+    const [response, controlResponse] = await Promise.all([fetch('/api/ev-charging/charge-plan'), fetch('/api/ev-charging/control')]);
+    if (controlResponse.ok) control.value = await controlResponse.json() as EvChargingControlDto;
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { detail?: string } | null;
       throw new Error(body?.detail ?? `Ladeplan konnte nicht geladen werden (HTTP ${response.status}).`);
@@ -80,15 +97,23 @@ async function load(): Promise<void> {
   }
 }
 
-onMounted(() => { void load(); timer = window.setInterval(() => void load(), 60_000); });
+onMounted(() => { void load(); timer = window.setInterval(() => void load(), 30_000); });
 onBeforeUnmount(() => window.clearInterval(timer));
 </script>
 
 <template>
   <v-card variant="outlined" aria-label="Ladeplan">
     <div class="pa-4 pb-2">
-      <h2 class="text-h6">Ladeplan</h2>
-      <p class="plan__meta">Vorschau, die Wallbox wird noch nicht danach gesteuert. Grundlage: {{ plan?.slotSource ?? '–' }}.</p>
+      <div class="d-flex align-center justify-space-between flex-wrap ga-2">
+        <h2 class="text-h6">Ladeplan</h2>
+        <v-chip v-if="control" size="small" :color="modeColor[control.mode]">{{ modeLabel[control.mode] }}<template v-if="control.amps"> · {{ control.amps }} A</template></v-chip>
+      </div>
+      <p class="plan__meta">
+        <template v-if="control?.enabled">{{ control.reason }}</template>
+        <template v-else>Vorschau: Die Automatik ist aus (Einstellungen, „Auto automatisch laden“).</template>
+        Grundlage: {{ plan?.slotSource ?? '–' }}.
+      </p>
+      <v-alert v-if="control?.commandProblem" class="mt-2" type="warning" variant="tonal" density="compact">{{ control.commandProblem }}</v-alert>
     </div>
     <div class="px-4 pb-4">
       <v-alert v-if="error" class="mb-3" type="warning" variant="tonal" density="compact">{{ error }}</v-alert>

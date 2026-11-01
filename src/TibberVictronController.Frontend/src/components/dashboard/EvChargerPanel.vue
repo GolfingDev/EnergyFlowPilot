@@ -181,7 +181,7 @@ onBeforeUnmount(() => window.clearInterval(timer));
 
       <section v-if="isAdmin && status.isConnected" class="ev-charger__test mt-4" aria-label="Hardwaretest Ladestrom">
         <h3 class="text-subtitle-2">Hardwaretest: Ladestrom begrenzen</h3>
-        <p class="ev-charger__meta">Prüft, ob der Halo eine zeitlich begrenzte Vorgabe annimmt. Sie läuft nach 15 Minuten von selbst ab; danach lädt die Wallbox wieder nach eigener Einstellung.</p>
+        <p class="ev-charger__meta">Prüft, ob der Halo eine zeitlich begrenzte Vorgabe annimmt. Sie läuft nach 15 Minuten von selbst ab; danach lädt die Wallbox wieder nach eigener Einstellung. Nur bei ausgeschalteter Automatik testen, sonst überschreibt sie den Test im nächsten Zyklus.</p>
         <div class="d-flex flex-wrap align-center ga-2 mt-2">
           <v-btn-toggle v-model="testAmps" density="compact" mandatory variant="outlined">
             <v-btn :value="0">Pause</v-btn>

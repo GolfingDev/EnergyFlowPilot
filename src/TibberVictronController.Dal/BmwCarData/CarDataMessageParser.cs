@@ -35,6 +35,28 @@ public static class CarDataMessageParser
         OdometerDescriptor
     ];
 
+    /// <summary>VIN and descriptor names of a message, for diagnostics only (no values).</summary>
+    public static (string? Vin, IReadOnlyList<string> Descriptors, string? Problem) Describe(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return (null, [], "Nachricht ist kein JSON-Objekt.");
+            var vin = root.TryGetProperty("vin", out var vinElement) && vinElement.ValueKind == JsonValueKind.String ? vinElement.GetString() : null;
+            if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+                return (vin, root.EnumerateObject().Select(property => property.Name).ToArray(), "Nachricht ohne Feld 'data'.");
+            var descriptors = data.EnumerateObject().Select(property => property.Name).ToArray();
+            var known = descriptors.Any(name => StateOfChargeDescriptors.Contains(name) || name is TargetDescriptor or ChargingStatusDescriptor
+                or PluggedDescriptor or RangeDescriptor or OdometerDescriptor);
+            return (vin, descriptors, known ? null : "Keiner der ausgewerteten Datenpunkte enthalten.");
+        }
+        catch (JsonException)
+        {
+            return (null, [], "Nachricht ist kein gueltiges JSON.");
+        }
+    }
+
     /// <summary>Returns null when the message is not for the selected car or carries nothing usable.</summary>
     public static CarSnapshot? Apply(CarSnapshot current, string json, string? selectedVin, DateTimeOffset nowUtc)
     {

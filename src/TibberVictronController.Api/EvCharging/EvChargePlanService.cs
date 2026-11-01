@@ -38,7 +38,11 @@ public sealed class EvChargePlanService(
             await NumberAsync(ControllerSettingDefaults.EvCarBaseSocKey, cancellationToken),
             await NumberAsync(ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey, cancellationToken),
             slots,
-            tripView.Plan.Trips));
+            tripView.Plan.Trips)
+        {
+            CheapPricePerKwh = CheapThreshold(slots, now, await NumberAsync(ControllerSettingDefaults.EvChargingCheapPercentileKey, cancellationToken)),
+            PvGridAllowanceWatts = await NumberAsync(ControllerSettingDefaults.EvChargingPvGridAllowanceKey, cancellationToken)
+        });
         return new EvChargePlanView(plan, source, tripView);
     }
 
@@ -61,6 +65,19 @@ public sealed class EvChargePlanService(
 
         return (prices.Select(price => new EvChargeSlotInput(price.TimeSlot.StartsAtUtc, price.TimeSlot.EndsAtUtc, (double)price.TotalPricePerKwh,
             price.IsEstimated, 0)).ToArray(), "Preisprognose");
+    }
+
+    /// <summary>
+    /// Price at the given percentile of the next 24 hours; at least 0 so negative prices always count as cheap.
+    /// Relative on purpose: it adapts to any tariff and season without an absolute threshold to maintain.
+    /// </summary>
+    public static double? CheapThreshold(IReadOnlyList<EvChargeSlotInput> slots, DateTimeOffset now, double percentile)
+    {
+        if (percentile <= 0) return null;
+        var prices = slots.Where(slot => slot.EndsAtUtc > now && slot.StartsAtUtc < now.AddHours(24)).Select(slot => slot.PricePerKwh).Order().ToArray();
+        if (prices.Length == 0) return null;
+        var index = (int)Math.Clamp(Math.Ceiling(prices.Length * Math.Min(percentile, 100) / 100d) - 1, 0, prices.Length - 1);
+        return Math.Max(0, prices[index]);
     }
 
     // PV that is left after house consumption and planned home battery charging would be fed in.
