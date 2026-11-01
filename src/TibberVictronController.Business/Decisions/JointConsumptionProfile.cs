@@ -5,10 +5,11 @@ namespace TibberVictronController.Business.Decisions;
 /// <summary>Reconstructs gross house demand without learning either battery's action as consumption.</summary>
 public static class JointConsumptionProfile
 {
+    // The wallbox is subtracted: car charging is planned separately and must not be learned as house demand.
     public static decimal? GrossWatts(LiveConsumptionSample sample) => sample is {
         GridPowerWatts: { } grid, BatteryPowerWatts: { } primary,
         SupplementaryBatteryPowerWatts: { } secondary, SupplementaryPvProductionWatts: { } pv
-    } ? Math.Max(0, grid - primary - secondary + pv) : null;
+    } ? Math.Max(0, grid - primary - secondary + pv - (sample.EvChargingWatts ?? 0)) : null;
 
     public static ConsumptionForecastModel Learn(IReadOnlyList<LiveConsumptionSample> samples,
         TimeZoneInfo zone, DateTimeOffset now, IReadOnlyList<HourlyTemperature>? temperatures = null)

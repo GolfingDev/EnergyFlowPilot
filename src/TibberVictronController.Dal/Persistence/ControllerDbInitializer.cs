@@ -153,7 +153,8 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
             ["PvProductionWatts"] = "REAL NULL",
             ["SupplementaryBatteryPowerWatts"] = "REAL NULL",
             ["SupplementaryBatterySocPercent"] = "REAL NULL",
-            ["SupplementaryPvProductionWatts"] = "REAL NULL"
+            ["SupplementaryPvProductionWatts"] = "REAL NULL",
+            ["EvChargingWatts"] = "REAL NULL"
         };
 
         foreach (var column in columnsToAdd)
@@ -342,7 +343,8 @@ CREATE TABLE IF NOT EXISTS "LiveConsumptionSamples" (
     "PvProductionWatts" REAL NULL,
     "SupplementaryBatteryPowerWatts" REAL NULL,
     "SupplementaryBatterySocPercent" REAL NULL,
-    "SupplementaryPvProductionWatts" REAL NULL
+    "SupplementaryPvProductionWatts" REAL NULL,
+    "EvChargingWatts" REAL NULL
 );
 CREATE INDEX IF NOT EXISTS "IX_LiveConsumptionSamples_MeasuredAtUtc" ON "LiveConsumptionSamples" ("MeasuredAtUtc");
 """;

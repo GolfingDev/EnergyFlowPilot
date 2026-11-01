@@ -434,10 +434,21 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             {
                 SupplementaryBatteryPowerWatts = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.BatteryPowerWatts : null,
                 SupplementaryBatterySocPercent = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.BatterySocPercent : null,
-                SupplementaryPvProductionWatts = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.PvProductionWatts : null
+                SupplementaryPvProductionWatts = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.PvProductionWatts : null,
+                EvChargingWatts = CurrentWallboxWatts(measuredAtUtc)
             });
 
         await CleanupOldLiveSamplesIfDueAsync(scope.ServiceProvider, measuredAtUtc);
+    }
+
+    // The car is not house demand: storing its power lets the consumption model leave it out (stage 4d).
+    private decimal? CurrentWallboxWatts(DateTimeOffset measuredAtUtc)
+    {
+        var wallbox = serviceProvider.GetService<IEvChargerStatusSource>()?.Current;
+        if (wallbox is null || !wallbox.IsConnected) return null;
+        if (wallbox.PowerWatts is not { } watts || wallbox.MeasuredAtUtc is not { } at || (measuredAtUtc - at).Duration() > TimeSpan.FromMinutes(2))
+            return wallbox.IsVehiclePlugged ? null : 0;
+        return (decimal)Math.Max(0, watts);
     }
 
     private async Task CleanupOldLiveSamplesIfDueAsync(

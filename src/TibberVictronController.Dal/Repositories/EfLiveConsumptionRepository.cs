@@ -27,7 +27,8 @@ public sealed class EfLiveConsumptionRepository : ILiveConsumptionRepository
             PvProductionWatts = sample.PvProductionWatts,
             SupplementaryBatteryPowerWatts = sample.SupplementaryBatteryPowerWatts,
             SupplementaryBatterySocPercent = sample.SupplementaryBatterySocPercent,
-            SupplementaryPvProductionWatts = sample.SupplementaryPvProductionWatts
+            SupplementaryPvProductionWatts = sample.SupplementaryPvProductionWatts,
+            EvChargingWatts = sample.EvChargingWatts
         });
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -66,7 +67,8 @@ public sealed class EfLiveConsumptionRepository : ILiveConsumptionRepository
             {
                 SupplementaryBatteryPowerWatts = sample.SupplementaryBatteryPowerWatts,
                 SupplementaryBatterySocPercent = sample.SupplementaryBatterySocPercent,
-                SupplementaryPvProductionWatts = sample.SupplementaryPvProductionWatts
+                SupplementaryPvProductionWatts = sample.SupplementaryPvProductionWatts,
+                EvChargingWatts = sample.EvChargingWatts
             })
             .ToArrayAsync(cancellationToken);
     }

@@ -60,4 +60,7 @@ public sealed class LiveConsumptionSample
     public decimal? SupplementaryBatterySocPercent { get; init; }
 
     public decimal? SupplementaryPvProductionWatts { get; init; }
+
+    /// <summary>Wallbox charging power at the same time (OCPP); null when unknown. Not part of the house demand.</summary>
+    public decimal? EvChargingWatts { get; init; }
 }

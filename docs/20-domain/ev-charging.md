@@ -1,6 +1,6 @@
 # EV Charging (Charge Amps Halo, BMW i4)
 
-Status: requirements and staged plan agreed with the operator on 2026-10-31. Stages 1 (OCPP, read-only), 2 (BMW CarData, read-only) 3 (manual trip planning) and 5 (calendar) implemented; stage 4 is split into 4a charging plan (implemented, preview), 4b wallbox command with hardware test (implemented), 4c automatic control (implemented, default off) and 4d joint battery integration (open).
+Status: requirements and staged plan agreed with the operator on 2026-10-31. Stages 1 (OCPP, read-only), 2 (BMW CarData, read-only) 3 (manual trip planning) and 5 (calendar) implemented; stage 4 is split into 4a charging plan (implemented, preview), 4b wallbox command with hardware test (implemented), 4c automatic control (implemented, default off) and 4d joint battery integration (implemented).
 
 ## Goal
 
@@ -106,6 +106,12 @@ Operator requirement (2026-11-01): charge beyond the trip plan whenever power is
 - **Commands:** sent only on change; renewed 5 minutes before the 15-minute validity ends; after a refusal retried after 5 minutes. Switching the automatic off releases the limit.
 - **Car page:** state chip in the charging plan card (Lädt nach Plan, PV-Überschuss, Pausiert, Volle Leistung) with the reason and command problems.
 
+## Stage 4d implementation (joint battery integration)
+
+- **Consumption history:** every live sample stores the wallbox power (`LiveConsumptionSamples.EvChargingWatts`, from OCPP, at most two minutes old; 0 when no car is plugged in). The joint consumption model subtracts it, so car charging is no longer learned as house demand. Older samples have no value and stay as they are.
+- **Joint plan:** while the automatic car charging is on, the car's planned energy per quarter hour is added to the consumption forecast of the joint battery plan. The planner then decides, as for any house load, whether the home batteries cover it (only when cheaper than grid power); otherwise the car charges from the grid and the live limiter does not discharge for it.
+- **No oscillation:** the PV surplus offered to the car adds its own planned charging back to the joint plan's consumption, so the car plan does not shrink because of itself.
+
 ## CarData stream diagnostics
 
 The car page (admin) shows the subscription result, the number of stream messages since start, the time and descriptor names (no values) of the last message, and why a message was not used. A refused subscription is an error (with the hint to enter the VIN instead of `auto`). The first message per connection is logged with its descriptor names.
@@ -123,7 +129,6 @@ Operator decisions (2026-11-01): calendar before charging control; only appointm
 ## Open points
 
 - Halo firmware 189 is connected. Hardware test open: does it accept the TxDefaultProfile (connector 1 or 0) during a running charge, follow it within seconds, and fall back to full power when `validTo` passes?
-- Wallbox energy is still contained in the house consumption history and thus in the consumption forecast; it should be subtracted (with stage 4d).
 - Exact i4 variant and typical consumption: defaults 81 kWh and 18 kWh/100 km until the operator adjusts them.
 - Winter surcharge from the temperature forecast (rule 2) is not applied yet; the margin covers it for now.
 - Skipping a single occurrence of a series (holiday) is not possible yet.

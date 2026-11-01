@@ -124,10 +124,14 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
         catch (Exception exception) when (exception is not OperationCanceledException) { }
         var model = JointConsumptionProfile.Learn(history, zone, now, temperatures);
         var fallbackDaily = await Setting(ControllerSettingDefaults.ConsumptionForecastAverageDailyConsumptionKwhKey);
+        // Planned car charging (only filled while the automatic car charging is on) is demand like any house load:
+        // the planner then decides whether the home batteries cover it, which they do only when that is cheaper.
+        var carLoad = services.GetService<EvCharging.EvChargeLoadForecast>();
         var consumption = prices.Select(price => {
             var local = TimeZoneInfo.ConvertTime(price.TimeSlot.StartsAtUtc, zone);
-            return new ConsumptionForecastSlot(price.TimeSlot, model.GetSlotConsumptionKwh(DateOnly.FromDateTime(local.DateTime),
-                local.Hour * 4 + local.Minute / 15, price.TimeSlot.Duration) ?? fallbackDaily / 24m * (decimal)price.TimeSlot.Duration.TotalHours);
+            var house = model.GetSlotConsumptionKwh(DateOnly.FromDateTime(local.DateTime),
+                local.Hour * 4 + local.Minute / 15, price.TimeSlot.Duration) ?? fallbackDaily / 24m * (decimal)price.TimeSlot.Duration.TotalHours;
+            return new ConsumptionForecastSlot(price.TimeSlot, house + (decimal)(carLoad?.KwhFor(price.TimeSlot.StartsAtUtc) ?? 0));
         }).ToArray();
         JointBatteryContinuation? continuation = null;
         string? continuationWarning = null;

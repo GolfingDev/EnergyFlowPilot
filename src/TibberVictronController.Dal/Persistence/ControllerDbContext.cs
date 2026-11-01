@@ -206,6 +206,7 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(sample => sample.SupplementaryBatteryPowerWatts);
             entity.Property(sample => sample.SupplementaryBatterySocPercent);
             entity.Property(sample => sample.SupplementaryPvProductionWatts);
+            entity.Property(sample => sample.EvChargingWatts);
             entity.HasIndex(sample => sample.MeasuredAtUtc);
         });
     }

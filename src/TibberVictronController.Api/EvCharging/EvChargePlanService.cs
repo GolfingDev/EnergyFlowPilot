@@ -19,6 +19,7 @@ public sealed class EvChargePlanService(
     JointBatteryRuntimeState joint,
     IServiceProvider services,
     IControllerSettingStore settings,
+    EvChargeLoadForecast carLoad,
     IUtcClock clock)
 {
     private static readonly TimeSpan JointPlanMaximumAge = TimeSpan.FromMinutes(30);
@@ -50,7 +51,7 @@ public sealed class EvChargePlanService(
     {
         if (joint.Current.Plan is { } plan && now - plan.CalculatedAtUtc <= JointPlanMaximumAge && plan.Slots.Count > 0)
             return (plan.Slots.Select(slot => new EvChargeSlotInput(slot.TimeSlot.StartsAtUtc, slot.TimeSlot.EndsAtUtc, (double)slot.PricePerKwh,
-                slot.IsPriceEstimated, Surplus(slot))).ToArray(), "Akkuplan");
+                slot.IsPriceEstimated, Surplus(slot, carLoad.KwhFor(slot.TimeSlot.StartsAtUtc)))).ToArray(), "Akkuplan");
 
         var start = JointPlanInputFallback.QuarterStart(now);
         IReadOnlyList<TibberPriceForecastSlot> prices;
@@ -80,11 +81,13 @@ public sealed class EvChargePlanService(
         return Math.Max(0, prices[index]);
     }
 
-    // PV that is left after house consumption and planned home battery charging would be fed in.
-    private static double Surplus(JointBatterySlot slot)
+    // PV that is left after house consumption and planned home battery charging would be fed in. The joint plan's
+    // consumption already contains the car's own planned charging; it is added back so the car does not plan
+    // against itself and the two plans do not oscillate.
+    private static double Surplus(JointBatterySlot slot, double plannedCarKwh)
     {
         var batteryChargeKwh = slot.Targets.Sum(target => Math.Max(0, target.SignedPowerWatts)) / 1000d * slot.TimeSlot.Duration.TotalHours;
-        return Math.Max(0, (double)(slot.ExpectedPvKwh - slot.ExpectedConsumptionKwh) - batteryChargeKwh);
+        return Math.Max(0, (double)(slot.ExpectedPvKwh - slot.ExpectedConsumptionKwh) + plannedCarKwh - batteryChargeKwh);
     }
 
     private async Task<double> NumberAsync(string key, CancellationToken cancellationToken) =>
