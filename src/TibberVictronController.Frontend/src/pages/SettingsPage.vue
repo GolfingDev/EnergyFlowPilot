@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import DynamicTariffComparison from '../components/settings/DynamicTariffComparison.vue';
 import PvForecastCorrection from '../components/settings/PvForecastCorrection.vue';
+import SiteAddressCard from '../components/settings/SiteAddressCard.vue';
 import { useRoute } from 'vue-router';
 import { isEverydaySetting, usesCents, settingInputValue, settingStoredValue, secretPresentation, settingUpdatePayload, numericControlErrors } from './settingsPresentation';
 
@@ -1066,6 +1067,7 @@ watch(showAdvanced, ensureActiveSection);
             </div>
           </div>
           <DynamicTariffComparison v-if="activeSection.key === 'forecast'" />
+          <SiteAddressCard v-if="activeSection.key === 'forecast'" />
           <PvForecastCorrection v-if="activeSection.key === 'forecast'" />
         </section>
       </main>

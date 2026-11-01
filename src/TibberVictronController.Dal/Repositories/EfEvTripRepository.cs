@@ -131,5 +131,15 @@ public sealed class EfEvTripRepository(ControllerDbContext dbContext) : IEvTripR
 
     private static EvTrip Map(EvTripEntity entity) => new(entity.Id, entity.DepartureAtUtc, entity.ReturnAtUtc, entity.Destination,
         entity.ResolvedAddress, entity.DistanceKm, entity.DurationMinutes, entity.CreatedAtUtc, entity.RecurrenceDays, entity.RecurrenceUntilUtc,
-        entity.Source, entity.ExternalId, entity.Subject, entity.IsIgnored, ParseDates(entity.SkippedDates).ToArray());
+        entity.Source, entity.ExternalId, entity.Subject, entity.IsIgnored, ParseDates(entity.SkippedDates).ToArray(), null,
+        new GeoPoint(entity.Latitude, entity.Longitude));
+
+    public async Task UpdateRouteAsync(int id, double distanceKm, double durationMinutes, CancellationToken cancellationToken = default)
+    {
+        var entity = await dbContext.EvTrips.FirstOrDefaultAsync(trip => trip.Id == id, cancellationToken);
+        if (entity is null) return;
+        entity.DistanceKm = distanceKm;
+        entity.DurationMinutes = durationMinutes;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
 }

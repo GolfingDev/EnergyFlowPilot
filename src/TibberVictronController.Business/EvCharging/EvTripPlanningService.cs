@@ -20,7 +20,11 @@ public sealed record EvTripRequest(
     DateTimeOffset? ReturnAtUtc,
     string Destination,
     IReadOnlyCollection<DayOfWeek>? RecurrenceDays = null,
-    DateTimeOffset? RecurrenceUntilUtc = null);
+    DateTimeOffset? RecurrenceUntilUtc = null)
+{
+    /// <summary>Coordinates of a chosen address suggestion; then the destination is not searched again.</summary>
+    public GeoPoint? Target { get; init; }
+}
 
 /// <summary>The plan plus the calendar trips the operator has hidden (shown so they can be brought back).</summary>
 public sealed record EvTripPlanView(EvTripPlan Plan, EvCarParameters Car, IReadOnlyList<EvTrip> IgnoredTrips)
@@ -86,7 +90,9 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
         }
 
         var origin = await ReadHomeAsync(cancellationToken);
-        var route = await dependencies.Routes.EstimateAsync(origin, destination, false, cancellationToken);
+        var route = request.Target is { } target
+            ? await dependencies.Routes.RouteToAsync(origin, target, destination, cancellationToken)
+            : await dependencies.Routes.EstimateAsync(origin, destination, false, cancellationToken);
         return await dependencies.Trips.AddAsync(new EvTripDraft(request.DepartureAtUtc.ToUniversalTime(), request.ReturnAtUtc?.ToUniversalTime(),
             destination, route.ResolvedAddress, route.Destination.Latitude, route.Destination.Longitude, route.DistanceKm, route.DurationMinutes,
             recurrence, recurrence == 0 ? null : request.RecurrenceUntilUtc?.ToUniversalTime()),
@@ -105,6 +111,35 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
 
     public Task<bool> SetIgnoredAsync(int id, bool ignored, CancellationToken cancellationToken) =>
         dependencies.Trips.SetIgnoredAsync(id, ignored, cancellationToken);
+
+    /// <summary>
+    /// After the site address changed, every stored trip gets its distance and driving time again from the new home.
+    /// One route request per trip and second (OpenStreetMap usage policy); returns how many were updated.
+    /// </summary>
+    public async Task<int> RecalculateRoutesAsync(CancellationToken cancellationToken)
+    {
+        var home = await ReadHomeAsync(cancellationToken);
+        var trips = (await dependencies.Trips.GetUpcomingAsync(dependencies.Clock.UtcNow, cancellationToken))
+            .Where(trip => trip.Target is { Latitude: not 0 } || trip.Target is { Longitude: not 0 })
+            .DistinctBy(trip => trip.Id).ToArray();
+        var updated = 0;
+        foreach (var trip in trips)
+        {
+            if (updated > 0) await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            try
+            {
+                var route = await dependencies.Routes.RouteToAsync(home, trip.Target!, trip.ResolvedAddress, cancellationToken);
+                await dependencies.Trips.UpdateRouteAsync(trip.Id, route.DistanceKm, route.DurationMinutes, cancellationToken);
+                updated++;
+            }
+            catch (InvalidOperationException)
+            {
+                // Keeps the old distance; the next calendar sync or a new entry corrects it.
+            }
+        }
+
+        return updated;
+    }
 
     /// <summary>Skips (or restores) one date of a weekly series, e.g. during holidays.</summary>
     public Task<bool> SetOccurrenceSkippedAsync(int id, DateOnly date, bool skipped, CancellationToken cancellationToken) =>

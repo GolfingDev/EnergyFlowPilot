@@ -125,6 +125,9 @@ public sealed class CalendarTripTests
         public int Calls { get; private set; }
         public HashSet<string> PlacesOnlyQueries { get; } = [];
 
+        public Task<RouteEstimate> RouteToAsync(GeoPoint origin, GeoPoint destination, string label, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new RouteEstimate(label, destination, 120, 120));
+
         public Task<RouteEstimate> EstimateAsync(GeoPoint origin, string destination, bool placesOnly = false, CancellationToken cancellationToken = default)
         {
             Calls++;
@@ -171,6 +174,9 @@ public sealed class CalendarTripTests
 
         public Task<bool> SetOccurrenceSkippedAsync(int id, DateOnly date, bool skipped, CancellationToken cancellationToken = default) =>
             Task.FromResult(false);
+
+        public Task UpdateRouteAsync(int id, double distanceKm, double durationMinutes, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
 
         public Task<bool> SetIgnoredAsync(int id, bool ignored, CancellationToken cancellationToken = default)
         {

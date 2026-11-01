@@ -118,6 +118,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<ICarSampleRepository, EfCarSampleRepository>();
         services.AddSingleton<PvForecastLearning>();
         services.AddHttpClient<IRoutePlanner, OsmRoutePlanner>(client => client.Timeout = TimeSpan.FromSeconds(20));
+        services.AddHttpClient<IPlaceSearch, PhotonPlaceSearch>(client => client.Timeout = TimeSpan.FromSeconds(8));
         services.AddScoped(provider => new EvTripPlanningDependencies(
             provider.GetRequiredService<IEvTripRepository>(),
             provider.GetRequiredService<IRoutePlanner>(),

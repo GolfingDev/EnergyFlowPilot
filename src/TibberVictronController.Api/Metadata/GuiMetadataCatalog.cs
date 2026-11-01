@@ -43,6 +43,7 @@ public static class GuiMetadataCatalog
             ControllerSettingDefaults.BmwCarDataGcidKey => CreateSetting(definition, "BMW-Kundenkennung (intern)", "Wird bei der Anmeldung gesetzt und verschluesselt gespeichert.", "Car", "password", null),
             ControllerSettingDefaults.BmwCarDataContainerIdKey => CreateSetting(definition, "BMW-Datencontainer (intern)", "Wird bei der ersten Abfrage angelegt.", "Car", "text", null),
             ControllerSettingDefaults.BmwCarDataLastSnapshotKey => CreateSetting(definition, "Letzte Fahrzeugwerte (intern)", "Damit Ladestand und Reichweite einen Neustart ueberstehen.", "Car", "text", null),
+            ControllerSettingDefaults.SiteAddressKey => CreateSetting(definition, "Adresse der Anlage", "Wird in der Karte 'Standort der Anlage' gesetzt; daraus kommen PV-Standort und Startpunkt der Fahrten.", "Forecast", "text", null),
             ControllerSettingDefaults.EvCarUsableCapacityKwhKey => CreateSetting(definition, "Nutzbare Akkukapazitaet des Autos", "i4 eDrive40/M50 etwa 81 kWh, eDrive35 etwa 67 kWh.", "Car", "number", "kWh"),
             ControllerSettingDefaults.EvCarConsumptionKey => CreateSetting(definition, "Verbrauch", "Durchschnitt laut Bordcomputer; Grundlage fuer die Energie je Fahrt.", "Car", "number", "kWh/100 km"),
             ControllerSettingDefaults.EvCarMinimumSocKey => CreateSetting(definition, "Mindest-Ladestand", "So viel muss nach jeder geplanten Fahrt bei der Rueckkehr noch im Akku sein.", "Car", "number", "%"),

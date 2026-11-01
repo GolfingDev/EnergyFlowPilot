@@ -59,6 +59,8 @@ public sealed class ControllerSettingsService : IControllerSettingsService
             throw new ArgumentException("Die manuelle Ladung beider Akkus wird ueber das Dashboard gestartet und beendet.", nameof(key));
         if (definition.Key.StartsWith(ControllerSettingDefaults.BmwCarDataSessionPrefix, StringComparison.Ordinal))
             throw new ArgumentException("Die BMW-Anmeldung wird auf der Seite Auto gestartet und beendet.", nameof(key));
+        if (definition.Key == ControllerSettingDefaults.SiteAddressKey)
+            throw new ArgumentException("Die Adresse der Anlage wird in der Karte 'Standort der Anlage' gesetzt, damit die Koordinaten dazu passen.", nameof(key));
         if (definition.Key == ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey)
             throw new ArgumentException("Der Anbieterwechsel-Zeitpunkt wird automatisch gesetzt.", nameof(key));
         var normalizedValue = NormalizeValue(definition, value);

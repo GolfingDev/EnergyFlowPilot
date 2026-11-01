@@ -58,6 +58,7 @@ app.MapDashboardHub();
 app.MapOcppEndpoints();
 app.MapEvChargingEndpoints();
 app.MapEvTripEndpoints();
+app.MapSiteEndpoints();
 app.MapPvForecastCorrectionEndpoints();
 
 app.Run();

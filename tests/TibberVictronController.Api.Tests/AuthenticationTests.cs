@@ -42,6 +42,21 @@ public sealed class AuthenticationTests
     }
 
     [Fact]
+    public void TripsAndSiteAreReadableForAdminsOnly()
+    {
+        static HttpContext Context(ControllerAuthenticationOptions options, ClaimsPrincipal user) => new DefaultHttpContext
+        {
+            User = user,
+            RequestServices = new ServiceCollection().AddSingleton(options).BuildServiceProvider()
+        };
+
+        Assert.False(AdminOnlyEndpoints.IsAdmin(Context(Entra(), User(AppRoles.Viewer))));
+        Assert.True(AdminOnlyEndpoints.IsAdmin(Context(Entra(), User(AppRoles.Admin))));
+        // Without sign-in (local operation) everything stays open as before.
+        Assert.True(AdminOnlyEndpoints.IsAdmin(Context(new ControllerAuthenticationOptions(), new ClaimsPrincipal(new ClaimsIdentity()))));
+    }
+
+    [Fact]
     public async Task ViewerCanReadAndAdminCanWrite()
     {
         Assert.True((await RunGuardAsync("GET", "/api/settings", User(AppRoles.Viewer))).Passed);

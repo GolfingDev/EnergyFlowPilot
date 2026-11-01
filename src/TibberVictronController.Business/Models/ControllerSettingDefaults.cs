@@ -47,6 +47,8 @@ public static class ControllerSettingDefaults
     public const string BmwCarDataLastSnapshotKey = BmwCarDataSessionPrefix + "lastSnapshot";
     public const string BmwCarDataContainerIdKey = BmwCarDataSessionPrefix + "containerId";
     public const string BmwCarDataNoSnapshot = "none";
+    public const string SiteAddressKey = "site.address";
+    public const string SiteAddressNotConfigured = "not-configured";
     public const string EvCarUsableCapacityKwhKey = "ev.car.usableCapacityKwh";
     public const string EvCarConsumptionKey = "ev.car.consumptionKwhPer100Km";
     public const string EvCarMinimumSocKey = "ev.car.minimumSocPercent";
@@ -218,6 +220,7 @@ public static class ControllerSettingDefaults
         new(BmwCarDataGcidKey, null, ControllerSettingSensitivity.Sensitive),
         new(BmwCarDataLastSnapshotKey, BmwCarDataNoSnapshot, ControllerSettingSensitivity.Normal),
         new(BmwCarDataContainerIdKey, BmwCarDataNoSnapshot, ControllerSettingSensitivity.Normal),
+        new(SiteAddressKey, SiteAddressNotConfigured, ControllerSettingSensitivity.Normal),
         // i4 eDrive40/M50 (about 81 kWh usable); eDrive35 has about 67 kWh.
         new(EvCarUsableCapacityKwhKey, "81", ControllerSettingSensitivity.Normal),
         new(EvCarConsumptionKey, "18", ControllerSettingSensitivity.Normal),

@@ -23,6 +23,14 @@ public interface IEvTripRepository
     Task<bool> SetIgnoredAsync(int id, bool ignored, CancellationToken cancellationToken = default);
 
     Task<bool> SetOccurrenceSkippedAsync(int id, DateOnly date, bool skipped, CancellationToken cancellationToken = default);
+
+    Task UpdateRouteAsync(int id, double distanceKm, double durationMinutes, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Address suggestions while typing (search-as-you-type).</summary>
+public interface IPlaceSearch
+{
+    Task<IReadOnlyList<PlaceSuggestion>> SuggestAsync(string query, GeoPoint? near, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Appointments of the configured calendar.</summary>
@@ -36,4 +44,7 @@ public interface IRoutePlanner
 {
     /// <summary>placesOnly: accept only towns and villages (for places guessed from free text such as a subject).</summary>
     Task<RouteEstimate> EstimateAsync(GeoPoint origin, string destination, bool placesOnly = false, CancellationToken cancellationToken = default);
+
+    /// <summary>Route to coordinates that are already known (a chosen suggestion or a stored trip).</summary>
+    Task<RouteEstimate> RouteToAsync(GeoPoint origin, GeoPoint destination, string label, CancellationToken cancellationToken = default);
 }

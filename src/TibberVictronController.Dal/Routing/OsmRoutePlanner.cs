@@ -19,6 +19,12 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
     public async Task<RouteEstimate> EstimateAsync(GeoPoint origin, string destination, bool placesOnly = false, CancellationToken cancellationToken = default)
     {
         var (target, address) = await GeocodeAsync(destination, placesOnly, cancellationToken);
+        return await RouteToAsync(origin, target, address, cancellationToken);
+    }
+
+    public async Task<RouteEstimate> RouteToAsync(GeoPoint origin, GeoPoint target, string address, CancellationToken cancellationToken = default)
+    {
+        var destination = address;
         var url = OsrmUrl + string.Create(CultureInfo.InvariantCulture,
             $"{origin.Longitude},{origin.Latitude};{target.Longitude},{target.Latitude}?overview=false");
         using var document = await GetJsonAsync(url, "Routenberechnung", cancellationToken);

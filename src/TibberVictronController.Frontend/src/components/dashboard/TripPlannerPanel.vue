@@ -4,6 +4,7 @@ import type { ChartConfiguration } from 'chart.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { isAdmin } from '../../auth';
 import { formatNumber } from './dashboardFormatters';
+import PlaceAutocomplete, { type PlaceSuggestion } from '../PlaceAutocomplete.vue';
 
 interface EvTripDto {
   id: number;
@@ -57,6 +58,7 @@ const syncing = ref(false);
 const showIgnored = ref(false);
 const error = ref<string | null>(null);
 const destination = ref('');
+const target = ref<PlaceSuggestion | null>(null);
 const departure = ref('');
 const returnAt = ref('');
 // 0 = Sunday ... 6 = Saturday, shown Monday first.
@@ -99,6 +101,9 @@ async function addTrip(): Promise<void> {
         destination: destination.value.trim(),
         departureAtUtc: new Date(departure.value).toISOString(),
         returnAtUtc: returnAt.value ? new Date(returnAt.value).toISOString() : null,
+        // A chosen suggestion brings its coordinates, so the destination is not searched again.
+        latitude: target.value && target.value.label === destination.value ? target.value.latitude : null,
+        longitude: target.value && target.value.label === destination.value ? target.value.longitude : null,
         recurrenceDays: recurrenceDays.value,
         // End of the chosen local day, so the last day still counts.
         recurrenceUntilUtc: recurrenceDays.value.length && recurrenceUntil.value ? new Date(`${recurrenceUntil.value}T23:59:59`).toISOString() : null
@@ -109,6 +114,7 @@ async function addTrip(): Promise<void> {
       throw new Error(body?.message ?? body?.detail ?? `Fahrt konnte nicht gespeichert werden (HTTP ${response.status}).`);
     }
     destination.value = '';
+    target.value = null;
     departure.value = '';
     returnAt.value = '';
     recurrenceDays.value = [];
@@ -267,7 +273,7 @@ onBeforeUnmount(() => {
       </v-alert>
 
       <form v-if="isAdmin" class="trip__form mb-4" @submit.prevent="addTrip">
-        <v-text-field v-model="destination" label="Ziel (Ort oder Adresse)" density="compact" hide-details maxlength="200" />
+        <PlaceAutocomplete v-model="destination" label="Ziel (Ort oder Adresse)" @select="target = $event" />
         <v-text-field v-model="departure" :label="recurrenceDays.length ? 'Erste Abfahrt (Datum und Uhrzeit)' : 'Abfahrt'" type="datetime-local" density="compact" hide-details />
         <v-text-field v-model="returnAt" label="Rückkehr (optional)" type="datetime-local" density="compact" hide-details />
         <v-btn type="submit" color="primary" :disabled="!canSave" :loading="saving">Fahrt eintragen</v-btn>

@@ -3,6 +3,7 @@ import CarDataPanel from '../components/dashboard/CarDataPanel.vue';
 import ChargePlanPanel from '../components/dashboard/ChargePlanPanel.vue';
 import EvChargerPanel from '../components/dashboard/EvChargerPanel.vue';
 import TripPlannerPanel from '../components/dashboard/TripPlannerPanel.vue';
+import { isAdmin } from '../auth';
 </script>
 
 <template>
@@ -13,7 +14,8 @@ import TripPlannerPanel from '../components/dashboard/TripPlannerPanel.vue';
       <p>Wallbox-Verbindung, Ladevorgänge und später Ladeplanung für die nächsten Fahrten.</p>
     </header>
     <CarDataPanel />
-    <TripPlannerPanel />
+    <!-- Trips show where and when the family drives: admins only. Viewers see the charging plan. -->
+    <TripPlannerPanel v-if="isAdmin" />
     <ChargePlanPanel />
     <EvChargerPanel />
   </v-container>

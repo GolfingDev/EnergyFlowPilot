@@ -20,7 +20,8 @@ public sealed record EvTrip(
     string? Subject = null,
     bool IsIgnored = false,
     IReadOnlyList<DateOnly>? SkippedDates = null,
-    DateOnly? OccurrenceDate = null)
+    DateOnly? OccurrenceDate = null,
+    GeoPoint? Target = null)
 {
     public bool IsRecurring => RecurrenceDays != 0;
 
@@ -80,6 +81,9 @@ public sealed record CalendarSyncResult(
     IReadOnlyList<string> Unresolved);
 
 public sealed record GeoPoint(double Latitude, double Longitude);
+
+/// <summary>A suggestion while typing an address: readable label and coordinates.</summary>
+public sealed record PlaceSuggestion(string Label, double Latitude, double Longitude);
 
 /// <summary>One-way route from home to a destination.</summary>
 public sealed record RouteEstimate(string ResolvedAddress, GeoPoint Destination, double DistanceKm, double DurationMinutes);

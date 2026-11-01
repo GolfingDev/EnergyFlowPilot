@@ -9,7 +9,7 @@ public static class EvTripEndpoints
 {
     public static IEndpointRouteBuilder MapEvTripEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/ev-charging/trips", GetPlanAsync).WithName("GetEvTripPlan").WithTags("EvCharging");
+        endpoints.MapGet("/api/ev-charging/trips", GetPlanAsync).WithName("GetEvTripPlan").WithTags("EvCharging").RequireAdmin();
         endpoints.MapPost("/api/ev-charging/trips", AddTripAsync).WithName("AddEvTrip").WithTags("EvCharging");
         endpoints.MapDelete("/api/ev-charging/trips/{id:int}", DeleteTripAsync).WithName("DeleteEvTrip").WithTags("EvCharging");
         endpoints.MapPut("/api/ev-charging/trips/{id:int}/ignored", SetIgnoredAsync).WithName("SetEvTripIgnored").WithTags("EvCharging");
@@ -21,7 +21,7 @@ public static class EvTripEndpoints
             return TypedResults.Ok(new EvChargingControlDto(current.Enabled, current.Mode.ToString(), current.Amps, current.Reason,
                 current.UpdatedAtUtc == DateTimeOffset.MinValue ? null : current.UpdatedAtUtc, current.CommandProblem));
         }).WithName("GetEvChargingControl").WithTags("EvCharging");
-        endpoints.MapGet("/api/ev-charging/calendar", GetCalendarStatusAsync).WithName("GetCalendarSyncStatus").WithTags("EvCharging");
+        endpoints.MapGet("/api/ev-charging/calendar", GetCalendarStatusAsync).WithName("GetCalendarSyncStatus").WithTags("EvCharging").RequireAdmin();
         endpoints.MapPost("/api/ev-charging/calendar/sync", SyncCalendarAsync).WithName("SyncCalendar").WithTags("EvCharging");
         return endpoints;
     }
@@ -48,7 +48,10 @@ public static class EvTripEndpoints
             if (request.RecurrenceDays?.Any(day => day is < 0 or > 6) == true)
                 return TypedResults.BadRequest(new { message = "Wochentage muessen zwischen 0 (Sonntag) und 6 (Samstag) liegen." });
             var trip = await planning.AddTripAsync(new EvTripRequest(request.DepartureAtUtc, request.ReturnAtUtc, request.Destination ?? string.Empty,
-                request.RecurrenceDays?.Select(day => (DayOfWeek)day).ToArray(), request.RecurrenceUntilUtc), cancellationToken);
+                request.RecurrenceDays?.Select(day => (DayOfWeek)day).ToArray(), request.RecurrenceUntilUtc)
+            {
+                Target = request.Latitude is { } latitude && request.Longitude is { } longitude ? new GeoPoint(latitude, longitude) : null
+            }, cancellationToken);
             return TypedResults.Ok(new { trip.Id });
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
@@ -98,14 +101,19 @@ public static class EvTripEndpoints
         return state.Current.Error is { } error ? TypedResults.BadRequest(new { message = error }) : TypedResults.NoContent();
     }
 
-    private static async Task<IResult> GetChargePlanAsync(EvChargePlanService chargePlan, CancellationToken cancellationToken)
+    private static async Task<IResult> GetChargePlanAsync(HttpContext http, EvChargePlanService chargePlan, CancellationToken cancellationToken)
     {
         try
         {
             var view = await chargePlan.GetAsync(cancellationToken);
             var plan = view.Plan;
+            // Viewers see the charging plan, but not where the trips go.
+            var destinations = view.Trips.Plan.Trips.Select(trip => trip.Trip.Destination).Where(name => name.Length > 0).Distinct().ToArray();
+            var warnings = AdminOnlyEndpoints.IsAdmin(http)
+                ? plan.Warnings
+                : plan.Warnings.Select(warning => destinations.Aggregate(warning, (text, name) => text.Replace("nach " + name, "zu einer Fahrt"))).ToArray();
             return TypedResults.Ok(new EvChargePlanResponseDto(plan.CalculatedAtUtc, view.SlotSource, Math.Round(plan.GridKwh, 1), Math.Round(plan.PvKwh, 1),
-                Math.Round(plan.GridCost, 2), plan.Warnings,
+                Math.Round(plan.GridCost, 2), warnings,
                 plan.Scenarios.Select(scenario => new EvChargeScenarioDto(scenario.Name, scenario.PvFactor, Math.Round(scenario.GridKwh, 1), Math.Round(scenario.GridCost, 2))).ToArray(),
                 plan.Slots.Select(slot => new EvChargeSlotDto(slot.StartsAtUtc, slot.EndsAtUtc, Math.Round(slot.PowerWatts), Math.Round(slot.GridKwh, 2),
                     Math.Round(slot.PvKwh, 2), slot.PricePerKwh, slot.IsPriceEstimated, slot.Reason.ToString())).ToArray()));
@@ -159,7 +167,7 @@ public sealed record CalendarSyncStatusDto(
 
 /// <summary>RecurrenceDays: 0 = Sunday ... 6 = Saturday; empty or null for a single trip.</summary>
 public sealed record EvTripRequestDto(DateTimeOffset DepartureAtUtc, DateTimeOffset? ReturnAtUtc, string? Destination,
-    int[]? RecurrenceDays = null, DateTimeOffset? RecurrenceUntilUtc = null);
+    int[]? RecurrenceDays = null, DateTimeOffset? RecurrenceUntilUtc = null, double? Latitude = null, double? Longitude = null);
 
 public static class EvTripPlanDtoMapper
 {
