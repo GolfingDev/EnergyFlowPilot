@@ -32,6 +32,9 @@ internal static class ControllerSettingValueValidation
         if (key == ControllerSettingDefaults.BmwCarDataVinKey && value != ControllerSettingDefaults.BmwCarDataAutoVin &&
             (value is null || value.Length != 17 || !value.All(char.IsAsciiLetterOrDigit)))
             throw new ArgumentException("Die Fahrgestellnummer (VIN) muss 17 Zeichen lang sein oder 'auto' lauten.");
+        if (key is ControllerSettingDefaults.EvCarUseLearnedConsumptionKey or ControllerSettingDefaults.PvForecastLearnedCorrectionEnabledKey &&
+            !bool.TryParse(value, out _))
+            throw new ArgumentException("Der Schalter muss true oder false sein.");
         if (key == ControllerSettingDefaults.EvChargingControlEnabledKey && !bool.TryParse(value, out _))
             throw new ArgumentException("Der Schalter fuer die automatische Ladesteuerung muss true oder false sein.");
         if (key == ControllerSettingDefaults.EvCalendarEnabledKey && !bool.TryParse(value, out _))

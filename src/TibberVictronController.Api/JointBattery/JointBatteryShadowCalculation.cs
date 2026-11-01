@@ -11,6 +11,33 @@ namespace TibberVictronController.Api.JointBattery;
 /// <summary>Loads independent live inputs for the shadow planner; sends only MQTT read requests, never device commands.</summary>
 public sealed class JointBatteryShadowCalculation(IServiceProvider services)
 {
+    /// <summary>
+    /// Records the fresh forecast for later comparison and, if switched on and learned from enough days, scales the
+    /// PV forecast per local hour. Learning problems never block the plan; the forecast is then used unchanged.
+    /// </summary>
+    private static async Task<IReadOnlyList<PvYieldForecastSlot>> LearnAndCorrectPvAsync(IServiceProvider services,
+        IReadOnlyList<PvYieldForecastSlot>? freshPv, IReadOnlyList<PvYieldForecastSlot> pv, IReadOnlyList<LiveConsumptionSample> history,
+        TimeZoneInfo zone, List<string> inputWarnings, CancellationToken token)
+    {
+        if (services.GetService<PvForecastLearning>() is not { } learning) return pv;
+        try
+        {
+            if (freshPv is not null) await learning.RecordForecastAsync(services, freshPv, token);
+            var enabled = bool.TryParse((await services.GetRequiredService<IControllerSettingStore>()
+                .GetSettingAsync(ControllerSettingDefaults.PvForecastLearnedCorrectionEnabledKey, token))?.Value, out var on) && on;
+            if (!enabled) return pv;
+            var correction = await learning.GetAsync(services, history.Count > 0 ? history : null, zone, token);
+            if (!correction.IsReady) return pv;
+            return pv.Select(slot => new PvYieldForecastSlot(slot.TimeSlot,
+                slot.ExpectedPvYieldKwh * (decimal)correction.FactorFor(slot.TimeSlot.StartsAtUtc, zone)) { IsForecastAvailable = slot.IsForecastAvailable }).ToArray();
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            inputWarnings.Add($"PV-Korrektur nicht verfuegbar ({exception.GetType().Name}); Prognose unveraendert verwendet.");
+            return pv;
+        }
+    }
+
     private static string Local(DateTimeOffset? utc) => utc is { } value
         ? TimeZoneInfo.ConvertTime(value, TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin")).ToString("dd.MM. HH:mm", CultureInfo.InvariantCulture)
         : "unbekannt";
@@ -119,6 +146,7 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
             inputWarnings.Add($"Verbrauchshistorie nicht lesbar ({exception.GetType().Name}); Ersatzprofil aus dem Tagesverbrauch verwendet.");
         }
         var zone = TimeZoneInfo.FindSystemTimeZoneById((await settings.GetSettingAsync(ControllerSettingDefaults.ConsumptionForecastTimeZoneKey, token))?.Value ?? "Europe/Berlin");
+        pv = await LearnAndCorrectPvAsync(services, freshPv, pv, history, zone, inputWarnings, token);
         IReadOnlyList<HourlyTemperature>? temperatures = null;
         try { temperatures = await services.GetRequiredService<ITemperatureProvider>().GetHourlyTemperaturesAsync(now.AddDays(-14), end.AddHours(24), token); }
         catch (Exception exception) when (exception is not OperationCanceledException) { }

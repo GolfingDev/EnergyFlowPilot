@@ -170,7 +170,8 @@ public static class EvTripPlanDtoMapper
         plan.CalculatedAtUtc,
         plan.CurrentSocPercent,
         plan.CurrentSocIsAssumed,
-        new EvCarParametersDto(car.UsableCapacityKwh, car.ConsumptionKwhPer100Km, car.MinimumSocPercent, car.MarginPercent, car.ChargePowerWatts),
+        new EvCarParametersDto(car.UsableCapacityKwh, car.ConsumptionKwhPer100Km, car.MinimumSocPercent, car.MarginPercent, car.ChargePowerWatts,
+            view.UsesLearnedConsumption, view.LearnedConsumption is { } learned ? new LearnedConsumptionDto(learned.KwhPer100Km, learned.Drives, learned.TotalKm) : null),
         plan.Trips.Select(requirement => new EvTripDto(
             requirement.Trip.Id,
             requirement.Trip.Destination,
@@ -200,7 +201,10 @@ public static class EvTripPlanDtoMapper
     }
 }
 
-public sealed record EvCarParametersDto(double UsableCapacityKwh, double ConsumptionKwhPer100Km, double MinimumSocPercent, double MarginPercent, double ChargePowerWatts);
+public sealed record EvCarParametersDto(double UsableCapacityKwh, double ConsumptionKwhPer100Km, double MinimumSocPercent, double MarginPercent, double ChargePowerWatts,
+    bool UsesLearnedConsumption, LearnedConsumptionDto? LearnedConsumption);
+
+public sealed record LearnedConsumptionDto(double KwhPer100Km, int Drives, double TotalKm);
 
 public sealed record EvTripDto(
     int Id,

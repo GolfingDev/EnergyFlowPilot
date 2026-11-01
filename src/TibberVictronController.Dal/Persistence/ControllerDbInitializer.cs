@@ -108,7 +108,7 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
     {
         var databaseCreator = dbContext.GetService<IRelationalDatabaseCreator>();
 
-        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions", "EvTrips" })
+        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions", "EvTrips", "PvForecastSnapshots", "CarSamples" })
         {
             if (await databaseCreator.HasTablesAsync(cancellationToken) &&
                 await TableExistsAsync(tableName, cancellationToken))
@@ -224,6 +224,29 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
 
     private static string CreateTableScript(string tableName)
     {
+        if (tableName == "PvForecastSnapshots")
+        {
+            return """
+CREATE TABLE IF NOT EXISTS "PvForecastSnapshots" (
+    "SlotStartUtc" INTEGER NOT NULL CONSTRAINT "PK_PvForecastSnapshots" PRIMARY KEY,
+    "ForecastKwh" REAL NOT NULL,
+    "CapturedAtUtc" INTEGER NOT NULL
+);
+""";
+        }
+        if (tableName == "CarSamples")
+        {
+            return """
+CREATE TABLE IF NOT EXISTS "CarSamples" (
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_CarSamples" PRIMARY KEY AUTOINCREMENT,
+    "MeasuredAtUtc" INTEGER NOT NULL,
+    "SocPercent" REAL NULL,
+    "OdometerKm" REAL NULL
+);
+CREATE INDEX IF NOT EXISTS "IX_CarSamples_MeasuredAtUtc" ON "CarSamples" ("MeasuredAtUtc");
+""";
+        }
+
         if (tableName == "EvTrips")
         {
             return """

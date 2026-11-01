@@ -1,5 +1,6 @@
 using System.Globalization;
 using TibberVictronController.Business.Abstractions;
+using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Models;
 
 namespace TibberVictronController.Business.EvCharging;
@@ -10,7 +11,8 @@ public sealed record EvTripPlanningDependencies(
     IControllerSettingStore Settings,
     ICarStatusSource Car,
     IUtcClock Clock,
-    ITemperatureProvider? Temperatures = null);
+    ITemperatureProvider? Temperatures = null,
+    ICarSampleRepository? CarSamples = null);
 
 /// <summary>A trip to add; with weekdays it is a weekly series starting at the departure, optionally until a date.</summary>
 public sealed record EvTripRequest(
@@ -21,7 +23,13 @@ public sealed record EvTripRequest(
     DateTimeOffset? RecurrenceUntilUtc = null);
 
 /// <summary>The plan plus the calendar trips the operator has hidden (shown so they can be brought back).</summary>
-public sealed record EvTripPlanView(EvTripPlan Plan, EvCarParameters Car, IReadOnlyList<EvTrip> IgnoredTrips);
+public sealed record EvTripPlanView(EvTripPlan Plan, EvCarParameters Car, IReadOnlyList<EvTrip> IgnoredTrips)
+{
+    /// <summary>Consumption learned from the car's drives; used instead of the setting when switched on.</summary>
+    public LearnedConsumption? LearnedConsumption { get; init; }
+
+    public bool UsesLearnedConsumption { get; init; }
+}
 
 /// <summary>Manual trip planning: stores trips with their calculated route and derives the required state of charge.</summary>
 public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencies)
@@ -34,6 +42,9 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
     {
         var now = dependencies.Clock.UtcNow;
         var car = await ReadCarParametersAsync(cancellationToken);
+        var learned = await LearnConsumptionAsync(car, now, cancellationToken);
+        var useLearned = learned is not null && await FlagAsync(ControllerSettingDefaults.EvCarUseLearnedConsumptionKey, cancellationToken);
+        if (useLearned) car = car with { ConsumptionKwhPer100Km = learned!.KwhPer100Km };
         var trips = EvTripOccurrences.Expand(await dependencies.Trips.GetUpcomingAsync(now, cancellationToken), now, SeriesHorizon, LocalZone);
         var active = trips.Where(trip => !trip.IsIgnored).ToArray();
         var plan = EvTripSocPlanner.Plan(new EvTripPlanInput(now, dependencies.Car.Car.StateOfChargePercent, active, car, LocalZone)
@@ -41,7 +52,11 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
             Temperatures = active.Length == 0 ? null : await TemperaturesAsync(now, cancellationToken),
             WinterSurchargePerKelvinPercent = await NumberAsync(ControllerSettingDefaults.EvTripWinterSurchargeKey, cancellationToken)
         });
-        return new EvTripPlanView(plan, car, trips.Where(trip => trip.IsIgnored && trip.DepartureAtUtc > now).ToArray());
+        return new EvTripPlanView(plan, car, trips.Where(trip => trip.IsIgnored && trip.DepartureAtUtc > now).ToArray())
+        {
+            LearnedConsumption = learned,
+            UsesLearnedConsumption = useLearned
+        };
     }
 
     public async Task<EvTrip> AddTripAsync(EvTripRequest request, CancellationToken cancellationToken)
@@ -94,6 +109,39 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
     /// <summary>Skips (or restores) one date of a weekly series, e.g. during holidays.</summary>
     public Task<bool> SetOccurrenceSkippedAsync(int id, DateOnly date, bool skipped, CancellationToken cancellationToken) =>
         dependencies.Trips.SetOccurrenceSkippedAsync(id, date, skipped, cancellationToken);
+
+    // Learning works on the drives of the last four months; a failure just keeps the configured consumption.
+    private async Task<LearnedConsumption?> LearnConsumptionAsync(EvCarParameters car, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (dependencies.CarSamples is null) return null;
+        try
+        {
+            var samples = await dependencies.CarSamples.GetSinceAsync(now.AddDays(-120), cancellationToken);
+            if (samples.Count < 2) return null;
+            IReadOnlyList<HourlyTemperature>? temperatures = null;
+            if (dependencies.Temperatures is not null)
+            {
+                try
+                {
+                    temperatures = await dependencies.Temperatures.GetHourlyTemperaturesAsync(samples[0].MeasuredAtUtc.AddHours(-1), now, cancellationToken);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    // Without past temperatures the drives are not normalised; still better than nothing.
+                }
+            }
+
+            return CarConsumptionLearner.Learn(samples, car.UsableCapacityKwh, temperatures,
+                await NumberAsync(ControllerSettingDefaults.EvTripWinterSurchargeKey, cancellationToken));
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    private async Task<bool> FlagAsync(string key, CancellationToken cancellationToken) =>
+        bool.TryParse((await dependencies.Settings.GetSettingAsync(key, cancellationToken))?.Value, out var value) && value;
 
     // A missing forecast only removes the winter surcharge; it never blocks the plan.
     private async Task<IReadOnlyList<HourlyTemperature>?> TemperaturesAsync(DateTimeOffset now, CancellationToken cancellationToken)

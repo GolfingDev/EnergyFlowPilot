@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import DynamicTariffComparison from '../components/settings/DynamicTariffComparison.vue';
+import PvForecastCorrection from '../components/settings/PvForecastCorrection.vue';
 import { useRoute } from 'vue-router';
 import { isEverydaySetting, usesCents, settingInputValue, settingStoredValue, secretPresentation, settingUpdatePayload, numericControlErrors } from './settingsPresentation';
 
@@ -112,6 +113,8 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'ev.calendar.mailbox', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.car.minimumSocPercent', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.car.baseSocPercent', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
+  { key: 'ev.car.useLearnedConsumption', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
+  { key: 'pvForecast.learnedCorrectionEnabled', section: 'forecast', subgroup: 'PV-Anlage', category: 'important' },
   { key: 'ev.car.consumptionKwhPer100Km', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.trip.marginPercent', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.trip.winterSurchargePerKelvinPercent', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
@@ -1063,6 +1066,7 @@ watch(showAdvanced, ensureActiveSection);
             </div>
           </div>
           <DynamicTariffComparison v-if="activeSection.key === 'forecast'" />
+          <PvForecastCorrection v-if="activeSection.key === 'forecast'" />
         </section>
       </main>
 

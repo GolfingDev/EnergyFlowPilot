@@ -113,6 +113,9 @@ public static class ControllerServiceCollectionExtensions
         services.AddSingleton<ICarStatusSource>(provider => provider.GetRequiredService<CarStatusStore>());
         services.AddSingleton<CarDataService>();
         services.AddScoped<IEvTripRepository, EfEvTripRepository>();
+        services.AddScoped<IPvForecastSnapshotRepository, EfPvForecastSnapshotRepository>();
+        services.AddScoped<ICarSampleRepository, EfCarSampleRepository>();
+        services.AddSingleton<PvForecastLearning>();
         services.AddHttpClient<IRoutePlanner, OsmRoutePlanner>(client => client.Timeout = TimeSpan.FromSeconds(20));
         services.AddScoped(provider => new EvTripPlanningDependencies(
             provider.GetRequiredService<IEvTripRepository>(),
@@ -120,7 +123,8 @@ public static class ControllerServiceCollectionExtensions
             provider.GetRequiredService<IControllerSettingStore>(),
             provider.GetRequiredService<ICarStatusSource>(),
             provider.GetRequiredService<IUtcClock>(),
-            provider.GetService<ITemperatureProvider>()));
+            provider.GetService<ITemperatureProvider>(),
+            provider.GetService<ICarSampleRepository>()));
         services.AddScoped<EvTripPlanningService>();
         services.AddHttpClient<GraphCalendarClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<ICalendarSource, GraphCalendarSource>();

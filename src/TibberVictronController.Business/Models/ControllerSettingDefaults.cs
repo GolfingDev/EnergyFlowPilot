@@ -51,6 +51,8 @@ public static class ControllerSettingDefaults
     public const string EvCarMinimumSocKey = "ev.car.minimumSocPercent";
     public const string EvTripMarginKey = "ev.trip.marginPercent";
     public const string EvCarBaseSocKey = "ev.car.baseSocPercent";
+    public const string EvCarUseLearnedConsumptionKey = "ev.car.useLearnedConsumption";
+    public const string PvForecastLearnedCorrectionEnabledKey = "pvForecast.learnedCorrectionEnabled";
     public const string EvTripWinterSurchargeKey = "ev.trip.winterSurchargePerKelvinPercent";
     public const string EvChargingControlEnabledKey = "ev.charging.controlEnabled";
     public const string EvChargingCheapPercentileKey = "ev.charging.cheapPercentile";
@@ -220,6 +222,8 @@ public static class ControllerSettingDefaults
         new(EvCarMinimumSocKey, "15", ControllerSettingSensitivity.Normal),
         new(EvTripMarginKey, "5", ControllerSettingSensitivity.Normal),
         new(EvCarBaseSocKey, "50", ControllerSettingSensitivity.Normal),
+        new(EvCarUseLearnedConsumptionKey, "true", ControllerSettingSensitivity.Normal),
+        new(PvForecastLearnedCorrectionEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(EvTripWinterSurchargeKey, "1.2", ControllerSettingSensitivity.Normal),
         new(EvChargingControlEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(EvChargingCheapPercentileKey, "25", ControllerSettingSensitivity.Normal),

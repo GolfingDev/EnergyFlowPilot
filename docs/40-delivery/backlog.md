@@ -76,7 +76,7 @@ Requirement: `docs/20-domain/ev-charging.md`.
    - 4b Implemented: time-limited SetChargingProfile/ClearChargingProfile with hardware test buttons. Open: hardware test on the Halo.
    - 4c Implemented: automatic control (plan, live PV surplus with grid allowance, cheap-price charging beyond trips, full-power fallback), master switch default off. Open: activation after the hardware test.
    - 4d Implemented: planned car load in the joint battery plan; wallbox power stored with live samples and left out of the consumption model.
-6. Implemented: car charging optimizer (dynamic programming, PV by value against the home batteries' marginal value, economic charging, PV scenarios). Open: learned consumption per km and PV forecast correction.
+6. Implemented: car charging optimizer (dynamic programming, PV by value against the home batteries' marginal value, economic charging, PV scenarios). Learned consumption per km (from CarData drives) and learned PV forecast correction (shown, applied by switch) implemented. Open: check both once real data exists.
 5. Implemented: calendar integration (Microsoft Graph application permission, places from location field or unambiguous subject patterns, automatic trips that can be hidden). Open: acceptance test with the real calendar, Exchange restriction to one mailbox.
 
 ## Rule

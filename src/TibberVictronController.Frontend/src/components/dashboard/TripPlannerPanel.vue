@@ -43,7 +43,8 @@ interface EvTripPlanDto {
   calculatedAtUtc: string;
   currentSocPercent: number | null;
   currentSocIsAssumed: boolean;
-  car: { usableCapacityKwh: number; consumptionKwhPer100Km: number; minimumSocPercent: number; marginPercent: number; chargePowerWatts: number };
+  car: { usableCapacityKwh: number; consumptionKwhPer100Km: number; minimumSocPercent: number; marginPercent: number; chargePowerWatts: number;
+    usesLearnedConsumption: boolean; learnedConsumption: { kwhPer100Km: number; drives: number; totalKm: number } | null };
   trips: EvTripDto[];
   course: { atUtc: string; socPercent: number }[];
   warnings: string[];
@@ -240,7 +241,10 @@ onBeforeUnmount(() => {
     <div class="pa-4 pb-2">
       <h2 class="text-h6">Fahrten</h2>
       <p v-if="plan" class="trip__meta">
-        Energie = Hin- und Rückweg × {{ formatNumber(plan.car.consumptionKwhPer100Km, 1) }} kWh/100 km + {{ formatNumber(plan.car.marginPercent, 0) }} %.
+        Energie = Hin- und Rückweg × {{ formatNumber(plan.car.consumptionKwhPer100Km, 1) }} kWh/100 km
+        ({{ plan.car.usesLearnedConsumption && plan.car.learnedConsumption
+          ? `gelernt aus ${plan.car.learnedConsumption.drives} Fahrten, ${formatNumber(plan.car.learnedConsumption.totalKm, 0)} km`
+          : 'Einstellung; gelernt wird aus den BMW-Daten' }}) + {{ formatNumber(plan.car.marginPercent, 0) }} %.
         Bei der Rückkehr bleiben mindestens {{ percent(plan.car.minimumSocPercent) }}. Laden mit bis zu {{ formatNumber(plan.car.chargePowerWatts / 1000, 1) }} kW.
       </p>
     </div>

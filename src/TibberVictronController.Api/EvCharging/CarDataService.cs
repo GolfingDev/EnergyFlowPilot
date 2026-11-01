@@ -34,6 +34,7 @@ public sealed class CarDataService(
     private CancellationTokenSource? currentRound;
     private DateTimeOffset snapshotPersistedAtUtc = DateTimeOffset.MinValue;
     private bool firstMessageLogged;
+    private (double? Soc, double? Odometer) lastSample;
 
     public async Task<CarDataConnectionState> StartSignInAsync(CancellationToken cancellationToken)
     {
@@ -206,6 +207,7 @@ public sealed class CarDataService(
             updated = next is not null;
             return next ?? current;
         });
+        if (updated) await RecordSampleAsync(snapshot, now);
         if (!updated || now - snapshotPersistedAtUtc < SnapshotPersistInterval) return;
         snapshotPersistedAtUtc = now;
         try
@@ -216,6 +218,24 @@ public sealed class CarDataService(
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.LogWarning(exception, "Letzte Fahrzeugwerte konnten nicht gespeichert werden.");
+        }
+    }
+
+    // Each change of state of charge or odometer is kept: the consumption per km is learned from the drives.
+    private async Task RecordSampleAsync(CarSnapshot snapshot, DateTimeOffset now)
+    {
+        var sample = (snapshot.StateOfChargePercent, snapshot.OdometerKm);
+        if (sample.StateOfChargePercent is null && sample.OdometerKm is null || sample == lastSample) return;
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<ICarSampleRepository>()
+                .AddAsync(new CarSample(now, snapshot.StateOfChargePercent, snapshot.OdometerKm), stopping);
+            lastSample = sample;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Fahrzeug-Messpunkt konnte nicht gespeichert werden.");
         }
     }
 

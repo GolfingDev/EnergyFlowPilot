@@ -44,6 +44,10 @@ public sealed class ControllerDbContext : DbContext
 
     public DbSet<EvTripEntity> EvTrips => Set<EvTripEntity>();
 
+    public DbSet<PvForecastSnapshotEntity> PvForecastSnapshots => Set<PvForecastSnapshotEntity>();
+
+    public DbSet<CarSampleEntity> CarSamples => Set<CarSampleEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureControllerSettings(modelBuilder);
@@ -58,6 +62,20 @@ public sealed class ControllerDbContext : DbContext
         ConfigureConsumptionDailySummaries(modelBuilder);
         ConfigureEvChargingSessions(modelBuilder);
         ConfigureEvTrips(modelBuilder);
+        modelBuilder.Entity<PvForecastSnapshotEntity>(entity =>
+        {
+            entity.ToTable("PvForecastSnapshots");
+            entity.HasKey(snapshot => snapshot.SlotStartUtc);
+            entity.Property(snapshot => snapshot.SlotStartUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter).ValueGeneratedNever();
+            entity.Property(snapshot => snapshot.CapturedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+        });
+        modelBuilder.Entity<CarSampleEntity>(entity =>
+        {
+            entity.ToTable("CarSamples");
+            entity.HasKey(sample => sample.Id);
+            entity.Property(sample => sample.MeasuredAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.HasIndex(sample => sample.MeasuredAtUtc);
+        });
     }
 
     private static void ConfigureEvTrips(ModelBuilder modelBuilder)
