@@ -41,6 +41,16 @@ public sealed class CalendarSyncState
         lock (gate) (lastResult, lastError, lastAttemptAtUtc) = (result, null, result.SyncedAtUtc);
     }
 
+    /// <summary>Removes an appointment from the open list once the operator chose its place.</summary>
+    public void Resolved(string eventId)
+    {
+        lock (gate)
+        {
+            if (lastResult is not null)
+                lastResult = lastResult with { Unresolved = lastResult.Unresolved.Where(entry => entry.EventId != eventId).ToArray() };
+        }
+    }
+
     public void Failed(string error, DateTimeOffset atUtc)
     {
         lock (gate) (lastError, lastAttemptAtUtc) = (error, atUtc);

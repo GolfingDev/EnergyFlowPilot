@@ -13,6 +13,8 @@ public static class EvTripEndpoints
         endpoints.MapPost("/api/ev-charging/trips", AddTripAsync).WithName("AddEvTrip").WithTags("EvCharging");
         endpoints.MapDelete("/api/ev-charging/trips/{id:int}", DeleteTripAsync).WithName("DeleteEvTrip").WithTags("EvCharging");
         endpoints.MapPut("/api/ev-charging/trips/{id:int}/ignored", SetIgnoredAsync).WithName("SetEvTripIgnored").WithTags("EvCharging");
+        endpoints.MapPut("/api/ev-charging/trips/{id:int}/location", SetLocationAsync).WithName("SetEvTripLocation").WithTags("EvCharging");
+        endpoints.MapPost("/api/ev-charging/calendar/location", SetCalendarPlaceAsync).WithName("SetCalendarPlace").WithTags("EvCharging");
         endpoints.MapPut("/api/ev-charging/trips/{id:int}/occurrences/{date}/skipped", SetOccurrenceSkippedAsync).WithName("SetEvTripOccurrenceSkipped").WithTags("EvCharging");
         endpoints.MapGet("/api/ev-charging/charge-plan", GetChargePlanAsync).WithName("GetEvChargePlan").WithTags("EvCharging");
         endpoints.MapGet("/api/ev-charging/control", (EvChargingControlState state) =>
@@ -84,14 +86,52 @@ public static class EvTripEndpoints
             : TypedResults.NotFound(new { message = "Die Serie gibt es nicht (mehr)." });
     }
 
+    private static async Task<IResult> SetLocationAsync(int id, PlaceRequestDto request, EvTripPlanningService planning, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await planning.SetLocationAsync(id, request.Label ?? string.Empty, Target(request), cancellationToken)
+                ? TypedResults.NoContent()
+                : TypedResults.NotFound(new { message = "Die Fahrt gibt es nicht (mehr)." });
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            return TypedResults.BadRequest(new { message = exception.Message });
+        }
+    }
+
+    // The appointment comes from the last sync on the server, not from the browser.
+    private static async Task<IResult> SetCalendarPlaceAsync(CalendarPlaceRequestDto request, CalendarSyncState state, CalendarTripSyncService sync,
+        CancellationToken cancellationToken)
+    {
+        var appointment = state.Current.Result?.Unresolved.FirstOrDefault(entry => entry.EventId == request.EventId);
+        if (appointment is null) return TypedResults.NotFound(new { message = "Der Termin ist nicht mehr offen; bitte neu abgleichen." });
+        var label = request.Label?.Trim() ?? string.Empty;
+        if (label.Length is < 2 or > 200) return TypedResults.BadRequest(new { message = "Der Ort muss zwischen 2 und 200 Zeichen lang sein." });
+        try
+        {
+            await sync.SetPlaceAsync(appointment, label, Target(request), cancellationToken);
+            state.Resolved(appointment.EventId);
+            return TypedResults.NoContent();
+        }
+        catch (InvalidOperationException exception)
+        {
+            return TypedResults.BadRequest(new { message = exception.Message });
+        }
+    }
+
+    private static GeoPoint? Target(PlaceRequestDto request) =>
+        request.Latitude is { } latitude && request.Longitude is { } longitude ? new GeoPoint(latitude, longitude) : null;
+
     private static async Task<IResult> GetCalendarStatusAsync(HttpContext http, CalendarSyncState state, IControllerSettingStore settings,
         ControllerAuthenticationOptions authentication, CancellationToken cancellationToken)
     {
         var enabled = bool.TryParse((await settings.GetSettingAsync(ControllerSettingDefaults.EvCalendarEnabledKey, cancellationToken))?.Value, out var value) && value;
         var (result, error, attemptAt) = state.Current;
         var isAdmin = IsAdmin(http, authentication);
+        var zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
         return TypedResults.Ok(new CalendarSyncStatusDto(enabled, attemptAt, result?.SyncedAtUtc, error, result?.EventsRead, result?.TripsFound,
-            isAdmin ? result?.Unresolved ?? [] : []));
+            isAdmin ? (result?.Unresolved ?? []).Select(entry => new CalendarUnresolvedDto(entry.EventId, entry.Text(zone), entry.Query)).ToArray() : []));
     }
 
     private static async Task<IResult> SyncCalendarAsync(CalendarSyncRunner runner, CalendarSyncState state, CancellationToken cancellationToken)
@@ -163,7 +203,13 @@ public sealed record CalendarSyncStatusDto(
     string? Error,
     int? EventsRead,
     int? TripsFound,
-    IReadOnlyList<string> Unresolved);
+    IReadOnlyList<CalendarUnresolvedDto> Unresolved);
+
+public sealed record CalendarUnresolvedDto(string EventId, string Text, string Query);
+
+public record PlaceRequestDto(string? Label, double? Latitude, double? Longitude);
+
+public sealed record CalendarPlaceRequestDto(string EventId, string? Label, double? Latitude, double? Longitude) : PlaceRequestDto(Label, Latitude, Longitude);
 
 /// <summary>RecurrenceDays: 0 = Sunday ... 6 = Saturday; empty or null for a single trip.</summary>
 public sealed record EvTripRequestDto(DateTimeOffset DepartureAtUtc, DateTimeOffset? ReturnAtUtc, string? Destination,
@@ -200,6 +246,7 @@ public static class EvTripPlanDtoMapper
             requirement.Trip.Source,
             isAdmin ? requirement.Trip.Subject : null,
             requirement.Trip.OccurrenceDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            requirement.Trip.HasLocationOverride,
             Math.Round(requirement.WinterSurchargePercent, 1),
             requirement.TemperatureCelsius is { } celsius ? Math.Round(celsius, 1) : null)).ToArray(),
         plan.Course.Select(point => new EvSocPointDto(point.AtUtc, Math.Round(point.SocPercent, 1))).ToArray(),
@@ -234,6 +281,7 @@ public sealed record EvTripDto(
     string Source,
     string? Subject,
     string? OccurrenceDate,
+    bool HasLocationOverride,
     double WinterSurchargePercent,
     double? TemperatureCelsius);
 

@@ -45,7 +45,7 @@ public sealed class OsmRoutePlannerTests
         var route = await planner.EstimateAsync(new GeoPoint(50.55, 9.68), "Lidl");
 
         Assert.Equal("Lidl, Fulda", route.ResolvedAddress);
-        Assert.Contains("viewbox=8.58,51.3,10.78,49.8", handler.Requests[0].RequestUri!.Query);
+        Assert.Contains("viewbox=8.93,51.05,10.43,50.05", handler.Requests[0].RequestUri!.Query);
         Assert.Equal(2, handler.Requests.Count); // local search hit, then the route; no nationwide search
     }
 
@@ -58,7 +58,10 @@ public sealed class OsmRoutePlannerTests
             Requests.Add(request);
             var query = request.RequestUri!.Query;
             var body = request.RequestUri.Host.StartsWith("nominatim", StringComparison.Ordinal)
-                ? query.Contains("bounded=1") ? """[{"lat":"50.56","lon":"9.70","display_name":"Lidl, Fulda"}]""" : """[{"lat":"48.0","lon":"11.0","display_name":"Lidl, weit weg"}]"""
+                ? query.Contains("bounded=1")
+                    // The better-known store comes first, the nearer one second: the nearer one must win.
+                    ? """[{"lat":"50.12","lon":"9.10","display_name":"Lidl, weiter weg"},{"lat":"50.56","lon":"9.70","display_name":"Lidl, Fulda"}]"""
+                    : """[{"lat":"48.0","lon":"11.0","display_name":"Lidl, weit weg"}]"""
                 : """{"code":"Ok","routes":[{"distance":3200.0,"duration":420.0}]}""";
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
         }

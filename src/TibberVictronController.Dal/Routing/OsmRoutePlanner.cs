@@ -15,9 +15,11 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
     public const string NominatimUrl = "https://nominatim.openstreetmap.org/search";
     public const string OsrmUrl = "https://router.project-osrm.org/route/v1/driving/";
     public const string UserAgent = "EnergyFlowPilot/1.0 (private home energy controller)";
-    // About 80 km around home at central European latitudes.
-    private const double LocalBoxLatitude = 0.75;
-    private const double LocalBoxLongitude = 1.1;
+    // About 50 km around home at central European latitudes; the nearest of up to 20 hits inside wins, because
+    // Nominatim ranks by importance, not distance (a Frankfurt store would otherwise beat the one in town).
+    private const double LocalBoxLatitude = 0.5;
+    private const double LocalBoxLongitude = 0.75;
+    private const int LocalCandidates = 20;
 
     public async Task<RouteEstimate> EstimateAsync(GeoPoint origin, string destination, bool placesOnly = false, CancellationToken cancellationToken = default)
     {
@@ -42,22 +44,22 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
     }
 
     /// <summary>
-    /// Searches around home first (about 80 km): a calendar location like "Lidl" or "Sporthalle" means the one nearby,
-    /// not the first match in the country. Only if nothing is found there the whole map is searched.
+    /// Searches around home first (about 50 km): a calendar location like "Lidl" or "Sporthalle" means the nearest
+    /// one, not the first match in the country. Only if nothing is found there the whole map is searched.
     /// </summary>
     private async Task<(GeoPoint Point, string Address)> GeocodeAsync(string destination, bool placesOnly, GeoPoint near, CancellationToken cancellationToken)
     {
         // featureType=settlement restricts hits to cities, towns and villages, so "in Ruhe" does not become a street.
-        var baseUrl = $"{NominatimUrl}?format=jsonv2&limit=1&accept-language=de&q={Uri.EscapeDataString(destination)}" +
+        var baseUrl = $"{NominatimUrl}?format=jsonv2&accept-language=de&q={Uri.EscapeDataString(destination)}" +
                       (placesOnly ? "&featureType=settlement" : string.Empty);
         var viewbox = string.Create(CultureInfo.InvariantCulture,
-            $"&viewbox={near.Longitude - LocalBoxLongitude},{near.Latitude + LocalBoxLatitude},{near.Longitude + LocalBoxLongitude},{near.Latitude - LocalBoxLatitude}&bounded=1");
-        var hit = await SearchAsync(baseUrl + viewbox, cancellationToken);
+            $"&limit={LocalCandidates}&viewbox={near.Longitude - LocalBoxLongitude},{near.Latitude + LocalBoxLatitude},{near.Longitude + LocalBoxLongitude},{near.Latitude - LocalBoxLatitude}&bounded=1");
+        var hit = await SearchAsync(baseUrl + viewbox, near, cancellationToken);
         if (hit is null)
         {
             // Nominatim asks for at most one request per second.
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
-            hit = await SearchAsync(baseUrl, cancellationToken);
+            hit = await SearchAsync(baseUrl + "&limit=1", null, cancellationToken);
         }
 
         if (hit is not { } found)
@@ -65,14 +67,26 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
         return (found.Point, found.Address ?? destination);
     }
 
-    private async Task<(GeoPoint Point, string? Address)?> SearchAsync(string url, CancellationToken cancellationToken)
+    private async Task<(GeoPoint Point, string? Address)?> SearchAsync(string url, GeoPoint? nearest, CancellationToken cancellationToken)
     {
         using var document = await GetJsonAsync(url, "Adresssuche", cancellationToken);
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() == 0) return null;
-        var hit = root[0];
-        return (new GeoPoint(Coordinate(hit, "lat"), Coordinate(hit, "lon")),
-            hit.TryGetProperty("display_name", out var name) ? name.GetString() : null);
+        var hits = root.EnumerateArray().Select(hit => (Point: new GeoPoint(Coordinate(hit, "lat"), Coordinate(hit, "lon")),
+            Address: hit.TryGetProperty("display_name", out var name) ? name.GetString() : null)).ToArray();
+        return nearest is null ? hits[0] : hits.MinBy(hit => DistanceKm(nearest, hit.Point));
+    }
+
+    // Great-circle distance; enough to pick the nearest candidate.
+    private static double DistanceKm(GeoPoint a, GeoPoint b)
+    {
+        const double EarthRadiusKm = 6371;
+        double Radians(double degrees) => degrees * Math.PI / 180;
+        var dLat = Radians(b.Latitude - a.Latitude);
+        var dLon = Radians(b.Longitude - a.Longitude);
+        var h = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(Radians(a.Latitude)) * Math.Cos(Radians(b.Latitude)) * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        return 2 * EarthRadiusKm * Math.Asin(Math.Sqrt(h));
     }
 
     private async Task<JsonDocument> GetJsonAsync(string url, string purpose, CancellationToken cancellationToken)

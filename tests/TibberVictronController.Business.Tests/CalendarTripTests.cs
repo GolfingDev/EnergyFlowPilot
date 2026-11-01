@@ -84,8 +84,42 @@ public sealed class CalendarTripTests
         var result = await context.Service.SyncAsync(CancellationToken.None);
 
         Assert.Empty(context.Trips.Trips);
-        Assert.Contains(result.Unresolved, item => item.Contains("Nirgendwo"));
+        Assert.Contains(result.Unresolved, item => item.Query == "Nirgendwo" && item.EventId == "x");
         Assert.True(context.Routes.PlacesOnlyQueries.Contains("Nirgendwo"));
+    }
+
+    [Fact]
+    public async Task ChosenPlaceSurvivesLaterSyncsWhileTimesFollowTheCalendar()
+    {
+        var context = new SyncContext();
+        context.Calendar.Events.Add(Event("t", "Tennis Neuhof", "Lidl", Now.AddDays(1), Now.AddDays(1).AddHours(2)));
+        await context.Service.SyncAsync(CancellationToken.None);
+        var trip = context.Trips.Trips.Single();
+        await context.Trips.SetLocationAsync(trip.Id, "Lidl, Neuhof", new RouteEstimate("Lidl, Neuhof", new GeoPoint(50.4, 9.6), 15, 20));
+
+        context.Calendar.Events[0] = context.Calendar.Events[0] with { StartUtc = Now.AddDays(1).AddHours(1) };
+        await context.Service.SyncAsync(CancellationToken.None);
+
+        var updated = context.Trips.Trips.Single();
+        Assert.Equal("Lidl, Neuhof", updated.Destination);
+        Assert.Equal(15, updated.DistanceKm);
+        Assert.Equal(Now.AddDays(1).AddHours(1).AddMinutes(-20), updated.DepartureAtUtc);
+    }
+
+    [Fact]
+    public async Task UnresolvedAppointmentBecomesATripAtTheChosenPlace()
+    {
+        var context = new SyncContext();
+        context.Calendar.Events.Add(Event("x", "Treffen in Nirgendwo", null, Now.AddDays(1), Now.AddDays(1).AddHours(1)));
+        var open = Assert.Single((await context.Service.SyncAsync(CancellationToken.None)).Unresolved);
+
+        await context.Service.SetPlaceAsync(open, "Gasthaus Linde, Fulda", new GeoPoint(50.5, 9.6), CancellationToken.None);
+        var result = await context.Service.SyncAsync(CancellationToken.None);
+
+        var trip = Assert.Single(context.Trips.Trips);
+        Assert.Equal("Gasthaus Linde, Fulda", trip.Destination);
+        Assert.True(trip.HasLocationOverride);
+        Assert.Empty(result.Unresolved);
     }
 
     private static CalendarEvent Event(string id, string subject, string? location, DateTimeOffset? start = null, DateTimeOffset? end = null) =>
@@ -159,10 +193,12 @@ public sealed class CalendarTripTests
             var existing = index >= 0 ? Trips[index] : null;
             if (existing is null && update.Route is null) return Task.CompletedTask;
             var route = update.Route;
-            var trip = new EvTrip(existing?.Id ?? nextId++, update.DepartureAtUtc, update.ReturnAtUtc, update.Destination,
+            var keepPlace = existing is { HasLocationOverride: true } && !update.IsLocationOverride;
+            var trip = new EvTrip(existing?.Id ?? nextId++, update.DepartureAtUtc, update.ReturnAtUtc, keepPlace ? existing!.Destination : update.Destination,
                 route?.ResolvedAddress ?? existing!.ResolvedAddress, route?.DistanceKm ?? existing!.DistanceKm, route?.DurationMinutes ?? existing!.DurationMinutes,
                 nowUtc, 0, null, EvTripSources.Calendar, update.ExternalId, update.Subject, existing?.IsIgnored ?? false,
-                RouteVersion: update.Route is null ? existing!.RouteVersion : update.RouteVersion);
+                RouteVersion: update.Route is null ? existing!.RouteVersion : update.RouteVersion,
+                HasLocationOverride: update.IsLocationOverride || existing?.HasLocationOverride == true);
             if (index >= 0) Trips[index] = trip; else Trips.Add(trip);
             return Task.CompletedTask;
         }
@@ -178,6 +214,15 @@ public sealed class CalendarTripTests
 
         public Task UpdateRouteAsync(int id, double distanceKm, double durationMinutes, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+
+        public Task<bool> SetLocationAsync(int id, string destination, RouteEstimate route, CancellationToken cancellationToken = default)
+        {
+            var index = Trips.FindIndex(t => t.Id == id);
+            if (index < 0) return Task.FromResult(false);
+            Trips[index] = Trips[index] with { Destination = destination, DistanceKm = route.DistanceKm, DurationMinutes = route.DurationMinutes,
+                HasLocationOverride = Trips[index].IsFromCalendar };
+            return Task.FromResult(true);
+        }
 
         public Task<bool> SetIgnoredAsync(int id, bool ignored, CancellationToken cancellationToken = default)
         {

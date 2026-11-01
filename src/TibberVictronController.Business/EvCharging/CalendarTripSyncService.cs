@@ -37,13 +37,24 @@ public sealed class CalendarTripSyncService(CalendarTripSyncDependencies depende
         var home = await ReadHomeAsync(cancellationToken);
         var routes = new Dictionary<string, RouteEstimate?>(StringComparer.OrdinalIgnoreCase);
         var kept = new HashSet<string>(StringComparer.Ordinal);
-        var unresolved = new List<string>();
+        var unresolved = new List<CalendarUnresolved>();
 
         foreach (var appointment in events.Where(appointment => !appointment.IsCancelled))
         {
-            if (CalendarLocationExtractor.Extract(appointment) is not { } candidate) continue;
             var (start, end) = OnSite(appointment);
             existing.TryGetValue(appointment.Id, out var known);
+            if (known is { HasLocationOverride: true })
+            {
+                // The operator chose the place: keep it and its route, follow only the appointment times.
+                var keptDrive = TimeSpan.FromMinutes(known.DurationMinutes);
+                if (end + keptDrive <= now) continue;
+                await dependencies.Trips.UpsertCalendarTripAsync(new CalendarTripUpdate(appointment.Id, Truncate(appointment.Subject, 200),
+                    known.Destination, start - keptDrive, end + keptDrive, null, known.RouteVersion), now, cancellationToken);
+                kept.Add(appointment.Id);
+                continue;
+            }
+
+            if (CalendarLocationExtractor.Extract(appointment) is not { } candidate) continue;
             RouteEstimate? route = null;
             double durationMinutes;
             if (known is not null && known.RouteVersion >= CurrentRouteVersion &&
@@ -57,7 +68,7 @@ public sealed class CalendarTripSyncService(CalendarTripSyncDependencies depende
                 route = await RouteAsync(home, candidate, routes, cancellationToken);
                 if (route is null)
                 {
-                    unresolved.Add($"{appointment.Subject} ({Local(appointment.StartUtc)}): Ort „{candidate.Query}“ nicht gefunden");
+                    unresolved.Add(new CalendarUnresolved(appointment.Id, appointment.Subject, candidate.Query, start, end));
                     continue;
                 }
 
@@ -75,6 +86,21 @@ public sealed class CalendarTripSyncService(CalendarTripSyncDependencies depende
         var removed = existing.Values.Where(trip => !kept.Contains(trip.ExternalId!)).Select(trip => trip.Id).ToArray();
         if (removed.Length > 0) await dependencies.Trips.DeleteAsync(removed, cancellationToken);
         return new CalendarSyncResult(now, events.Count, kept.Count, unresolved);
+    }
+
+    /// <summary>
+    /// Makes an appointment whose place was not found a trip at the place the operator chose; later syncs keep it.
+    /// </summary>
+    public async Task SetPlaceAsync(CalendarUnresolved appointment, string label, GeoPoint? target, CancellationToken cancellationToken)
+    {
+        var home = await ReadHomeAsync(cancellationToken);
+        var route = target is null
+            ? await dependencies.Routes.EstimateAsync(home, label, false, cancellationToken)
+            : await dependencies.Routes.RouteToAsync(home, target, label, cancellationToken);
+        var drive = TimeSpan.FromMinutes(route.DurationMinutes);
+        await dependencies.Trips.UpsertCalendarTripAsync(new CalendarTripUpdate(appointment.EventId, Truncate(appointment.Subject, 200),
+            Truncate(label, 200), appointment.StartUtc - drive, appointment.EndUtc + drive, route, CurrentRouteVersion) { IsLocationOverride = true },
+            dependencies.Clock.UtcNow, cancellationToken);
     }
 
     private async Task<RouteEstimate?> RouteAsync(GeoPoint home, CalendarLocationCandidate candidate,

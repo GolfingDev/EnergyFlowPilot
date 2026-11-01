@@ -22,7 +22,8 @@ public sealed record EvTrip(
     IReadOnlyList<DateOnly>? SkippedDates = null,
     DateOnly? OccurrenceDate = null,
     GeoPoint? Target = null,
-    int RouteVersion = 0)
+    int RouteVersion = 0,
+    bool HasLocationOverride = false)
 {
     public bool IsRecurring => RecurrenceDays != 0;
 
@@ -63,7 +64,18 @@ public sealed record CalendarTripUpdate(
     DateTimeOffset DepartureAtUtc,
     DateTimeOffset ReturnAtUtc,
     RouteEstimate? Route,
-    int RouteVersion = 0);
+    int RouteVersion = 0)
+{
+    /// <summary>The place was chosen by the operator; later syncs keep it and only follow the appointment times.</summary>
+    public bool IsLocationOverride { get; init; }
+}
+
+/// <summary>An appointment whose place was not found; the operator can choose the place on the car page.</summary>
+public sealed record CalendarUnresolved(string EventId, string Subject, string Query, DateTimeOffset StartUtc, DateTimeOffset EndUtc)
+{
+    public string Text(TimeZoneInfo zone) =>
+        $"{Subject} ({TimeZoneInfo.ConvertTime(StartUtc, zone).ToString("ddd dd.MM. HH:mm", System.Globalization.CultureInfo.GetCultureInfo("de-DE"))}): Ort \u201e{Query}\u201c nicht gefunden";
+}
 
 /// <summary>One appointment as read from the calendar; times in UTC.</summary>
 public sealed record CalendarEvent(
@@ -80,7 +92,7 @@ public sealed record CalendarSyncResult(
     DateTimeOffset SyncedAtUtc,
     int EventsRead,
     int TripsFound,
-    IReadOnlyList<string> Unresolved);
+    IReadOnlyList<CalendarUnresolved> Unresolved);
 
 public sealed record GeoPoint(double Latitude, double Longitude);
 

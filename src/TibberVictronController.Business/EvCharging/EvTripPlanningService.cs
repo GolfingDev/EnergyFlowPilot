@@ -141,6 +141,21 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
         return updated;
     }
 
+    /// <summary>
+    /// Changes the place of a trip (for a series: of all its dates). Calendar trips keep the chosen place in later syncs.
+    /// </summary>
+    public async Task<bool> SetLocationAsync(int id, string label, GeoPoint? target, CancellationToken cancellationToken)
+    {
+        var place = label?.Trim() ?? string.Empty;
+        if (place.Length is < 2 or > 200) throw new ArgumentException("Der Ort muss zwischen 2 und 200 Zeichen lang sein.");
+        if (await dependencies.Trips.GetAsync(id, cancellationToken) is null) return false;
+        var home = await ReadHomeAsync(cancellationToken);
+        var route = target is null
+            ? await dependencies.Routes.EstimateAsync(home, place, false, cancellationToken)
+            : await dependencies.Routes.RouteToAsync(home, target, place, cancellationToken);
+        return await dependencies.Trips.SetLocationAsync(id, place, route, cancellationToken);
+    }
+
     /// <summary>Skips (or restores) one date of a weekly series, e.g. during holidays.</summary>
     public Task<bool> SetOccurrenceSkippedAsync(int id, DateOnly date, bool skipped, CancellationToken cancellationToken) =>
         dependencies.Trips.SetOccurrenceSkippedAsync(id, date, skipped, cancellationToken);

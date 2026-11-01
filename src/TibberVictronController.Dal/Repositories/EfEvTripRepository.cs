@@ -80,7 +80,9 @@ public sealed class EfEvTripRepository(ControllerDbContext dbContext) : IEvTripR
         }
 
         entity.Subject = update.Subject;
-        entity.Destination = update.Destination;
+        // A place chosen by the operator is kept; the calendar only moves the times.
+        if (!entity.HasLocationOverride || update.IsLocationOverride) entity.Destination = update.Destination;
+        if (update.IsLocationOverride) entity.HasLocationOverride = true;
         entity.DepartureAtUtc = update.DepartureAtUtc;
         entity.ReturnAtUtc = update.ReturnAtUtc;
         if (update.Route is { } route)
@@ -133,7 +135,22 @@ public sealed class EfEvTripRepository(ControllerDbContext dbContext) : IEvTripR
     private static EvTrip Map(EvTripEntity entity) => new(entity.Id, entity.DepartureAtUtc, entity.ReturnAtUtc, entity.Destination,
         entity.ResolvedAddress, entity.DistanceKm, entity.DurationMinutes, entity.CreatedAtUtc, entity.RecurrenceDays, entity.RecurrenceUntilUtc,
         entity.Source, entity.ExternalId, entity.Subject, entity.IsIgnored, ParseDates(entity.SkippedDates).ToArray(), null,
-        new GeoPoint(entity.Latitude, entity.Longitude), entity.RouteVersion);
+        new GeoPoint(entity.Latitude, entity.Longitude), entity.RouteVersion, entity.HasLocationOverride);
+
+    public async Task<bool> SetLocationAsync(int id, string destination, RouteEstimate route, CancellationToken cancellationToken = default)
+    {
+        var entity = await dbContext.EvTrips.FirstOrDefaultAsync(trip => trip.Id == id, cancellationToken);
+        if (entity is null) return false;
+        entity.Destination = destination.Length <= 200 ? destination : destination[..200];
+        entity.ResolvedAddress = route.ResolvedAddress.Length <= 500 ? route.ResolvedAddress : route.ResolvedAddress[..500];
+        entity.Latitude = route.Destination.Latitude;
+        entity.Longitude = route.Destination.Longitude;
+        entity.DistanceKm = route.DistanceKm;
+        entity.DurationMinutes = route.DurationMinutes;
+        if (entity.Source == EvTripSources.Calendar) entity.HasLocationOverride = true;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
 
     public async Task UpdateRouteAsync(int id, double distanceKm, double durationMinutes, CancellationToken cancellationToken = default)
     {

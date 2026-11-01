@@ -5,6 +5,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { isAdmin } from '../../auth';
 import { formatNumber } from './dashboardFormatters';
 import PlaceAutocomplete, { type PlaceSuggestion } from '../PlaceAutocomplete.vue';
+import TripLocationDialog from './TripLocationDialog.vue';
 
 interface EvTripDto {
   id: number;
@@ -26,6 +27,7 @@ interface EvTripDto {
   source: 'Manual' | 'Calendar';
   subject: string | null;
   occurrenceDate: string | null;
+  hasLocationOverride: boolean;
   winterSurchargePercent: number;
   temperatureCelsius: number | null;
 }
@@ -37,7 +39,7 @@ interface CalendarStatusDto {
   error: string | null;
   eventsRead: number | null;
   tripsFound: number | null;
-  unresolved: string[];
+  unresolved: { eventId: string; text: string; query: string }[];
 }
 
 interface EvTripPlanDto {
@@ -168,6 +170,54 @@ async function restore(trip: EvTripPlanDto['ignoredTrips'][number]): Promise<voi
   else await setIgnored(trip.id, false);
 }
 
+// One dialog for both: changing a trip's place and choosing the place of an appointment that was not found.
+const placeDialog = ref<{ title: string; hint: string; initial: string; save: (place: PlacePayload) => Promise<Response> } | null>(null);
+const placeBusy = ref(false);
+type PlacePayload = { label: string; latitude: number | null; longitude: number | null };
+
+function editPlace(trip: EvTripDto): void {
+  placeDialog.value = {
+    title: `Ort für ${trip.subject ?? trip.destination}`,
+    hint: trip.source === 'Calendar'
+      ? 'Gilt dauerhaft für diesen Termin; spätere Abgleiche übernehmen nur noch Zeitänderungen aus dem Kalender.'
+      : trip.recurrenceDays.length ? 'Gilt für alle Termine dieser Serie.' : 'Die Strecke wird sofort neu berechnet.',
+    initial: trip.destination,
+    save: place => fetch(`/api/ev-charging/trips/${trip.id}/location`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(place)
+    })
+  };
+}
+
+function choosePlace(item: { eventId: string; text: string; query: string }): void {
+  placeDialog.value = {
+    title: 'Ort festlegen',
+    hint: `${item.text}. Der gewählte Ort gilt dauerhaft für diesen Termin.`,
+    initial: '',
+    save: place => fetch('/api/ev-charging/calendar/location', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ eventId: item.eventId, ...place })
+    })
+  };
+}
+
+async function savePlace(place: PlacePayload): Promise<void> {
+  if (!placeDialog.value) return;
+  placeBusy.value = true;
+  try {
+    const response = await placeDialog.value.save(place);
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { message?: string } | null;
+      throw new Error(body?.message ?? `Ort konnte nicht gespeichert werden (HTTP ${response.status}).`);
+    }
+    placeDialog.value = null;
+    error.value = null;
+    await load();
+  } catch (reason) {
+    error.value = reason instanceof Error ? reason.message : 'Ort konnte nicht gespeichert werden.';
+  } finally {
+    placeBusy.value = false;
+  }
+}
+
 async function removeTrip(trip: EvTripDto): Promise<void> {
   if (trip.source === 'Calendar') {
     // Deleting would bring the appointment back with the next sync; it is hidden instead.
@@ -268,7 +318,10 @@ onBeforeUnmount(() => {
       </div>
       <v-alert v-if="calendar?.unresolved.length" class="mb-3" type="info" variant="tonal" density="compact">
         Ort nicht gefunden, daher nicht eingeplant:
-        <ul class="trip__unresolved"><li v-for="item in calendar.unresolved" :key="item">{{ item }}</li></ul>
+        <ul class="trip__unresolved">
+          <li v-for="item in calendar.unresolved" :key="item.eventId">{{ item.text }}
+            <v-btn v-if="isAdmin" size="x-small" variant="text" @click="choosePlace(item)">Ort festlegen</v-btn></li>
+        </ul>
         Tipp: Ort im Termin eintragen oder als „… in Stadt“ in den Betreff schreiben.
       </v-alert>
 
@@ -300,6 +353,7 @@ onBeforeUnmount(() => {
                 <td>{{ when(trip.departureAtUtc) }}</td>
                 <td :title="trip.resolvedAddress">
                   <v-icon v-if="trip.source === 'Calendar'" icon="mdi-calendar-outline" size="14" class="mr-1" title="Aus dem Kalender" />
+                  <v-icon v-if="trip.hasLocationOverride" icon="mdi-map-marker-check-outline" size="14" class="mr-1" title="Ort selbst festgelegt" />
                   <template v-if="trip.subject">{{ trip.subject }} · </template>{{ trip.destination }}
                   <v-chip v-if="trip.recurrenceDays.length" size="x-small" class="ml-1" prepend-icon="mdi-repeat">{{ dayList(trip.recurrenceDays) }}</v-chip><br><span class="trip__meta">{{ trip.resolvedAddress }}</span></td>
                 <td class="text-right">2 × {{ formatNumber(trip.distanceKm, 0) }} km<br><span class="trip__meta">{{ formatNumber(trip.energyKwh, 1) }} kWh<template v-if="trip.winterSurchargePercent > 0"> inkl. {{ formatNumber(trip.winterSurchargePercent, 0) }} % Winter ({{ formatNumber(trip.temperatureCelsius ?? 0, 0) }} °C)</template></span></td>
@@ -309,6 +363,8 @@ onBeforeUnmount(() => {
                 <td>{{ trip.returnIsAssumed ? `ca. ${time.format(new Date(trip.returnAtUtc))} (angenommen)` : when(trip.returnAtUtc) }}<br>
                   <span class="trip__meta">dann ≈ {{ percent(trip.expectedSocAtReturnPercent) }}</span></td>
                 <td v-if="isAdmin" class="text-no-wrap">
+                  <v-btn icon="mdi-map-marker-outline" size="small" variant="text" title="Ort ändern"
+                    :aria-label="`Ort von ${trip.destination} ändern`" @click="editPlace(trip)" />
                   <v-btn v-if="trip.occurrenceDate" icon="mdi-calendar-remove-outline" size="small" variant="text" title="Nur diesen Termin auslassen"
                     :aria-label="`Termin nach ${trip.destination} auslassen`" @click="skipOccurrence(trip)" />
                   <v-btn :icon="trip.source === 'Calendar' ? 'mdi-eye-off-outline' : 'mdi-delete-outline'" size="small" variant="text"
@@ -340,6 +396,8 @@ onBeforeUnmount(() => {
         </template>
       </template>
     </div>
+    <TripLocationDialog :open="!!placeDialog" :title="placeDialog?.title ?? ''" :hint="placeDialog?.hint" :initial="placeDialog?.initial"
+      :busy="placeBusy" @close="placeDialog = null" @save="savePlace" />
   </v-card>
 </template>
 

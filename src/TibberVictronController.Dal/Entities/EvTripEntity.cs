@@ -22,4 +22,5 @@ public sealed class EvTripEntity
     public string? SkippedDates { get; set; }
     // Version of the place search that produced the stored route; older calendar routes are searched again once.
     public int RouteVersion { get; set; }
+    public bool HasLocationOverride { get; set; }
 }
