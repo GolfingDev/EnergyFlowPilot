@@ -106,6 +106,8 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'ev.ocpp.chargePointId', section: 'sources', subgroup: 'Wallbox (OCPP)', category: 'important' },
   { key: 'bmw.cardata.clientId', section: 'sources', subgroup: 'BMW CarData', category: 'important' },
   { key: 'bmw.cardata.vin', section: 'sources', subgroup: 'BMW CarData', category: 'normal' },
+  { key: 'ev.calendar.enabled', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
+  { key: 'ev.calendar.mailbox', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.car.minimumSocPercent', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.car.consumptionKwhPer100Km', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.trip.marginPercent', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },

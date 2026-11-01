@@ -14,4 +14,8 @@ public sealed class EvTripEntity
     public DateTimeOffset CreatedAtUtc { get; set; }
     public int RecurrenceDays { get; set; }
     public DateTimeOffset? RecurrenceUntilUtc { get; set; }
+    public string Source { get; set; } = "Manual";
+    public string? ExternalId { get; set; }
+    public string? Subject { get; set; }
+    public bool IsIgnored { get; set; }
 }

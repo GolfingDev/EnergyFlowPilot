@@ -51,6 +51,9 @@ public static class ControllerSettingDefaults
     public const string EvCarMinimumSocKey = "ev.car.minimumSocPercent";
     public const string EvTripMarginKey = "ev.trip.marginPercent";
     public const string EvWallboxMaximumPowerKey = "ev.wallbox.maximumPowerWatts";
+    public const string EvCalendarEnabledKey = "ev.calendar.enabled";
+    public const string EvCalendarMailboxKey = "ev.calendar.mailbox";
+    public const string EvCalendarMailboxNotConfigured = "not-configured";
     public const string WeishauptHotWaterEnabledKey = "weishauptHotWater.enabled";
     public const string WeishauptHotWaterCheapPriceKey = "weishauptHotWater.cheapPricePerKwh";
     public const string WeishauptHotWaterPvSurplusKey = "weishauptHotWater.pvSurplusWatts";
@@ -212,6 +215,8 @@ public static class ControllerSettingDefaults
         new(EvCarMinimumSocKey, "15", ControllerSettingSensitivity.Normal),
         new(EvTripMarginKey, "5", ControllerSettingSensitivity.Normal),
         new(EvWallboxMaximumPowerKey, "11000", ControllerSettingSensitivity.Normal),
+        new(EvCalendarEnabledKey, "false", ControllerSettingSensitivity.Normal),
+        new(EvCalendarMailboxKey, EvCalendarMailboxNotConfigured, ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterCheapPriceKey, "0.20", ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterPvSurplusKey, "2000", ControllerSettingSensitivity.Normal),

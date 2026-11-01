@@ -1,3 +1,5 @@
+using TibberVictronController.Api.Authentication;
+using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.EvCharging;
 using TibberVictronController.Business.Models;
 
@@ -10,15 +12,20 @@ public static class EvTripEndpoints
         endpoints.MapGet("/api/ev-charging/trips", GetPlanAsync).WithName("GetEvTripPlan").WithTags("EvCharging");
         endpoints.MapPost("/api/ev-charging/trips", AddTripAsync).WithName("AddEvTrip").WithTags("EvCharging");
         endpoints.MapDelete("/api/ev-charging/trips/{id:int}", DeleteTripAsync).WithName("DeleteEvTrip").WithTags("EvCharging");
+        endpoints.MapPut("/api/ev-charging/trips/{id:int}/ignored", SetIgnoredAsync).WithName("SetEvTripIgnored").WithTags("EvCharging");
+        endpoints.MapGet("/api/ev-charging/calendar", GetCalendarStatusAsync).WithName("GetCalendarSyncStatus").WithTags("EvCharging");
+        endpoints.MapPost("/api/ev-charging/calendar/sync", SyncCalendarAsync).WithName("SyncCalendar").WithTags("EvCharging");
         return endpoints;
     }
 
-    private static async Task<IResult> GetPlanAsync(EvTripPlanningService planning, CancellationToken cancellationToken)
+    private static async Task<IResult> GetPlanAsync(HttpContext http, EvTripPlanningService planning, ControllerAuthenticationOptions authentication,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var (plan, car) = await planning.GetPlanAsync(cancellationToken);
-            return TypedResults.Ok(EvTripPlanDtoMapper.Map(plan, car));
+            // Appointment subjects are private; viewers only see the destination.
+            var view = await planning.GetPlanAsync(cancellationToken);
+            return TypedResults.Ok(EvTripPlanDtoMapper.Map(view, IsAdmin(http, authentication)));
         }
         catch (InvalidOperationException exception)
         {
@@ -50,7 +57,43 @@ public static class EvTripEndpoints
         await planning.DeleteTripAsync(id, cancellationToken)
             ? TypedResults.NoContent()
             : TypedResults.NotFound(new { message = "Die Fahrt gibt es nicht (mehr)." });
+
+    private static async Task<IResult> SetIgnoredAsync(int id, EvTripIgnoreRequestDto request, EvTripPlanningService planning, CancellationToken cancellationToken) =>
+        await planning.SetIgnoredAsync(id, request.Ignored, cancellationToken)
+            ? TypedResults.NoContent()
+            : TypedResults.NotFound(new { message = "Die Fahrt gibt es nicht (mehr)." });
+
+    private static async Task<IResult> GetCalendarStatusAsync(HttpContext http, CalendarSyncState state, IControllerSettingStore settings,
+        ControllerAuthenticationOptions authentication, CancellationToken cancellationToken)
+    {
+        var enabled = bool.TryParse((await settings.GetSettingAsync(ControllerSettingDefaults.EvCalendarEnabledKey, cancellationToken))?.Value, out var value) && value;
+        var (result, error, attemptAt) = state.Current;
+        var isAdmin = IsAdmin(http, authentication);
+        return TypedResults.Ok(new CalendarSyncStatusDto(enabled, attemptAt, result?.SyncedAtUtc, error, result?.EventsRead, result?.TripsFound,
+            isAdmin ? result?.Unresolved ?? [] : []));
+    }
+
+    private static async Task<IResult> SyncCalendarAsync(CalendarSyncRunner runner, CalendarSyncState state, CancellationToken cancellationToken)
+    {
+        if (!await runner.RunAsync(cancellationToken))
+            return TypedResults.BadRequest(new { message = "Der Kalender ist in den Einstellungen ausgeschaltet." });
+        return state.Current.Error is { } error ? TypedResults.BadRequest(new { message = error }) : TypedResults.NoContent();
+    }
+
+    private static bool IsAdmin(HttpContext http, ControllerAuthenticationOptions authentication) =>
+        !authentication.IsEntra || http.User.IsInRole(AppRoles.Admin);
 }
+
+public sealed record EvTripIgnoreRequestDto(bool Ignored);
+
+public sealed record CalendarSyncStatusDto(
+    bool Enabled,
+    DateTimeOffset? LastAttemptAtUtc,
+    DateTimeOffset? LastSyncAtUtc,
+    string? Error,
+    int? EventsRead,
+    int? TripsFound,
+    IReadOnlyList<string> Unresolved);
 
 /// <summary>RecurrenceDays: 0 = Sunday ... 6 = Saturday; empty or null for a single trip.</summary>
 public sealed record EvTripRequestDto(DateTimeOffset DepartureAtUtc, DateTimeOffset? ReturnAtUtc, string? Destination,
@@ -58,7 +101,10 @@ public sealed record EvTripRequestDto(DateTimeOffset DepartureAtUtc, DateTimeOff
 
 public static class EvTripPlanDtoMapper
 {
-    public static EvTripPlanResponseDto Map(EvTripPlan plan, EvCarParameters car) => new(
+    public static EvTripPlanResponseDto Map(EvTripPlanView view, bool isAdmin)
+    {
+        var (plan, car) = (view.Plan, view.Car);
+        return new EvTripPlanResponseDto(
         plan.CalculatedAtUtc,
         plan.CurrentSocPercent,
         plan.CurrentSocIsAssumed,
@@ -79,9 +125,13 @@ public static class EvTripPlanDtoMapper
             requirement.IsReachable,
             requirement.Note,
             EvTrip.DaysOf(requirement.Trip.RecurrenceDays).Select(day => (int)day).ToArray(),
-            requirement.Trip.RecurrenceUntilUtc)).ToArray(),
+            requirement.Trip.RecurrenceUntilUtc,
+            requirement.Trip.Source,
+            isAdmin ? requirement.Trip.Subject : null)).ToArray(),
         plan.Course.Select(point => new EvSocPointDto(point.AtUtc, Math.Round(point.SocPercent, 1))).ToArray(),
-        plan.Warnings);
+        plan.Warnings,
+        view.IgnoredTrips.Select(trip => new EvIgnoredTripDto(trip.Id, trip.Destination, trip.DepartureAtUtc, isAdmin ? trip.Subject : null)).ToArray());
+    }
 }
 
 public sealed record EvCarParametersDto(double UsableCapacityKwh, double ConsumptionKwhPer100Km, double MinimumSocPercent, double MarginPercent, double ChargePowerWatts);
@@ -102,7 +152,11 @@ public sealed record EvTripDto(
     bool IsReachable,
     string? Note,
     IReadOnlyList<int> RecurrenceDays,
-    DateTimeOffset? RecurrenceUntilUtc);
+    DateTimeOffset? RecurrenceUntilUtc,
+    string Source,
+    string? Subject);
+
+public sealed record EvIgnoredTripDto(int Id, string Destination, DateTimeOffset DepartureAtUtc, string? Subject);
 
 public sealed record EvSocPointDto(DateTimeOffset AtUtc, double SocPercent);
 
@@ -113,4 +167,5 @@ public sealed record EvTripPlanResponseDto(
     EvCarParametersDto Car,
     IReadOnlyList<EvTripDto> Trips,
     IReadOnlyList<EvSocPointDto> Course,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<EvIgnoredTripDto> IgnoredTrips);

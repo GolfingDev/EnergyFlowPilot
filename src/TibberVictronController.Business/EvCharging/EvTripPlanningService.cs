@@ -19,6 +19,9 @@ public sealed record EvTripRequest(
     IReadOnlyCollection<DayOfWeek>? RecurrenceDays = null,
     DateTimeOffset? RecurrenceUntilUtc = null);
 
+/// <summary>The plan plus the calendar trips the operator has hidden (shown so they can be brought back).</summary>
+public sealed record EvTripPlanView(EvTripPlan Plan, EvCarParameters Car, IReadOnlyList<EvTrip> IgnoredTrips);
+
 /// <summary>Manual trip planning: stores trips with their calculated route and derives the required state of charge.</summary>
 public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencies)
 {
@@ -26,13 +29,14 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
     // Series are shown and planned two weeks ahead; later occurrences follow as time moves on.
     public static readonly TimeSpan SeriesHorizon = TimeSpan.FromDays(14);
 
-    public async Task<(EvTripPlan Plan, EvCarParameters Car)> GetPlanAsync(CancellationToken cancellationToken)
+    public async Task<EvTripPlanView> GetPlanAsync(CancellationToken cancellationToken)
     {
         var now = dependencies.Clock.UtcNow;
         var car = await ReadCarParametersAsync(cancellationToken);
         var trips = EvTripOccurrences.Expand(await dependencies.Trips.GetUpcomingAsync(now, cancellationToken), now, SeriesHorizon, LocalZone);
-        var plan = EvTripSocPlanner.Plan(new EvTripPlanInput(now, dependencies.Car.Car.StateOfChargePercent, trips, car, LocalZone));
-        return (plan, car);
+        var active = trips.Where(trip => !trip.IsIgnored).ToArray();
+        var plan = EvTripSocPlanner.Plan(new EvTripPlanInput(now, dependencies.Car.Car.StateOfChargePercent, active, car, LocalZone));
+        return new EvTripPlanView(plan, car, trips.Where(trip => trip.IsIgnored && trip.DepartureAtUtc > now).ToArray());
     }
 
     public async Task<EvTrip> AddTripAsync(EvTripRequest request, CancellationToken cancellationToken)
@@ -62,14 +66,25 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
         }
 
         var origin = await ReadHomeAsync(cancellationToken);
-        var route = await dependencies.Routes.EstimateAsync(origin, destination, cancellationToken);
+        var route = await dependencies.Routes.EstimateAsync(origin, destination, false, cancellationToken);
         return await dependencies.Trips.AddAsync(new EvTripDraft(request.DepartureAtUtc.ToUniversalTime(), request.ReturnAtUtc?.ToUniversalTime(),
             destination, route.ResolvedAddress, route.Destination.Latitude, route.Destination.Longitude, route.DistanceKm, route.DurationMinutes,
             recurrence, recurrence == 0 ? null : request.RecurrenceUntilUtc?.ToUniversalTime()),
             now, cancellationToken);
     }
 
-    public Task<bool> DeleteTripAsync(int id, CancellationToken cancellationToken) => dependencies.Trips.DeleteAsync(id, cancellationToken);
+    /// <summary>A calendar trip is only hidden: deleting it would bring it back with the next calendar sync.</summary>
+    public async Task<bool> DeleteTripAsync(int id, CancellationToken cancellationToken)
+    {
+        var trip = await dependencies.Trips.GetAsync(id, cancellationToken);
+        if (trip is null) return false;
+        return trip.IsFromCalendar
+            ? await dependencies.Trips.SetIgnoredAsync(id, true, cancellationToken)
+            : await dependencies.Trips.DeleteAsync(id, cancellationToken);
+    }
+
+    public Task<bool> SetIgnoredAsync(int id, bool ignored, CancellationToken cancellationToken) =>
+        dependencies.Trips.SetIgnoredAsync(id, ignored, cancellationToken);
 
     private async Task<EvCarParameters> ReadCarParametersAsync(CancellationToken cancellationToken) => new(
         await NumberAsync(ControllerSettingDefaults.EvCarUsableCapacityKwhKey, cancellationToken),

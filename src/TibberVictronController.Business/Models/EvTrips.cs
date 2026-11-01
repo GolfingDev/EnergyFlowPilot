@@ -14,9 +14,15 @@ public sealed record EvTrip(
     double DurationMinutes,
     DateTimeOffset CreatedAtUtc,
     int RecurrenceDays = 0,
-    DateTimeOffset? RecurrenceUntilUtc = null)
+    DateTimeOffset? RecurrenceUntilUtc = null,
+    string Source = EvTripSources.Manual,
+    string? ExternalId = null,
+    string? Subject = null,
+    bool IsIgnored = false)
 {
     public bool IsRecurring => RecurrenceDays != 0;
+
+    public bool IsFromCalendar => Source == EvTripSources.Calendar;
 
     public static int MaskOf(IEnumerable<DayOfWeek> days) => days.Aggregate(0, (mask, day) => mask | (1 << (int)day));
 
@@ -35,6 +41,41 @@ public sealed record EvTripDraft(
     double DurationMinutes,
     int RecurrenceDays = 0,
     DateTimeOffset? RecurrenceUntilUtc = null);
+
+public static class EvTripSources
+{
+    public const string Manual = "Manual";
+    public const string Calendar = "Calendar";
+}
+
+/// <summary>
+/// A calendar appointment turned into a trip. Route is null when the location did not change, so the stored route
+/// is kept and OpenStreetMap is not asked again.
+/// </summary>
+public sealed record CalendarTripUpdate(
+    string ExternalId,
+    string Subject,
+    string Destination,
+    DateTimeOffset DepartureAtUtc,
+    DateTimeOffset ReturnAtUtc,
+    RouteEstimate? Route);
+
+/// <summary>One appointment as read from the calendar; times in UTC.</summary>
+public sealed record CalendarEvent(
+    string Id,
+    string Subject,
+    string? Location,
+    DateTimeOffset StartUtc,
+    DateTimeOffset EndUtc,
+    bool IsAllDay,
+    bool IsOnlineMeeting,
+    bool IsCancelled);
+
+public sealed record CalendarSyncResult(
+    DateTimeOffset SyncedAtUtc,
+    int EventsRead,
+    int TripsFound,
+    IReadOnlyList<string> Unresolved);
 
 public sealed record GeoPoint(double Latitude, double Longitude);
 

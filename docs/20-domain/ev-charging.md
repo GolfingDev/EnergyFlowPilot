@@ -1,6 +1,6 @@
 # EV Charging (Charge Amps Halo, BMW i4)
 
-Status: requirements and staged plan agreed with the operator on 2026-10-31. Stages 1 (OCPP, read-only), 2 (BMW CarData, read-only) and 3 (manual trip planning) implemented.
+Status: requirements and staged plan agreed with the operator on 2026-10-31. Stages 1 (OCPP, read-only), 2 (BMW CarData, read-only) 3 (manual trip planning) and 5 (calendar) implemented; stage 4 (charging control) is next.
 
 ## Goal
 
@@ -82,11 +82,21 @@ Operator requirements (2026-11-01): enter "on date X I drive to Y"; adjustable m
 - **Course:** the minimal course from the current state of charge (CarData; minimum state of charge if unknown): charged only as much as needed and as late as possible. Shown as a chart and as a table with the latest charge start and the expected state of charge on return. Trips that need more than a full battery or cannot be reached in time are flagged.
 - **API:** `GET/POST /api/ev-charging/trips`, `DELETE /api/ev-charging/trips/{id}`; changes are admin-only (central write guard).
 
+## Stage 5 implementation (calendar)
+
+Operator decisions (2026-11-01): calendar before charging control; only appointments with a location, or a place evident from the subject; the Entra app of the sign-in already has the permission (application permission Calendars.Read); calendar trips are taken over automatically and can be hidden one by one; places from the subject only from unambiguous patterns.
+
+- **Access:** Microsoft Graph with client credentials of the existing Entra app (tenant, client id and secret from the environment file), `GET /users/{mailbox}/calendarView` for the next 14 days in UTC, only id, subject, location, start, end, all-day, cancelled and online-meeting flags. Settings: `ev.calendar.enabled`, `ev.calendar.mailbox`. Sync every 15 minutes and on demand from the car page.
+- **Place:** the location field (display name, otherwise street, postcode and city); online meetings (Teams, Zoom, links, phone) are never trips. Without a location only subject patterns count: "... in Hamburg", "nach Frankfurt am Main", "Kunde X, Leipzig", "@ Köln", excluding common non-places ("nach Absprache", "in Ruhe"). A place from the subject must be known to OpenStreetMap as a settlement (`featureType=settlement`). Places closer than 1 km are not trips. Places that are not found are listed on the car page.
+- **Trip:** departure = start minus driving time, return = end plus driving time; all-day appointments count as on site from 08:00 to 18:00 local time on their first and last day. The route is requested again only when the place changes (one request per place and sync, at most one per second). Cancelled, deleted or past appointments remove their trip; a hidden ("ignored") trip stays hidden. Deleting a calendar trip on the car page hides it.
+- **Privacy:** appointment subjects are stored with the trip and shown only to admins; viewers see the destination only. The Graph token stays in memory; error messages carry no secrets.
+- **Security note:** the application permission Calendars.Read allows reading every mailbox in the tenant. Restrict the app to the one mailbox with Exchange Online RBAC for Applications (or an application access policy).
+
 ## Open points
 
 - Halo firmware version and whether it accepts `TxDefaultProfile` changes during a transaction (stage 4).
 - Exact i4 variant and typical consumption: defaults 81 kWh and 18 kWh/100 km until the operator adjusts them.
 - Winter surcharge from the temperature forecast (rule 2) is not applied yet; the margin covers it for now.
 - Skipping a single occurrence of a series (holiday) is not possible yet.
-- Calendar source for stage 5.
+- Exchange restriction of the calendar permission to the one mailbox (operator task).
 - Exact CarData charging status values and whether the car reports plugged state as boolean; to be checked with real messages.

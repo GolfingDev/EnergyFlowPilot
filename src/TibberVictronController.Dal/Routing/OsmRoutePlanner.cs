@@ -16,9 +16,9 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
     public const string OsrmUrl = "https://router.project-osrm.org/route/v1/driving/";
     public const string UserAgent = "EnergyFlowPilot/1.0 (private home energy controller)";
 
-    public async Task<RouteEstimate> EstimateAsync(GeoPoint origin, string destination, CancellationToken cancellationToken = default)
+    public async Task<RouteEstimate> EstimateAsync(GeoPoint origin, string destination, bool placesOnly = false, CancellationToken cancellationToken = default)
     {
-        var (target, address) = await GeocodeAsync(destination, cancellationToken);
+        var (target, address) = await GeocodeAsync(destination, placesOnly, cancellationToken);
         var url = OsrmUrl + string.Create(CultureInfo.InvariantCulture,
             $"{origin.Longitude},{origin.Latitude};{target.Longitude},{target.Latitude}?overview=false");
         using var document = await GetJsonAsync(url, "Routenberechnung", cancellationToken);
@@ -32,9 +32,11 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
             Math.Round(route.GetProperty("duration").GetDouble() / 60d));
     }
 
-    private async Task<(GeoPoint Point, string Address)> GeocodeAsync(string destination, CancellationToken cancellationToken)
+    private async Task<(GeoPoint Point, string Address)> GeocodeAsync(string destination, bool placesOnly, CancellationToken cancellationToken)
     {
-        var url = $"{NominatimUrl}?format=jsonv2&limit=1&accept-language=de&q={Uri.EscapeDataString(destination)}";
+        // featureType=settlement restricts hits to cities, towns and villages, so "in Ruhe" does not become a street.
+        var url = $"{NominatimUrl}?format=jsonv2&limit=1&accept-language=de&q={Uri.EscapeDataString(destination)}" +
+                  (placesOnly ? "&featureType=settlement" : string.Empty);
         using var document = await GetJsonAsync(url, "Adresssuche", cancellationToken);
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() == 0)

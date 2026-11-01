@@ -32,6 +32,11 @@ internal static class ControllerSettingValueValidation
         if (key == ControllerSettingDefaults.BmwCarDataVinKey && value != ControllerSettingDefaults.BmwCarDataAutoVin &&
             (value is null || value.Length != 17 || !value.All(char.IsAsciiLetterOrDigit)))
             throw new ArgumentException("Die Fahrgestellnummer (VIN) muss 17 Zeichen lang sein oder 'auto' lauten.");
+        if (key == ControllerSettingDefaults.EvCalendarEnabledKey && !bool.TryParse(value, out _))
+            throw new ArgumentException("Der Schalter fuer den Kalender muss true oder false sein.");
+        if (key == ControllerSettingDefaults.EvCalendarMailboxKey && value != ControllerSettingDefaults.EvCalendarMailboxNotConfigured &&
+            (value is null || value.Length > 254 || value.Count(c => c == '@') != 1 || value.Any(char.IsWhiteSpace)))
+            throw new ArgumentException("Das Postfach muss eine E-Mail-Adresse aus dem Microsoft-365-Mandanten sein.");
         if (key == ControllerSettingDefaults.E3dcRscpKeyKey && value is not null && System.Text.Encoding.UTF8.GetByteCount(value) > 32)
             throw new ArgumentException("Der RSCP-Schluessel darf maximal 32 UTF-8-Bytes enthalten.");
         // Cross-field relationships belong to the complete configuration/draft. The settings API

@@ -72,7 +72,7 @@ Requirement: `docs/20-domain/ev-charging.md`.
 2. Implemented: BMW CarData read access (device-code sign-in, encrypted tokens, MQTT stream for state of charge, car page). Open: acceptance test with the real account.
 3. Implemented: manual trips with OpenStreetMap distance, weekly series on chosen weekdays, car parameters, required state of charge and minimal course per departure. Open: winter surcharge, skipping single occurrences.
 4. Open: charging plan and control (quarter-hour plan, SetChargingProfile, planned load in the joint battery plan, full-power fallback when data is missing and a trip is due).
-5. Open: calendar integration.
+5. Implemented: calendar integration (Microsoft Graph application permission, places from location field or unambiguous subject patterns, automatic trips that can be hidden). Open: acceptance test with the real calendar, Exchange restriction to one mailbox.
 
 ## Rule
 

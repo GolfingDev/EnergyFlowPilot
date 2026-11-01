@@ -22,6 +22,18 @@ interface EvTripDto {
   note: string | null;
   recurrenceDays: number[];
   recurrenceUntilUtc: string | null;
+  source: 'Manual' | 'Calendar';
+  subject: string | null;
+}
+
+interface CalendarStatusDto {
+  enabled: boolean;
+  lastAttemptAtUtc: string | null;
+  lastSyncAtUtc: string | null;
+  error: string | null;
+  eventsRead: number | null;
+  tripsFound: number | null;
+  unresolved: string[];
 }
 
 interface EvTripPlanDto {
@@ -32,9 +44,13 @@ interface EvTripPlanDto {
   trips: EvTripDto[];
   course: { atUtc: string; socPercent: number }[];
   warnings: string[];
+  ignoredTrips: { id: number; destination: string; departureAtUtc: string; subject: string | null }[];
 }
 
 const plan = ref<EvTripPlanDto | null>(null);
+const calendar = ref<CalendarStatusDto | null>(null);
+const syncing = ref(false);
+const showIgnored = ref(false);
 const error = ref<string | null>(null);
 const destination = ref('');
 const departure = ref('');
@@ -58,9 +74,10 @@ const canSave = computed(() => destination.value.trim().length >= 2 && departure
 
 async function load(): Promise<void> {
   try {
-    const response = await fetch('/api/ev-charging/trips');
+    const [response, calendarResponse] = await Promise.all([fetch('/api/ev-charging/trips'), fetch('/api/ev-charging/calendar')]);
     if (!response.ok) throw new Error(`Fahrtenplanung konnte nicht geladen werden (HTTP ${response.status}).`);
     plan.value = await response.json() as EvTripPlanDto;
+    if (calendarResponse.ok) calendar.value = await calendarResponse.json() as CalendarStatusDto;
     error.value = null;
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : 'Fahrtenplanung konnte nicht geladen werden.';
@@ -101,7 +118,34 @@ async function addTrip(): Promise<void> {
   }
 }
 
+async function syncCalendar(): Promise<void> {
+  syncing.value = true;
+  try {
+    const response = await fetch('/api/ev-charging/calendar/sync', { method: 'POST' });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { message?: string } | null;
+      error.value = body?.message ?? `Kalenderabgleich fehlgeschlagen (HTTP ${response.status}).`;
+    }
+  } finally {
+    syncing.value = false;
+    await load();
+  }
+}
+
+async function setIgnored(id: number, ignored: boolean): Promise<void> {
+  const response = await fetch(`/api/ev-charging/trips/${id}/ignored`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ignored })
+  });
+  if (!response.ok) error.value = `Termin konnte nicht geändert werden (HTTP ${response.status}).`;
+  await load();
+}
+
 async function removeTrip(trip: EvTripDto): Promise<void> {
+  if (trip.source === 'Calendar') {
+    // Deleting would bring the appointment back with the next sync; it is hidden instead.
+    if (window.confirm(`Termin „${trip.subject ?? trip.destination}“ am ${when(trip.departureAtUtc)} für die Ladeplanung ausblenden?`)) await setIgnored(trip.id, true);
+    return;
+  }
   const question = trip.recurrenceDays.length
     ? `Serie nach ${trip.destination} (${dayList(trip.recurrenceDays)}) komplett löschen?`
     : `Fahrt nach ${trip.destination} am ${when(trip.departureAtUtc)} löschen?`;
@@ -182,6 +226,21 @@ onBeforeUnmount(() => {
     <div class="px-4 pb-4">
       <v-alert v-if="error" class="mb-3" type="warning" variant="tonal" density="compact">{{ error }}</v-alert>
 
+      <div v-if="calendar?.enabled" class="trip__calendar mb-3">
+        <v-icon icon="mdi-calendar-sync-outline" size="18" />
+        <span v-if="calendar.error" class="text-error">Kalender: {{ calendar.error }}</span>
+        <span v-else-if="calendar.lastSyncAtUtc" class="trip__meta">
+          Kalender abgeglichen {{ when(calendar.lastSyncAtUtc) }}: {{ calendar.eventsRead }} Termine gelesen, {{ calendar.tripsFound }} mit Ort.
+        </span>
+        <span v-else class="trip__meta">Kalender wird in Kürze abgeglichen.</span>
+        <v-btn v-if="isAdmin" size="small" variant="text" :loading="syncing" @click="syncCalendar">Jetzt abgleichen</v-btn>
+      </div>
+      <v-alert v-if="calendar?.unresolved.length" class="mb-3" type="info" variant="tonal" density="compact">
+        Ort nicht gefunden, daher nicht eingeplant:
+        <ul class="trip__unresolved"><li v-for="item in calendar.unresolved" :key="item">{{ item }}</li></ul>
+        Tipp: Ort im Termin eintragen oder als „… in Stadt“ in den Betreff schreiben.
+      </v-alert>
+
       <form v-if="isAdmin" class="trip__form mb-4" @submit.prevent="addTrip">
         <v-text-field v-model="destination" label="Ziel (Ort oder Adresse)" density="compact" hide-details maxlength="200" />
         <v-text-field v-model="departure" :label="recurrenceDays.length ? 'Erste Abfahrt (Datum und Uhrzeit)' : 'Abfahrt'" type="datetime-local" density="compact" hide-details />
@@ -208,7 +267,9 @@ onBeforeUnmount(() => {
             <tbody>
               <tr v-for="trip in plan.trips" :key="`${trip.id}-${trip.departureAtUtc}`">
                 <td>{{ when(trip.departureAtUtc) }}</td>
-                <td :title="trip.resolvedAddress">{{ trip.destination }}
+                <td :title="trip.resolvedAddress">
+                  <v-icon v-if="trip.source === 'Calendar'" icon="mdi-calendar-outline" size="14" class="mr-1" title="Aus dem Kalender" />
+                  <template v-if="trip.subject">{{ trip.subject }} · </template>{{ trip.destination }}
                   <v-chip v-if="trip.recurrenceDays.length" size="x-small" class="ml-1" prepend-icon="mdi-repeat">{{ dayList(trip.recurrenceDays) }}</v-chip><br><span class="trip__meta">{{ trip.resolvedAddress }}</span></td>
                 <td class="text-right">2 × {{ formatNumber(trip.distanceKm, 0) }} km<br><span class="trip__meta">{{ formatNumber(trip.energyKwh, 1) }} kWh</span></td>
                 <td class="text-right"><strong :class="{ 'text-error': !trip.isReachable }">{{ percent(trip.requiredSocPercent) }}</strong></td>
@@ -216,7 +277,10 @@ onBeforeUnmount(() => {
                   <span v-if="trip.note" class="text-error">{{ trip.note }}</span></td>
                 <td>{{ trip.returnIsAssumed ? `ca. ${time.format(new Date(trip.returnAtUtc))} (angenommen)` : when(trip.returnAtUtc) }}<br>
                   <span class="trip__meta">dann ≈ {{ percent(trip.expectedSocAtReturnPercent) }}</span></td>
-                <td v-if="isAdmin"><v-btn icon="mdi-delete-outline" size="small" variant="text" :aria-label="`Fahrt nach ${trip.destination} löschen`" @click="removeTrip(trip)" /></td>
+                <td v-if="isAdmin">
+                  <v-btn :icon="trip.source === 'Calendar' ? 'mdi-eye-off-outline' : 'mdi-delete-outline'" size="small" variant="text"
+                    :aria-label="trip.source === 'Calendar' ? `Termin ${trip.destination} ausblenden` : `Fahrt nach ${trip.destination} löschen`" @click="removeTrip(trip)" />
+                </td>
               </tr>
             </tbody>
           </v-table>
@@ -225,6 +289,20 @@ onBeforeUnmount(() => {
             Der Verlauf zeigt, wann welcher Ladestand spätestens erreicht sein muss (Laden so spät wie möglich mit voller Leistung).
             Die preisoptimierte Ladeplanung folgt im nächsten Schritt.
           </p>
+        </template>
+        <template v-if="plan.ignoredTrips.length">
+          <v-btn class="mt-2 px-0" variant="text" size="small" @click="showIgnored = !showIgnored">
+            {{ showIgnored ? 'Ausgeblendete Termine verbergen' : `Ausgeblendete Termine (${plan.ignoredTrips.length})` }}
+          </v-btn>
+          <v-table v-if="showIgnored" density="compact">
+            <tbody>
+              <tr v-for="trip in plan.ignoredTrips" :key="trip.id">
+                <td>{{ when(trip.departureAtUtc) }}</td>
+                <td><template v-if="trip.subject">{{ trip.subject }} · </template>{{ trip.destination }}</td>
+                <td v-if="isAdmin" class="text-right"><v-btn size="small" variant="text" @click="setIgnored(trip.id, false)">Wieder einplanen</v-btn></td>
+              </tr>
+            </tbody>
+          </v-table>
         </template>
       </template>
     </div>
@@ -243,6 +321,17 @@ onBeforeUnmount(() => {
   .trip__form {
     grid-template-columns: 1fr;
   }
+}
+
+.trip__calendar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.trip__unresolved {
+  padding-left: 20px;
 }
 
 .trip__recurrence {

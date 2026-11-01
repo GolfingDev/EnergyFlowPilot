@@ -5,6 +5,7 @@ using TibberVictronController.Dal.E3dc;
 using TibberVictronController.Dal.Ocpp;
 using TibberVictronController.Dal.BmwCarData;
 using TibberVictronController.Dal.Routing;
+using TibberVictronController.Dal.Calendar;
 using TibberVictronController.Business.EvCharging;
 using TibberVictronController.Api.EvCharging;
 using TibberVictronController.Business.Abstractions;
@@ -119,6 +120,18 @@ public static class ControllerServiceCollectionExtensions
             provider.GetRequiredService<ICarStatusSource>(),
             provider.GetRequiredService<IUtcClock>()));
         services.AddScoped<EvTripPlanningService>();
+        services.AddHttpClient<GraphCalendarClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
+        services.AddScoped<ICalendarSource, GraphCalendarSource>();
+        services.AddScoped(provider => new CalendarTripSyncDependencies(
+            provider.GetRequiredService<ICalendarSource>(),
+            provider.GetRequiredService<IRoutePlanner>(),
+            provider.GetRequiredService<IEvTripRepository>(),
+            provider.GetRequiredService<IControllerSettingStore>(),
+            provider.GetRequiredService<IUtcClock>()));
+        services.AddScoped<CalendarTripSyncService>();
+        services.AddScoped<CalendarSyncRunner>();
+        services.AddSingleton<CalendarSyncState>();
+        services.AddHostedService<CalendarSyncBackgroundService>();
         services.AddHostedService(provider => provider.GetRequiredService<CarDataService>());
         services.AddScoped<ILiveConsumptionRepository, EfLiveConsumptionRepository>();
         services.AddScoped<IHomematicClimateRepository, EfHomematicClimateRepository>();

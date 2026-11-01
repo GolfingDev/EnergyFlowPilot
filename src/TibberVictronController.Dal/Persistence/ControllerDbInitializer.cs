@@ -218,9 +218,14 @@ CREATE TABLE IF NOT EXISTS "EvTrips" (
     "DurationMinutes" REAL NOT NULL,
     "CreatedAtUtc" INTEGER NOT NULL,
     "RecurrenceDays" INTEGER NOT NULL DEFAULT 0,
-    "RecurrenceUntilUtc" INTEGER NULL
+    "RecurrenceUntilUtc" INTEGER NULL,
+    "Source" TEXT NOT NULL DEFAULT 'Manual',
+    "ExternalId" TEXT NULL,
+    "Subject" TEXT NULL,
+    "IsIgnored" INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS "IX_EvTrips_DepartureAtUtc" ON "EvTrips" ("DepartureAtUtc");
+CREATE INDEX IF NOT EXISTS "IX_EvTrips_ExternalId" ON "EvTrips" ("ExternalId");
 """;
         }
 

@@ -72,6 +72,10 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(trip => trip.ReturnAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
             entity.Property(trip => trip.CreatedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
             entity.Property(trip => trip.RecurrenceUntilUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(trip => trip.Source).HasMaxLength(16);
+            entity.Property(trip => trip.ExternalId).HasMaxLength(512);
+            entity.Property(trip => trip.Subject).HasMaxLength(200);
+            entity.HasIndex(trip => trip.ExternalId);
             entity.HasIndex(trip => trip.DepartureAtUtc);
         });
     }

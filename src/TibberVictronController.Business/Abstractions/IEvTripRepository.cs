@@ -8,12 +8,30 @@ public interface IEvTripRepository
 
     Task<bool> DeleteAsync(int id, CancellationToken cancellationToken = default);
 
-    /// <summary>Trips whose departure (or known return) is not yet in the past, ordered by departure.</summary>
+    /// <summary>Trips whose departure (or known return) is not yet in the past, ordered by departure; includes ignored ones.</summary>
     Task<IReadOnlyList<EvTrip>> GetUpcomingAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken = default);
+
+    Task<EvTrip?> GetAsync(int id, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<EvTrip>> GetCalendarTripsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Inserts or updates the trip of one appointment; an operator's "ignore" survives the update.</summary>
+    Task UpsertCalendarTripAsync(CalendarTripUpdate update, DateTimeOffset nowUtc, CancellationToken cancellationToken = default);
+
+    Task DeleteAsync(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
+
+    Task<bool> SetIgnoredAsync(int id, bool ignored, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Appointments of the configured calendar.</summary>
+public interface ICalendarSource
+{
+    Task<IReadOnlyList<CalendarEvent>> GetEventsAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Geocoding and routing from home to a free-text destination.</summary>
 public interface IRoutePlanner
 {
-    Task<RouteEstimate> EstimateAsync(GeoPoint origin, string destination, CancellationToken cancellationToken = default);
+    /// <summary>placesOnly: accept only towns and villages (for places guessed from free text such as a subject).</summary>
+    Task<RouteEstimate> EstimateAsync(GeoPoint origin, string destination, bool placesOnly = false, CancellationToken cancellationToken = default);
 }
