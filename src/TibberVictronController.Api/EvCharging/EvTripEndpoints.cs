@@ -13,6 +13,7 @@ public static class EvTripEndpoints
         endpoints.MapPost("/api/ev-charging/trips", AddTripAsync).WithName("AddEvTrip").WithTags("EvCharging");
         endpoints.MapDelete("/api/ev-charging/trips/{id:int}", DeleteTripAsync).WithName("DeleteEvTrip").WithTags("EvCharging");
         endpoints.MapPut("/api/ev-charging/trips/{id:int}/ignored", SetIgnoredAsync).WithName("SetEvTripIgnored").WithTags("EvCharging");
+        endpoints.MapPut("/api/ev-charging/trips/{id:int}/occurrences/{date}/skipped", SetOccurrenceSkippedAsync).WithName("SetEvTripOccurrenceSkipped").WithTags("EvCharging");
         endpoints.MapGet("/api/ev-charging/charge-plan", GetChargePlanAsync).WithName("GetEvChargePlan").WithTags("EvCharging");
         endpoints.MapGet("/api/ev-charging/control", (EvChargingControlState state) =>
         {
@@ -70,6 +71,16 @@ public static class EvTripEndpoints
             ? TypedResults.NoContent()
             : TypedResults.NotFound(new { message = "Die Fahrt gibt es nicht (mehr)." });
 
+    private static async Task<IResult> SetOccurrenceSkippedAsync(int id, string date, EvTripSkipRequestDto request, EvTripPlanningService planning,
+        CancellationToken cancellationToken)
+    {
+        if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day))
+            return TypedResults.BadRequest(new { message = "Das Datum muss im Format JJJJ-MM-TT angegeben sein." });
+        return await planning.SetOccurrenceSkippedAsync(id, day, request.Skipped, cancellationToken)
+            ? TypedResults.NoContent()
+            : TypedResults.NotFound(new { message = "Die Serie gibt es nicht (mehr)." });
+    }
+
     private static async Task<IResult> GetCalendarStatusAsync(HttpContext http, CalendarSyncState state, IControllerSettingStore settings,
         ControllerAuthenticationOptions authentication, CancellationToken cancellationToken)
     {
@@ -109,6 +120,8 @@ public static class EvTripEndpoints
 }
 
 public sealed record EvTripIgnoreRequestDto(bool Ignored);
+
+public sealed record EvTripSkipRequestDto(bool Skipped);
 
 public sealed record EvChargingControlDto(bool Enabled, string Mode, double? Amps, string Reason, DateTimeOffset? UpdatedAtUtc, string? CommandProblem);
 
@@ -172,10 +185,14 @@ public static class EvTripPlanDtoMapper
             EvTrip.DaysOf(requirement.Trip.RecurrenceDays).Select(day => (int)day).ToArray(),
             requirement.Trip.RecurrenceUntilUtc,
             requirement.Trip.Source,
-            isAdmin ? requirement.Trip.Subject : null)).ToArray(),
+            isAdmin ? requirement.Trip.Subject : null,
+            requirement.Trip.OccurrenceDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            Math.Round(requirement.WinterSurchargePercent, 1),
+            requirement.TemperatureCelsius is { } celsius ? Math.Round(celsius, 1) : null)).ToArray(),
         plan.Course.Select(point => new EvSocPointDto(point.AtUtc, Math.Round(point.SocPercent, 1))).ToArray(),
         plan.Warnings,
-        view.IgnoredTrips.Select(trip => new EvIgnoredTripDto(trip.Id, trip.Destination, trip.DepartureAtUtc, isAdmin ? trip.Subject : null)).ToArray());
+        view.IgnoredTrips.Select(trip => new EvIgnoredTripDto(trip.Id, trip.Destination, trip.DepartureAtUtc, isAdmin ? trip.Subject : null,
+            trip.OccurrenceDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture))).ToArray());
     }
 }
 
@@ -199,9 +216,12 @@ public sealed record EvTripDto(
     IReadOnlyList<int> RecurrenceDays,
     DateTimeOffset? RecurrenceUntilUtc,
     string Source,
-    string? Subject);
+    string? Subject,
+    string? OccurrenceDate,
+    double WinterSurchargePercent,
+    double? TemperatureCelsius);
 
-public sealed record EvIgnoredTripDto(int Id, string Destination, DateTimeOffset DepartureAtUtc, string? Subject);
+public sealed record EvIgnoredTripDto(int Id, string Destination, DateTimeOffset DepartureAtUtc, string? Subject, string? OccurrenceDate);
 
 public sealed record EvSocPointDto(DateTimeOffset AtUtc, double SocPercent);
 

@@ -21,6 +21,8 @@ public interface IEvTripRepository
     Task DeleteAsync(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
 
     Task<bool> SetIgnoredAsync(int id, bool ignored, CancellationToken cancellationToken = default);
+
+    Task<bool> SetOccurrenceSkippedAsync(int id, DateOnly date, bool skipped, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Appointments of the configured calendar.</summary>

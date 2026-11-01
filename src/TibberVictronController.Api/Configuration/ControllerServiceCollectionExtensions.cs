@@ -119,7 +119,8 @@ public static class ControllerServiceCollectionExtensions
             provider.GetRequiredService<IRoutePlanner>(),
             provider.GetRequiredService<IControllerSettingStore>(),
             provider.GetRequiredService<ICarStatusSource>(),
-            provider.GetRequiredService<IUtcClock>()));
+            provider.GetRequiredService<IUtcClock>(),
+            provider.GetService<ITemperatureProvider>()));
         services.AddScoped<EvTripPlanningService>();
         services.AddHttpClient<GraphCalendarClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<ICalendarSource, GraphCalendarSource>();

@@ -18,7 +18,9 @@ public sealed record EvTrip(
     string Source = EvTripSources.Manual,
     string? ExternalId = null,
     string? Subject = null,
-    bool IsIgnored = false)
+    bool IsIgnored = false,
+    IReadOnlyList<DateOnly>? SkippedDates = null,
+    DateOnly? OccurrenceDate = null)
 {
     public bool IsRecurring => RecurrenceDays != 0;
 
@@ -100,7 +102,9 @@ public sealed record EvTripRequirement(
     double ExpectedSocAtReturnPercent,
     DateTimeOffset? LatestChargeStartUtc,
     bool IsReachable,
-    string? Note);
+    string? Note,
+    double WinterSurchargePercent = 0,
+    double? TemperatureCelsius = null);
 
 public sealed record EvSocPoint(DateTimeOffset AtUtc, double SocPercent);
 

@@ -31,7 +31,15 @@ public static class EvTripOccurrences
                 var departure = new DateTimeOffset(local, zone.GetUtcOffset(local)).ToUniversalTime();
                 if (departure > end) break;
                 if ((trip.RecurrenceDays & (1 << (int)date.DayOfWeek)) == 0 || departure < trip.DepartureAtUtc) continue;
-                result.Add(trip with { DepartureAtUtc = departure, ReturnAtUtc = departure + duration });
+                var occurrence = DateOnly.FromDateTime(date);
+                // A skipped date stays visible as an ignored occurrence so it can be brought back.
+                result.Add(trip with
+                {
+                    DepartureAtUtc = departure,
+                    ReturnAtUtc = departure + duration,
+                    OccurrenceDate = occurrence,
+                    IsIgnored = trip.IsIgnored || trip.SkippedDates?.Contains(occurrence) == true
+                });
             }
         }
 

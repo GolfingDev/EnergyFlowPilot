@@ -7,7 +7,14 @@ public sealed record EvTripPlanInput(
     double? CurrentSocPercent,
     IReadOnlyList<EvTrip> Trips,
     EvCarParameters Car,
-    TimeZoneInfo LocalZone);
+    TimeZoneInfo LocalZone)
+{
+    /// <summary>Hourly temperature forecast; null or empty means no winter surcharge.</summary>
+    public IReadOnlyList<HourlyTemperature>? Temperatures { get; init; }
+
+    /// <summary>Extra consumption per kelvin below 15 °C (e.g. 1.2 means +18 % at 0 °C).</summary>
+    public double WinterSurchargePerKelvinPercent { get; init; }
+}
 
 /// <summary>
 /// Derives the state of charge each planned trip needs and the minimal course to get there.
@@ -21,6 +28,9 @@ public static class EvTripSocPlanner
     public const double ChargeEfficiency = 0.9;
     // Without an entered return the car is assumed back at 20:00 local time on the departure day.
     private static readonly TimeSpan DefaultReturnLocalTime = TimeSpan.FromHours(20);
+    // Battery and cabin heating raise consumption below roughly 15 °C; the surcharge is capped.
+    private const double WinterBaseCelsius = 15;
+    private const double MaximumWinterSurchargePercent = 40;
 
     public static EvTripPlan Plan(EvTripPlanInput input)
     {
@@ -31,7 +41,14 @@ public static class EvTripSocPlanner
         var trips = input.Trips.Where(trip => trip.DepartureAtUtc > input.NowUtc).OrderBy(trip => trip.DepartureAtUtc).ToList();
         var warnings = new List<string>();
         var returns = trips.Select(trip => ReturnOf(trip, input.LocalZone)).ToList();
-        var energy = trips.Select(trip => 2 * trip.DistanceKm * car.ConsumptionKwhPer100Km / 100d * (1 + car.MarginPercent / 100d)).ToList();
+        var temperatures = trips.Select((trip, index) => AverageTemperature(input.Temperatures, trip.DepartureAtUtc, returns[index].At)).ToList();
+        var winter = temperatures.Select(temperature => temperature is { } celsius
+            ? Math.Clamp((WinterBaseCelsius - celsius) * input.WinterSurchargePerKelvinPercent, 0, MaximumWinterSurchargePercent)
+            : 0).ToList();
+        var energy = trips.Select((trip, index) => 2 * trip.DistanceKm * car.ConsumptionKwhPer100Km / 100d
+            * (1 + car.MarginPercent / 100d) * (1 + winter[index] / 100d)).ToList();
+        if (trips.Count > 0 && input.WinterSurchargePerKelvinPercent > 0 && temperatures.Any(temperature => temperature is null))
+            warnings.Add("Für einzelne Fahrten fehlt die Temperaturprognose; dort ohne Winterzuschlag gerechnet.");
 
         for (var i = 0; i + 1 < trips.Count; i++)
         {
@@ -87,7 +104,7 @@ public static class EvTripSocPlanner
             var afterTrip = level - energy[i];
             course.Add(new EvSocPoint(returns[i].At, Percent(Math.Max(0, afterTrip), capacity)));
             requirements.Add(new EvTripRequirement(trip, returns[i].At, returns[i].Assumed, energy[i], Percent(need[i], capacity),
-                Percent(afterTrip, capacity), latestStart, reachable, note));
+                Percent(afterTrip, capacity), latestStart, reachable, note, winter[i], temperatures[i]));
             level = Math.Max(0, afterTrip);
             time = returns[i].At;
         }
@@ -95,6 +112,16 @@ public static class EvTripSocPlanner
         if (socAssumed && trips.Count > 0)
             warnings.Add("Der aktuelle Ladestand ist unbekannt; der Verlauf beginnt beim Mindest-Ladestand.");
         return new EvTripPlan(input.NowUtc, input.CurrentSocPercent, socAssumed, requirements, course, warnings);
+    }
+
+    // Mean of the forecast hours between departure and return; the nearest hour within three hours for short trips.
+    private static double? AverageTemperature(IReadOnlyList<HourlyTemperature>? temperatures, DateTimeOffset from, DateTimeOffset to)
+    {
+        if (temperatures is null || temperatures.Count == 0) return null;
+        var inside = temperatures.Where(hour => hour.StartsAtUtc >= from.AddHours(-1) && hour.StartsAtUtc < to).ToArray();
+        if (inside.Length > 0) return (double)inside.Average(hour => hour.TemperatureCelsius);
+        var nearest = temperatures.MinBy(hour => (hour.StartsAtUtc - from).Duration());
+        return nearest is not null && (nearest.StartsAtUtc - from).Duration() <= TimeSpan.FromHours(3) ? (double)nearest.TemperatureCelsius : null;
     }
 
     private static (DateTimeOffset At, bool Assumed) ReturnOf(EvTrip trip, TimeZoneInfo zone)

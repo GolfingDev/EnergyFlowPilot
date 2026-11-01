@@ -28,6 +28,7 @@ public sealed class ControllerDbInitializer
         await EnsurePerBatterySavingsAsync(cancellationToken);
         await EnsureLiveConsumptionSampleColumnsAsync(cancellationToken);
         await EnsureWeishauptEnergyColumnsAsync(cancellationToken);
+        await EnsureEvTripColumnsAsync(cancellationToken);
         await SeedMissingDefaultSettingsAsync(initializedAtUtc, cancellationToken);
     }
 
@@ -53,6 +54,25 @@ CREATE TABLE IF NOT EXISTS "BatterySavingsByBattery" (
 INSERT OR IGNORE INTO "BatterySavingsByBattery" ("BatteryId", "MeasuredSeconds", "AccountingDate", "Currency", "GridChargedEnergyKwh", "GridChargeCost", "PvChargedEnergyKwh", "PvOpportunityCost", "DischargedEnergyKwh", "DischargeAvoidedCost", "NetSavings", "UpdatedAtUtc")
 SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "GridChargeCost", "PvChargedEnergyKwh", "PvOpportunityCost", "DischargedEnergyKwh", "DischargeAvoidedCost", "NetSavings", "UpdatedAtUtc" FROM "BatterySavingsDailySummaries";
 """, token);
+    }
+
+    // Additive migration: trip tables created by an earlier release get the newer columns with neutral defaults.
+    private async Task EnsureEvTripColumnsAsync(CancellationToken cancellationToken)
+    {
+        if (!await TableExistsAsync("EvTrips", cancellationToken)) return;
+        var existing = await GetColumnNamesAsync("EvTrips", cancellationToken);
+        var columns = new Dictionary<string, string>
+        {
+            ["RecurrenceDays"] = "INTEGER NOT NULL DEFAULT 0",
+            ["RecurrenceUntilUtc"] = "INTEGER NULL",
+            ["Source"] = "TEXT NOT NULL DEFAULT 'Manual'",
+            ["ExternalId"] = "TEXT NULL",
+            ["Subject"] = "TEXT NULL",
+            ["IsIgnored"] = "INTEGER NOT NULL DEFAULT 0",
+            ["SkippedDates"] = "TEXT NULL"
+        };
+        foreach (var column in columns.Where(column => !existing.Contains(column.Key)))
+            await dbContext.Database.ExecuteSqlRawAsync($"ALTER TABLE \"EvTrips\" ADD COLUMN \"{column.Key}\" {column.Value};", cancellationToken);
     }
 
     private async Task EnsureWeishauptEnergyColumnsAsync(CancellationToken cancellationToken)
@@ -223,7 +243,8 @@ CREATE TABLE IF NOT EXISTS "EvTrips" (
     "Source" TEXT NOT NULL DEFAULT 'Manual',
     "ExternalId" TEXT NULL,
     "Subject" TEXT NULL,
-    "IsIgnored" INTEGER NOT NULL DEFAULT 0
+    "IsIgnored" INTEGER NOT NULL DEFAULT 0,
+    "SkippedDates" TEXT NULL
 );
 CREATE INDEX IF NOT EXISTS "IX_EvTrips_DepartureAtUtc" ON "EvTrips" ("DepartureAtUtc");
 CREATE INDEX IF NOT EXISTS "IX_EvTrips_ExternalId" ON "EvTrips" ("ExternalId");

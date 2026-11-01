@@ -162,6 +162,7 @@ public sealed class CarDataService(
         // A refused subscription would leave a connected but silent stream; make it visible and retry later.
         var granted = subscription.Items.FirstOrDefault()?.ResultCode.ToString() ?? "keine Antwort";
         store.UpdateStream(current => current with { Subscription = $"{(vin is null ? "alle Fahrzeuge" : "VIN " + vin)}: {granted}" });
+        logger.LogInformation("BMW CarData: Abonnement {Scope} -> {Result}.", vin is null ? "alle Fahrzeuge" : "VIN", granted);
         if (!granted.StartsWith("Granted", StringComparison.Ordinal))
             throw new InvalidOperationException($"BMW lehnt das Abonnement des Datenstroms ab ({granted}). VIN in den Einstellungen eintragen statt 'auto'.");
         firstMessageLogged = false;

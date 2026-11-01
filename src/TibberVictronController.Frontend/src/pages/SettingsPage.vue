@@ -115,6 +115,7 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'ev.car.baseSocPercent', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.car.consumptionKwhPer100Km', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.trip.marginPercent', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
+  { key: 'ev.trip.winterSurchargePerKelvinPercent', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.car.usableCapacityKwh', section: 'control', subgroup: 'Auto & Fahrten', category: 'critical' },
   { key: 'ev.wallbox.maximumPowerWatts', section: 'control', subgroup: 'Auto & Fahrten', category: 'critical' },
   { key: 'jointBattery.shadowEnabled', section: 'control', subgroup: 'Gemeinsame Akku-Vorschau', category: 'important' },

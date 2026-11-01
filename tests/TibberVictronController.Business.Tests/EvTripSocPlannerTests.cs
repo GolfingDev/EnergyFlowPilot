@@ -78,6 +78,30 @@ public sealed class EvTripSocPlannerTests
     }
 
     [Fact]
+    public void ColdWeatherAddsTheWinterSurcharge()
+    {
+        var departure = Now.AddHours(24);
+        var trip = Trip(1, departure, 100, returnAt: departure.AddHours(2));
+        var temperatures = Enumerable.Range(0, 30).Select(hour => new HourlyTemperature(Now.AddHours(hour), 0m)).ToArray();
+
+        var plan = EvTripSocPlanner.Plan(new EvTripPlanInput(Now, 50, [trip], Car, Berlin) { Temperatures = temperatures, WinterSurchargePerKelvinPercent = 1.2 });
+
+        var requirement = Assert.Single(plan.Trips);
+        Assert.Equal(18, requirement.WinterSurchargePercent, 3); // 15 K below 15 degrees x 1.2 %
+        Assert.Equal(37.8 * 1.18, requirement.EnergyKwh, 3);
+        Assert.Equal(0, requirement.TemperatureCelsius);
+    }
+
+    [Fact]
+    public void MissingTemperaturesMeanNoSurchargeAndAHint()
+    {
+        var plan = EvTripSocPlanner.Plan(new EvTripPlanInput(Now, 50, [Trip(1, Now.AddHours(24), 100)], Car, Berlin) { WinterSurchargePerKelvinPercent = 1.2 });
+
+        Assert.Equal(0, Assert.Single(plan.Trips).WinterSurchargePercent);
+        Assert.Contains(plan.Warnings, warning => warning.Contains("Temperaturprognose"));
+    }
+
+    [Fact]
     public void PastTripsAreIgnored()
     {
         var plan = Plan(50, Trip(1, Now.AddHours(-2), 100));

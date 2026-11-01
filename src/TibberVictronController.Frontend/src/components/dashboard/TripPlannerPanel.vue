@@ -24,6 +24,9 @@ interface EvTripDto {
   recurrenceUntilUtc: string | null;
   source: 'Manual' | 'Calendar';
   subject: string | null;
+  occurrenceDate: string | null;
+  winterSurchargePercent: number;
+  temperatureCelsius: number | null;
 }
 
 interface CalendarStatusDto {
@@ -44,7 +47,7 @@ interface EvTripPlanDto {
   trips: EvTripDto[];
   course: { atUtc: string; socPercent: number }[];
   warnings: string[];
-  ignoredTrips: { id: number; destination: string; departureAtUtc: string; subject: string | null }[];
+  ignoredTrips: { id: number; destination: string; departureAtUtc: string; subject: string | null; occurrenceDate: string | null }[];
 }
 
 const plan = ref<EvTripPlanDto | null>(null);
@@ -138,6 +141,24 @@ async function setIgnored(id: number, ignored: boolean): Promise<void> {
   });
   if (!response.ok) error.value = `Termin konnte nicht geändert werden (HTTP ${response.status}).`;
   await load();
+}
+
+async function setSkipped(id: number, date: string, skipped: boolean): Promise<void> {
+  const response = await fetch(`/api/ev-charging/trips/${id}/occurrences/${date}/skipped`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ skipped })
+  });
+  if (!response.ok) error.value = `Termin konnte nicht geändert werden (HTTP ${response.status}).`;
+  await load();
+}
+
+async function skipOccurrence(trip: EvTripDto): Promise<void> {
+  if (trip.occurrenceDate && window.confirm(`Fahrt nach ${trip.destination} am ${when(trip.departureAtUtc)} auslassen? Die Serie bleibt bestehen.`))
+    await setSkipped(trip.id, trip.occurrenceDate, true);
+}
+
+async function restore(trip: EvTripPlanDto['ignoredTrips'][number]): Promise<void> {
+  if (trip.occurrenceDate) await setSkipped(trip.id, trip.occurrenceDate, false);
+  else await setIgnored(trip.id, false);
 }
 
 async function removeTrip(trip: EvTripDto): Promise<void> {
@@ -271,14 +292,17 @@ onBeforeUnmount(() => {
                   <v-icon v-if="trip.source === 'Calendar'" icon="mdi-calendar-outline" size="14" class="mr-1" title="Aus dem Kalender" />
                   <template v-if="trip.subject">{{ trip.subject }} · </template>{{ trip.destination }}
                   <v-chip v-if="trip.recurrenceDays.length" size="x-small" class="ml-1" prepend-icon="mdi-repeat">{{ dayList(trip.recurrenceDays) }}</v-chip><br><span class="trip__meta">{{ trip.resolvedAddress }}</span></td>
-                <td class="text-right">2 × {{ formatNumber(trip.distanceKm, 0) }} km<br><span class="trip__meta">{{ formatNumber(trip.energyKwh, 1) }} kWh</span></td>
+                <td class="text-right">2 × {{ formatNumber(trip.distanceKm, 0) }} km<br><span class="trip__meta">{{ formatNumber(trip.energyKwh, 1) }} kWh<template v-if="trip.winterSurchargePercent > 0"> inkl. {{ formatNumber(trip.winterSurchargePercent, 0) }} % Winter ({{ formatNumber(trip.temperatureCelsius ?? 0, 0) }} °C)</template></span></td>
                 <td class="text-right"><strong :class="{ 'text-error': !trip.isReachable }">{{ percent(trip.requiredSocPercent) }}</strong></td>
                 <td>{{ trip.latestChargeStartUtc ? when(trip.latestChargeStartUtc) : 'nicht nötig' }}<br>
                   <span v-if="trip.note" class="text-error">{{ trip.note }}</span></td>
                 <td>{{ trip.returnIsAssumed ? `ca. ${time.format(new Date(trip.returnAtUtc))} (angenommen)` : when(trip.returnAtUtc) }}<br>
                   <span class="trip__meta">dann ≈ {{ percent(trip.expectedSocAtReturnPercent) }}</span></td>
-                <td v-if="isAdmin">
+                <td v-if="isAdmin" class="text-no-wrap">
+                  <v-btn v-if="trip.occurrenceDate" icon="mdi-calendar-remove-outline" size="small" variant="text" title="Nur diesen Termin auslassen"
+                    :aria-label="`Termin nach ${trip.destination} auslassen`" @click="skipOccurrence(trip)" />
                   <v-btn :icon="trip.source === 'Calendar' ? 'mdi-eye-off-outline' : 'mdi-delete-outline'" size="small" variant="text"
+                    :title="trip.source === 'Calendar' ? 'Ausblenden' : trip.recurrenceDays.length ? 'Ganze Serie löschen' : 'Löschen'"
                     :aria-label="trip.source === 'Calendar' ? `Termin ${trip.destination} ausblenden` : `Fahrt nach ${trip.destination} löschen`" @click="removeTrip(trip)" />
                 </td>
               </tr>
@@ -296,10 +320,10 @@ onBeforeUnmount(() => {
           </v-btn>
           <v-table v-if="showIgnored" density="compact">
             <tbody>
-              <tr v-for="trip in plan.ignoredTrips" :key="trip.id">
+              <tr v-for="trip in plan.ignoredTrips" :key="`${trip.id}-${trip.departureAtUtc}`">
                 <td>{{ when(trip.departureAtUtc) }}</td>
                 <td><template v-if="trip.subject">{{ trip.subject }} · </template>{{ trip.destination }}</td>
-                <td v-if="isAdmin" class="text-right"><v-btn size="small" variant="text" @click="setIgnored(trip.id, false)">Wieder einplanen</v-btn></td>
+                <td v-if="isAdmin" class="text-right"><v-btn size="small" variant="text" @click="restore(trip)">Wieder einplanen</v-btn></td>
               </tr>
             </tbody>
           </v-table>

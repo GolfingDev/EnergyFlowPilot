@@ -75,6 +75,7 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(trip => trip.Source).HasMaxLength(16);
             entity.Property(trip => trip.ExternalId).HasMaxLength(512);
             entity.Property(trip => trip.Subject).HasMaxLength(200);
+            entity.Property(trip => trip.SkippedDates).HasMaxLength(4000);
             entity.HasIndex(trip => trip.ExternalId);
             entity.HasIndex(trip => trip.DepartureAtUtc);
         });

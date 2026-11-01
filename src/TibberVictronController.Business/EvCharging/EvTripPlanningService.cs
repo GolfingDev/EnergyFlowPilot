@@ -9,7 +9,8 @@ public sealed record EvTripPlanningDependencies(
     IRoutePlanner Routes,
     IControllerSettingStore Settings,
     ICarStatusSource Car,
-    IUtcClock Clock);
+    IUtcClock Clock,
+    ITemperatureProvider? Temperatures = null);
 
 /// <summary>A trip to add; with weekdays it is a weekly series starting at the departure, optionally until a date.</summary>
 public sealed record EvTripRequest(
@@ -35,7 +36,11 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
         var car = await ReadCarParametersAsync(cancellationToken);
         var trips = EvTripOccurrences.Expand(await dependencies.Trips.GetUpcomingAsync(now, cancellationToken), now, SeriesHorizon, LocalZone);
         var active = trips.Where(trip => !trip.IsIgnored).ToArray();
-        var plan = EvTripSocPlanner.Plan(new EvTripPlanInput(now, dependencies.Car.Car.StateOfChargePercent, active, car, LocalZone));
+        var plan = EvTripSocPlanner.Plan(new EvTripPlanInput(now, dependencies.Car.Car.StateOfChargePercent, active, car, LocalZone)
+        {
+            Temperatures = active.Length == 0 ? null : await TemperaturesAsync(now, cancellationToken),
+            WinterSurchargePerKelvinPercent = await NumberAsync(ControllerSettingDefaults.EvTripWinterSurchargeKey, cancellationToken)
+        });
         return new EvTripPlanView(plan, car, trips.Where(trip => trip.IsIgnored && trip.DepartureAtUtc > now).ToArray());
     }
 
@@ -85,6 +90,24 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
 
     public Task<bool> SetIgnoredAsync(int id, bool ignored, CancellationToken cancellationToken) =>
         dependencies.Trips.SetIgnoredAsync(id, ignored, cancellationToken);
+
+    /// <summary>Skips (or restores) one date of a weekly series, e.g. during holidays.</summary>
+    public Task<bool> SetOccurrenceSkippedAsync(int id, DateOnly date, bool skipped, CancellationToken cancellationToken) =>
+        dependencies.Trips.SetOccurrenceSkippedAsync(id, date, skipped, cancellationToken);
+
+    // A missing forecast only removes the winter surcharge; it never blocks the plan.
+    private async Task<IReadOnlyList<HourlyTemperature>?> TemperaturesAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (dependencies.Temperatures is null) return null;
+        try
+        {
+            return await dependencies.Temperatures.GetHourlyTemperaturesAsync(now.AddHours(-1), now + SeriesHorizon + TimeSpan.FromDays(1), cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
 
     private async Task<EvCarParameters> ReadCarParametersAsync(CancellationToken cancellationToken) => new(
         await NumberAsync(ControllerSettingDefaults.EvCarUsableCapacityKwhKey, cancellationToken),

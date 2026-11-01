@@ -169,6 +169,9 @@ public sealed class CalendarTripTests
             return Task.CompletedTask;
         }
 
+        public Task<bool> SetOccurrenceSkippedAsync(int id, DateOnly date, bool skipped, CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
+
         public Task<bool> SetIgnoredAsync(int id, bool ignored, CancellationToken cancellationToken = default)
         {
             var index = Trips.FindIndex(t => t.Id == id);

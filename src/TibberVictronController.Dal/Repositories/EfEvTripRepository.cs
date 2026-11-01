@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
@@ -110,7 +111,25 @@ public sealed class EfEvTripRepository(ControllerDbContext dbContext) : IEvTripR
         return true;
     }
 
+    public async Task<bool> SetOccurrenceSkippedAsync(int id, DateOnly date, bool skipped, CancellationToken cancellationToken = default)
+    {
+        var entity = await dbContext.EvTrips.FirstOrDefaultAsync(trip => trip.Id == id && trip.RecurrenceDays != 0, cancellationToken);
+        if (entity is null) return false;
+        var dates = ParseDates(entity.SkippedDates).ToHashSet();
+        if (skipped) dates.Add(date); else dates.Remove(date);
+        // Only future dates matter; past ones are dropped so the list stays short.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-2));
+        entity.SkippedDates = string.Join(',', dates.Where(day => day >= today).Order().Select(day => day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    private static IEnumerable<DateOnly> ParseDates(string? value) => (value ?? string.Empty)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(part => DateOnly.TryParseExact(part, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day) ? day : (DateOnly?)null)
+        .OfType<DateOnly>();
+
     private static EvTrip Map(EvTripEntity entity) => new(entity.Id, entity.DepartureAtUtc, entity.ReturnAtUtc, entity.Destination,
         entity.ResolvedAddress, entity.DistanceKm, entity.DurationMinutes, entity.CreatedAtUtc, entity.RecurrenceDays, entity.RecurrenceUntilUtc,
-        entity.Source, entity.ExternalId, entity.Subject, entity.IsIgnored);
+        entity.Source, entity.ExternalId, entity.Subject, entity.IsIgnored, ParseDates(entity.SkippedDates).ToArray());
 }

@@ -51,6 +51,21 @@ public sealed class EvTripOccurrencesTests
     }
 
     [Fact]
+    public void SkippedDateStaysVisibleAsIgnoredOccurrence()
+    {
+        var now = new DateTimeOffset(2026, 11, 2, 6, 0, 0, TimeSpan.Zero);
+        var first = new DateTimeOffset(2026, 11, 3, 6, 30, 0, TimeSpan.Zero);
+        var series = Trip(first, null, TuesdayThursday) with { SkippedDates = [new DateOnly(2026, 11, 5)] };
+
+        var trips = EvTripOccurrences.Expand([series], now, TimeSpan.FromDays(7), Berlin);
+
+        Assert.Equal(2, trips.Count);
+        Assert.False(trips[0].IsIgnored);
+        Assert.True(trips[1].IsIgnored);
+        Assert.Equal(new DateOnly(2026, 11, 5), trips[1].OccurrenceDate);
+    }
+
+    [Fact]
     public void SingleTripsPassThroughUnchanged()
     {
         var now = new DateTimeOffset(2026, 11, 2, 6, 0, 0, TimeSpan.Zero);

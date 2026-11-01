@@ -18,4 +18,6 @@ public sealed class EvTripEntity
     public string? ExternalId { get; set; }
     public string? Subject { get; set; }
     public bool IsIgnored { get; set; }
+    // Local dates (yyyy-MM-dd, comma separated) skipped in a weekly series.
+    public string? SkippedDates { get; set; }
 }
