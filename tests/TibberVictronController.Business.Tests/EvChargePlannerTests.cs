@@ -9,94 +9,140 @@ public sealed class EvChargePlannerTests
     private static readonly EvCarParameters Car = new(81, 18, 15, 5, 11000);
 
     [Fact]
-    public void TripDeficitGoesIntoTheCheapestQuarterHoursBeforeDeparture()
+    public void TripEnergyComesFromTheCheapestQuarterHoursBeforeDeparture()
     {
-        // 12 hours of slots; cheap at 02:00-03:00 UTC, departure 06:00 UTC, an even cheaper slot after departure.
+        // Cheap at slots 56-59, departure at slot 72, an even cheaper slot while the car is away.
         var slots = Slots(96, index => index is >= 56 and < 60 ? 0.10 : index >= 72 ? 0.01 : 0.30);
         var departure = Now.AddHours(18);
-        var trip = Requirement(departure, requiredSoc: 40, energyKwh: 20);
+        var plan = EvChargePlanner.Plan(Input(slots, [Requirement(departure, energyKwh: 20)], currentSoc: 30) with { BaseSocPercent = 0 }
+            with { FutureValuePerKwh = 0 });
 
-        var plan = EvChargePlanner.Plan(Input(slots, [trip], currentSoc: 30, baseSoc: 0));
-
-        // (40 % - 30 %) x 81 kWh = 8.1 kWh into the battery = 9 kWh at the wallbox (plus rounding up to the minimum current).
-        Assert.InRange(plan.GridKwh, 9, 9.3);
+        // Before leaving: 15 % reserve (12.15 kWh) + 20 kWh trip - 24.3 kWh = 7.85 kWh in the battery = 8.7 kWh at the wallbox.
+        // The wallbox's fixed current steps may add a little more than needed.
+        Assert.InRange(plan.GridKwh, 8.7, 9.8);
         Assert.All(plan.Slots, slot => Assert.True(slot.EndsAtUtc <= departure));
         Assert.All(plan.Slots, slot => Assert.Equal(0.10, slot.PricePerKwh));
         Assert.All(plan.Slots, slot => Assert.Equal(EvChargeReason.Trip, slot.Reason));
+        Assert.DoesNotContain(plan.Warnings, warning => warning.Contains("fehlen"));
     }
 
     [Fact]
-    public void PvSurplusIsUsedBeforeGridAndAlwaysUpToTheCarLimit()
+    public void WithoutTripTheCarChargesOnlyWhenCheaperThanLater()
     {
-        var slots = Slots(8, _ => 0.05).Select((slot, index) => index < 4 ? slot with { SurplusKwh = 2.0 } : slot).ToList();
+        var slots = Slots(16, index => index < 8 ? 0.05 : 0.30);
 
-        var plan = EvChargePlanner.Plan(Input(slots, [], currentSoc: 60, baseSoc: 0, carTarget: 80));
+        var plan = EvChargePlanner.Plan(Input(slots, [], currentSoc: 70, carTarget: 80) with { BaseSocPercent = 0, FutureValuePerKwh = 0.20 });
 
-        Assert.Equal(8, plan.PvKwh, 3); // four quarter hours with 2 kWh (8 kW) surplus each
-        Assert.Equal(0, plan.GridKwh, 3);
-        Assert.All(plan.Slots, slot => Assert.Equal(EvChargeReason.PvSurplus, slot.Reason));
+        // 70 % -> 80 % = 8.1 kWh in the battery = 9 kWh at the wallbox, only in the cheap quarter hours.
+        Assert.Equal(9, plan.GridKwh, 1);
+        Assert.All(plan.Slots, slot => Assert.Equal(0.05, slot.PricePerKwh));
+        Assert.All(plan.Slots, slot => Assert.Equal(EvChargeReason.CheapPrice, slot.Reason));
     }
 
     [Fact]
-    public void SurplusBelowTheWallboxMinimumIsNotChargedAsPureSurplus()
+    public void ExpensiveHoursStayUnusedWithoutNeed()
     {
-        var slots = Slots(4, _ => 0.30).Select(slot => slot with { SurplusKwh = 0.5 }).ToList(); // 2 kW < 4.14 kW
-
-        var plan = EvChargePlanner.Plan(Input(slots, [], currentSoc: 60, baseSoc: 0));
+        var plan = EvChargePlanner.Plan(Input(Slots(16, _ => 0.30), [], currentSoc: 60) with { BaseSocPercent = 0, FutureValuePerKwh = 0.20 });
 
         Assert.Empty(plan.Slots);
     }
 
     [Fact]
-    public void SmallDeficitsAreChargedAtLeastAtTheMinimumCurrent()
+    public void BaseStateOfChargeIsReachedEvenWhenNotCheap()
     {
-        var slots = Slots(4, _ => 0.20);
-        var trip = Requirement(Now.AddHours(1), requiredSoc: 30.5, energyKwh: 5);
+        var plan = EvChargePlanner.Plan(Input(Slots(16, index => index < 8 ? 0.35 : 0.30), [], currentSoc: 40) with { BaseSocPercent = 50, FutureValuePerKwh = 0.10 });
 
-        var plan = EvChargePlanner.Plan(Input(slots, [trip], currentSoc: 30, baseSoc: 0));
+        // 40 % -> 50 % = 8.1 kWh in the battery = 9 kWh at the wallbox, in the cheaper second half.
+        // The 1 kWh state grid may leave a few watt hours short of exactly 50 %.
+        Assert.InRange(plan.GridKwh, 8.9, 9.5);
+        Assert.All(plan.Slots, slot => Assert.Equal(0.30, slot.PricePerKwh));
+        Assert.All(plan.Slots, slot => Assert.Equal(EvChargeReason.BaseSoc, slot.Reason));
+    }
 
-        var slot = Assert.Single(plan.Slots);
-        Assert.Equal(EvChargePlanner.MinimumChargePowerWatts, slot.PowerWatts, 0);
+    [Theory]
+    [InlineData(0.05, true)]   // home battery values the PV less than grid power costs: the car takes it
+    [InlineData(0.40, false)]  // home battery saves more with it: the car charges from the grid instead
+    public void PvGoesWhereItSavesMore(double batteryValue, bool carTakesPv)
+    {
+        var slots = Slots(4, _ => 0.30).Select(slot => slot with { BatteryPvKwh = 2.5, BatteryPvValuePerKwh = batteryValue }).ToList();
+
+        var plan = EvChargePlanner.Plan(Input(slots, [Requirement(Now.AddHours(1), energyKwh: 4)], currentSoc: 15) with
+        {
+            BaseSocPercent = 0, FutureValuePerKwh = 0, PvConfidence = 1
+        });
+
+        Assert.Equal(carTakesPv, plan.PvKwh > 1);
+        Assert.Equal(!carTakesPv, plan.GridKwh > 1);
     }
 
     [Fact]
-    public void NoChargingWhileTheCarIsAwayAndBaseSocAfterwards()
+    public void NoChargingWhileTheCarIsAway()
     {
         var slots = Slots(48, index => index is >= 8 and < 16 ? 0.01 : 0.20);
         // Away from 13:00 to 17:00 UTC exactly over the cheapest quarter hours.
-        var trip = Requirement(Now.AddHours(1), requiredSoc: 0, energyKwh: 8.1, returnAt: Now.AddHours(5));
+        var trip = Requirement(Now.AddHours(1), energyKwh: 8.1, returnAt: Now.AddHours(5));
 
-        var plan = EvChargePlanner.Plan(Input(slots, [trip], currentSoc: 40, baseSoc: 50));
+        var plan = EvChargePlanner.Plan(Input(slots, [trip], currentSoc: 40) with { BaseSocPercent = 50, FutureValuePerKwh = 0 });
 
         Assert.All(plan.Slots, slot => Assert.True(slot.EndsAtUtc <= Now.AddHours(1) || slot.StartsAtUtc >= Now.AddHours(5)));
-        // Back with 30 %; base 50 % needs 16.2 kWh in the battery = 18 kWh at the wallbox.
-        Assert.Equal(18, plan.GridKwh, 1);
-        Assert.Contains(plan.Slots, slot => slot.Reason == EvChargeReason.BaseSoc);
+        Assert.NotEmpty(plan.Slots);
+    }
+
+    [Fact]
+    public void SmallDeficitsAreChargedAtLeastAtTheMinimumCurrent()
+    {
+        var plan = EvChargePlanner.Plan(Input(Slots(4, _ => 0.20), [Requirement(Now.AddHours(1), energyKwh: 12.6)], currentSoc: 30) with
+        {
+            BaseSocPercent = 0, FutureValuePerKwh = 0
+        });
+
+        Assert.All(plan.Slots, slot => Assert.True(slot.PowerWatts >= EvChargePlanner.MinimumChargePowerWatts - 1));
+        Assert.NotEmpty(plan.Slots);
     }
 
     [Fact]
     public void UnreachableDeficitIsReported()
     {
-        var trip = Requirement(Now.AddMinutes(30), requiredSoc: 90, energyKwh: 30);
-
-        var plan = EvChargePlanner.Plan(Input(Slots(2, _ => 0.2), [trip], currentSoc: 20, baseSoc: 0));
+        var plan = EvChargePlanner.Plan(Input(Slots(2, _ => 0.2), [Requirement(Now.AddMinutes(30), energyKwh: 60)], currentSoc: 20));
 
         Assert.Contains(plan.Warnings, warning => warning.Contains("fehlen"));
     }
 
+    [Fact]
+    public void ScenariosShowGridCostForLessAndMoreSun()
+    {
+        var slots = Slots(8, _ => 0.30).Select(slot => slot with { SurplusKwh = 1.5 }).ToList();
+
+        var plan = EvChargePlanner.Plan(Input(slots, [Requirement(Now.AddHours(2), energyKwh: 15)], currentSoc: 15) with { BaseSocPercent = 0, FutureValuePerKwh = 0 });
+
+        Assert.Equal(3, plan.Scenarios.Count);
+        Assert.True(plan.Scenarios[0].GridKwh >= plan.Scenarios[1].GridKwh);
+        Assert.True(plan.Scenarios[1].GridKwh >= plan.Scenarios[2].GridKwh);
+    }
+
+    [Fact]
+    public void WithoutSlotsThePlanSaysSo()
+    {
+        var plan = EvChargePlanner.Plan(Input([], [], currentSoc: 50));
+
+        Assert.False(plan.HasInputSlots);
+        Assert.Contains(plan.Warnings, warning => warning.Contains("Keine Preise"));
+    }
+
     private static EvChargePlanInput Input(IReadOnlyList<EvChargeSlotInput> slots, IReadOnlyList<EvTripRequirement> trips, double currentSoc,
-        double baseSoc, double? carTarget = null) =>
-        new(Now, currentSoc, carTarget, Car, baseSoc, 0.08, slots, trips);
+        double? carTarget = null) =>
+        new(Now, currentSoc, carTarget, Car, 0, 0.08, slots, trips);
 
     private static List<EvChargeSlotInput> Slots(int quarterHours, Func<int, double> price) =>
         Enumerable.Range(0, quarterHours)
             .Select(index => new EvChargeSlotInput(Now.AddMinutes(15 * index), Now.AddMinutes(15 * (index + 1)), price(index), false, 0))
             .ToList();
 
-    private static EvTripRequirement Requirement(DateTimeOffset departure, double requiredSoc, double energyKwh, DateTimeOffset? returnAt = null)
+    private static EvTripRequirement Requirement(DateTimeOffset departure, double energyKwh, DateTimeOffset? returnAt = null)
     {
         var back = returnAt ?? departure.AddHours(8);
         var trip = new EvTrip(1, departure, back, "Ziel", "Adresse", 50, 40, Now);
-        return new EvTripRequirement(trip, back, false, energyKwh, requiredSoc, requiredSoc - energyKwh / 81 * 100, null, true, null);
+        var required = 15 + energyKwh / 81 * 100;
+        return new EvTripRequirement(trip, back, false, energyKwh, required, 15, null, true, null);
     }
 }

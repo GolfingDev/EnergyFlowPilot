@@ -112,8 +112,10 @@ public sealed class JointBatteryPlanner
             var wb = (int)Math.CopySign(Math.Floor(Math.Abs(action.B * 1000) + 1e-7), action.B);
             var afterA = currentA + a.Delta(wa / 1000d); var afterB = currentB + b.Delta(wb / 1000d);
             var targets = new JointBatteryTarget[] {
-                new(a.Source.Id, wa, (decimal)(currentA / a.Capacity * 100), (decimal)(afterA / a.Capacity * 100)),
-                new(b.Source.Id, wb, (decimal)(currentB / b.Capacity * 100), (decimal)(afterB / b.Capacity * 100)) };
+                new(a.Source.Id, wa, (decimal)(currentA / a.Capacity * 100), (decimal)(afterA / a.Capacity * 100),
+                    (decimal)MarginalValue(costs[i + 1], ga, gb, afterA, afterB, a.Capacity, firstDimension: true)),
+                new(b.Source.Id, wb, (decimal)(currentB / b.Capacity * 100), (decimal)(afterB / b.Capacity * 100),
+                    (decimal)MarginalValue(costs[i + 1], ga, gb, afterA, afterB, b.Capacity, firstDimension: false)) };
             var total = wa + wb;
             BatteryChargeSource? source = total <= 0 ? null : net[i] + total / 1000d * .25 > Eps ? BatteryChargeSource.Grid : BatteryChargeSource.PV;
             slots.Add(new(prices[i].TimeSlot, prices[i].TotalPricePerKwh, prices[i].Currency, prices[i].IsEstimated, source, targets, string.Empty, false,
@@ -134,6 +136,22 @@ public sealed class JointBatteryPlanner
         return grid.Where(e => e >= min - Eps && e <= max + Eps).Concat([energy, min, max, Math.Clamp(unit.GridMaximum, min, max)])
             .Select(e => unit.Power(e - energy)).Distinct().ToArray();
     }
+    /// <summary>
+    /// Value of one more stored kWh (EUR/kWh): the slope of the remaining cost over this battery's energy. Lets other
+    /// consumers such as the car compare their use of PV with what the home battery would save with it.
+    /// </summary>
+    private static double MarginalValue(double[] costs, double[] a, double[] b, double ea, double eb, double capacity, bool firstDimension)
+    {
+        var step = Math.Max(0.25, capacity / 40);
+        var energy = firstDimension ? ea : eb;
+        var low = Math.Max(0, energy - step);
+        var high = Math.Min(capacity, energy + step);
+        if (high - low < Eps) return 0;
+        var costLow = firstDimension ? Interpolate(costs, a, b, low, eb) : Interpolate(costs, a, b, ea, low);
+        var costHigh = firstDimension ? Interpolate(costs, a, b, high, eb) : Interpolate(costs, a, b, ea, high);
+        return Math.Round(Math.Max(0, (costLow - costHigh) / (high - low)), 4);
+    }
+
     private static double Interpolate(double[] values, double[] a, double[] b, double ea, double eb)
     {
         static (int Index, double Weight) Position(double[] grid, double value)

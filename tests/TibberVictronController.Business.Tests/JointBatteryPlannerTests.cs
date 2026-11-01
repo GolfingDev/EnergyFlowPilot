@@ -63,6 +63,22 @@ public sealed class JointBatteryPlannerTests
     }
 
     [Fact]
+    public void StoredEnergyIsWorthTheLaterAvoidedPrice()
+    {
+        // Cheap only now, expensive afterwards with house load: one more stored kWh avoids buying at 0.40 later.
+        var slots = Enumerable.Range(0, 8).Select(i => new ForecastTimeSlot(Now.AddMinutes(15 * i), Now.AddMinutes(15 * (i + 1)))).ToArray();
+        var plan = new JointBatteryPlanner().Calculate(new JointBatteryPlanInput {
+            NowUtc = Now, Batteries = [Unit("victron", 20), Unit("e3dc", 20)],
+            Prices = slots.Select((time, i) => new TibberPriceForecastSlot(time, i < 1 ? .10m : .40m, "EUR")).ToArray(),
+            Pv = slots.Select(time => new PvYieldForecastSlot(time, 0)).ToArray(),
+            Consumption = slots.Select(time => new ConsumptionForecastSlot(time, 1m)).ToArray(), MaximumGridImportWatts = 0
+        });
+
+        var value = plan.Slots[0].Targets[0].EnergyValuePerKwh;
+        Assert.InRange(value, 0.2m, 0.5m);
+    }
+
+    [Fact]
     public void TotalChargeRespectsGridBudgetIncludingHouseLoad()
     {
         var time = new ForecastTimeSlot(Now, Now.AddMinutes(15));

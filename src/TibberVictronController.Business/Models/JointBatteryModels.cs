@@ -2,7 +2,8 @@ namespace TibberVictronController.Business.Models;
 
 public sealed record JointBatteryUnit(string Id, BatteryConfiguration Configuration, BatteryState State, int MeasuredPowerWatts,
     int? AvailableChargeWatts = null, int? AvailableDischargeWatts = null);
-public sealed record JointBatteryTarget(string Id, int SignedPowerWatts, decimal SocBeforePercent, decimal SocAfterPercent);
+/// <summary>EnergyValuePerKwh: what one more kWh stored after this slot saves later (marginal value from the plan's cost-to-go).</summary>
+public sealed record JointBatteryTarget(string Id, int SignedPowerWatts, decimal SocBeforePercent, decimal SocAfterPercent, decimal EnergyValuePerKwh = 0);
 public sealed record JointBatterySlot(ForecastTimeSlot TimeSlot, decimal PricePerKwh, string Currency,
     bool IsPriceEstimated, BatteryChargeSource? ChargeSource, IReadOnlyList<JointBatteryTarget> Targets, string Reason,
     bool TargetLimited, decimal ExpectedPvKwh = 0, decimal ExpectedConsumptionKwh = 0);

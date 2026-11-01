@@ -55,24 +55,6 @@ public sealed class EvChargingDeciderTests
         Assert.Equal(0, decision.Amps);
     }
 
-    [Fact]
-    public void CheapQuarterHoursFillTheCarBeyondTheTripPlan()
-    {
-        var slots = Enumerable.Range(0, 16).Select(index => new EvChargeSlotInput(Now.AddMinutes(15 * index - 5), Now.AddMinutes(15 * index + 10),
-            index < 8 ? 0.05 : 0.30, false, 0)).ToList();
-        var input = new EvChargePlanInput(Now, 70, 80, new EvCarParameters(81, 18, 15, 5, 11000), 0, 0.08, slots, [])
-        {
-            CheapPricePerKwh = EvCharging.EvChargePlanServiceThreshold(slots, Now, 50)
-        };
-
-        var plan = EvChargePlanner.Plan(input);
-
-        // 70 % -> 80 % = 8.1 kWh in the battery = 9 kWh at the wallbox, only in the cheap quarter hours.
-        Assert.InRange(plan.GridKwh, 9, 9.3);
-        Assert.All(plan.Slots, slot => Assert.Equal(0.05, slot.PricePerKwh));
-        Assert.All(plan.Slots, slot => Assert.Equal(EvChargeReason.CheapPrice, slot.Reason));
-    }
-
     private static EvChargePlan Plan(double gridKwh, double powerWatts)
     {
         var start = new DateTimeOffset(2026, 11, 2, 12, 0, 0, TimeSpan.Zero);
@@ -80,16 +62,5 @@ public sealed class EvChargingDeciderTests
             ? new[] { new EvPlannedChargeSlot(start, start.AddMinutes(15), powerWatts, gridKwh, 0, 0.12, false, EvChargeReason.Trip) }
             : [];
         return new EvChargePlan(Now, slots, gridKwh, 0, 0, []);
-    }
-}
-
-internal static class EvCharging
-{
-    // Mirrors the API's percentile rule so the planner test does not depend on the API project.
-    public static double? EvChargePlanServiceThreshold(IReadOnlyList<EvChargeSlotInput> slots, DateTimeOffset now, double percentile)
-    {
-        var prices = slots.Where(slot => slot.EndsAtUtc > now && slot.StartsAtUtc < now.AddHours(24)).Select(slot => slot.PricePerKwh).Order().ToArray();
-        var index = (int)Math.Clamp(Math.Ceiling(prices.Length * percentile / 100d) - 1, 0, prices.Length - 1);
-        return Math.Max(0, prices[index]);
     }
 }

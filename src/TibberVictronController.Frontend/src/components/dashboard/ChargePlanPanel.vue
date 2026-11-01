@@ -20,6 +20,7 @@ interface EvChargePlanDto {
   pvKwh: number;
   gridCost: number;
   warnings: string[];
+  scenarios: { name: string; pvFactor: number; gridKwh: number; gridCost: number }[];
   slots: EvChargeSlotDto[];
 }
 
@@ -138,6 +139,11 @@ onBeforeUnmount(() => window.clearInterval(timer));
               </tr>
             </tbody>
           </v-table>
+          <p v-if="plan.scenarios.length" class="plan__meta mt-2">
+            Netzkosten dieses Plans je nach Sonne:
+            <template v-for="(scenario, index) in plan.scenarios" :key="scenario.name">{{ index ? ' · ' : '' }}{{ scenario.name }} {{ formatNumber(scenario.gridKwh, 1) }} kWh ≈ {{ formatNumber(scenario.gridCost, 2) }} €</template>.
+            Für Fahrten rechnet der Plan nur mit 70 % der PV-Prognose; mehr Sonne nutzt die Steuerung live.
+          </p>
           <p class="plan__meta mt-2">* geschätzter Preis. Energie an der Wallbox gemessen; rund 10 % Ladeverluste sind eingerechnet.</p>
         </template>
       </template>

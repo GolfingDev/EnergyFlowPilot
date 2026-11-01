@@ -39,19 +39,14 @@ public sealed class EvChargePlanService(
             await NumberAsync(ControllerSettingDefaults.EvCarBaseSocKey, cancellationToken),
             await NumberAsync(ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey, cancellationToken),
             slots,
-            tripView.Plan.Trips)
-        {
-            CheapPricePerKwh = CheapThreshold(slots, now, await NumberAsync(ControllerSettingDefaults.EvChargingCheapPercentileKey, cancellationToken)),
-            PvGridAllowanceWatts = await NumberAsync(ControllerSettingDefaults.EvChargingPvGridAllowanceKey, cancellationToken)
-        });
+            tripView.Plan.Trips));
         return new EvChargePlanView(plan, source, tripView);
     }
 
     private async Task<(IReadOnlyList<EvChargeSlotInput> Slots, string Source)> SlotsAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
         if (joint.Current.Plan is { } plan && now - plan.CalculatedAtUtc <= JointPlanMaximumAge && plan.Slots.Count > 0)
-            return (plan.Slots.Select(slot => new EvChargeSlotInput(slot.TimeSlot.StartsAtUtc, slot.TimeSlot.EndsAtUtc, (double)slot.PricePerKwh,
-                slot.IsPriceEstimated, Surplus(slot, carLoad.KwhFor(slot.TimeSlot.StartsAtUtc)))).ToArray(), "Akkuplan");
+            return (plan.Slots.Select(slot => ToCarSlot(slot, carLoad.KwhFor(slot.TimeSlot.StartsAtUtc))).ToArray(), "Akkuplan");
 
         var start = JointPlanInputFallback.QuarterStart(now);
         IReadOnlyList<TibberPriceForecastSlot> prices;
@@ -69,25 +64,26 @@ public sealed class EvChargePlanService(
     }
 
     /// <summary>
-    /// Price at the given percentile of the next 24 hours; at least 0 so negative prices always count as cheap.
-    /// Relative on purpose: it adapts to any tariff and season without an absolute threshold to maintain.
+    /// Splits the PV of a joint plan slot for the car: what would be fed in (free surplus) and what the home batteries
+    /// would store, offered at the batteries' marginal value so PV goes where it saves more (operator 2026-11-01). The
+    /// joint plan's consumption already contains the car's own planned charging; it is added back so the car does not
+    /// plan against itself and the two plans do not oscillate.
     /// </summary>
-    public static double? CheapThreshold(IReadOnlyList<EvChargeSlotInput> slots, DateTimeOffset now, double percentile)
+    public static EvChargeSlotInput ToCarSlot(JointBatterySlot slot, double plannedCarKwh)
     {
-        if (percentile <= 0) return null;
-        var prices = slots.Where(slot => slot.EndsAtUtc > now && slot.StartsAtUtc < now.AddHours(24)).Select(slot => slot.PricePerKwh).Order().ToArray();
-        if (prices.Length == 0) return null;
-        var index = (int)Math.Clamp(Math.Ceiling(prices.Length * Math.Min(percentile, 100) / 100d) - 1, 0, prices.Length - 1);
-        return Math.Max(0, prices[index]);
-    }
-
-    // PV that is left after house consumption and planned home battery charging would be fed in. The joint plan's
-    // consumption already contains the car's own planned charging; it is added back so the car does not plan
-    // against itself and the two plans do not oscillate.
-    private static double Surplus(JointBatterySlot slot, double plannedCarKwh)
-    {
-        var batteryChargeKwh = slot.Targets.Sum(target => Math.Max(0, target.SignedPowerWatts)) / 1000d * slot.TimeSlot.Duration.TotalHours;
-        return Math.Max(0, (double)(slot.ExpectedPvKwh - slot.ExpectedConsumptionKwh) + plannedCarKwh - batteryChargeKwh);
+        var hours = slot.TimeSlot.Duration.TotalHours;
+        var pvAfterHouse = Math.Max(0, (double)(slot.ExpectedPvKwh - slot.ExpectedConsumptionKwh) + plannedCarKwh);
+        var charging = slot.Targets.Where(target => target.SignedPowerWatts > 0).ToArray();
+        var batteryChargeKwh = charging.Sum(target => target.SignedPowerWatts) / 1000d * hours;
+        var batteryPv = Math.Min(batteryChargeKwh, pvAfterHouse);
+        // Taking one kWh away from a charging battery loses about 0.95 kWh stored (charging losses).
+        var batteryValue = charging.Length == 0 ? 0 : (double)charging.Min(target => target.EnergyValuePerKwh) * 0.95;
+        return new EvChargeSlotInput(slot.TimeSlot.StartsAtUtc, slot.TimeSlot.EndsAtUtc, (double)slot.PricePerKwh, slot.IsPriceEstimated,
+            Math.Max(0, pvAfterHouse - batteryChargeKwh))
+        {
+            BatteryPvKwh = batteryPv,
+            BatteryPvValuePerKwh = batteryValue
+        };
     }
 
     private async Task<double> NumberAsync(string key, CancellationToken cancellationToken) =>

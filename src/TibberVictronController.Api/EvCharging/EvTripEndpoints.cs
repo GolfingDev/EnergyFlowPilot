@@ -106,6 +106,7 @@ public static class EvTripEndpoints
             var plan = view.Plan;
             return TypedResults.Ok(new EvChargePlanResponseDto(plan.CalculatedAtUtc, view.SlotSource, Math.Round(plan.GridKwh, 1), Math.Round(plan.PvKwh, 1),
                 Math.Round(plan.GridCost, 2), plan.Warnings,
+                plan.Scenarios.Select(scenario => new EvChargeScenarioDto(scenario.Name, scenario.PvFactor, Math.Round(scenario.GridKwh, 1), Math.Round(scenario.GridCost, 2))).ToArray(),
                 plan.Slots.Select(slot => new EvChargeSlotDto(slot.StartsAtUtc, slot.EndsAtUtc, Math.Round(slot.PowerWatts), Math.Round(slot.GridKwh, 2),
                     Math.Round(slot.PvKwh, 2), slot.PricePerKwh, slot.IsPriceEstimated, slot.Reason.ToString())).ToArray()));
         }
@@ -135,6 +136,8 @@ public sealed record EvChargeSlotDto(
     bool IsPriceEstimated,
     string Reason);
 
+public sealed record EvChargeScenarioDto(string Name, double PvFactor, double GridKwh, double GridCost);
+
 public sealed record EvChargePlanResponseDto(
     DateTimeOffset CalculatedAtUtc,
     string SlotSource,
@@ -142,6 +145,7 @@ public sealed record EvChargePlanResponseDto(
     double PvKwh,
     double GridCost,
     IReadOnlyList<string> Warnings,
+    IReadOnlyList<EvChargeScenarioDto> Scenarios,
     IReadOnlyList<EvChargeSlotDto> Slots);
 
 public sealed record CalendarSyncStatusDto(

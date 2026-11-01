@@ -89,6 +89,18 @@ Operator requirements (2026-11-01): enter "on date X I drive to Y"; adjustable m
 - **Constraints:** no charging between departure and return; at least 6 A x 3 phases (4.14 kW) in every planned quarter hour, at most the wallbox power; 90 % assumed charging efficiency. Missing energy and an unreachable base state of charge are reported.
 - **Car page:** "Ladeplan" card with charging blocks (time, power, grid and PV energy, average price, reason) and the expected grid cost. `GET /api/ev-charging/charge-plan`.
 
+## Car charging optimizer (replaces the rule order of stage 4a)
+
+Operator decisions (2026-11-01): PV goes where it saves more (car or home battery); without a trip the car charges when it pays off (replaces the "cheapest 25 %" rule); the learned PV correction is shown first and applied only by switch.
+
+- **Why not one joint optimization:** the home battery planner already evaluates about 2,000 state combinations per quarter hour; the car as a third dimension would multiply that by about a hundred, too much for the Raspberry Pi. The two plans are coupled by prices instead.
+- **Home battery value:** the joint battery planner reports, per quarter hour and battery, what one more stored kWh saves later (`JointBatteryTarget.EnergyValuePerKwh`, the slope of the remaining cost over that battery's energy). The plan itself is unchanged.
+- **Car optimizer:** dynamic programming over the car's battery energy (1 kWh steps up to its charge limit) per quarter hour; actions 0 or 6 to 16 A on three phases (and an exact fill-up to the limit). Each wallbox kWh comes from the cheapest source of its slot, sorted by price: PV that would be fed in (feed-in price), PV the home batteries would store (their marginal value x 0.95 for charging losses), grid (price, +0.02 EUR/kWh on estimated prices).
+- **Requirements:** at each departure the car must hold the trip energy plus the minimum state of charge (penalty 10 EUR per missing kWh, so it is always met when physically possible); the trip energy leaves at departure; no charging while away. Departures after the horizon: what cannot wait for later prices (half of full power until then may) must be in the battery at the horizon end.
+- **Economic charging:** energy left at the horizon end is worth 85 % of the median slot price (after charging losses), so the car fills up in clearly cheap hours, up to its own charge limit. The base state of charge is a soft lower bound (1 EUR per missing kWh).
+- **Scenarios:** for departures the plan relies on only 70 % of the PV forecast; more sun is used live by the control. The car page shows the plan's grid energy and cost for little (50 %), expected and much (130 %) PV.
+- **Coupling:** the joint plan contains the car's planned load (stage 4d); the car plan adds it back when splitting the PV of a slot. Both are recalculated every few minutes and converge.
+
 ## Stage 4b implementation (wallbox command, hardware test)
 
 - `IEvChargerControl` (implemented by the OCPP status store for the connected wallbox): `SetChargingProfile` with a TxDefaultProfile (id 70001, stack level 1, unit A, three phases) that is valid for at most one hour (`validTo`, `duration`), tried on connector 1 and then connector 0; `ClearChargingProfile` for that id ("Unknown" counts as released). 0 A pauses, otherwise 6 to 16 A.
@@ -102,7 +114,7 @@ Operator requirement (2026-11-01): charge beyond the trip plan whenever power is
 - **Switch:** `ev.charging.controlEnabled`, default off; switch on only after the hardware test.
 - **Cycle (30 s):** charging plan refreshed every 5 minutes and at each new quarter hour. With the car plugged in: current of the planned quarter hour (grid part) or live PV surplus, whichever is more; otherwise pause (0 A). Without a usable plan (no prices, error) no limit at all: the wallbox charges at full power (rule 1).
 - **PV surplus live:** grid export plus the car's own power, averaged over six samples (3 minutes) so passing clouds do not toggle charging; 300 W kept free; current = floor(surplus / 690 W), 6 to 16 A. Just below the minimum, 6 A are used if at most `ev.charging.pvGridAllowanceWatts` (default 1000 W) come from the grid. The home batteries absorb PV first (joint limiter); the car gets what would be exported, i.e. surplus once the home batteries are full or at their limit.
-- **Cheap power:** quarter hours at or below the `ev.charging.cheapPercentile` (default 25 %) price of the next 24 hours (never below 0, so negative prices always count) are filled up to the car's charge limit, also without trips. Reason "günstiger Strom" in the plan.
+- **Cheap power:** handled by the car charging optimizer (economic value of stored energy); the former percentile setting `ev.charging.cheapPercentile` is no longer used.
 - **Commands:** sent only on change; renewed 5 minutes before the 15-minute validity ends; after a refusal retried after 5 minutes. Switching the automatic off releases the limit.
 - **Car page:** state chip in the charging plan card (Lädt nach Plan, PV-Überschuss, Pausiert, Volle Leistung) with the reason and command problems.
 

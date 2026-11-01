@@ -107,7 +107,6 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'bmw.cardata.clientId', section: 'sources', subgroup: 'BMW CarData', category: 'important' },
   { key: 'bmw.cardata.vin', section: 'sources', subgroup: 'BMW CarData', category: 'normal' },
   { key: 'ev.charging.controlEnabled', section: 'control', subgroup: 'Auto & Fahrten', category: 'critical' },
-  { key: 'ev.charging.cheapPercentile', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.charging.pvGridAllowanceWatts', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.calendar.enabled', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.calendar.mailbox', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
