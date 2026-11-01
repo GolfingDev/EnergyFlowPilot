@@ -16,6 +16,7 @@ public static class OcppEndpoints
     public const string OcppPath = "/ocpp";
     private const string Subprotocol = "ocpp1.6";
     private const int MaximumMessageBytes = 64 * 1024;
+    private const string OriginalPathKey = "ocpp.originalPath";
     // The wallbox sends a heartbeat every 60 s; five minutes of silence means the connection is dead.
     private static readonly TimeSpan ReceiveTimeout = TimeSpan.FromMinutes(5);
 
@@ -40,7 +41,17 @@ public static class OcppEndpoints
             app.Use((context, next) =>
             {
                 var onOcppPort = context.Connection.LocalPort == options.OcppListenPort;
-                if (onOcppPort == context.Request.Path.StartsWithSegments(OcppPath)) return next(context);
+                var isOcppPath = context.Request.Path.StartsWithSegments(OcppPath);
+                if (onOcppPort)
+                {
+                    // The port belongs to OCPP alone, so every path is treated as OCPP: whether the wallbox was given
+                    // ws://pi:8887/ocpp/ or just ws://pi:8887/, the last path segment is its id.
+                    context.Items[OriginalPathKey] = context.Request.Path.Value;
+                    if (!isOcppPath) context.Request.Path = new PathString(OcppPath).Add(context.Request.Path);
+                    return next(context);
+                }
+
+                if (!isOcppPath) return next(context);
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 return Task.CompletedTask;
             });
@@ -65,8 +76,14 @@ public static class OcppEndpoints
             return;
         }
 
+        var requestedPath = http.Items[OriginalPathKey] as string ?? http.Request.Path.Value ?? string.Empty;
         if (!http.WebSockets.IsWebSocketRequest)
         {
+            // Visible on the car page: a plain HTTP call usually means a wrong scheme (http:// instead of ws://).
+            const string reason = "Keine WebSocket-Verbindung (ws://) angefragt.";
+            services.Store.RecordRejected(new EvConnectionRejection("(keine)", reason, services.Clock.UtcNow,
+                http.Connection.RemoteIpAddress?.ToString(), Shorten(requestedPath)));
+            logger.LogWarning("Anfrage von {Remote} auf {Path} am OCPP-Port abgelehnt: {Reason}", http.Connection.RemoteIpAddress, requestedPath, reason);
             http.Response.StatusCode = StatusCodes.Status400BadRequest;
             await http.Response.WriteAsync("Hier sind nur OCPP-1.6J-WebSocket-Verbindungen moeglich.");
             return;
@@ -78,9 +95,10 @@ public static class OcppEndpoints
         if (rejection is not null)
         {
             var shownId = IsPlausibleId(chargePointId) ? chargePointId : "(ungueltig)";
-            services.Store.RecordRejected(shownId, rejection, services.Clock.UtcNow);
-            logger.LogWarning("Wallbox-Verbindung von {Remote} mit ID {ChargePointId} abgelehnt: {Reason}",
-                http.Connection.RemoteIpAddress, shownId, rejection);
+            services.Store.RecordRejected(new EvConnectionRejection(shownId, rejection, services.Clock.UtcNow,
+                http.Connection.RemoteIpAddress?.ToString(), Shorten(requestedPath)));
+            logger.LogWarning("Wallbox-Verbindung von {Remote} auf {Path} mit ID {ChargePointId} abgelehnt: {Reason}",
+                http.Connection.RemoteIpAddress, requestedPath, shownId, rejection);
             http.Response.StatusCode = StatusCodes.Status404NotFound;
             return;
         }
@@ -144,6 +162,9 @@ public static class OcppEndpoints
             return $"Die Wallbox verlangt {string.Join(", ", requested)}; unterstuetzt wird nur OCPP 1.6J.";
         return null;
     }
+
+    // The path comes from the network; keep what is stored and shown short.
+    private static string Shorten(string path) => path.Length <= 120 ? path : path[..120] + "...";
 
     private static bool IsPlausibleId(string id) => id.Length is > 0 and <= 64 &&
         !string.Equals(id, ControllerSettingDefaults.EvOcppChargePointNotConfigured, StringComparison.OrdinalIgnoreCase) &&

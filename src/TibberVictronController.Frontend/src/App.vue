@@ -79,6 +79,8 @@ const pageTitle = computed(() => {
       return 'Einstellungen';
     case 'heating':
       return 'Heizung';
+    case 'car':
+      return 'Auto';
     default:
       return 'Übersicht';
   }
@@ -156,6 +158,10 @@ function toggleExecutiveSidebar(): void {
           <v-icon icon="mdi-heat-pump-outline" size="22" />
           <span>Heizung</span>
         </button>
+        <button type="button" :class="{ 'executive-sidebar__item--active': activeRouteName === 'car' }" @click="navigateTo('car')" aria-label="Auto">
+          <v-icon icon="mdi-car-electric-outline" size="22" />
+          <span>Auto</span>
+        </button>
         <button type="button" aria-label="Prognosen" @click="navigateToDashboardSection('dashboard-forecast')">
           <v-icon icon="mdi-chart-line" size="22" />
           <span>Prognosen</span>
@@ -232,6 +238,12 @@ function toggleExecutiveSidebar(): void {
               <small>Raumklima, Ventile und Außentemperatur</small>
             </button>
 
+            <button class="top-nav__item" :class="{ 'top-nav__item--active': activeRouteName === 'car' }"
+              @click="navigateTo('car')">
+              <span>Auto</span>
+              <small>Wallbox und Ladevorgänge</small>
+            </button>
+
             <v-menu v-if="isAdmin" v-model="isSettingsMenuOpen" location="bottom center" offset="14" :close-on-content-click="false">
               <template #activator="{ props }">
                 <button class="top-nav__item top-nav__item--menu"
@@ -300,6 +312,7 @@ function toggleExecutiveSidebar(): void {
       <nav v-if="usesExecutiveShell" class="workspace-mobile-nav" aria-label="Hauptnavigation">
         <button type="button" :aria-current="activeRouteName === 'dashboard' ? 'page' : undefined" @click="navigateTo('dashboard')"><v-icon icon="mdi-view-dashboard-outline" size="18" />Übersicht</button>
         <button type="button" :aria-current="activeRouteName === 'heating' ? 'page' : undefined" @click="navigateTo('heating')"><v-icon icon="mdi-heat-pump-outline" size="18" />Heizung</button>
+        <button type="button" :aria-current="activeRouteName === 'car' ? 'page' : undefined" @click="navigateTo('car')"><v-icon icon="mdi-car-electric-outline" size="18" />Auto</button>
         <button v-if="isAdmin" type="button" :aria-current="activeRouteName === 'settings' ? 'page' : undefined" @click="openSettingsPage"><v-icon icon="mdi-cog-outline" size="18" />Einstellungen</button>
       </nav>
       <GeneralOverlay v-model="isLoading" image-src="Main.png" width="90vw" max-width="90vw" max-height="90vh" />

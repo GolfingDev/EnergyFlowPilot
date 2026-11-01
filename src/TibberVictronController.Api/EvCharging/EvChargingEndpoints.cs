@@ -9,6 +9,9 @@ namespace TibberVictronController.Api.EvCharging;
 
 public static class EvChargingEndpoints
 {
+    // Lets the car page say "no attempt since ..." instead of leaving the operator guessing.
+    private static readonly DateTimeOffset StartedAtUtc = DateTimeOffset.UtcNow;
+
     public static IEndpointRouteBuilder MapEvChargingEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/ev-charging/status", GetStatusAsync)
@@ -34,7 +37,7 @@ public static class EvChargingEndpoints
         return TypedResults.Ok(EvChargingStatusDtoMapper.Map(new EvChargingStatusInput(
             status.Current, recent, enabled,
             !string.IsNullOrWhiteSpace(configuredId) && configuredId != ControllerSettingDefaults.EvOcppChargePointNotConfigured,
-            isAdmin, isAdmin ? LanAddresses(options.OcppListenPort) : [])));
+            isAdmin, isAdmin ? LanAddresses(options.OcppListenPort) : [], options.OcppListenPort, StartedAtUtc)));
     }
 
     /// <summary>Candidate addresses for the wallbox setup; Tailscale (100.64.0.0/10) and link-local are not reachable for it.</summary>
@@ -72,7 +75,9 @@ public sealed record EvChargingStatusInput(
     bool OcppEnabled,
     bool ChargePointConfigured,
     bool IncludeSetupDetails,
-    IReadOnlyList<string> ConnectionUrls);
+    IReadOnlyList<string> ConnectionUrls,
+    int OcppListenPort,
+    DateTimeOffset ListeningSinceUtc);
 
 public static class EvChargingStatusDtoMapper
 {
@@ -104,10 +109,12 @@ public static class EvChargingStatusDtoMapper
             snapshot.CurrentL2Amps,
             snapshot.CurrentL3Amps,
             snapshot.ConfigurationNote,
-            setup ? snapshot.LastRejectedChargePointId : null,
-            setup ? snapshot.LastRejectedReason : null,
-            setup ? snapshot.LastRejectedAtUtc : null,
+            setup && snapshot.LastRejection is { } rejection
+                ? new EvConnectionRejectionDto(rejection.ChargePointId, rejection.Reason, rejection.AtUtc, rejection.RemoteAddress, rejection.RequestedPath)
+                : null,
             input.ConnectionUrls,
+            input.OcppListenPort,
+            input.ListeningSinceUtc,
             setup ? snapshot.Configuration : new Dictionary<string, string?>(),
             input.RecentSessions.Select(session => new EvChargingSessionDto(
                 session.TransactionId, session.StartedAtUtc, session.StoppedAtUtc, session.EnergyKwh, session.StopReason)).ToArray());
@@ -152,10 +159,10 @@ public sealed record EvChargingStatusResponseDto(
     double? CurrentL2Amps,
     double? CurrentL3Amps,
     string? ConfigurationNote,
-    string? LastRejectedChargePointId,
-    string? LastRejectedReason,
-    DateTimeOffset? LastRejectedAtUtc,
+    EvConnectionRejectionDto? LastRejection,
     IReadOnlyList<string> ConnectionUrls,
+    int OcppListenPort,
+    DateTimeOffset ListeningSinceUtc,
     IReadOnlyDictionary<string, string?> WallboxConfiguration,
     IReadOnlyList<EvChargingSessionDto> RecentSessions);
 
@@ -165,3 +172,10 @@ public sealed record EvChargingSessionDto(
     DateTimeOffset? StoppedAtUtc,
     double EnergyKwh,
     string? StopReason);
+
+public sealed record EvConnectionRejectionDto(
+    string ChargePointId,
+    string Reason,
+    DateTimeOffset AtUtc,
+    string? RemoteAddress,
+    string RequestedPath);

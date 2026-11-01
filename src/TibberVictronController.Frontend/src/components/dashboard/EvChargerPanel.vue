@@ -34,10 +34,10 @@ interface EvChargingStatusDto {
   currentL2Amps: number | null;
   currentL3Amps: number | null;
   configurationNote: string | null;
-  lastRejectedChargePointId: string | null;
-  lastRejectedReason: string | null;
-  lastRejectedAtUtc: string | null;
+  lastRejection: { chargePointId: string; reason: string; atUtc: string; remoteAddress: string | null; requestedPath: string } | null;
   connectionUrls: string[];
+  ocppListenPort: number;
+  listeningSinceUtc: string;
   wallboxConfiguration: Record<string, string | null>;
   recentSessions: EvChargingSessionDto[];
 }
@@ -80,7 +80,14 @@ onBeforeUnmount(() => window.clearInterval(timer));
 </script>
 
 <template>
-  <v-card v-if="status?.ocppEnabled" class="ev-charger mb-4" variant="outlined" aria-label="Wallbox">
+  <v-alert v-if="!status && error" type="warning" variant="tonal">{{ error }}</v-alert>
+  <v-card v-else-if="status && !status.ocppEnabled" class="ev-charger" variant="outlined" aria-label="Wallbox">
+    <div class="pa-4">
+      <h2 class="text-h6 mb-2">Wallbox</h2>
+      <p>Die Wallbox-Anbindung ist ausgeschaltet. Einschalten unter Einstellungen → Verbindungen → Wallbox (OCPP).</p>
+    </div>
+  </v-card>
+  <v-card v-else-if="status" class="ev-charger" variant="outlined" aria-label="Wallbox">
     <div class="d-flex align-center justify-space-between flex-wrap ga-2 pa-4 pb-2">
       <h2 class="text-h6">Wallbox · {{ status.model ?? 'Charge Amps Halo' }}</h2>
       <v-chip size="small" :color="chip.color">{{ chip.text }}</v-chip>
@@ -115,15 +122,28 @@ onBeforeUnmount(() => window.clearInterval(timer));
         <p v-if="status.configurationNote" class="ev-charger__meta">{{ status.configurationNote }}</p>
         <p class="ev-charger__meta">Nur Anzeige: Der Controller begrenzt das Laden noch nicht.</p>
       </template>
-      <p v-else-if="!status.chargePointConfigured">Noch keine Wallbox angenommen. Trage im Halo die Backend-Adresse ein; meldet er sich, erscheint seine ID hier.</p>
-      <p v-else>Die Wallbox hat sich seit dem letzten Start des Controllers noch nicht gemeldet.</p>
-
-      <v-alert v-if="status.lastRejectedChargePointId && !status.isConnected" class="mt-3" type="info" variant="tonal" density="compact">
-        Abgelehnt am {{ date(status.lastRejectedAtUtc) }}: ID <strong>{{ status.lastRejectedChargePointId }}</strong>. {{ status.lastRejectedReason }}
-      </v-alert>
-      <p v-if="!status.isConnected && status.connectionUrls.length" class="ev-charger__meta mt-2">
-        Backend-Adresse für den Halo (nur Heimnetz): <code v-for="url in status.connectionUrls" :key="url" class="mr-2">{{ url }}</code>
-      </p>
+      <template v-else>
+        <v-alert v-if="status.lastRejection" type="warning" variant="tonal" density="compact">
+          <strong>Verbindungsversuch abgelehnt</strong> am {{ date(status.lastRejection.atUtc) }}<br>
+          {{ status.lastRejection.reason }}<br>
+          <span class="ev-charger__meta">Absender {{ status.lastRejection.remoteAddress ?? 'unbekannt' }} · Adresse
+            <code>{{ status.lastRejection.requestedPath || '/' }}</code> · ID <strong>{{ status.lastRejection.chargePointId }}</strong></span>
+        </v-alert>
+        <v-alert v-else type="info" variant="tonal" density="compact">
+          Seit {{ date(status.listeningSinceUtc) }} ist auf Port {{ status.ocppListenPort }} kein Verbindungsversuch der Wallbox angekommen.
+          Der Halo erreicht den Controller also noch nicht.
+        </v-alert>
+        <div class="mt-3">
+          <p v-if="status.connectionUrls.length">Im Halo als OCPP-Backend eintragen (nur Heimnetz):
+            <code v-for="url in status.connectionUrls" :key="url" class="mr-2">{{ url }}</code></p>
+          <ul v-if="!status.lastRejection" class="ev-charger__checklist mt-2">
+            <li>Adresse beginnt mit <code>ws://</code>, nicht mit <code>wss://</code> oder <code>http://</code>, und enthält den Port <code>:{{ status.ocppListenPort }}</code>.</li>
+            <li>OCPP ist im Halo eingeschaltet und gespeichert; danach den Halo neu starten.</li>
+            <li>Der Halo hängt im selben Heimnetz wie der Pi (nicht im Gäste-WLAN).</li>
+            <li>Firmware 158 oder neuer.</li>
+          </ul>
+        </div>
+      </template>
 
       <v-table v-if="status.recentSessions.length" class="mt-3" density="compact">
         <thead><tr><th>Ladevorgang</th><th>Ende</th><th class="text-right">Energie</th></tr></thead>
@@ -178,6 +198,11 @@ onBeforeUnmount(() => window.clearInterval(timer));
 .ev-charger__meta {
   font-size: 0.8rem;
   opacity: 0.7;
+}
+
+.ev-charger__checklist {
+  padding-left: 20px;
+  font-size: 0.9rem;
 }
 
 .ev-charger__config-value {

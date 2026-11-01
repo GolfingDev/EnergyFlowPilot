@@ -45,18 +45,18 @@ Each stage is deployable and testable on its own.
 
 ## Stage 1 implementation (OCPP central system)
 
-- **Listener:** separate Kestrel port `EvCharging:OcppListenPort` (default 8887, `appsettings.json`; 0 disables it), bound to `0.0.0.0` next to the regular nginx listener. Tailscale Funnel only publishes port 80, so the port is not public. A middleware isolates the two ports: the OCPP port serves only `/ocpp/...`, and `/ocpp` is refused on the regular port (and thus through nginx and Funnel).
-- **Admission:** `ev.ocpp.enabled` must be true and the charge point id (last URL segment) must equal `ev.ocpp.chargePointId`. Rejected attempts are logged and shown on the dashboard (admin only) with the id, so the operator can copy it into the settings. Subprotocol `ocpp1.6`.
+- **Listener:** separate Kestrel port `EvCharging:OcppListenPort` (default 8887, `appsettings.json`; 0 disables it), bound to `0.0.0.0` next to the regular nginx listener. Tailscale Funnel only publishes port 80, so the port is not public. A middleware isolates the two ports: every path on the OCPP port is treated as OCPP (so `ws://pi:8887/ocpp/<id>` and `ws://pi:8887/<id>` both work; the last segment is the id), and `/ocpp` is refused on the regular port (and thus through nginx and Funnel).
+- **Admission:** `ev.ocpp.enabled` must be true and the charge point id (last URL segment) must equal `ev.ocpp.chargePointId`. Every refused attempt on the OCPP port (wrong id, switched off, plain HTTP instead of WebSocket) is logged and shown on the car page (admin only) with time, sender address, requested path and id, so the operator can copy the id into the settings. Without any attempt the page says since when nothing has arrived and lists the usual causes. Subprotocol `ocpp1.6`.
 - **Messages:** BootNotification (Accepted, heartbeat 60 s), Heartbeat, StatusNotification, Authorize (every id tag accepted: stage 1 never blocks charging), Start/StopTransaction, MeterValues, DataTransfer (UnknownVendorId), firmware/diagnostics notifications. Other actions get `NotImplemented`; schema violations get `FormationViolation`; processing errors get `InternalError` so the wallbox retries.
 - **Writes to the wallbox (metering only):** after the first message, `GetConfiguration`; if needed `ChangeConfiguration` of `MeterValueSampleInterval` (10 s) and `MeterValuesSampledData` (energy, power, phase currents, with a fallback list); then `TriggerMessage` for the current status and meter values. No charging profile, no remote start or stop.
 - **Data:** sessions in table `EvChargingSessions` (AUTOINCREMENT transaction ids, duplicate starts deduplicated, a start on a connector closes a session whose stop was lost). The meter reading is persisted at most once a minute; live values (status, power, phase currents, session energy) live in memory. Power is derived from the energy register when the wallbox does not report it. Implausible wallbox timestamps (more than one day off) are replaced by the receive time.
-- **Dashboard:** wallbox card (hidden while `ev.ocpp.enabled` is false) with state, power, session energy, phase currents, last five sessions; for admins also the backend addresses of the Pi and the wallbox configuration (keys containing passwords, secrets, tokens or the authorization key are hidden). API: `GET /api/ev-charging/status`.
+- **Car page (menu "Auto", `/car`):** wallbox card with state, power, session energy, phase currents, last five sessions; for admins also the backend addresses of the Pi and the wallbox configuration (keys containing passwords, secrets, tokens or the authorization key are hidden). API: `GET /api/ev-charging/status`.
 
 ### Setup
 
-1. Settings → Verbindungen → Wallbox (OCPP): switch on. The dashboard card then shows the backend address of the Pi, e.g. `ws://192.168.x.y:8887/ocpp/`.
+1. Settings → Verbindungen → Wallbox (OCPP): switch on. The car page (menu "Auto") then shows the backend address of the Pi, e.g. `ws://192.168.x.y:8887/ocpp/`.
 2. Halo: connect to its hotspot `HALO_<serial>` (password from the letter supplied with the Halo), open `192.168.250.1`, OCPP settings → backend URL from step 1. Check the firmware version (158 or newer).
-3. The Halo connects and is rejected at first; the card shows its id. Enter that id in the setting "Ladepunkt-ID der Wallbox". The Halo retries by itself and is then accepted.
+3. The Halo connects and is rejected at first; the car page shows its id. Enter that id in the setting "Ladepunkt-ID der Wallbox". The Halo retries by itself and is then accepted.
 
 ## Open points
 

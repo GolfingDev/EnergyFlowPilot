@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { isAdmin } from './auth';
 import DashboardPage from './pages/DashboardPage.vue';
 import HeatingPage from './pages/HeatingPage.vue';
+import EvChargingPage from './pages/EvChargingPage.vue';
 import SettingsPage from './pages/SettingsPage.vue';
 
 export const router = createRouter({
@@ -20,6 +21,11 @@ export const router = createRouter({
       path: '/heating',
       name: 'heating',
       component: HeatingPage
+    },
+    {
+      path: '/car',
+      name: 'car',
+      component: EvChargingPage
     },
     {
       path: '/settings',

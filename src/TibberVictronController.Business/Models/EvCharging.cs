@@ -70,10 +70,16 @@ public sealed record EvChargerSnapshot
     public double? CurrentL3Amps { get; init; }
     public string? ConfigurationNote { get; init; }
     public IReadOnlyDictionary<string, string?> Configuration { get; init; } = new Dictionary<string, string?>();
-    public string? LastRejectedChargePointId { get; init; }
-    public string? LastRejectedReason { get; init; }
-    public DateTimeOffset? LastRejectedAtUtc { get; init; }
+    public EvConnectionRejection? LastRejection { get; init; }
 
     public bool IsVehiclePlugged => ConnectorStatus is EvConnectorStatus.Preparing or EvConnectorStatus.Charging
         or EvConnectorStatus.SuspendedEv or EvConnectorStatus.SuspendedEvse or EvConnectorStatus.Finishing;
 }
+
+/// <summary>Last refused connection attempt on the OCPP port, so the operator can see what the wallbox tried.</summary>
+public sealed record EvConnectionRejection(
+    string ChargePointId,
+    string Reason,
+    DateTimeOffset AtUtc,
+    string? RemoteAddress,
+    string RequestedPath);

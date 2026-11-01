@@ -53,16 +53,11 @@ public sealed class EvChargerStatusStore : IEvChargerStatusSource
         }
     }
 
-    public void RecordRejected(string chargePointId, string reason, DateTimeOffset rejectedAtUtc)
+    public void RecordRejected(EvConnectionRejection rejection)
     {
         lock (gate)
         {
-            current = current with
-            {
-                LastRejectedChargePointId = chargePointId,
-                LastRejectedReason = reason,
-                LastRejectedAtUtc = rejectedAtUtc
-            };
+            current = current with { LastRejection = rejection };
         }
     }
 }
