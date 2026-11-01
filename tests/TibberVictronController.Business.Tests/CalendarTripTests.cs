@@ -142,6 +142,55 @@ public sealed class CalendarTripTests
         Assert.Equal("Hauptstraße 5, Fulda", context.Trips.Trips.Single(t => t.ExternalId == "s").Destination);
     }
 
+    [Fact]
+    public async Task EachUsersCalendarGivesTripsOwnedByThatUser()
+    {
+        var context = new SyncContext(legacyMailbox: null);
+        context.Users.Calendars.Add(new UserCalendar("u-1", "Torsten", "torsten@example.com", Now));
+        context.Users.Calendars.Add(new UserCalendar("u-2", "Carla", "carla@example.com", Now));
+        context.Calendar.ByMailbox["torsten@example.com"] = [Event("a", "Kunde", "Leipzig")];
+        context.Calendar.ByMailbox["carla@example.com"] = [Event("a", "Training", "Dresden")];
+
+        await context.Service.SyncAsync(CancellationToken.None);
+
+        // The same appointment id in two calendars stays two trips, each with its owner.
+        Assert.Equal(2, context.Trips.Trips.Count);
+        Assert.Equal("Torsten", context.Trips.Trips.Single(t => t.ExternalId == "u-1|a").OwnerName);
+        Assert.Equal("u-2", context.Trips.Trips.Single(t => t.ExternalId == "u-2|a").OwnerId);
+    }
+
+    [Fact]
+    public async Task AnUnreadableCalendarKeepsItsTripsAndADisconnectedOneLosesThem()
+    {
+        var context = new SyncContext(legacyMailbox: null);
+        context.Users.Calendars.Add(new UserCalendar("u-1", "Torsten", "torsten@example.com", Now));
+        context.Users.Calendars.Add(new UserCalendar("u-2", "Carla", "carla@example.com", Now));
+        context.Calendar.ByMailbox["torsten@example.com"] = [Event("a", "Kunde", "Leipzig")];
+        context.Calendar.ByMailbox["carla@example.com"] = [Event("b", "Training", "Dresden")];
+        await context.Service.SyncAsync(CancellationToken.None);
+
+        context.Calendar.Failing.Add("torsten@example.com");
+        await context.Users.DeleteAsync("u-2");
+        // No calendar readable this time: the sync reports it, but still drops the disconnected calendar's trip.
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.Service.SyncAsync(CancellationToken.None));
+
+        var remaining = Assert.Single(context.Trips.Trips);
+        Assert.Equal("u-1|a", remaining.ExternalId);
+        Assert.Contains("Torsten", exception.Message);
+    }
+
+    [Fact]
+    public void OnlyTheOwnerOrAnAdminMayChangeATrip()
+    {
+        var own = new EvTrip(1, Now, null, "Ziel", "Adresse", 10, 10, Now, OwnerId: "u-1", OwnerName: "Torsten");
+        var legacy = own with { OwnerId = null, OwnerName = null };
+
+        Assert.True(new EvTripActor("u-1", "Torsten", false).MayChange(own));
+        Assert.False(new EvTripActor("u-2", "Carla", false).MayChange(own));
+        Assert.True(new EvTripActor("u-2", "Carla", true).MayChange(own));
+        Assert.False(new EvTripActor("u-2", "Carla", false).MayChange(legacy));
+    }
+
     private static CalendarEvent Event(string id, string subject, string? location, DateTimeOffset? start = null, DateTimeOffset? end = null) =>
         new(id, subject, location, start ?? Now.AddDays(1), end ?? Now.AddDays(1).AddHours(1), false, false, false);
 
@@ -150,14 +199,18 @@ public sealed class CalendarTripTests
         public FakeCalendar Calendar { get; } = new();
         public FakeRoutes Routes { get; } = new();
         public FakeTrips Trips { get; } = new();
+        public FakeUserCalendars Users { get; } = new();
         public CalendarTripSyncService Service { get; }
 
-        public SyncContext()
+        // legacyMailbox: the older shared mailbox setting; null tests only per-user calendars.
+        public SyncContext(string? legacyMailbox = "family@example.com")
         {
             var settings = new FakeControllerSettingStore();
             settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.PvForecastLatitudeKey, "51.0", ControllerSettingSensitivity.Normal, Now));
             settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.PvForecastLongitudeKey, "13.0", ControllerSettingSensitivity.Normal, Now));
-            Service = new CalendarTripSyncService(new CalendarTripSyncDependencies(Calendar, Routes, Trips, settings, new Clock()));
+            if (legacyMailbox is not null)
+                settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.EvCalendarMailboxKey, legacyMailbox, ControllerSettingSensitivity.Normal, Now));
+            Service = new CalendarTripSyncService(new CalendarTripSyncDependencies(Calendar, Routes, Trips, settings, new Clock(), Users));
         }
     }
 
@@ -168,10 +221,25 @@ public sealed class CalendarTripTests
 
     private sealed class FakeCalendar : ICalendarSource
     {
+        // Appointments of the shared mailbox; per-user mailboxes can get their own lists.
         public List<CalendarEvent> Events { get; } = [];
+        public Dictionary<string, List<CalendarEvent>> ByMailbox { get; } = [];
+        public HashSet<string> Failing { get; } = [];
 
-        public Task<IReadOnlyList<CalendarEvent>> GetEventsAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<CalendarEvent>>(Events.ToArray());
+        public Task<IReadOnlyList<CalendarEvent>> GetEventsAsync(string mailbox, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken = default)
+        {
+            if (Failing.Contains(mailbox)) throw new InvalidOperationException("Kalender nicht lesbar.");
+            return Task.FromResult<IReadOnlyList<CalendarEvent>>((ByMailbox.TryGetValue(mailbox, out var own) ? own : Events).ToArray());
+        }
+    }
+
+    private sealed class FakeUserCalendars : IUserCalendarRepository
+    {
+        public List<UserCalendar> Calendars { get; } = [];
+        public Task<IReadOnlyList<UserCalendar>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<UserCalendar>>(Calendars.ToArray());
+        public Task<UserCalendar?> GetAsync(string userId, CancellationToken cancellationToken = default) => Task.FromResult(Calendars.FirstOrDefault(c => c.UserId == userId));
+        public Task SaveAsync(UserCalendar calendar, CancellationToken cancellationToken = default) { Calendars.RemoveAll(c => c.UserId == calendar.UserId); Calendars.Add(calendar); return Task.CompletedTask; }
+        public Task DeleteAsync(string userId, CancellationToken cancellationToken = default) { Calendars.RemoveAll(c => c.UserId == userId); return Task.CompletedTask; }
     }
 
     private sealed class FakeRoutes : IRoutePlanner
@@ -221,7 +289,8 @@ public sealed class CalendarTripTests
                 route?.ResolvedAddress ?? existing!.ResolvedAddress, route?.DistanceKm ?? existing!.DistanceKm, route?.DurationMinutes ?? existing!.DurationMinutes,
                 nowUtc, 0, null, EvTripSources.Calendar, update.ExternalId, update.Subject, existing?.IsIgnored ?? false,
                 RouteVersion: update.Route is null ? existing!.RouteVersion : update.RouteVersion,
-                HasLocationOverride: update.IsLocationOverride || existing?.HasLocationOverride == true);
+                HasLocationOverride: update.IsLocationOverride || existing?.HasLocationOverride == true,
+                OwnerId: update.OwnerId, OwnerName: update.OwnerName);
             if (index >= 0) Trips[index] = trip; else Trips.Add(trip);
             return Task.CompletedTask;
         }

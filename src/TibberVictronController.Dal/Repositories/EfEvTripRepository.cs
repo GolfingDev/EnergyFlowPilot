@@ -23,7 +23,9 @@ public sealed class EfEvTripRepository(ControllerDbContext dbContext) : IEvTripR
             DurationMinutes = draft.DurationMinutes,
             CreatedAtUtc = createdAtUtc,
             RecurrenceDays = draft.RecurrenceDays,
-            RecurrenceUntilUtc = draft.RecurrenceUntilUtc
+            RecurrenceUntilUtc = draft.RecurrenceUntilUtc,
+            OwnerId = draft.OwnerId,
+            OwnerName = draft.OwnerName
         };
         dbContext.EvTrips.Add(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -80,6 +82,8 @@ public sealed class EfEvTripRepository(ControllerDbContext dbContext) : IEvTripR
         }
 
         entity.Subject = update.Subject;
+        entity.OwnerId = update.OwnerId;
+        entity.OwnerName = update.OwnerName;
         // A place chosen by the operator is kept; the calendar only moves the times.
         if (!entity.HasLocationOverride || update.IsLocationOverride) entity.Destination = update.Destination;
         if (update.IsLocationOverride) entity.HasLocationOverride = true;
@@ -135,7 +139,7 @@ public sealed class EfEvTripRepository(ControllerDbContext dbContext) : IEvTripR
     private static EvTrip Map(EvTripEntity entity) => new(entity.Id, entity.DepartureAtUtc, entity.ReturnAtUtc, entity.Destination,
         entity.ResolvedAddress, entity.DistanceKm, entity.DurationMinutes, entity.CreatedAtUtc, entity.RecurrenceDays, entity.RecurrenceUntilUtc,
         entity.Source, entity.ExternalId, entity.Subject, entity.IsIgnored, ParseDates(entity.SkippedDates).ToArray(), null,
-        new GeoPoint(entity.Latitude, entity.Longitude), entity.RouteVersion, entity.HasLocationOverride);
+        new GeoPoint(entity.Latitude, entity.Longitude), entity.RouteVersion, entity.HasLocationOverride, entity.OwnerId, entity.OwnerName);
 
     public async Task<bool> SetLocationAsync(int id, string destination, RouteEstimate route, CancellationToken cancellationToken = default)
     {

@@ -23,7 +23,9 @@ public sealed record EvTrip(
     DateOnly? OccurrenceDate = null,
     GeoPoint? Target = null,
     int RouteVersion = 0,
-    bool HasLocationOverride = false)
+    bool HasLocationOverride = false,
+    string? OwnerId = null,
+    string? OwnerName = null)
 {
     public bool IsRecurring => RecurrenceDays != 0;
 
@@ -45,7 +47,21 @@ public sealed record EvTripDraft(
     double DistanceKm,
     double DurationMinutes,
     int RecurrenceDays = 0,
-    DateTimeOffset? RecurrenceUntilUtc = null);
+    DateTimeOffset? RecurrenceUntilUtc = null,
+    string? OwnerId = null,
+    string? OwnerName = null);
+
+/// <summary>
+/// Who acts on trips. Drivers change only their own trips; admins all. Trips without owner (before per-user trips
+/// existed) belong to the admins.
+/// </summary>
+public sealed record EvTripActor(string UserId, string Name, bool IsAdmin)
+{
+    public bool MayChange(EvTrip trip) => IsAdmin || trip.OwnerId is not null && trip.OwnerId == UserId;
+}
+
+/// <summary>A user's calendar connected on the car page; the mailbox is the user's own sign-in address.</summary>
+public sealed record UserCalendar(string UserId, string Name, string Mailbox, DateTimeOffset ConnectedAtUtc);
 
 public static class EvTripSources
 {
@@ -68,11 +84,19 @@ public sealed record CalendarTripUpdate(
 {
     /// <summary>The place was chosen by the operator; later syncs keep it and only follow the appointment times.</summary>
     public bool IsLocationOverride { get; init; }
+
+    public string? OwnerId { get; init; }
+
+    public string? OwnerName { get; init; }
 }
 
 /// <summary>An appointment whose place was not found; the operator can choose the place on the car page.</summary>
 public sealed record CalendarUnresolved(string EventId, string Subject, string Query, DateTimeOffset StartUtc, DateTimeOffset EndUtc)
 {
+    public string? OwnerId { get; init; }
+
+    public string? OwnerName { get; init; }
+
     public string Text(TimeZoneInfo zone) =>
         $"{Subject} ({TimeZoneInfo.ConvertTime(StartUtc, zone).ToString("ddd dd.MM. HH:mm", System.Globalization.CultureInfo.GetCultureInfo("de-DE"))}): Ort \u201e{Query}\u201c nicht gefunden";
 }
@@ -92,7 +116,11 @@ public sealed record CalendarSyncResult(
     DateTimeOffset SyncedAtUtc,
     int EventsRead,
     int TripsFound,
-    IReadOnlyList<CalendarUnresolved> Unresolved);
+    IReadOnlyList<CalendarUnresolved> Unresolved)
+{
+    /// <summary>Calendars that could not be read this time; their trips stay as they were.</summary>
+    public IReadOnlyList<string> SourceErrors { get; init; } = [];
+}
 
 public sealed record GeoPoint(double Latitude, double Longitude);
 

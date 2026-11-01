@@ -3,7 +3,7 @@ import CarDataPanel from '../components/dashboard/CarDataPanel.vue';
 import ChargePlanPanel from '../components/dashboard/ChargePlanPanel.vue';
 import EvChargerPanel from '../components/dashboard/EvChargerPanel.vue';
 import TripPlannerPanel from '../components/dashboard/TripPlannerPanel.vue';
-import { isAdmin } from '../auth';
+import { isDriver } from '../auth';
 </script>
 
 <template>
@@ -15,7 +15,7 @@ import { isAdmin } from '../auth';
     </header>
     <CarDataPanel />
     <!-- Trips show where and when the family drives: admins only. Viewers see the charging plan. -->
-    <TripPlannerPanel v-if="isAdmin" />
+    <TripPlannerPanel v-if="isDriver" />
     <ChargePlanPanel />
     <EvChargerPanel />
   </v-container>

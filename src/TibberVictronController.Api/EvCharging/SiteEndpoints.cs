@@ -18,7 +18,7 @@ public static class SiteEndpoints
 
     public static IEndpointRouteBuilder MapSiteEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/places", SuggestAsync).WithName("SuggestPlaces").WithTags("Site").RequireAdmin();
+        endpoints.MapGet("/api/places", SuggestAsync).WithName("SuggestPlaces").WithTags("Site").RequireDriver();
         endpoints.MapGet("/api/site", GetSiteAsync).WithName("GetSite").WithTags("Site").RequireAdmin();
         endpoints.MapPut("/api/site", SetSiteAsync).WithName("SetSite").WithTags("Site");
         return endpoints;

@@ -120,7 +120,7 @@ public sealed class AuthenticationTests
         using var services = new ServiceCollection().AddLogging().AddControllerAuthentication(configuration).BuildServiceProvider();
         var fallback = await services.GetRequiredService<IAuthorizationPolicyProvider>().GetFallbackPolicyAsync();
         var roles = Assert.Single(fallback!.Requirements.OfType<RolesAuthorizationRequirement>());
-        Assert.Equal(new[] { AppRoles.Admin, AppRoles.Viewer }, roles.AllowedRoles.Order());
+        Assert.Equal(new[] { AppRoles.Admin, AppRoles.Driver, AppRoles.Viewer }, roles.AllowedRoles.Order());
     }
 
     [Fact]

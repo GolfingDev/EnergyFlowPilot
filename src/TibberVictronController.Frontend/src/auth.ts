@@ -6,12 +6,15 @@ export interface CurrentUser {
   email: string | null;
   roles: string[];
   isAdmin: boolean;
+  isDriver: boolean;
 }
 
 export const currentUser = ref<CurrentUser | null>(null);
 // The backend enforces roles on every request; this flag only hides controls a viewer cannot use anyway.
 export const isAdmin = computed(() => currentUser.value?.isAdmin ?? false);
-export const roleLabel = computed(() => (isAdmin.value ? 'Admin' : 'Betrachter'));
+// Drivers plan their own trips and connect their own calendar; admins are drivers too.
+export const isDriver = computed(() => isAdmin.value || (currentUser.value?.isDriver ?? false));
+export const roleLabel = computed(() => (isAdmin.value ? 'Admin' : isDriver.value ? 'Fahrer' : 'Betrachter'));
 
 let redirecting = false;
 

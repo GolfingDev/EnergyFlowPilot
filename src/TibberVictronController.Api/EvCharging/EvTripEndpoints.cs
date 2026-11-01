@@ -9,7 +9,10 @@ public static class EvTripEndpoints
 {
     public static IEndpointRouteBuilder MapEvTripEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/ev-charging/trips", GetPlanAsync).WithName("GetEvTripPlan").WithTags("EvCharging").RequireAdmin();
+        endpoints.MapGet("/api/ev-charging/trips", GetPlanAsync).WithName("GetEvTripPlan").WithTags("EvCharging").RequireDriver();
+        endpoints.MapGet("/api/ev-charging/my-calendar", GetMyCalendarAsync).WithName("GetMyCalendar").WithTags("EvCharging").RequireDriver();
+        endpoints.MapPut("/api/ev-charging/my-calendar", ConnectMyCalendarAsync).WithName("ConnectMyCalendar").WithTags("EvCharging").RequireDriver();
+        endpoints.MapDelete("/api/ev-charging/my-calendar", DisconnectMyCalendarAsync).WithName("DisconnectMyCalendar").WithTags("EvCharging").RequireDriver();
         endpoints.MapPost("/api/ev-charging/trips", AddTripAsync).WithName("AddEvTrip").WithTags("EvCharging");
         endpoints.MapDelete("/api/ev-charging/trips/{id:int}", DeleteTripAsync).WithName("DeleteEvTrip").WithTags("EvCharging");
         endpoints.MapPut("/api/ev-charging/trips/{id:int}/ignored", SetIgnoredAsync).WithName("SetEvTripIgnored").WithTags("EvCharging");
@@ -23,8 +26,8 @@ public static class EvTripEndpoints
             return TypedResults.Ok(new EvChargingControlDto(current.Enabled, current.Mode.ToString(), current.Amps, current.Reason,
                 current.UpdatedAtUtc == DateTimeOffset.MinValue ? null : current.UpdatedAtUtc, current.CommandProblem));
         }).WithName("GetEvChargingControl").WithTags("EvCharging");
-        endpoints.MapGet("/api/ev-charging/calendar", GetCalendarStatusAsync).WithName("GetCalendarSyncStatus").WithTags("EvCharging").RequireAdmin();
-        endpoints.MapPost("/api/ev-charging/calendar/sync", SyncCalendarAsync).WithName("SyncCalendar").WithTags("EvCharging");
+        endpoints.MapGet("/api/ev-charging/calendar", GetCalendarStatusAsync).WithName("GetCalendarSyncStatus").WithTags("EvCharging").RequireDriver();
+        endpoints.MapPost("/api/ev-charging/calendar/sync", SyncCalendarAsync).WithName("SyncCalendar").WithTags("EvCharging").RequireDriver();
         return endpoints;
     }
 
@@ -33,9 +36,9 @@ public static class EvTripEndpoints
     {
         try
         {
-            // Appointment subjects are private; viewers only see the destination.
+            // Drivers see their own trips in full; other people's trips only as "Fahrt von ...".
             var view = await planning.GetPlanAsync(cancellationToken);
-            return TypedResults.Ok(EvTripPlanDtoMapper.Map(view, IsAdmin(http, authentication)));
+            return TypedResults.Ok(EvTripPlanDtoMapper.Map(view, AdminOnlyEndpoints.Actor(http)));
         }
         catch (InvalidOperationException exception)
         {
@@ -43,7 +46,7 @@ public static class EvTripEndpoints
         }
     }
 
-    private static async Task<IResult> AddTripAsync(EvTripRequestDto request, EvTripPlanningService planning, CancellationToken cancellationToken)
+    private static async Task<IResult> AddTripAsync(HttpContext http, EvTripRequestDto request, EvTripPlanningService planning, CancellationToken cancellationToken)
     {
         try
         {
@@ -53,7 +56,7 @@ public static class EvTripEndpoints
                 request.RecurrenceDays?.Select(day => (DayOfWeek)day).ToArray(), request.RecurrenceUntilUtc)
             {
                 Target = request.Latitude is { } latitude && request.Longitude is { } longitude ? new GeoPoint(latitude, longitude) : null
-            }, cancellationToken);
+            }, AdminOnlyEndpoints.Actor(http), cancellationToken);
             return TypedResults.Ok(new { trip.Id });
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
@@ -66,33 +69,36 @@ public static class EvTripEndpoints
         }
     }
 
-    private static async Task<IResult> DeleteTripAsync(int id, EvTripPlanningService planning, CancellationToken cancellationToken) =>
-        await planning.DeleteTripAsync(id, cancellationToken)
-            ? TypedResults.NoContent()
-            : TypedResults.NotFound(new { message = "Die Fahrt gibt es nicht (mehr)." });
+    private static Task<IResult> DeleteTripAsync(HttpContext http, int id, EvTripPlanningService planning, CancellationToken cancellationToken) =>
+        OwnedAsync(async () => await planning.DeleteTripAsync(id, AdminOnlyEndpoints.Actor(http), cancellationToken), "Die Fahrt gibt es nicht (mehr).");
 
-    private static async Task<IResult> SetIgnoredAsync(int id, EvTripIgnoreRequestDto request, EvTripPlanningService planning, CancellationToken cancellationToken) =>
-        await planning.SetIgnoredAsync(id, request.Ignored, cancellationToken)
-            ? TypedResults.NoContent()
-            : TypedResults.NotFound(new { message = "Die Fahrt gibt es nicht (mehr)." });
+    private static Task<IResult> SetIgnoredAsync(HttpContext http, int id, EvTripIgnoreRequestDto request, EvTripPlanningService planning,
+        CancellationToken cancellationToken) =>
+        OwnedAsync(async () => await planning.SetIgnoredAsync(id, request.Ignored, AdminOnlyEndpoints.Actor(http), cancellationToken), "Die Fahrt gibt es nicht (mehr).");
 
-    private static async Task<IResult> SetOccurrenceSkippedAsync(int id, string date, EvTripSkipRequestDto request, EvTripPlanningService planning,
+    private static Task<IResult> SetOccurrenceSkippedAsync(HttpContext http, int id, string date, EvTripSkipRequestDto request, EvTripPlanningService planning,
         CancellationToken cancellationToken)
     {
         if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day))
-            return TypedResults.BadRequest(new { message = "Das Datum muss im Format JJJJ-MM-TT angegeben sein." });
-        return await planning.SetOccurrenceSkippedAsync(id, day, request.Skipped, cancellationToken)
-            ? TypedResults.NoContent()
-            : TypedResults.NotFound(new { message = "Die Serie gibt es nicht (mehr)." });
+            return Task.FromResult<IResult>(TypedResults.BadRequest(new { message = "Das Datum muss im Format JJJJ-MM-TT angegeben sein." }));
+        return OwnedAsync(async () => await planning.SetOccurrenceSkippedAsync(id, day, request.Skipped, AdminOnlyEndpoints.Actor(http), cancellationToken),
+            "Die Serie gibt es nicht (mehr).");
     }
 
-    private static async Task<IResult> SetLocationAsync(int id, PlaceRequestDto request, EvTripPlanningService planning, CancellationToken cancellationToken)
+    private static Task<IResult> SetLocationAsync(HttpContext http, int id, PlaceRequestDto request, EvTripPlanningService planning, CancellationToken cancellationToken) =>
+        OwnedAsync(async () => await planning.SetLocationAsync(id, request.Label ?? string.Empty, Target(request), AdminOnlyEndpoints.Actor(http), cancellationToken),
+            "Die Fahrt gibt es nicht (mehr).");
+
+    // Common answers for changes of a trip: not found, someone else's trip, invalid input.
+    private static async Task<IResult> OwnedAsync(Func<Task<bool>> change, string notFound)
     {
         try
         {
-            return await planning.SetLocationAsync(id, request.Label ?? string.Empty, Target(request), cancellationToken)
-                ? TypedResults.NoContent()
-                : TypedResults.NotFound(new { message = "Die Fahrt gibt es nicht (mehr)." });
+            return await change() ? TypedResults.NoContent() : TypedResults.NotFound(new { message = notFound });
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return TypedResults.Json(new { message = exception.Message }, statusCode: StatusCodes.Status403Forbidden);
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
         {
@@ -100,12 +106,45 @@ public static class EvTripEndpoints
         }
     }
 
-    // The appointment comes from the last sync on the server, not from the browser.
-    private static async Task<IResult> SetCalendarPlaceAsync(CalendarPlaceRequestDto request, CalendarSyncState state, CalendarTripSyncService sync,
+    private static async Task<IResult> GetMyCalendarAsync(HttpContext http, IUserCalendarRepository calendars, ControllerAuthenticationOptions authentication,
+        IControllerSettingStore settings, CancellationToken cancellationToken)
+    {
+        var actor = AdminOnlyEndpoints.Actor(http);
+        var connected = authentication.IsEntra ? await calendars.GetAsync(actor.UserId, cancellationToken) : null;
+        var enabled = bool.TryParse((await settings.GetSettingAsync(ControllerSettingDefaults.EvCalendarEnabledKey, cancellationToken))?.Value, out var on) && on;
+        return TypedResults.Ok(new MyCalendarDto(authentication.IsEntra, enabled, AdminOnlyEndpoints.Mailbox(http), connected is not null, connected?.ConnectedAtUtc));
+    }
+
+    // The mailbox is the user's own sign-in address; nobody can connect someone else's calendar.
+    private static async Task<IResult> ConnectMyCalendarAsync(HttpContext http, IUserCalendarRepository calendars, ControllerAuthenticationOptions authentication,
+        CalendarSyncRunner runner, IUtcClock clock, CancellationToken cancellationToken)
+    {
+        if (!authentication.IsEntra || AdminOnlyEndpoints.Mailbox(http) is not { } mailbox)
+            return TypedResults.BadRequest(new { message = "Der eigene Kalender braucht die Anmeldung mit Microsoft 365." });
+        var actor = AdminOnlyEndpoints.Actor(http);
+        await calendars.SaveAsync(new UserCalendar(actor.UserId, actor.Name, mailbox, clock.UtcNow), cancellationToken);
+        await runner.RunAsync(cancellationToken);
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<IResult> DisconnectMyCalendarAsync(HttpContext http, IUserCalendarRepository calendars, CalendarSyncRunner runner,
         CancellationToken cancellationToken)
     {
+        await calendars.DeleteAsync(AdminOnlyEndpoints.Actor(http).UserId, cancellationToken);
+        // The next sync removes the trips of the disconnected calendar.
+        await runner.RunAsync(cancellationToken);
+        return TypedResults.NoContent();
+    }
+
+    // The appointment comes from the last sync on the server, not from the browser.
+    private static async Task<IResult> SetCalendarPlaceAsync(HttpContext http, CalendarPlaceRequestDto request, CalendarSyncState state, CalendarTripSyncService sync,
+        CancellationToken cancellationToken)
+    {
+        var actor = AdminOnlyEndpoints.Actor(http);
         var appointment = state.Current.Result?.Unresolved.FirstOrDefault(entry => entry.EventId == request.EventId);
         if (appointment is null) return TypedResults.NotFound(new { message = "Der Termin ist nicht mehr offen; bitte neu abgleichen." });
+        if (!actor.IsAdmin && appointment.OwnerId != actor.UserId)
+            return TypedResults.Json(new { message = "Nur der eigene Kalender kann bearbeitet werden." }, statusCode: StatusCodes.Status403Forbidden);
         var label = request.Label?.Trim() ?? string.Empty;
         if (label.Length is < 2 or > 200) return TypedResults.BadRequest(new { message = "Der Ort muss zwischen 2 und 200 Zeichen lang sein." });
         try
@@ -128,10 +167,15 @@ public static class EvTripEndpoints
     {
         var enabled = bool.TryParse((await settings.GetSettingAsync(ControllerSettingDefaults.EvCalendarEnabledKey, cancellationToken))?.Value, out var value) && value;
         var (result, error, attemptAt) = state.Current;
-        var isAdmin = IsAdmin(http, authentication);
+        var actor = AdminOnlyEndpoints.Actor(http);
         var zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
+        // Everyone sees only the open appointments of their own calendar (admins also the older shared mailbox).
         return TypedResults.Ok(new CalendarSyncStatusDto(enabled, attemptAt, result?.SyncedAtUtc, error, result?.EventsRead, result?.TripsFound,
-            isAdmin ? (result?.Unresolved ?? []).Select(entry => new CalendarUnresolvedDto(entry.EventId, entry.Text(zone), entry.Query)).ToArray() : []));
+            (result?.Unresolved ?? []).Where(entry => entry.OwnerId == actor.UserId || actor.IsAdmin && entry.OwnerId is null)
+                .Select(entry => new CalendarUnresolvedDto(entry.EventId, entry.Text(zone), entry.Query)).ToArray())
+        {
+            SourceErrors = result?.SourceErrors ?? []
+        });
     }
 
     private static async Task<IResult> SyncCalendarAsync(CalendarSyncRunner runner, CalendarSyncState state, CancellationToken cancellationToken)
@@ -164,9 +208,9 @@ public static class EvTripEndpoints
         }
     }
 
-    private static bool IsAdmin(HttpContext http, ControllerAuthenticationOptions authentication) =>
-        !authentication.IsEntra || http.User.IsInRole(AppRoles.Admin);
 }
+
+public sealed record MyCalendarDto(bool Available, bool SyncEnabled, string? Mailbox, bool Connected, DateTimeOffset? ConnectedAtUtc);
 
 public sealed record EvTripIgnoreRequestDto(bool Ignored);
 
@@ -203,7 +247,10 @@ public sealed record CalendarSyncStatusDto(
     string? Error,
     int? EventsRead,
     int? TripsFound,
-    IReadOnlyList<CalendarUnresolvedDto> Unresolved);
+    IReadOnlyList<CalendarUnresolvedDto> Unresolved)
+{
+    public IReadOnlyList<string> SourceErrors { get; init; } = [];
+}
 
 public sealed record CalendarUnresolvedDto(string EventId, string Text, string Query);
 
@@ -217,8 +264,10 @@ public sealed record EvTripRequestDto(DateTimeOffset DepartureAtUtc, DateTimeOff
 
 public static class EvTripPlanDtoMapper
 {
-    public static EvTripPlanResponseDto Map(EvTripPlanView view, bool isAdmin)
+    public static EvTripPlanResponseDto Map(EvTripPlanView view, EvTripActor actor)
     {
+        // Other people's trips count for the plan but stay private: only "Fahrt von ..." and the numbers.
+        string Destination(EvTrip trip) => actor.MayChange(trip) ? trip.Destination : $"Fahrt von {trip.OwnerName ?? "Admin"}";
         var (plan, car) = (view.Plan, view.Car);
         return new EvTripPlanResponseDto(
         plan.CalculatedAtUtc,
@@ -228,8 +277,8 @@ public static class EvTripPlanDtoMapper
             view.UsesLearnedConsumption, view.LearnedConsumption is { } learned ? new LearnedConsumptionDto(learned.KwhPer100Km, learned.Drives, learned.TotalKm) : null),
         plan.Trips.Select(requirement => new EvTripDto(
             requirement.Trip.Id,
-            requirement.Trip.Destination,
-            requirement.Trip.ResolvedAddress,
+            Destination(requirement.Trip),
+            actor.MayChange(requirement.Trip) ? requirement.Trip.ResolvedAddress : string.Empty,
             requirement.Trip.DepartureAtUtc,
             requirement.ReturnAtUtc,
             requirement.ReturnIsAssumed,
@@ -240,18 +289,22 @@ public static class EvTripPlanDtoMapper
             Math.Round(requirement.ExpectedSocAtReturnPercent, 1),
             requirement.LatestChargeStartUtc,
             requirement.IsReachable,
-            requirement.Note,
+            actor.MayChange(requirement.Trip) ? requirement.Note : requirement.IsReachable ? null : "Bedarf größer als erreichbar.",
             EvTrip.DaysOf(requirement.Trip.RecurrenceDays).Select(day => (int)day).ToArray(),
             requirement.Trip.RecurrenceUntilUtc,
             requirement.Trip.Source,
-            isAdmin ? requirement.Trip.Subject : null,
+            actor.MayChange(requirement.Trip) ? requirement.Trip.Subject : null,
             requirement.Trip.OccurrenceDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
             requirement.Trip.HasLocationOverride,
             Math.Round(requirement.WinterSurchargePercent, 1),
-            requirement.TemperatureCelsius is { } celsius ? Math.Round(celsius, 1) : null)).ToArray(),
+            requirement.TemperatureCelsius is { } celsius ? Math.Round(celsius, 1) : null)
+        {
+            CanChange = actor.MayChange(requirement.Trip),
+            OwnerName = requirement.Trip.OwnerName
+        }).ToArray(),
         plan.Course.Select(point => new EvSocPointDto(point.AtUtc, Math.Round(point.SocPercent, 1))).ToArray(),
         plan.Warnings,
-        view.IgnoredTrips.Select(trip => new EvIgnoredTripDto(trip.Id, trip.Destination, trip.DepartureAtUtc, isAdmin ? trip.Subject : null,
+        view.IgnoredTrips.Where(actor.MayChange).Select(trip => new EvIgnoredTripDto(trip.Id, trip.Destination, trip.DepartureAtUtc, trip.Subject,
             trip.OccurrenceDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture))).ToArray());
     }
 }
@@ -283,7 +336,12 @@ public sealed record EvTripDto(
     string? OccurrenceDate,
     bool HasLocationOverride,
     double WinterSurchargePercent,
-    double? TemperatureCelsius);
+    double? TemperatureCelsius)
+{
+    public bool CanChange { get; init; }
+
+    public string? OwnerName { get; init; }
+}
 
 public sealed record EvIgnoredTripDto(int Id, string Destination, DateTimeOffset DepartureAtUtc, string? Subject, string? OccurrenceDate);
 

@@ -5,6 +5,8 @@ public static class AppRoles
 {
     public const string Admin = "Admin";
     public const string Viewer = "Viewer";
+    // Plans own trips and connects own calendar; no system settings. App role value "Driver" in Entra.
+    public const string Driver = "Driver";
 }
 
 public static class AppPolicies

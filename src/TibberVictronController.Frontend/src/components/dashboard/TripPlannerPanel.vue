@@ -2,7 +2,7 @@
 import Chart from 'chart.js/auto';
 import type { ChartConfiguration } from 'chart.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { isAdmin } from '../../auth';
+import { isDriver } from '../../auth';
 import { formatNumber } from './dashboardFormatters';
 import PlaceAutocomplete, { type PlaceSuggestion } from '../PlaceAutocomplete.vue';
 import TripLocationDialog from './TripLocationDialog.vue';
@@ -30,6 +30,16 @@ interface EvTripDto {
   hasLocationOverride: boolean;
   winterSurchargePercent: number;
   temperatureCelsius: number | null;
+  canChange: boolean;
+  ownerName: string | null;
+}
+
+interface MyCalendarDto {
+  available: boolean;
+  syncEnabled: boolean;
+  mailbox: string | null;
+  connected: boolean;
+  connectedAtUtc: string | null;
 }
 
 interface CalendarStatusDto {
@@ -40,6 +50,7 @@ interface CalendarStatusDto {
   eventsRead: number | null;
   tripsFound: number | null;
   unresolved: { eventId: string; text: string; query: string }[];
+  sourceErrors: string[];
 }
 
 interface EvTripPlanDto {
@@ -56,6 +67,8 @@ interface EvTripPlanDto {
 
 const plan = ref<EvTripPlanDto | null>(null);
 const calendar = ref<CalendarStatusDto | null>(null);
+const myCalendar = ref<MyCalendarDto | null>(null);
+const connecting = ref(false);
 const syncing = ref(false);
 const showIgnored = ref(false);
 const error = ref<string | null>(null);
@@ -82,10 +95,12 @@ const canSave = computed(() => destination.value.trim().length >= 2 && departure
 
 async function load(): Promise<void> {
   try {
-    const [response, calendarResponse] = await Promise.all([fetch('/api/ev-charging/trips'), fetch('/api/ev-charging/calendar')]);
+    const [response, calendarResponse, myCalendarResponse] = await Promise.all([
+      fetch('/api/ev-charging/trips'), fetch('/api/ev-charging/calendar'), fetch('/api/ev-charging/my-calendar')]);
     if (!response.ok) throw new Error(`Fahrtenplanung konnte nicht geladen werden (HTTP ${response.status}).`);
     plan.value = await response.json() as EvTripPlanDto;
     if (calendarResponse.ok) calendar.value = await calendarResponse.json() as CalendarStatusDto;
+    if (myCalendarResponse.ok) myCalendar.value = await myCalendarResponse.json() as MyCalendarDto;
     error.value = null;
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : 'Fahrtenplanung konnte nicht geladen werden.';
@@ -140,6 +155,24 @@ async function syncCalendar(): Promise<void> {
     }
   } finally {
     syncing.value = false;
+    await load();
+  }
+}
+
+// Connecting reads the calendar right away, so the user sees at once which appointments became trips.
+async function setMyCalendar(connect: boolean): Promise<void> {
+  if (!connect && !window.confirm('Kalender trennen? Die Fahrten aus diesem Kalender werden aus der Planung entfernt.')) return;
+  connecting.value = true;
+  try {
+    const response = await fetch('/api/ev-charging/my-calendar', { method: connect ? 'PUT' : 'DELETE' });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { message?: string } | null;
+      error.value = body?.message ?? `Kalender konnte nicht ${connect ? 'verbunden' : 'getrennt'} werden (HTTP ${response.status}).`;
+    } else {
+      error.value = null;
+    }
+  } finally {
+    connecting.value = false;
     await load();
   }
 }
@@ -307,6 +340,18 @@ onBeforeUnmount(() => {
     <div class="px-4 pb-4">
       <v-alert v-if="error" class="mb-3" type="warning" variant="tonal" density="compact">{{ error }}</v-alert>
 
+      <div v-if="myCalendar?.available" class="trip__calendar mb-2">
+        <v-icon icon="mdi-calendar-account-outline" size="18" />
+        <template v-if="myCalendar.connected">
+          <span class="trip__meta">Mein Kalender ({{ myCalendar.mailbox }}) ist verbunden<template v-if="myCalendar.connectedAtUtc"> seit {{ when(myCalendar.connectedAtUtc) }}</template>.</span>
+          <v-btn size="small" variant="text" :loading="connecting" @click="setMyCalendar(false)">Trennen</v-btn>
+        </template>
+        <template v-else>
+          <span class="trip__meta">Termine mit Ort aus dem eigenen Outlook-Kalender ({{ myCalendar.mailbox ?? 'unbekannt' }}) automatisch einplanen.</span>
+          <v-btn size="small" variant="tonal" color="primary" :loading="connecting" :disabled="!myCalendar.mailbox" @click="setMyCalendar(true)">Meinen Kalender verbinden</v-btn>
+        </template>
+        <span v-if="!myCalendar.syncEnabled" class="text-warning trip__meta">Der Kalenderabgleich ist in den Einstellungen ausgeschaltet.</span>
+      </div>
       <div v-if="calendar?.enabled" class="trip__calendar mb-3">
         <v-icon icon="mdi-calendar-sync-outline" size="18" />
         <span v-if="calendar.error" class="text-error">Kalender: {{ calendar.error }}</span>
@@ -314,18 +359,22 @@ onBeforeUnmount(() => {
           Kalender abgeglichen {{ when(calendar.lastSyncAtUtc) }}: {{ calendar.eventsRead }} Termine gelesen, {{ calendar.tripsFound }} mit Ort.
         </span>
         <span v-else class="trip__meta">Kalender wird in Kürze abgeglichen.</span>
-        <v-btn v-if="isAdmin" size="small" variant="text" :loading="syncing" @click="syncCalendar">Jetzt abgleichen</v-btn>
+        <v-btn size="small" variant="text" :loading="syncing" @click="syncCalendar">Jetzt abgleichen</v-btn>
       </div>
+      <v-alert v-if="calendar?.sourceErrors.length" class="mb-3" type="warning" variant="tonal" density="compact">
+        Nicht lesbar, Fahrten daraus bleiben unverändert:
+        <ul class="trip__unresolved"><li v-for="item in calendar.sourceErrors" :key="item">{{ item }}</li></ul>
+      </v-alert>
       <v-alert v-if="calendar?.unresolved.length" class="mb-3" type="info" variant="tonal" density="compact">
         Ort nicht gefunden, daher nicht eingeplant:
         <ul class="trip__unresolved">
           <li v-for="item in calendar.unresolved" :key="item.eventId">{{ item.text }}
-            <v-btn v-if="isAdmin" size="x-small" variant="text" @click="choosePlace(item)">Ort festlegen</v-btn></li>
+            <v-btn size="x-small" variant="text" @click="choosePlace(item)">Ort festlegen</v-btn></li>
         </ul>
         Tipp: Ort im Termin eintragen oder als „… in Stadt“ in den Betreff schreiben.
       </v-alert>
 
-      <form v-if="isAdmin" class="trip__form mb-4" @submit.prevent="addTrip">
+      <form v-if="isDriver" class="trip__form mb-4" @submit.prevent="addTrip">
         <PlaceAutocomplete v-model="destination" label="Ziel (Ort oder Adresse)" @select="target = $event" />
         <v-text-field v-model="departure" :label="recurrenceDays.length ? 'Erste Abfahrt (Datum und Uhrzeit)' : 'Abfahrt'" type="datetime-local" density="compact" hide-details />
         <v-text-field v-model="returnAt" label="Rückkehr (optional)" type="datetime-local" density="compact" hide-details />
@@ -346,7 +395,7 @@ onBeforeUnmount(() => {
           <div class="trip__chart mb-3"><canvas ref="canvas" /></div>
           <v-table density="compact">
             <thead>
-              <tr><th>Abfahrt</th><th>Ziel</th><th class="text-right">Strecke</th><th class="text-right">Benötigt</th><th>Laden spätestens ab</th><th>Rückkehr</th><th v-if="isAdmin" /></tr>
+              <tr><th>Abfahrt</th><th>Ziel</th><th class="text-right">Strecke</th><th class="text-right">Benötigt</th><th>Laden spätestens ab</th><th>Rückkehr</th><th /></tr>
             </thead>
             <tbody>
               <tr v-for="trip in plan.trips" :key="`${trip.id}-${trip.departureAtUtc}`">
@@ -355,14 +404,14 @@ onBeforeUnmount(() => {
                   <v-icon v-if="trip.source === 'Calendar'" icon="mdi-calendar-outline" size="14" class="mr-1" title="Aus dem Kalender" />
                   <v-icon v-if="trip.hasLocationOverride" icon="mdi-map-marker-check-outline" size="14" class="mr-1" title="Ort selbst festgelegt" />
                   <template v-if="trip.subject">{{ trip.subject }} · </template>{{ trip.destination }}
-                  <v-chip v-if="trip.recurrenceDays.length" size="x-small" class="ml-1" prepend-icon="mdi-repeat">{{ dayList(trip.recurrenceDays) }}</v-chip><br><span class="trip__meta">{{ trip.resolvedAddress }}</span></td>
+                  <v-chip v-if="trip.recurrenceDays.length" size="x-small" class="ml-1" prepend-icon="mdi-repeat">{{ dayList(trip.recurrenceDays) }}</v-chip><br><span class="trip__meta">{{ trip.resolvedAddress }}<template v-if="trip.canChange && trip.ownerName"> · {{ trip.ownerName }}</template></span></td>
                 <td class="text-right">2 × {{ formatNumber(trip.distanceKm, 0) }} km<br><span class="trip__meta">{{ formatNumber(trip.energyKwh, 1) }} kWh<template v-if="trip.winterSurchargePercent > 0"> inkl. {{ formatNumber(trip.winterSurchargePercent, 0) }} % Winter ({{ formatNumber(trip.temperatureCelsius ?? 0, 0) }} °C)</template></span></td>
                 <td class="text-right"><strong :class="{ 'text-error': !trip.isReachable }">{{ percent(trip.requiredSocPercent) }}</strong></td>
                 <td>{{ trip.latestChargeStartUtc ? when(trip.latestChargeStartUtc) : 'nicht nötig' }}<br>
                   <span v-if="trip.note" class="text-error">{{ trip.note }}</span></td>
                 <td>{{ trip.returnIsAssumed ? `ca. ${time.format(new Date(trip.returnAtUtc))} (angenommen)` : when(trip.returnAtUtc) }}<br>
                   <span class="trip__meta">dann ≈ {{ percent(trip.expectedSocAtReturnPercent) }}</span></td>
-                <td v-if="isAdmin" class="text-no-wrap">
+                <td v-if="trip.canChange" class="text-no-wrap">
                   <v-btn icon="mdi-map-marker-outline" size="small" variant="text" title="Ort ändern"
                     :aria-label="`Ort von ${trip.destination} ändern`" @click="editPlace(trip)" />
                   <v-btn v-if="trip.occurrenceDate" icon="mdi-calendar-remove-outline" size="small" variant="text" title="Nur diesen Termin auslassen"
@@ -371,6 +420,7 @@ onBeforeUnmount(() => {
                     :title="trip.source === 'Calendar' ? 'Ausblenden' : trip.recurrenceDays.length ? 'Ganze Serie löschen' : 'Löschen'"
                     :aria-label="trip.source === 'Calendar' ? `Termin ${trip.destination} ausblenden` : `Fahrt nach ${trip.destination} löschen`" @click="removeTrip(trip)" />
                 </td>
+                <td v-else />
               </tr>
             </tbody>
           </v-table>
@@ -389,7 +439,7 @@ onBeforeUnmount(() => {
               <tr v-for="trip in plan.ignoredTrips" :key="`${trip.id}-${trip.departureAtUtc}`">
                 <td>{{ when(trip.departureAtUtc) }}</td>
                 <td><template v-if="trip.subject">{{ trip.subject }} · </template>{{ trip.destination }}</td>
-                <td v-if="isAdmin" class="text-right"><v-btn size="small" variant="text" @click="restore(trip)">Wieder einplanen</v-btn></td>
+                <td class="text-right"><v-btn size="small" variant="text" @click="restore(trip)">Wieder einplanen</v-btn></td>
               </tr>
             </tbody>
           </v-table>

@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 
 namespace TibberVictronController.Api.Authentication;
 
-public sealed record CurrentUserDto(bool AuthenticationEnabled, string? Name, string? Email, IReadOnlyList<string> Roles, bool IsAdmin);
+public sealed record CurrentUserDto(bool AuthenticationEnabled, string? Name, string? Email, IReadOnlyList<string> Roles, bool IsAdmin, bool IsDriver);
 
 public static class PublicHost
 {
@@ -31,12 +31,12 @@ public static class AuthEndpoints
         endpoints.MapGet("/api/auth/me", (HttpContext context, ControllerAuthenticationOptions options) =>
         {
             if (!options.IsEntra)
-                return Results.Ok(new CurrentUserDto(false, null, null, [], true));
+                return Results.Ok(new CurrentUserDto(false, null, null, [], true, true));
             var user = context.User;
             if (user.Identity?.IsAuthenticated != true) return Results.Unauthorized();
-            var roles = user.FindAll("roles").Select(c => c.Value).Where(r => r is AppRoles.Admin or AppRoles.Viewer).Distinct().ToArray();
+            var roles = user.FindAll("roles").Select(c => c.Value).Where(r => r is AppRoles.Admin or AppRoles.Viewer or AppRoles.Driver).Distinct().ToArray();
             return Results.Ok(new CurrentUserDto(true, user.Identity.Name, user.FindFirstValue("preferred_username") ?? user.FindFirstValue("email"),
-                roles, user.IsInRole(AppRoles.Admin)));
+                roles, user.IsInRole(AppRoles.Admin), user.IsInRole(AppRoles.Admin) || user.IsInRole(AppRoles.Driver)));
         }).AllowAnonymous().WithTags("Auth");
 
         endpoints.MapGet("/api/auth/login", (HttpContext context, ControllerAuthenticationOptions options, string? returnUrl, int? hop) =>

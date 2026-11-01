@@ -23,4 +23,7 @@ public sealed class EvTripEntity
     // Version of the place search that produced the stored route; older calendar routes are searched again once.
     public int RouteVersion { get; set; }
     public bool HasLocationOverride { get; set; }
+    // Entra object id and display name of the user the trip belongs to; null for trips from before per-user trips.
+    public string? OwnerId { get; set; }
+    public string? OwnerName { get; set; }
 }

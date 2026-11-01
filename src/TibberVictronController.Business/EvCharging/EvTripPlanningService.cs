@@ -63,7 +63,7 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
         };
     }
 
-    public async Task<EvTrip> AddTripAsync(EvTripRequest request, CancellationToken cancellationToken)
+    public async Task<EvTrip> AddTripAsync(EvTripRequest request, EvTripActor actor, CancellationToken cancellationToken)
     {
         var now = dependencies.Clock.UtcNow;
         var destination = request.Destination?.Trim() ?? string.Empty;
@@ -95,22 +95,31 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
             : await dependencies.Routes.EstimateAsync(origin, destination, false, cancellationToken);
         return await dependencies.Trips.AddAsync(new EvTripDraft(request.DepartureAtUtc.ToUniversalTime(), request.ReturnAtUtc?.ToUniversalTime(),
             destination, route.ResolvedAddress, route.Destination.Latitude, route.Destination.Longitude, route.DistanceKm, route.DurationMinutes,
-            recurrence, recurrence == 0 ? null : request.RecurrenceUntilUtc?.ToUniversalTime()),
+            recurrence, recurrence == 0 ? null : request.RecurrenceUntilUtc?.ToUniversalTime(), actor.UserId, actor.Name),
             now, cancellationToken);
     }
 
     /// <summary>A calendar trip is only hidden: deleting it would bring it back with the next calendar sync.</summary>
-    public async Task<bool> DeleteTripAsync(int id, CancellationToken cancellationToken)
+    public async Task<bool> DeleteTripAsync(int id, EvTripActor actor, CancellationToken cancellationToken)
     {
-        var trip = await dependencies.Trips.GetAsync(id, cancellationToken);
+        var trip = await MayChangeAsync(id, actor, cancellationToken);
         if (trip is null) return false;
         return trip.IsFromCalendar
             ? await dependencies.Trips.SetIgnoredAsync(id, true, cancellationToken)
             : await dependencies.Trips.DeleteAsync(id, cancellationToken);
     }
 
-    public Task<bool> SetIgnoredAsync(int id, bool ignored, CancellationToken cancellationToken) =>
-        dependencies.Trips.SetIgnoredAsync(id, ignored, cancellationToken);
+    public async Task<bool> SetIgnoredAsync(int id, bool ignored, EvTripActor actor, CancellationToken cancellationToken) =>
+        await MayChangeAsync(id, actor, cancellationToken) is not null && await dependencies.Trips.SetIgnoredAsync(id, ignored, cancellationToken);
+
+    /// <summary>Loads a trip and checks that the actor may change it; null if it does not exist.</summary>
+    private async Task<EvTrip?> MayChangeAsync(int id, EvTripActor actor, CancellationToken cancellationToken)
+    {
+        var trip = await dependencies.Trips.GetAsync(id, cancellationToken);
+        if (trip is not null && !actor.MayChange(trip))
+            throw new UnauthorizedAccessException($"Diese Fahrt gehört {trip.OwnerName ?? "dem Admin"}; nur er oder ein Admin darf sie ändern.");
+        return trip;
+    }
 
     /// <summary>
     /// After the site address changed, every stored trip gets its distance and driving time again from the new home.
@@ -144,11 +153,11 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
     /// <summary>
     /// Changes the place of a trip (for a series: of all its dates). Calendar trips keep the chosen place in later syncs.
     /// </summary>
-    public async Task<bool> SetLocationAsync(int id, string label, GeoPoint? target, CancellationToken cancellationToken)
+    public async Task<bool> SetLocationAsync(int id, string label, GeoPoint? target, EvTripActor actor, CancellationToken cancellationToken)
     {
         var place = label?.Trim() ?? string.Empty;
         if (place.Length is < 2 or > 200) throw new ArgumentException("Der Ort muss zwischen 2 und 200 Zeichen lang sein.");
-        if (await dependencies.Trips.GetAsync(id, cancellationToken) is null) return false;
+        if (await MayChangeAsync(id, actor, cancellationToken) is null) return false;
         var home = await ReadHomeAsync(cancellationToken);
         var route = target is null
             ? await dependencies.Routes.EstimateAsync(home, place, false, cancellationToken)
@@ -157,8 +166,9 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
     }
 
     /// <summary>Skips (or restores) one date of a weekly series, e.g. during holidays.</summary>
-    public Task<bool> SetOccurrenceSkippedAsync(int id, DateOnly date, bool skipped, CancellationToken cancellationToken) =>
-        dependencies.Trips.SetOccurrenceSkippedAsync(id, date, skipped, cancellationToken);
+    public async Task<bool> SetOccurrenceSkippedAsync(int id, DateOnly date, bool skipped, EvTripActor actor, CancellationToken cancellationToken) =>
+        await MayChangeAsync(id, actor, cancellationToken) is not null &&
+        await dependencies.Trips.SetOccurrenceSkippedAsync(id, date, skipped, cancellationToken);
 
     // Learning works on the drives of the last four months; a failure just keeps the configured consumption.
     private async Task<LearnedConsumption?> LearnConsumptionAsync(EvCarParameters car, DateTimeOffset now, CancellationToken cancellationToken)

@@ -6,17 +6,14 @@ using TibberVictronController.Dal.Calendar;
 
 namespace TibberVictronController.Api.EvCharging;
 
-/// <summary>Calendar of the configured mailbox, read with the credentials of the Entra sign-in app.</summary>
-public sealed class GraphCalendarSource(GraphCalendarClient client, ControllerAuthenticationOptions authentication, IControllerSettingStore settings)
-    : ICalendarSource
+/// <summary>Calendar of one mailbox, read with the credentials of the Entra sign-in app.</summary>
+public sealed class GraphCalendarSource(GraphCalendarClient client, ControllerAuthenticationOptions authentication) : ICalendarSource
 {
-    public async Task<IReadOnlyList<CalendarEvent>> GetEventsAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CalendarEvent>> GetEventsAsync(string mailbox, DateTimeOffset fromUtc, DateTimeOffset toUtc,
+        CancellationToken cancellationToken = default)
     {
         if (!authentication.IsEntra)
             throw new InvalidOperationException("Der Kalender braucht die Entra-Anmeldung (Mandant, Client-ID und Client-Secret in der Umgebungsdatei).");
-        var mailbox = (await settings.GetSettingAsync(ControllerSettingDefaults.EvCalendarMailboxKey, cancellationToken))?.Value;
-        if (string.IsNullOrWhiteSpace(mailbox) || mailbox == ControllerSettingDefaults.EvCalendarMailboxNotConfigured)
-            throw new InvalidOperationException("Kein Postfach fuer den Kalender eingetragen (Einstellungen, Kalender).");
         return await client.GetEventsAsync(new GraphCredentials(authentication.TenantId!, authentication.ClientId!, authentication.ClientSecret!),
             mailbox, fromUtc, toUtc, cancellationToken);
     }

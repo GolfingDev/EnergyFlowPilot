@@ -78,7 +78,8 @@ public static class ControllerAuthenticationSetup
                 oidc.Events.OnTokenValidated = context =>
                 {
                     // Only accounts with an assigned app role get a session; Entra should also require assignment.
-                    if (context.Principal is not { } principal || !(principal.IsInRole(AppRoles.Admin) || principal.IsInRole(AppRoles.Viewer)))
+                    if (context.Principal is not { } principal ||
+                        !(principal.IsInRole(AppRoles.Admin) || principal.IsInRole(AppRoles.Viewer) || principal.IsInRole(AppRoles.Driver)))
                         context.Fail("Dem Konto ist keine EnergyFlowPilot-Rolle zugewiesen.");
                     return Task.CompletedTask;
                 };
@@ -93,7 +94,7 @@ public static class ControllerAuthenticationSetup
 
         services.AddAuthorization(authorization =>
         {
-            authorization.AddPolicy(AppPolicies.Viewer, policy => policy.RequireAuthenticatedUser().RequireRole(AppRoles.Admin, AppRoles.Viewer));
+            authorization.AddPolicy(AppPolicies.Viewer, policy => policy.RequireAuthenticatedUser().RequireRole(AppRoles.Admin, AppRoles.Driver, AppRoles.Viewer));
             authorization.AddPolicy(AppPolicies.Admin, policy => policy.RequireAuthenticatedUser().RequireRole(AppRoles.Admin));
             // Every endpoint (API and SignalR) needs at least the viewer role unless it explicitly allows anonymous access.
             authorization.FallbackPolicy = authorization.GetPolicy(AppPolicies.Viewer);

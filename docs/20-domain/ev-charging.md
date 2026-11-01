@@ -107,7 +107,7 @@ Operator decisions (2026-11-01): PV goes where it saves more (car or home batter
 
 - **One site address:** batteries, PV and wallbox are always at the same place. The settings card "Standort der Anlage" (Stromtarif & Prognosen) takes the address from a suggestion and stores it (`site.address`, not editable through the generic settings API) together with the PV forecast coordinates; trips start there. Changing it recalculates the distance and driving time of all stored trips in the background (one route per second).
 - **Address suggestions:** Nominatim forbids search-as-you-type, so suggestions come from Photon (photon.komoot.io, OpenStreetMap data, results near home first) through the controller (`GET /api/places`, at least three characters, 350 ms typing pause in the browser, 10 minutes server cache). A chosen suggestion is routed directly with its coordinates; free text is still geocoded with Nominatim.
-- **Permissions:** changes are admin-only for everything (central write guard). Reading trips (destinations, times), the calendar status, the site address and address suggestions is admin-only as well (`RequireAdmin` endpoint filter; open without sign-in). Viewers see the car page with the charging plan, the car state and the wallbox, but not the trip card; destinations in charging plan hints are replaced by "zu einer Fahrt".
+- **Permissions (superseded in part by the Driver role below):** changes are admin-only for everything (central write guard). Reading trips (destinations, times), the calendar status, the site address and address suggestions is admin-only as well (`RequireAdmin` endpoint filter; open without sign-in). Viewers see the car page with the charging plan, the car state and the wallbox, but not the trip card; destinations in charging plan hints are replaced by "zu einer Fahrt".
 
 ## Learned parameters
 
@@ -147,6 +147,16 @@ Operator requirement (2026-11-01): charge beyond the trip plan whenever power is
 
 The car page (admin) shows the subscription result, the number of stream messages since start, the time and descriptor names (no values) of the last message, and why a message was not used. A refused subscription is an error (with the hint to enter the VIN instead of `auto`). The first message per connection is logged with its descriptor names.
 
+## Per-user calendar, trip owners and the Driver role (2026-11-01)
+
+Operator decisions: each user manages their own trips and calendar; a new app role "Driver" (display name "Fahrer"); for now only the one car (i4). Several cars later, with the car identified by its plug state.
+
+- **Roles:** Admin (everything), Driver (car page with trip card; adds trips, connects the own calendar, changes only own trips), Viewer (charging plan, car state, wallbox). The Entra app needs the app role value `Driver`. Driver write paths: `/api/ev-charging/trips`, `/calendar`, `/my-calendar`, `/car/refresh`; everything else stays admin-only.
+- **Owner:** every new trip stores the Entra object id and display name of its creator (`OwnerId`, `OwnerName`); calendar trips get the owner of the calendar. Only the owner or an admin may delete, hide, skip or move a trip (otherwise 403). Older trips without owner belong to admins. Other users' trips are planned and shown with time, distance and required charge, but their destination and subject read "Fahrt von <name>".
+- **Own calendar:** "Meinen Kalender verbinden" on the car page stores the user's sign-in address (`preferred_username`) as mailbox (`UserCalendars` table); nobody can connect someone else's mailbox. Connecting syncs at once; disconnecting removes the trips of that calendar with the next sync. The shared mailbox setting `ev.calendar.mailbox` stays as an optional owner-less source.
+- **Sync per source:** each calendar is read on its own; a calendar that cannot be read keeps its trips and is listed ("Nicht lesbar ..."), trips of disconnected calendars are removed even when no calendar could be read. Unresolved appointments are shown only to their owner (admins also see those of the shared mailbox).
+- **Return time:** irrelevant for the required state of charge (the trip energy covers the way back), but it decides when the car is away and cannot charge; it stays optional with an assumed return.
+
 ## Stage 5 implementation (calendar)
 
 Operator decisions (2026-11-01): calendar before charging control; only appointments with a location, or a place evident from the subject; the Entra app of the sign-in already has the permission (application permission Calendars.Read); calendar trips are taken over automatically and can be hidden one by one; places from the subject only from unambiguous patterns.
@@ -158,11 +168,12 @@ Operator decisions (2026-11-01): calendar before charging control; only appointm
 - **Place:** the location field (display name, otherwise street, postcode and city); online meetings (Teams, Zoom, links, phone) are never trips. Without a location only subject patterns count: "... in Hamburg", "nach Frankfurt am Main", "Kunde X, Leipzig", "@ Köln", excluding common non-places ("nach Absprache", "in Ruhe"). A place from the subject must be known to OpenStreetMap as a settlement (`featureType=settlement`). Places closer than 1 km are not trips. Places that are not found are listed on the car page.
 - **Trip:** departure = start minus driving time, return = end plus driving time; all-day appointments count as on site from 08:00 to 18:00 local time on their first and last day. The route is requested again only when the place changes (one request per place and sync, at most one per second). Cancelled, deleted or past appointments remove their trip; a hidden ("ignored") trip stays hidden. Deleting a calendar trip on the car page hides it.
 - **Privacy:** appointment subjects are stored with the trip and shown only to admins; viewers see the destination only. The Graph token stays in memory; error messages carry no secrets.
-- **Security note:** the application permission Calendars.Read allows reading every mailbox in the tenant. Restrict the app to the one mailbox with Exchange Online RBAC for Applications (or an application access policy).
+- **Security note:** the application permission Calendars.Read allows reading every mailbox in the tenant. Restrict the app with Exchange Online RBAC for Applications to the mailboxes of the drivers (for example a management scope on a mail-enabled group).
 
 ## Open points
 
 - Halo firmware 189 is connected. Hardware test open: does it accept the TxDefaultProfile (connector 1 or 0) during a running charge, follow it within seconds, and fall back to full power when `validTo` passes?
 - Exact i4 variant and typical consumption: defaults 81 kWh and 18 kWh/100 km until the operator adjusts them.
-- Exchange restriction of the calendar permission to the one mailbox (operator task).
+- Exchange restriction of the calendar permission to the drivers' mailboxes (operator task).
+- Recording which user connected BMW CarData, and several cars per user (car identified by plug state).
 - Exact CarData charging status values and whether the car reports plugged state as boolean; to be checked with real messages.

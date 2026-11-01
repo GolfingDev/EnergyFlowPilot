@@ -71,7 +71,9 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
             ["IsIgnored"] = "INTEGER NOT NULL DEFAULT 0",
             ["SkippedDates"] = "TEXT NULL",
             ["RouteVersion"] = "INTEGER NOT NULL DEFAULT 0",
-            ["HasLocationOverride"] = "INTEGER NOT NULL DEFAULT 0"
+            ["HasLocationOverride"] = "INTEGER NOT NULL DEFAULT 0",
+            ["OwnerId"] = "TEXT NULL",
+            ["OwnerName"] = "TEXT NULL"
         };
         foreach (var column in columns.Where(column => !existing.Contains(column.Key)))
             await dbContext.Database.ExecuteSqlRawAsync($"ALTER TABLE \"EvTrips\" ADD COLUMN \"{column.Key}\" {column.Value};", cancellationToken);
@@ -110,7 +112,7 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
     {
         var databaseCreator = dbContext.GetService<IRelationalDatabaseCreator>();
 
-        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions", "EvTrips", "PvForecastSnapshots", "CarSamples" })
+        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions", "EvTrips", "PvForecastSnapshots", "CarSamples", "UserCalendars" })
         {
             if (await databaseCreator.HasTablesAsync(cancellationToken) &&
                 await TableExistsAsync(tableName, cancellationToken))
@@ -236,6 +238,17 @@ CREATE TABLE IF NOT EXISTS "PvForecastSnapshots" (
 );
 """;
         }
+        if (tableName == "UserCalendars")
+        {
+            return """
+CREATE TABLE IF NOT EXISTS "UserCalendars" (
+    "UserId" TEXT NOT NULL CONSTRAINT "PK_UserCalendars" PRIMARY KEY,
+    "Name" TEXT NOT NULL,
+    "Mailbox" TEXT NOT NULL,
+    "ConnectedAtUtc" INTEGER NOT NULL
+);
+""";
+        }
         if (tableName == "CarSamples")
         {
             return """
@@ -271,7 +284,9 @@ CREATE TABLE IF NOT EXISTS "EvTrips" (
     "IsIgnored" INTEGER NOT NULL DEFAULT 0,
     "SkippedDates" TEXT NULL,
     "RouteVersion" INTEGER NOT NULL DEFAULT 0,
-    "HasLocationOverride" INTEGER NOT NULL DEFAULT 0
+    "HasLocationOverride" INTEGER NOT NULL DEFAULT 0,
+    "OwnerId" TEXT NULL,
+    "OwnerName" TEXT NULL
 );
 CREATE INDEX IF NOT EXISTS "IX_EvTrips_DepartureAtUtc" ON "EvTrips" ("DepartureAtUtc");
 CREATE INDEX IF NOT EXISTS "IX_EvTrips_ExternalId" ON "EvTrips" ("ExternalId");

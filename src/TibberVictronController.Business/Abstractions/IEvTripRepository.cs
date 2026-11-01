@@ -36,10 +36,21 @@ public interface IPlaceSearch
     Task<IReadOnlyList<PlaceSuggestion>> SuggestAsync(string query, GeoPoint? near, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Appointments of the configured calendar.</summary>
+/// <summary>Appointments of one mailbox's calendar.</summary>
 public interface ICalendarSource
 {
-    Task<IReadOnlyList<CalendarEvent>> GetEventsAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CalendarEvent>> GetEventsAsync(string mailbox, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken = default);
+}
+
+public interface IUserCalendarRepository
+{
+    Task<IReadOnlyList<UserCalendar>> GetAllAsync(CancellationToken cancellationToken = default);
+
+    Task<UserCalendar?> GetAsync(string userId, CancellationToken cancellationToken = default);
+
+    Task SaveAsync(UserCalendar calendar, CancellationToken cancellationToken = default);
+
+    Task DeleteAsync(string userId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Geocoding and routing from home to a free-text destination.</summary>

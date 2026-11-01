@@ -135,8 +135,10 @@ public static class ControllerServiceCollectionExtensions
             provider.GetRequiredService<IRoutePlanner>(),
             provider.GetRequiredService<IEvTripRepository>(),
             provider.GetRequiredService<IControllerSettingStore>(),
-            provider.GetRequiredService<IUtcClock>()));
+            provider.GetRequiredService<IUtcClock>(),
+            provider.GetRequiredService<IUserCalendarRepository>()));
         services.AddScoped<CalendarTripSyncService>();
+        services.AddScoped<IUserCalendarRepository, EfUserCalendarRepository>();
         services.AddScoped<EvChargePlanService>();
         services.AddSingleton<EvChargingControlState>();
         services.AddSingleton<EvChargeLoadForecast>();

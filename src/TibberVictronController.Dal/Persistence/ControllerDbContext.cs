@@ -48,6 +48,8 @@ public sealed class ControllerDbContext : DbContext
 
     public DbSet<CarSampleEntity> CarSamples => Set<CarSampleEntity>();
 
+    public DbSet<UserCalendarEntity> UserCalendars => Set<UserCalendarEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureControllerSettings(modelBuilder);
@@ -68,6 +70,15 @@ public sealed class ControllerDbContext : DbContext
             entity.HasKey(snapshot => snapshot.SlotStartUtc);
             entity.Property(snapshot => snapshot.SlotStartUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter).ValueGeneratedNever();
             entity.Property(snapshot => snapshot.CapturedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+        });
+        modelBuilder.Entity<UserCalendarEntity>(entity =>
+        {
+            entity.ToTable("UserCalendars");
+            entity.HasKey(calendar => calendar.UserId);
+            entity.Property(calendar => calendar.UserId).HasMaxLength(64);
+            entity.Property(calendar => calendar.Name).HasMaxLength(200);
+            entity.Property(calendar => calendar.Mailbox).HasMaxLength(254);
+            entity.Property(calendar => calendar.ConnectedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
         });
         modelBuilder.Entity<CarSampleEntity>(entity =>
         {
@@ -94,6 +105,8 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(trip => trip.ExternalId).HasMaxLength(512);
             entity.Property(trip => trip.Subject).HasMaxLength(200);
             entity.Property(trip => trip.SkippedDates).HasMaxLength(4000);
+            entity.Property(trip => trip.OwnerId).HasMaxLength(64);
+            entity.Property(trip => trip.OwnerName).HasMaxLength(200);
             entity.HasIndex(trip => trip.ExternalId);
             entity.HasIndex(trip => trip.DepartureAtUtc);
         });

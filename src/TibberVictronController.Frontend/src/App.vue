@@ -5,7 +5,7 @@ import { useTheme } from 'vuetify';
 import GeneralOverlay from './components/GeneralOverlay.vue'
 import ThemeMenuPanel from './components/ThemeMenuPanel.vue';
 import BuildInfo from './components/BuildInfo.vue';
-import { currentUser, isAdmin, logout, roleLabel } from './auth';
+import { currentUser, isAdmin, isDriver, logout, roleLabel } from './auth';
 import {
   defaultEnergyFlowTheme,
   getEnergyFlowTheme,
@@ -285,7 +285,7 @@ function toggleExecutiveSidebar(): void {
           <v-menu v-if="currentUser?.authenticationEnabled" location="bottom end" offset="12">
             <template #activator="{ props }">
               <button class="theme-picker-button" type="button" v-bind="props" :aria-label="`Angemeldet als ${currentUser?.name ?? ''}`">
-                <v-icon :icon="isAdmin ? 'mdi-shield-account-outline' : 'mdi-account-eye-outline'" size="20" />
+                <v-icon :icon="isAdmin ? 'mdi-shield-account-outline' : isDriver ? 'mdi-car-outline' : 'mdi-account-eye-outline'" size="20" />
                 <span>{{ currentUser?.name ?? currentUser?.email }} · {{ roleLabel }}</span>
               </button>
             </template>
