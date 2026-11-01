@@ -25,7 +25,9 @@ public sealed class EfEvTripRepository(ControllerDbContext dbContext) : IEvTripR
             RecurrenceDays = draft.RecurrenceDays,
             RecurrenceUntilUtc = draft.RecurrenceUntilUtc,
             OwnerId = draft.OwnerId,
-            OwnerName = draft.OwnerName
+            OwnerName = draft.OwnerName,
+            // A new trip is always routed with the current logic.
+            RouteVersion = EvTripRouteVersion.Current
         };
         dbContext.EvTrips.Add(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -151,17 +153,19 @@ public sealed class EfEvTripRepository(ControllerDbContext dbContext) : IEvTripR
         entity.Longitude = route.Destination.Longitude;
         entity.DistanceKm = route.DistanceKm;
         entity.DurationMinutes = route.DurationMinutes;
+        entity.RouteVersion = EvTripRouteVersion.Current;
         if (entity.Source == EvTripSources.Calendar) entity.HasLocationOverride = true;
         await dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }
 
-    public async Task UpdateRouteAsync(int id, double distanceKm, double durationMinutes, CancellationToken cancellationToken = default)
+    public async Task UpdateRouteAsync(int id, double distanceKm, double durationMinutes, int routeVersion, CancellationToken cancellationToken = default)
     {
         var entity = await dbContext.EvTrips.FirstOrDefaultAsync(trip => trip.Id == id, cancellationToken);
         if (entity is null) return;
         entity.DistanceKm = distanceKm;
         entity.DurationMinutes = durationMinutes;
+        entity.RouteVersion = routeVersion;
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 }

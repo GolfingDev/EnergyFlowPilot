@@ -122,15 +122,18 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
     }
 
     /// <summary>
-    /// After the site address changed, every stored trip gets its distance and driving time again from the new home.
-    /// One route request per trip and second (OpenStreetMap usage policy); returns how many were updated.
+    /// After the site address changed every stored trip, otherwise only trips routed with an older route logic, get
+    /// their distance and driving time again. One route request per trip and second (OpenStreetMap usage policy);
+    /// returns how many were updated.
     /// </summary>
-    public async Task<int> RecalculateRoutesAsync(CancellationToken cancellationToken)
+    public async Task<int> RecalculateRoutesAsync(CancellationToken cancellationToken, bool outdatedOnly = false)
     {
-        var home = await ReadHomeAsync(cancellationToken);
         var trips = (await dependencies.Trips.GetUpcomingAsync(dependencies.Clock.UtcNow, cancellationToken))
             .Where(trip => trip.Target is { Latitude: not 0 } || trip.Target is { Longitude: not 0 })
+            .Where(trip => !outdatedOnly || trip.RouteVersion < EvTripRouteVersion.Current)
             .DistinctBy(trip => trip.Id).ToArray();
+        if (trips.Length == 0) return 0;
+        var home = await ReadHomeAsync(cancellationToken);
         var updated = 0;
         foreach (var trip in trips)
         {
@@ -138,7 +141,7 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
             try
             {
                 var route = await dependencies.Routes.RouteToAsync(home, trip.Target!, trip.ResolvedAddress, cancellationToken);
-                await dependencies.Trips.UpdateRouteAsync(trip.Id, route.DistanceKm, route.DurationMinutes, cancellationToken);
+                await dependencies.Trips.UpdateRouteAsync(trip.Id, route.DistanceKm, route.DurationMinutes, EvTripRouteVersion.Current, cancellationToken);
                 updated++;
             }
             catch (InvalidOperationException)

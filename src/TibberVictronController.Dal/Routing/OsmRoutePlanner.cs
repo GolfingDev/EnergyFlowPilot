@@ -14,6 +14,7 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
 {
     public const string NominatimUrl = "https://nominatim.openstreetmap.org/search";
     public const string OsrmUrl = "https://router.project-osrm.org/route/v1/driving/";
+    private const double MaximumSlowerFactor = 1.2;
     public const string UserAgent = "EnergyFlowPilot/1.0 (private home energy controller)";
     // About 50 km around home at central European latitudes; the nearest of up to 20 hits inside wins, because
     // Nominatim ranks by importance, not distance (a Frankfurt store would otherwise beat the one in town).
@@ -31,16 +32,21 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
     {
         var destination = address;
         var url = OsrmUrl + string.Create(CultureInfo.InvariantCulture,
-            $"{origin.Longitude},{origin.Latitude};{target.Longitude},{target.Latitude}?overview=false");
+            $"{origin.Longitude},{origin.Latitude};{target.Longitude},{target.Latitude}?overview=false&alternatives=3");
         using var document = await GetJsonAsync(url, "Routenberechnung", cancellationToken);
         var root = document.RootElement;
         if (root.TryGetProperty("code", out var code) && code.GetString() != "Ok" ||
             !root.TryGetProperty("routes", out var routes) || routes.ValueKind != JsonValueKind.Array || routes.GetArrayLength() == 0)
             throw new InvalidOperationException($"Fuer '{destination}' wurde keine Autoroute gefunden.");
-        var route = routes[0];
-        return new RouteEstimate(address, target,
-            Math.Round(route.GetProperty("distance").GetDouble() / 1000d, 1),
-            Math.Round(route.GetProperty("duration").GetDouble() / 60d));
+        // OSRM returns the fastest route first. A motorway detour that saves seconds is not what people drive and costs
+        // energy (operator 2026-11-01: 12 km via A66 instead of 5.7 km via K72, 18 s faster). Of the routes at most
+        // 20 % slower than the fastest, the shortest is taken.
+        var candidates = routes.EnumerateArray()
+            .Select(route => (Distance: route.GetProperty("distance").GetDouble(), Duration: route.GetProperty("duration").GetDouble()))
+            .ToArray();
+        var fastest = candidates.Min(route => route.Duration);
+        var chosen = candidates.Where(route => route.Duration <= fastest * MaximumSlowerFactor).MinBy(route => route.Distance);
+        return new RouteEstimate(address, target, Math.Round(chosen.Distance / 1000d, 1), Math.Round(chosen.Duration / 60d));
     }
 
     /// <summary>

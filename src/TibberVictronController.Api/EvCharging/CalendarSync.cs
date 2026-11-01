@@ -96,6 +96,8 @@ public sealed class CalendarSyncBackgroundService(IServiceScopeFactory scopes, I
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
+                var rerouted = await scope.ServiceProvider.GetRequiredService<EvTripPlanningService>().RecalculateRoutesAsync(stoppingToken, outdatedOnly: true);
+                if (rerouted > 0) logger.LogInformation("{Count} Fahrten mit der aktuellen Routenwahl neu berechnet.", rerouted);
                 await scope.ServiceProvider.GetRequiredService<CalendarSyncRunner>().RunAsync(stoppingToken);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)

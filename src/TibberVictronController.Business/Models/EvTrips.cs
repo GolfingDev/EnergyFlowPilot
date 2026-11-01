@@ -102,6 +102,15 @@ public sealed record CalendarUnresolved(string EventId, string Subject, string Q
 }
 
 /// <summary>One appointment as read from the calendar; times in UTC.</summary>
+/// <summary>
+/// Version of the route logic a trip's distance comes from. Trips with an older version are routed again once.
+/// 1: places searched around home first; 2: shortest of the nearly equally fast routes (both 2026-11-01).
+/// </summary>
+public static class EvTripRouteVersion
+{
+    public const int Current = 2;
+}
+
 public sealed record CalendarEvent(
     string Id,
     string Subject,

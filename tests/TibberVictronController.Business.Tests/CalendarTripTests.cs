@@ -335,7 +335,7 @@ public sealed class CalendarTripTests
         public Task<bool> SetOccurrenceSkippedAsync(int id, DateOnly date, bool skipped, CancellationToken cancellationToken = default) =>
             Task.FromResult(false);
 
-        public Task UpdateRouteAsync(int id, double distanceKm, double durationMinutes, CancellationToken cancellationToken = default) =>
+        public Task UpdateRouteAsync(int id, double distanceKm, double durationMinutes, int routeVersion, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
         public Task<bool> SetLocationAsync(int id, string destination, RouteEstimate route, CancellationToken cancellationToken = default)

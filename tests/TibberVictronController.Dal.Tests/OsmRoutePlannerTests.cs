@@ -67,6 +67,22 @@ public sealed class OsmRoutePlannerTests
         }
     }
 
+    [Fact]
+    public async Task ShortestOfTheNearlyEquallyFastRoutesIsTaken()
+    {
+        // Operator 2026-11-01, Hattenhof to Neuhof: 12 km via A66 in 12.2 min against 5.7 km via K72 in 12.5 min;
+        // a 30 km route twice as slow is never taken.
+        var handler = new HostHandler("[]",
+            """{"code":"Ok","routes":[{"distance":12000.0,"duration":732.0},{"distance":5700.0,"duration":750.0},{"distance":3000.0,"duration":1500.0}]}""");
+        var planner = new OsmRoutePlanner(new HttpClient(handler));
+
+        var route = await planner.RouteToAsync(new GeoPoint(50.466, 9.677), new GeoPoint(50.451, 9.620), "Zollweg, 36119 Neuhof");
+
+        Assert.Equal(5.7, route.DistanceKm);
+        Assert.Equal(12, route.DurationMinutes); // 12.5 min, rounded to even
+        Assert.Contains("alternatives=3", handler.Requests[0].RequestUri!.Query);
+    }
+
     private sealed class HostHandler(string geocodeBody, string routeBody) : HttpMessageHandler
     {
         public List<HttpRequestMessage> Requests { get; } = [];

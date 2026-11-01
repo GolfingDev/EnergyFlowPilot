@@ -24,7 +24,7 @@ public interface IEvTripRepository
 
     Task<bool> SetOccurrenceSkippedAsync(int id, DateOnly date, bool skipped, CancellationToken cancellationToken = default);
 
-    Task UpdateRouteAsync(int id, double distanceKm, double durationMinutes, CancellationToken cancellationToken = default);
+    Task UpdateRouteAsync(int id, double distanceKm, double durationMinutes, int routeVersion, CancellationToken cancellationToken = default);
 
     /// <summary>Sets the place of a trip chosen by the operator; for calendar trips it then survives later syncs.</summary>
     Task<bool> SetLocationAsync(int id, string destination, RouteEstimate route, CancellationToken cancellationToken = default);

@@ -23,8 +23,8 @@ public sealed class CalendarTripSyncService(CalendarTripSyncDependencies depende
     // All-day appointments (e.g. a visit or a fair) have no times: assumed on site from 08:00 to 18:00 local time.
     private static readonly TimeSpan AllDayStartLocal = TimeSpan.FromHours(8);
     private static readonly TimeSpan AllDayEndLocal = TimeSpan.FromHours(18);
-    // 1: places are searched around home first (2026-11-01). Routes from an older search are searched again once.
-    public const int CurrentRouteVersion = 1;
+    // Calendar routes from an older search are searched again once (see EvTripRouteVersion).
+    public const int CurrentRouteVersion = EvTripRouteVersion.Current;
     // Closer than this is home or next door, not a trip.
     private const double MinimumDistanceKm = 1;
 
