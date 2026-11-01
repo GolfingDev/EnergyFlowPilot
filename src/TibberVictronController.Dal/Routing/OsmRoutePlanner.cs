@@ -55,12 +55,7 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
         var viewbox = string.Create(CultureInfo.InvariantCulture,
             $"&limit={LocalCandidates}&viewbox={near.Longitude - LocalBoxLongitude},{near.Latitude + LocalBoxLatitude},{near.Longitude + LocalBoxLongitude},{near.Latitude - LocalBoxLatitude}&bounded=1");
         var hit = await SearchAsync(baseUrl + viewbox, near, cancellationToken);
-        if (hit is null)
-        {
-            // Nominatim asks for at most one request per second.
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
-            hit = await SearchAsync(baseUrl + "&limit=1", null, cancellationToken);
-        }
+        if (hit is null) hit = await SearchAsync(baseUrl + "&limit=1", null, cancellationToken);
 
         if (hit is not { } found)
             throw new InvalidOperationException($"Das Ziel '{destination}' wurde nicht gefunden. Bitte genauer angeben (Ort, Strasse).");
@@ -89,8 +84,37 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
         return 2 * EarthRadiusKm * Math.Asin(Math.Sqrt(h));
     }
 
+    public async Task<GeoPoint?> FindSettlementNearAsync(string name, GeoPoint near, double maximumKm, CancellationToken cancellationToken = default)
+    {
+        var url = $"{NominatimUrl}?format=jsonv2&accept-language=de&featureType=settlement&q={Uri.EscapeDataString(name)}" +
+                  string.Create(CultureInfo.InvariantCulture,
+                      $"&limit={LocalCandidates}&viewbox={near.Longitude - LocalBoxLongitude},{near.Latitude + LocalBoxLatitude},{near.Longitude + LocalBoxLongitude},{near.Latitude - LocalBoxLatitude}&bounded=1");
+        var hit = await SearchAsync(url, near, cancellationToken);
+        return hit is { } found && DistanceKm(near, found.Point) <= maximumKm ? found.Point : null;
+    }
+
+    // Nominatim's usage policy: at most one request per second from this application, whoever asks.
+    private static readonly SemaphoreSlim NominatimGate = new(1, 1);
+    private static DateTimeOffset nominatimLastRequestUtc = DateTimeOffset.MinValue;
+
     private async Task<JsonDocument> GetJsonAsync(string url, string purpose, CancellationToken cancellationToken)
     {
+        var nominatim = url.StartsWith(NominatimUrl, StringComparison.Ordinal);
+        if (nominatim)
+        {
+            await NominatimGate.WaitAsync(cancellationToken);
+            try
+            {
+                var wait = nominatimLastRequestUtc + TimeSpan.FromSeconds(1) - DateTimeOffset.UtcNow;
+                if (wait > TimeSpan.Zero) await Task.Delay(wait, cancellationToken);
+                nominatimLastRequestUtc = DateTimeOffset.UtcNow;
+            }
+            finally
+            {
+                NominatimGate.Release();
+            }
+        }
+
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.UserAgent.ParseAdd(UserAgent);
         using var response = await httpClient.SendAsync(request, cancellationToken);

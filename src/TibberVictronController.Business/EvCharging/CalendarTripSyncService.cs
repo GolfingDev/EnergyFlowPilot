@@ -54,7 +54,8 @@ public sealed class CalendarTripSyncService(CalendarTripSyncDependencies depende
                 continue;
             }
 
-            if (CalendarLocationExtractor.Extract(appointment) is not { } candidate) continue;
+            if (CalendarLocationExtractor.Extract(appointment) is not { } extracted) continue;
+            if (await RefineAsync(extracted, home, cancellationToken) is not { } candidate) continue;
             RouteEstimate? route = null;
             double durationMinutes;
             if (known is not null && known.RouteVersion >= CurrentRouteVersion &&
@@ -86,6 +87,50 @@ public sealed class CalendarTripSyncService(CalendarTripSyncDependencies depende
         var removed = existing.Values.Where(trip => !kept.Contains(trip.ExternalId!)).Select(trip => trip.Id).ToArray();
         if (removed.Length > 0) await dependencies.Trips.DeleteAsync(removed, cancellationToken);
         return new CalendarSyncResult(now, events.Count, kept.Count, unresolved);
+    }
+
+    /// <summary>
+    /// Turns subject hints into the place to search: the nearest town named in the subject refines a general location
+    /// ("Lidl" + "Tennis Neuhof" = "Lidl, Neuhof") or is the place itself. Null when nothing is left.
+    /// </summary>
+    private async Task<CalendarLocationCandidate?> RefineAsync(CalendarLocationCandidate candidate, GeoPoint home, CancellationToken cancellationToken)
+    {
+        if (candidate.SubjectHints.Count == 0) return candidate;
+        string? town = null;
+        var nearest = double.MaxValue;
+        foreach (var word in candidate.SubjectHints)
+        {
+            if (await SettlementAsync(word, home, cancellationToken) is not { } point) continue;
+            var distance = Math.Abs(point.Latitude - home.Latitude) + Math.Abs(point.Longitude - home.Longitude);
+            if (distance < nearest) (town, nearest) = (word, distance);
+        }
+
+        if (candidate.Query.Length == 0) return town is null ? null : new CalendarLocationCandidate(town, true);
+        return town is null ? candidate : new CalendarLocationCandidate($"{candidate.Query}, {town}", false);
+    }
+
+    // Subject words are checked once a day: most are no town ("Tennis", "Training"), and every sync would ask again.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset At, GeoPoint? Point)> SettlementCache =
+        new(StringComparer.OrdinalIgnoreCase);
+    private const double SettlementRadiusKm = 40;
+
+    private async Task<GeoPoint?> SettlementAsync(string word, GeoPoint home, CancellationToken cancellationToken)
+    {
+        var now = dependencies.Clock.UtcNow;
+        var key = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{word}|{home.Latitude:F3}|{home.Longitude:F3}");
+        if (SettlementCache.TryGetValue(key, out var cached) && now - cached.At < TimeSpan.FromDays(1)) return cached.Point;
+        GeoPoint? point;
+        try
+        {
+            point = await dependencies.Routes.FindSettlementNearAsync(word, home, SettlementRadiusKm, cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+
+        SettlementCache[key] = (now, point);
+        return point;
     }
 
     /// <summary>

@@ -48,6 +48,9 @@ public interface IRoutePlanner
     /// <summary>placesOnly: accept only towns and villages (for places guessed from free text such as a subject).</summary>
     Task<RouteEstimate> EstimateAsync(GeoPoint origin, string destination, bool placesOnly = false, CancellationToken cancellationToken = default);
 
+    /// <summary>A town or village of that name within the given distance from home, the nearest one; null if none.</summary>
+    Task<GeoPoint?> FindSettlementNearAsync(string name, GeoPoint near, double maximumKm, CancellationToken cancellationToken = default);
+
     /// <summary>Route to coordinates that are already known (a chosen suggestion or a stored trip).</summary>
     Task<RouteEstimate> RouteToAsync(GeoPoint origin, GeoPoint destination, string label, CancellationToken cancellationToken = default);
 }

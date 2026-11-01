@@ -27,8 +27,12 @@ public sealed class CalendarTripTests
     [InlineData("Termin nach Absprache")]
     [InlineData("Jour fixe")]
     [InlineData("Arbeiten in Ruhe")]
-    public void SubjectsWithoutPlaceAreSkipped(string subject) =>
-        Assert.Null(CalendarLocationExtractor.Extract(Event("1", subject, null)));
+    public void SubjectsWithoutPlaceGiveNoFixedPlace(string subject)
+    {
+        // Capitalised words may still be checked as town names later; none of them is taken as a place directly.
+        var candidate = CalendarLocationExtractor.Extract(Event("1", subject, null));
+        Assert.True(candidate is null || candidate.Query.Length == 0);
+    }
 
     [Fact]
     public void LocationFieldWinsAndOnlineMeetingsAreNoTrips()
@@ -122,6 +126,22 @@ public sealed class CalendarTripTests
         Assert.Empty(result.Unresolved);
     }
 
+    [Fact]
+    public async Task TownInTheSubjectRefinesAGeneralLocation()
+    {
+        var context = new SyncContext();
+        context.Calendar.Events.Add(Event("t", "Tennis Neuhof", "Lidl", Now.AddDays(1), Now.AddDays(1).AddHours(2)));
+        context.Calendar.Events.Add(Event("n", "Tennis Neuhof", null, Now.AddDays(2), Now.AddDays(2).AddHours(2)));
+        context.Calendar.Events.Add(Event("s", "Kunde X", "Hauptstraße 5, Fulda", Now.AddDays(3), Now.AddDays(3).AddHours(1)));
+
+        await context.Service.SyncAsync(CancellationToken.None);
+
+        Assert.Equal("Lidl, Neuhof", context.Trips.Trips.Single(t => t.ExternalId == "t").Destination);
+        Assert.Equal("Neuhof", context.Trips.Trips.Single(t => t.ExternalId == "n").Destination);
+        // A specific address is taken as it is.
+        Assert.Equal("Hauptstraße 5, Fulda", context.Trips.Trips.Single(t => t.ExternalId == "s").Destination);
+    }
+
     private static CalendarEvent Event(string id, string subject, string? location, DateTimeOffset? start = null, DateTimeOffset? end = null) =>
         new(id, subject, location, start ?? Now.AddDays(1), end ?? Now.AddDays(1).AddHours(1), false, false, false);
 
@@ -158,6 +178,9 @@ public sealed class CalendarTripTests
     {
         public int Calls { get; private set; }
         public HashSet<string> PlacesOnlyQueries { get; } = [];
+
+        public Task<GeoPoint?> FindSettlementNearAsync(string name, GeoPoint near, double maximumKm, CancellationToken cancellationToken = default) =>
+            Task.FromResult<GeoPoint?>(name == "Neuhof" ? new GeoPoint(50.45, 9.61) : null);
 
         public Task<RouteEstimate> RouteToAsync(GeoPoint origin, GeoPoint destination, string label, CancellationToken cancellationToken = default) =>
             Task.FromResult(new RouteEstimate(label, destination, 120, 120));
