@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import CarDataPanel from '../components/dashboard/CarDataPanel.vue';
 import EvChargerPanel from '../components/dashboard/EvChargerPanel.vue';
+import TripPlannerPanel from '../components/dashboard/TripPlannerPanel.vue';
 </script>
 
 <template>
@@ -11,6 +12,7 @@ import EvChargerPanel from '../components/dashboard/EvChargerPanel.vue';
       <p>Wallbox-Verbindung, Ladevorgänge und später Ladeplanung für die nächsten Fahrten.</p>
     </header>
     <CarDataPanel />
+    <TripPlannerPanel />
     <EvChargerPanel />
   </v-container>
 </template>

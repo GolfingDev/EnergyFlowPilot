@@ -1,6 +1,6 @@
 # EV Charging (Charge Amps Halo, BMW i4)
 
-Status: requirements and staged plan agreed with the operator on 2026-10-31. Stages 1 (OCPP, read-only) and 2 (BMW CarData, read-only) implemented.
+Status: requirements and staged plan agreed with the operator on 2026-10-31. Stages 1 (OCPP, read-only), 2 (BMW CarData, read-only) and 3 (manual trip planning) implemented.
 
 ## Goal
 
@@ -72,9 +72,21 @@ Each stage is deployable and testable on its own.
 2. Settings → Verbindungen → BMW CarData: enter the client id (VIN optional).
 3. Car page → "Bei BMW anmelden", open the BMW link, confirm the code.
 
+## Stage 3 implementation (manual trip planning)
+
+Operator requirements (2026-11-01): enter "on date X I drive to Y"; adjustable minimum state of charge; the distance is always calculated automatically, outbound and return, with a 5 % margin; weekly series on chosen weekdays (e.g. every Tuesday and Thursday); show the calculated course, i.e. when which state of charge must be reached.
+
+- **Trips:** destination (free text), departure, optional return; optionally weekdays and an end date for a weekly series. Home is the installation location from the PV forecast settings. Distance and duration come from OpenStreetMap (Nominatim geocoding, public OSRM routing; identifying User-Agent, two requests per entry) and are stored with the trip; they are not edited by hand. A series keeps the local departure time of the first trip across daylight-saving changes and is expanded 14 days ahead; deleting removes the whole series.
+- **Energy per trip:** 2 x one-way distance x consumption x (1 + margin). Settings (section Ladestrategie, "Auto & Fahrten"): usable capacity 81 kWh (i4 eDrive40/M50), consumption 18 kWh/100 km, minimum state of charge 15 %, margin 5 %, wallbox power 11 kW.
+- **Required state of charge:** at each departure the trip energy plus what must remain afterwards: at least the minimum state of charge, and more if the next trip cannot be charged in the time at home in between (backward pass, charging at wallbox power x 0.9 assumed AC losses). Without an entered return the car is assumed back at 20:00 local time, but not before twice the driving time.
+- **Course:** the minimal course from the current state of charge (CarData; minimum state of charge if unknown): charged only as much as needed and as late as possible. Shown as a chart and as a table with the latest charge start and the expected state of charge on return. Trips that need more than a full battery or cannot be reached in time are flagged.
+- **API:** `GET/POST /api/ev-charging/trips`, `DELETE /api/ev-charging/trips/{id}`; changes are admin-only (central write guard).
+
 ## Open points
 
 - Halo firmware version and whether it accepts `TxDefaultProfile` changes during a transaction (stage 4).
-- Exact i4 variant (usable battery capacity) and the operator's typical consumption.
+- Exact i4 variant and typical consumption: defaults 81 kWh and 18 kWh/100 km until the operator adjusts them.
+- Winter surcharge from the temperature forecast (rule 2) is not applied yet; the margin covers it for now.
+- Skipping a single occurrence of a series (holiday) is not possible yet.
 - Calendar source for stage 5.
 - Exact CarData charging status values and whether the car reports plugged state as boolean; to be checked with real messages.

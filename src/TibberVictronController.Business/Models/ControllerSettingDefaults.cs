@@ -46,6 +46,11 @@ public static class ControllerSettingDefaults
     public const string BmwCarDataGcidKey = BmwCarDataSessionPrefix + "gcid";
     public const string BmwCarDataLastSnapshotKey = BmwCarDataSessionPrefix + "lastSnapshot";
     public const string BmwCarDataNoSnapshot = "none";
+    public const string EvCarUsableCapacityKwhKey = "ev.car.usableCapacityKwh";
+    public const string EvCarConsumptionKey = "ev.car.consumptionKwhPer100Km";
+    public const string EvCarMinimumSocKey = "ev.car.minimumSocPercent";
+    public const string EvTripMarginKey = "ev.trip.marginPercent";
+    public const string EvWallboxMaximumPowerKey = "ev.wallbox.maximumPowerWatts";
     public const string WeishauptHotWaterEnabledKey = "weishauptHotWater.enabled";
     public const string WeishauptHotWaterCheapPriceKey = "weishauptHotWater.cheapPricePerKwh";
     public const string WeishauptHotWaterPvSurplusKey = "weishauptHotWater.pvSurplusWatts";
@@ -201,6 +206,12 @@ public static class ControllerSettingDefaults
         new(BmwCarDataRefreshTokenKey, null, ControllerSettingSensitivity.Sensitive),
         new(BmwCarDataGcidKey, null, ControllerSettingSensitivity.Sensitive),
         new(BmwCarDataLastSnapshotKey, BmwCarDataNoSnapshot, ControllerSettingSensitivity.Normal),
+        // i4 eDrive40/M50 (about 81 kWh usable); eDrive35 has about 67 kWh.
+        new(EvCarUsableCapacityKwhKey, "81", ControllerSettingSensitivity.Normal),
+        new(EvCarConsumptionKey, "18", ControllerSettingSensitivity.Normal),
+        new(EvCarMinimumSocKey, "15", ControllerSettingSensitivity.Normal),
+        new(EvTripMarginKey, "5", ControllerSettingSensitivity.Normal),
+        new(EvWallboxMaximumPowerKey, "11000", ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterCheapPriceKey, "0.20", ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterPvSurplusKey, "2000", ControllerSettingSensitivity.Normal),

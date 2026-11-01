@@ -88,7 +88,7 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
     {
         var databaseCreator = dbContext.GetService<IRelationalDatabaseCreator>();
 
-        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions" })
+        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions", "EvTrips" })
         {
             if (await databaseCreator.HasTablesAsync(cancellationToken) &&
                 await TableExistsAsync(tableName, cancellationToken))
@@ -203,6 +203,27 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
 
     private static string CreateTableScript(string tableName)
     {
+        if (tableName == "EvTrips")
+        {
+            return """
+CREATE TABLE IF NOT EXISTS "EvTrips" (
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_EvTrips" PRIMARY KEY AUTOINCREMENT,
+    "DepartureAtUtc" INTEGER NOT NULL,
+    "ReturnAtUtc" INTEGER NULL,
+    "Destination" TEXT NOT NULL,
+    "ResolvedAddress" TEXT NOT NULL,
+    "Latitude" REAL NOT NULL,
+    "Longitude" REAL NOT NULL,
+    "DistanceKm" REAL NOT NULL,
+    "DurationMinutes" REAL NOT NULL,
+    "CreatedAtUtc" INTEGER NOT NULL,
+    "RecurrenceDays" INTEGER NOT NULL DEFAULT 0,
+    "RecurrenceUntilUtc" INTEGER NULL
+);
+CREATE INDEX IF NOT EXISTS "IX_EvTrips_DepartureAtUtc" ON "EvTrips" ("DepartureAtUtc");
+""";
+        }
+
         if (tableName == "EvChargingSessions")
         {
             return """

@@ -57,6 +57,7 @@ app.MapDashboardSummaryEndpoints();
 app.MapDashboardHub();
 app.MapOcppEndpoints();
 app.MapEvChargingEndpoints();
+app.MapEvTripEndpoints();
 
 app.Run();
 

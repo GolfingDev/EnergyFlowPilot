@@ -42,6 +42,8 @@ public sealed class ControllerDbContext : DbContext
 
     public DbSet<EvChargingSessionEntity> EvChargingSessions => Set<EvChargingSessionEntity>();
 
+    public DbSet<EvTripEntity> EvTrips => Set<EvTripEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureControllerSettings(modelBuilder);
@@ -55,6 +57,23 @@ public sealed class ControllerDbContext : DbContext
         modelBuilder.Entity<WeishauptHotWaterControlStateEntity>().ToTable("WeishauptHotWaterControlStates");
         ConfigureConsumptionDailySummaries(modelBuilder);
         ConfigureEvChargingSessions(modelBuilder);
+        ConfigureEvTrips(modelBuilder);
+    }
+
+    private static void ConfigureEvTrips(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<EvTripEntity>(entity =>
+        {
+            entity.ToTable("EvTrips");
+            entity.HasKey(trip => trip.Id);
+            entity.Property(trip => trip.Destination).HasMaxLength(200);
+            entity.Property(trip => trip.ResolvedAddress).HasMaxLength(500);
+            entity.Property(trip => trip.DepartureAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(trip => trip.ReturnAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(trip => trip.CreatedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(trip => trip.RecurrenceUntilUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.HasIndex(trip => trip.DepartureAtUtc);
+        });
     }
 
     private static void ConfigureEvChargingSessions(ModelBuilder modelBuilder)

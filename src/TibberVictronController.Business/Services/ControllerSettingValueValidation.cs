@@ -65,6 +65,11 @@ internal static class ControllerSettingValueValidation
             ControllerSettingDefaults.WeishauptHotWaterInitialHoldHoursKey => (1m, 12m, false),
             ControllerSettingDefaults.WeishauptHotWaterInitialChargeMinutesKey => (15m, 180m, true),
             ControllerSettingDefaults.ForecastHorizonHoursKey => (1m, 72m, true),
+            ControllerSettingDefaults.EvCarUsableCapacityKwhKey => (10m, 200m, false),
+            ControllerSettingDefaults.EvCarConsumptionKey => (5m, 60m, false),
+            ControllerSettingDefaults.EvCarMinimumSocKey => (0m, 80m, false),
+            ControllerSettingDefaults.EvTripMarginKey => (0m, 100m, false),
+            ControllerSettingDefaults.EvWallboxMaximumPowerKey => (1400m, 22000m, true),
             _ => null
         };
 

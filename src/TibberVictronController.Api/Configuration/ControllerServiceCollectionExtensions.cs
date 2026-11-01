@@ -4,6 +4,8 @@ using TibberVictronController.Api.JointBattery;
 using TibberVictronController.Dal.E3dc;
 using TibberVictronController.Dal.Ocpp;
 using TibberVictronController.Dal.BmwCarData;
+using TibberVictronController.Dal.Routing;
+using TibberVictronController.Business.EvCharging;
 using TibberVictronController.Api.EvCharging;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
@@ -108,6 +110,15 @@ public static class ControllerServiceCollectionExtensions
         services.AddSingleton<CarStatusStore>();
         services.AddSingleton<ICarStatusSource>(provider => provider.GetRequiredService<CarStatusStore>());
         services.AddSingleton<CarDataService>();
+        services.AddScoped<IEvTripRepository, EfEvTripRepository>();
+        services.AddHttpClient<IRoutePlanner, OsmRoutePlanner>(client => client.Timeout = TimeSpan.FromSeconds(20));
+        services.AddScoped(provider => new EvTripPlanningDependencies(
+            provider.GetRequiredService<IEvTripRepository>(),
+            provider.GetRequiredService<IRoutePlanner>(),
+            provider.GetRequiredService<IControllerSettingStore>(),
+            provider.GetRequiredService<ICarStatusSource>(),
+            provider.GetRequiredService<IUtcClock>()));
+        services.AddScoped<EvTripPlanningService>();
         services.AddHostedService(provider => provider.GetRequiredService<CarDataService>());
         services.AddScoped<ILiveConsumptionRepository, EfLiveConsumptionRepository>();
         services.AddScoped<IHomematicClimateRepository, EfHomematicClimateRepository>();

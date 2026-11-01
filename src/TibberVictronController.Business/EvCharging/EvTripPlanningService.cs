@@ -1,0 +1,93 @@
+using System.Globalization;
+using TibberVictronController.Business.Abstractions;
+using TibberVictronController.Business.Models;
+
+namespace TibberVictronController.Business.EvCharging;
+
+public sealed record EvTripPlanningDependencies(
+    IEvTripRepository Trips,
+    IRoutePlanner Routes,
+    IControllerSettingStore Settings,
+    ICarStatusSource Car,
+    IUtcClock Clock);
+
+/// <summary>A trip to add; with weekdays it is a weekly series starting at the departure, optionally until a date.</summary>
+public sealed record EvTripRequest(
+    DateTimeOffset DepartureAtUtc,
+    DateTimeOffset? ReturnAtUtc,
+    string Destination,
+    IReadOnlyCollection<DayOfWeek>? RecurrenceDays = null,
+    DateTimeOffset? RecurrenceUntilUtc = null);
+
+/// <summary>Manual trip planning: stores trips with their calculated route and derives the required state of charge.</summary>
+public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencies)
+{
+    private static readonly TimeZoneInfo LocalZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
+    // Series are shown and planned two weeks ahead; later occurrences follow as time moves on.
+    public static readonly TimeSpan SeriesHorizon = TimeSpan.FromDays(14);
+
+    public async Task<(EvTripPlan Plan, EvCarParameters Car)> GetPlanAsync(CancellationToken cancellationToken)
+    {
+        var now = dependencies.Clock.UtcNow;
+        var car = await ReadCarParametersAsync(cancellationToken);
+        var trips = EvTripOccurrences.Expand(await dependencies.Trips.GetUpcomingAsync(now, cancellationToken), now, SeriesHorizon, LocalZone);
+        var plan = EvTripSocPlanner.Plan(new EvTripPlanInput(now, dependencies.Car.Car.StateOfChargePercent, trips, car, LocalZone));
+        return (plan, car);
+    }
+
+    public async Task<EvTrip> AddTripAsync(EvTripRequest request, CancellationToken cancellationToken)
+    {
+        var now = dependencies.Clock.UtcNow;
+        var destination = request.Destination?.Trim() ?? string.Empty;
+        if (destination.Length is < 2 or > 200)
+            throw new ArgumentException("Das Ziel muss zwischen 2 und 200 Zeichen lang sein.");
+        if (request.DepartureAtUtc < now.AddMinutes(-5))
+            throw new ArgumentException("Die Abfahrt liegt in der Vergangenheit.");
+        if (request.DepartureAtUtc > now.AddYears(1))
+            throw new ArgumentException("Fahrten koennen hoechstens ein Jahr im Voraus geplant werden.");
+        if (request.ReturnAtUtc is { } returnAt && returnAt <= request.DepartureAtUtc)
+            throw new ArgumentException("Die Rueckkehr muss nach der Abfahrt liegen.");
+        var recurrence = EvTrip.MaskOf(request.RecurrenceDays ?? []);
+        if (recurrence != 0)
+        {
+            // Each occurrence takes the return time of the first trip; a longer trip would overlap the next one.
+            if (request.ReturnAtUtc is { } seriesReturn && seriesReturn - request.DepartureAtUtc >= TimeSpan.FromDays(1))
+                throw new ArgumentException("Bei Serienfahrten muss die Rueckkehr innerhalb von 24 Stunden nach der Abfahrt liegen.");
+            if (request.RecurrenceUntilUtc is { } until && until < request.DepartureAtUtc)
+                throw new ArgumentException("Das Ende der Serie liegt vor der ersten Abfahrt.");
+        }
+        else if (request.RecurrenceUntilUtc is not null)
+        {
+            throw new ArgumentException("Ein Serienende ist nur mit ausgewaehlten Wochentagen moeglich.");
+        }
+
+        var origin = await ReadHomeAsync(cancellationToken);
+        var route = await dependencies.Routes.EstimateAsync(origin, destination, cancellationToken);
+        return await dependencies.Trips.AddAsync(new EvTripDraft(request.DepartureAtUtc.ToUniversalTime(), request.ReturnAtUtc?.ToUniversalTime(),
+            destination, route.ResolvedAddress, route.Destination.Latitude, route.Destination.Longitude, route.DistanceKm, route.DurationMinutes,
+            recurrence, recurrence == 0 ? null : request.RecurrenceUntilUtc?.ToUniversalTime()),
+            now, cancellationToken);
+    }
+
+    public Task<bool> DeleteTripAsync(int id, CancellationToken cancellationToken) => dependencies.Trips.DeleteAsync(id, cancellationToken);
+
+    private async Task<EvCarParameters> ReadCarParametersAsync(CancellationToken cancellationToken) => new(
+        await NumberAsync(ControllerSettingDefaults.EvCarUsableCapacityKwhKey, cancellationToken),
+        await NumberAsync(ControllerSettingDefaults.EvCarConsumptionKey, cancellationToken),
+        await NumberAsync(ControllerSettingDefaults.EvCarMinimumSocKey, cancellationToken),
+        await NumberAsync(ControllerSettingDefaults.EvTripMarginKey, cancellationToken),
+        await NumberAsync(ControllerSettingDefaults.EvWallboxMaximumPowerKey, cancellationToken));
+
+    // Home is the installation location already maintained for the PV forecast.
+    private async Task<GeoPoint> ReadHomeAsync(CancellationToken cancellationToken) => new(
+        await NumberAsync(ControllerSettingDefaults.PvForecastLatitudeKey, cancellationToken),
+        await NumberAsync(ControllerSettingDefaults.PvForecastLongitudeKey, cancellationToken));
+
+    private async Task<double> NumberAsync(string key, CancellationToken cancellationToken)
+    {
+        var value = (await dependencies.Settings.GetSettingAsync(key, cancellationToken))?.Value;
+        return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+            ? number
+            : throw new InvalidOperationException($"Die Einstellung {key} fehlt oder ist keine Zahl.");
+    }
+}
