@@ -21,6 +21,7 @@ public sealed class OsmRoutePlannerTests
         Assert.Equal(340, route.DurationMinutes);
         Assert.Equal("München, Bayern, Deutschland", route.ResolvedAddress);
         Assert.Contains("q=M%C3%BCnchen%20Marienplatz", handler.Requests[0].RequestUri!.Query);
+        Assert.Contains("bounded=1", handler.Requests[0].RequestUri!.Query);
         Assert.Contains("13.405,52.52;11.5754,48.1371", handler.Requests[1].RequestUri!.AbsolutePath);
         Assert.All(handler.Requests, request => Assert.Contains("EnergyFlowPilot", request.Headers.UserAgent.ToString()));
     }
@@ -33,6 +34,34 @@ public sealed class OsmRoutePlannerTests
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => planner.EstimateAsync(new GeoPoint(52.52, 13.405), "Xyzzy"));
 
         Assert.Contains("nicht gefunden", exception.Message);
+    }
+
+    [Fact]
+    public async Task NearbyMatchWinsAndTheWholeMapIsOnlyTheFallback()
+    {
+        var handler = new LocalFirstHandler();
+        var planner = new OsmRoutePlanner(new HttpClient(handler));
+
+        var route = await planner.EstimateAsync(new GeoPoint(50.55, 9.68), "Lidl");
+
+        Assert.Equal("Lidl, Fulda", route.ResolvedAddress);
+        Assert.Contains("viewbox=8.58,51.3,10.78,49.8", handler.Requests[0].RequestUri!.Query);
+        Assert.Equal(2, handler.Requests.Count); // local search hit, then the route; no nationwide search
+    }
+
+    private sealed class LocalFirstHandler : HttpMessageHandler
+    {
+        public List<HttpRequestMessage> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            var query = request.RequestUri!.Query;
+            var body = request.RequestUri.Host.StartsWith("nominatim", StringComparison.Ordinal)
+                ? query.Contains("bounded=1") ? """[{"lat":"50.56","lon":"9.70","display_name":"Lidl, Fulda"}]""" : """[{"lat":"48.0","lon":"11.0","display_name":"Lidl, weit weg"}]"""
+                : """{"code":"Ok","routes":[{"distance":3200.0,"duration":420.0}]}""";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
+        }
     }
 
     private sealed class HostHandler(string geocodeBody, string routeBody) : HttpMessageHandler

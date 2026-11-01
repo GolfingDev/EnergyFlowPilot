@@ -161,7 +161,8 @@ public sealed class CalendarTripTests
             var route = update.Route;
             var trip = new EvTrip(existing?.Id ?? nextId++, update.DepartureAtUtc, update.ReturnAtUtc, update.Destination,
                 route?.ResolvedAddress ?? existing!.ResolvedAddress, route?.DistanceKm ?? existing!.DistanceKm, route?.DurationMinutes ?? existing!.DurationMinutes,
-                nowUtc, 0, null, EvTripSources.Calendar, update.ExternalId, update.Subject, existing?.IsIgnored ?? false);
+                nowUtc, 0, null, EvTripSources.Calendar, update.ExternalId, update.Subject, existing?.IsIgnored ?? false,
+                RouteVersion: update.Route is null ? existing!.RouteVersion : update.RouteVersion);
             if (index >= 0) Trips[index] = trip; else Trips.Add(trip);
             return Task.CompletedTask;
         }

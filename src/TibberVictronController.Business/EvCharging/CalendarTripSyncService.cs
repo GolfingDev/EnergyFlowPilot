@@ -22,6 +22,8 @@ public sealed class CalendarTripSyncService(CalendarTripSyncDependencies depende
     // All-day appointments (e.g. a visit or a fair) have no times: assumed on site from 08:00 to 18:00 local time.
     private static readonly TimeSpan AllDayStartLocal = TimeSpan.FromHours(8);
     private static readonly TimeSpan AllDayEndLocal = TimeSpan.FromHours(18);
+    // 1: places are searched around home first (2026-11-01). Routes from an older search are searched again once.
+    public const int CurrentRouteVersion = 1;
     // Closer than this is home or next door, not a trip.
     private const double MinimumDistanceKm = 1;
 
@@ -44,7 +46,8 @@ public sealed class CalendarTripSyncService(CalendarTripSyncDependencies depende
             existing.TryGetValue(appointment.Id, out var known);
             RouteEstimate? route = null;
             double durationMinutes;
-            if (known is not null && string.Equals(known.Destination, candidate.Query, StringComparison.OrdinalIgnoreCase))
+            if (known is not null && known.RouteVersion >= CurrentRouteVersion &&
+                string.Equals(known.Destination, candidate.Query, StringComparison.OrdinalIgnoreCase))
             {
                 durationMinutes = known.DurationMinutes;
                 if (known.DistanceKm < MinimumDistanceKm) continue;
@@ -65,7 +68,7 @@ public sealed class CalendarTripSyncService(CalendarTripSyncDependencies depende
             var drive = TimeSpan.FromMinutes(durationMinutes);
             if (end + drive <= now) continue;
             await dependencies.Trips.UpsertCalendarTripAsync(new CalendarTripUpdate(appointment.Id, Truncate(appointment.Subject, 200),
-                Truncate(candidate.Query, 200), start - drive, end + drive, route), now, cancellationToken);
+                Truncate(candidate.Query, 200), start - drive, end + drive, route, CurrentRouteVersion), now, cancellationToken);
             kept.Add(appointment.Id);
         }
 

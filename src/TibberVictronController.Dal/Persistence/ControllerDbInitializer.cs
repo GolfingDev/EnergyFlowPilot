@@ -69,7 +69,8 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
             ["ExternalId"] = "TEXT NULL",
             ["Subject"] = "TEXT NULL",
             ["IsIgnored"] = "INTEGER NOT NULL DEFAULT 0",
-            ["SkippedDates"] = "TEXT NULL"
+            ["SkippedDates"] = "TEXT NULL",
+            ["RouteVersion"] = "INTEGER NOT NULL DEFAULT 0"
         };
         foreach (var column in columns.Where(column => !existing.Contains(column.Key)))
             await dbContext.Database.ExecuteSqlRawAsync($"ALTER TABLE \"EvTrips\" ADD COLUMN \"{column.Key}\" {column.Value};", cancellationToken);
@@ -267,7 +268,8 @@ CREATE TABLE IF NOT EXISTS "EvTrips" (
     "ExternalId" TEXT NULL,
     "Subject" TEXT NULL,
     "IsIgnored" INTEGER NOT NULL DEFAULT 0,
-    "SkippedDates" TEXT NULL
+    "SkippedDates" TEXT NULL,
+    "RouteVersion" INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS "IX_EvTrips_DepartureAtUtc" ON "EvTrips" ("DepartureAtUtc");
 CREATE INDEX IF NOT EXISTS "IX_EvTrips_ExternalId" ON "EvTrips" ("ExternalId");

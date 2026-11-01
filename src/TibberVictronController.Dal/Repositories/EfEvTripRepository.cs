@@ -90,6 +90,7 @@ public sealed class EfEvTripRepository(ControllerDbContext dbContext) : IEvTripR
             entity.Longitude = route.Destination.Longitude;
             entity.DistanceKm = route.DistanceKm;
             entity.DurationMinutes = route.DurationMinutes;
+            entity.RouteVersion = update.RouteVersion;
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -132,7 +133,7 @@ public sealed class EfEvTripRepository(ControllerDbContext dbContext) : IEvTripR
     private static EvTrip Map(EvTripEntity entity) => new(entity.Id, entity.DepartureAtUtc, entity.ReturnAtUtc, entity.Destination,
         entity.ResolvedAddress, entity.DistanceKm, entity.DurationMinutes, entity.CreatedAtUtc, entity.RecurrenceDays, entity.RecurrenceUntilUtc,
         entity.Source, entity.ExternalId, entity.Subject, entity.IsIgnored, ParseDates(entity.SkippedDates).ToArray(), null,
-        new GeoPoint(entity.Latitude, entity.Longitude));
+        new GeoPoint(entity.Latitude, entity.Longitude), entity.RouteVersion);
 
     public async Task UpdateRouteAsync(int id, double distanceKm, double durationMinutes, CancellationToken cancellationToken = default)
     {

@@ -102,6 +102,22 @@ public sealed class EvTripSocPlannerTests
     }
 
     [Fact]
+    public void ALaterImpossibleTripDoesNotInflateEarlierOnes()
+    {
+        // Short trip, then right away a trip that needs more than a full battery (e.g. a wrongly found far destination).
+        var first = Now.AddHours(20);
+        var shortTrip = Trip(1, first, 10, returnAt: first.AddHours(8));
+        var longTrip = Trip(2, first.AddHours(8), 264, returnAt: first.AddHours(14));
+
+        var plan = Plan(50, shortTrip, longTrip);
+
+        // At most: own trip + a full battery for the next one would be needed, never 187 %.
+        Assert.True(plan.Trips[0].RequiredSocPercent <= 100 + 2 * 10 * 0.18 * 1.05 / 81 * 100 + 0.01);
+        Assert.Contains("Nachladen", plan.Trips[0].Note);
+        Assert.Contains("mehr als ein voller Akku", plan.Trips[1].Note);
+    }
+
+    [Fact]
     public void PastTripsAreIgnored()
     {
         var plan = Plan(50, Trip(1, Now.AddHours(-2), 100));

@@ -61,9 +61,11 @@ public static class EvTripSocPlanner
         var need = new double[trips.Count];
         for (var i = trips.Count - 1; i >= 0; i--)
         {
+            // A later trip that needs more than a full battery has to charge on the way anyway; carrying its excess
+            // backwards would make every earlier trip look impossible.
             var afterReturn = i == trips.Count - 1
                 ? reserve
-                : Math.Max(reserve, need[i + 1] - Hours(returns[i].At, trips[i + 1].DepartureAtUtc) * batteryPowerKw);
+                : Math.Max(reserve, Math.Min(need[i + 1], capacity) - Hours(returns[i].At, trips[i + 1].DepartureAtUtc) * batteryPowerKw);
             need[i] = energy[i] + afterReturn;
         }
 
@@ -78,7 +80,9 @@ public static class EvTripSocPlanner
             var trip = trips[i];
             var target = Math.Min(need[i], capacity);
             var reachable = need[i] <= capacity;
-            string? note = reachable ? null : $"Braucht {Percent(need[i], capacity):0} %, mehr als ein voller Akku: unterwegs laden.";
+            string? note = reachable ? null : energy[i] + reserve > capacity
+                ? $"Braucht {Percent(need[i], capacity):0} %, mehr als ein voller Akku: unterwegs laden."
+                : $"Reicht nur mit Nachladen vor der anschließenden Fahrt nach {trips[i + 1].Destination}.";
             DateTimeOffset? latestStart = null;
             if (target > level)
             {

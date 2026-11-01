@@ -15,10 +15,13 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
     public const string NominatimUrl = "https://nominatim.openstreetmap.org/search";
     public const string OsrmUrl = "https://router.project-osrm.org/route/v1/driving/";
     public const string UserAgent = "EnergyFlowPilot/1.0 (private home energy controller)";
+    // About 80 km around home at central European latitudes.
+    private const double LocalBoxLatitude = 0.75;
+    private const double LocalBoxLongitude = 1.1;
 
     public async Task<RouteEstimate> EstimateAsync(GeoPoint origin, string destination, bool placesOnly = false, CancellationToken cancellationToken = default)
     {
-        var (target, address) = await GeocodeAsync(destination, placesOnly, cancellationToken);
+        var (target, address) = await GeocodeAsync(destination, placesOnly, origin, cancellationToken);
         return await RouteToAsync(origin, target, address, cancellationToken);
     }
 
@@ -38,18 +41,38 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
             Math.Round(route.GetProperty("duration").GetDouble() / 60d));
     }
 
-    private async Task<(GeoPoint Point, string Address)> GeocodeAsync(string destination, bool placesOnly, CancellationToken cancellationToken)
+    /// <summary>
+    /// Searches around home first (about 80 km): a calendar location like "Lidl" or "Sporthalle" means the one nearby,
+    /// not the first match in the country. Only if nothing is found there the whole map is searched.
+    /// </summary>
+    private async Task<(GeoPoint Point, string Address)> GeocodeAsync(string destination, bool placesOnly, GeoPoint near, CancellationToken cancellationToken)
     {
         // featureType=settlement restricts hits to cities, towns and villages, so "in Ruhe" does not become a street.
-        var url = $"{NominatimUrl}?format=jsonv2&limit=1&accept-language=de&q={Uri.EscapeDataString(destination)}" +
-                  (placesOnly ? "&featureType=settlement" : string.Empty);
+        var baseUrl = $"{NominatimUrl}?format=jsonv2&limit=1&accept-language=de&q={Uri.EscapeDataString(destination)}" +
+                      (placesOnly ? "&featureType=settlement" : string.Empty);
+        var viewbox = string.Create(CultureInfo.InvariantCulture,
+            $"&viewbox={near.Longitude - LocalBoxLongitude},{near.Latitude + LocalBoxLatitude},{near.Longitude + LocalBoxLongitude},{near.Latitude - LocalBoxLatitude}&bounded=1");
+        var hit = await SearchAsync(baseUrl + viewbox, cancellationToken);
+        if (hit is null)
+        {
+            // Nominatim asks for at most one request per second.
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            hit = await SearchAsync(baseUrl, cancellationToken);
+        }
+
+        if (hit is not { } found)
+            throw new InvalidOperationException($"Das Ziel '{destination}' wurde nicht gefunden. Bitte genauer angeben (Ort, Strasse).");
+        return (found.Point, found.Address ?? destination);
+    }
+
+    private async Task<(GeoPoint Point, string? Address)?> SearchAsync(string url, CancellationToken cancellationToken)
+    {
         using var document = await GetJsonAsync(url, "Adresssuche", cancellationToken);
         var root = document.RootElement;
-        if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() == 0)
-            throw new InvalidOperationException($"Das Ziel '{destination}' wurde nicht gefunden. Bitte genauer angeben (Ort, Strasse).");
+        if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() == 0) return null;
         var hit = root[0];
         return (new GeoPoint(Coordinate(hit, "lat"), Coordinate(hit, "lon")),
-            hit.TryGetProperty("display_name", out var name) ? name.GetString() ?? destination : destination);
+            hit.TryGetProperty("display_name", out var name) ? name.GetString() : null);
     }
 
     private async Task<JsonDocument> GetJsonAsync(string url, string purpose, CancellationToken cancellationToken)

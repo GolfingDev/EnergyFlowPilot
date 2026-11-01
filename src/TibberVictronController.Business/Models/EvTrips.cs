@@ -21,7 +21,8 @@ public sealed record EvTrip(
     bool IsIgnored = false,
     IReadOnlyList<DateOnly>? SkippedDates = null,
     DateOnly? OccurrenceDate = null,
-    GeoPoint? Target = null)
+    GeoPoint? Target = null,
+    int RouteVersion = 0)
 {
     public bool IsRecurring => RecurrenceDays != 0;
 
@@ -61,7 +62,8 @@ public sealed record CalendarTripUpdate(
     string Destination,
     DateTimeOffset DepartureAtUtc,
     DateTimeOffset ReturnAtUtc,
-    RouteEstimate? Route);
+    RouteEstimate? Route,
+    int RouteVersion = 0);
 
 /// <summary>One appointment as read from the calendar; times in UTC.</summary>
 public sealed record CalendarEvent(
