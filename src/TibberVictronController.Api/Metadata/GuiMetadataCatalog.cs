@@ -41,6 +41,7 @@ public static class GuiMetadataCatalog
             ControllerSettingDefaults.BmwCarDataVinKey => CreateSetting(definition, "Fahrgestellnummer (VIN)", "'auto' nimmt das erste Fahrzeug, das CarData meldet. Bei mehreren Fahrzeugen die VIN des i4 eintragen.", "Car", "text", null),
             ControllerSettingDefaults.BmwCarDataRefreshTokenKey => CreateSetting(definition, "BMW-Anmeldung (intern)", "Wird bei der Anmeldung auf der Seite Auto gesetzt und verschluesselt gespeichert.", "Car", "password", null),
             ControllerSettingDefaults.BmwCarDataGcidKey => CreateSetting(definition, "BMW-Kundenkennung (intern)", "Wird bei der Anmeldung gesetzt und verschluesselt gespeichert.", "Car", "password", null),
+            ControllerSettingDefaults.BmwCarDataContainerIdKey => CreateSetting(definition, "BMW-Datencontainer (intern)", "Wird bei der ersten Abfrage angelegt.", "Car", "text", null),
             ControllerSettingDefaults.BmwCarDataLastSnapshotKey => CreateSetting(definition, "Letzte Fahrzeugwerte (intern)", "Damit Ladestand und Reichweite einen Neustart ueberstehen.", "Car", "text", null),
             ControllerSettingDefaults.EvCarUsableCapacityKwhKey => CreateSetting(definition, "Nutzbare Akkukapazitaet des Autos", "i4 eDrive40/M50 etwa 81 kWh, eDrive35 etwa 67 kWh.", "Car", "number", "kWh"),
             ControllerSettingDefaults.EvCarConsumptionKey => CreateSetting(definition, "Verbrauch", "Durchschnitt laut Bordcomputer; Grundlage fuer die Energie je Fahrt.", "Car", "number", "kWh/100 km"),

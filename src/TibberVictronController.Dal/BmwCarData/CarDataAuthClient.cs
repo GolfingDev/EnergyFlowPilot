@@ -13,7 +13,11 @@ public sealed record CarDataDeviceFlow(
     TimeSpan PollInterval,
     DateTimeOffset ExpiresAtUtc);
 
-public sealed record CarDataTokens(string? Gcid, string IdToken, string RefreshToken, TimeSpan ExpiresIn);
+/// <summary>ID token for the stream (MQTT password), access token for the REST API; both live about an hour.</summary>
+public sealed record CarDataTokens(string? Gcid, string IdToken, string RefreshToken, TimeSpan ExpiresIn)
+{
+    public string? AccessToken { get; init; }
+}
 
 public enum CarDataPollOutcome
 {
@@ -119,7 +123,10 @@ public sealed class CarDataAuthClient(HttpClient httpClient)
             Text(root, "gcid"),
             Text(root, "id_token") ?? throw new InvalidOperationException("BMW liefert kein ID-Token (Scope openid fehlt?)."),
             Text(root, "refresh_token") ?? previousRefreshToken ?? throw new InvalidOperationException("BMW liefert kein Refresh-Token."),
-            TimeSpan.FromSeconds(Math.Clamp(Int(root, "expires_in") ?? 3600, 300, 86400)));
+            TimeSpan.FromSeconds(Math.Clamp(Int(root, "expires_in") ?? 3600, 300, 86400)))
+        {
+            AccessToken = Text(root, "access_token")
+        };
     }
 
     private static string? OAuthError(string body)

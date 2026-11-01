@@ -109,6 +109,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddSingleton<IEvChargerStatusSource>(provider => provider.GetRequiredService<EvChargerStatusStore>());
         services.AddSingleton<IEvChargerControl>(provider => provider.GetRequiredService<EvChargerStatusStore>());
         services.AddHttpClient<CarDataAuthClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
+        services.AddHttpClient<CarDataApiClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddSingleton<CarStatusStore>();
         services.AddSingleton<ICarStatusSource>(provider => provider.GetRequiredService<CarStatusStore>());
         services.AddSingleton<CarDataService>();

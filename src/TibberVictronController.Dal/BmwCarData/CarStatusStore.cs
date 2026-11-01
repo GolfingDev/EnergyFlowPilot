@@ -9,6 +9,17 @@ public sealed class CarStatusStore : ICarStatusSource
     private CarSnapshot car = CarSnapshot.Empty;
     private CarDataConnectionState connection = CarDataConnectionState.NotConfigured;
     private CarStreamDiagnostics stream = CarStreamDiagnostics.Empty;
+    private CarPollDiagnostics poll = CarPollDiagnostics.Empty;
+
+    public CarPollDiagnostics Poll
+    {
+        get { lock (gate) return poll; }
+    }
+
+    public void SetPoll(CarPollDiagnostics diagnostics)
+    {
+        lock (gate) poll = diagnostics;
+    }
 
     public CarStreamDiagnostics Stream
     {

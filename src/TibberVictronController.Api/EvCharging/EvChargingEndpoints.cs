@@ -29,6 +29,13 @@ public static class EvChargingEndpoints
         endpoints.MapPost("/api/ev-charging/car/sign-in", StartCarSignInAsync)
             .WithName("StartCarDataSignIn")
             .WithTags("EvCharging");
+        endpoints.MapPost("/api/ev-charging/car/refresh", (CarDataService carData) =>
+            {
+                carData.RequestPoll();
+                return TypedResults.Accepted((string?)null);
+            })
+            .WithName("RefreshCarData")
+            .WithTags("EvCharging");
         endpoints.MapDelete("/api/ev-charging/car/sign-in", SignOutCarAsync)
             .WithName("SignOutCarData")
             .WithTags("EvCharging");
@@ -81,7 +88,10 @@ public static class EvChargingEndpoints
     }
 
     private static IResult GetCar(HttpContext http, ICarStatusSource car, ControllerAuthenticationOptions authentication) =>
-        TypedResults.Ok(CarStatusDtoMapper.Map(car.Car, car.Connection, car.Stream, !authentication.IsEntra || http.User.IsInRole(AppRoles.Admin)));
+        TypedResults.Ok(CarStatusDtoMapper.Map(car.Car, car.Connection, car.Stream, !authentication.IsEntra || http.User.IsInRole(AppRoles.Admin)) with
+        {
+            Poll = new CarPollDiagnosticsDto(car.Poll.LastPollAtUtc, car.Poll.PollsToday, car.Poll.DailyLimit, car.Poll.LastProblem, car.Poll.LastTrigger)
+        });
 
     private static async Task<IResult> StartCarSignInAsync(CarDataService carData, CancellationToken cancellationToken)
     {
@@ -302,7 +312,12 @@ public sealed record CarStatusResponseDto(
     double? OdometerKm,
     DateTimeOffset? LastMessageAtUtc,
     IReadOnlyList<string> RequiredDescriptors,
-    CarStreamDiagnosticsDto? Stream);
+    CarStreamDiagnosticsDto? Stream)
+{
+    public CarPollDiagnosticsDto? Poll { get; init; }
+}
+
+public sealed record CarPollDiagnosticsDto(DateTimeOffset? LastPollAtUtc, int PollsToday, int DailyLimit, string? LastProblem, string? LastTrigger);
 
 public sealed record CarStreamDiagnosticsDto(
     string? Subscription,

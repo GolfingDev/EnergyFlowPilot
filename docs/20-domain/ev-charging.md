@@ -130,6 +130,12 @@ Operator requirement (2026-11-01): charge beyond the trip plan whenever power is
 - **Joint plan:** while the automatic car charging is on, the car's planned energy per quarter hour is added to the consumption forecast of the joint battery plan. The planner then decides, as for any house load, whether the home batteries cover it (only when cheaper than grid power); otherwise the car charges from the grid and the live limiter does not discharge for it.
 - **No oscillation:** the PV surplus offered to the car adds its own planned charging back to the joint plan's consumption, so the car plan does not shrink because of itself.
 
+## CarData queries (when the stream stays silent)
+
+- REST API `https://api-cardata.bmwgroup.com` (header `x-version: v1`, access token of the same sign-in): the controller creates one data container `EnergyFlowPilot v1` with the descriptors it evaluates (id stored in `bmw.cardata.session.containerId`) and reads `GET /customers/vehicles/{vin}/telematicData?containerId=...`. Without a configured VIN the primary vehicle comes from `GET /customers/vehicles/mappings`. The answer goes through the same parser as stream messages.
+- **When:** if no car data has arrived for an hour (then at most hourly), right after a car is plugged in at the wallbox (at most every 10 minutes), and with "Jetzt abfragen" on the car page. BMW allows about 50 calls per day; the controller stops at 40 (counted per UTC day in memory) and treats HTTP 429 as quota used up.
+- The car page (admin) shows the calls today, the last call with its trigger, and problems.
+
 ## CarData stream diagnostics
 
 The car page (admin) shows the subscription result, the number of stream messages since start, the time and descriptor names (no values) of the last message, and why a message was not used. A refused subscription is an error (with the hint to enter the VIN instead of `auto`). The first message per connection is logged with its descriptor names.

@@ -21,6 +21,19 @@ public sealed class CarDataService(
     IUtcClock clock,
     ILogger<CarDataService> logger) : BackgroundService
 {
+    // BMW allows about 50 REST calls per day; a container lookup or creation costs one or two of them as well.
+    private const int DailyPollLimit = 40;
+    private static readonly TimeSpan PollWhenSilentFor = TimeSpan.FromHours(1);
+    private static readonly TimeSpan MinimumPollGap = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan PollCheckInterval = TimeSpan.FromMinutes(1);
+    private readonly SemaphoreSlim pollRequested = new(0);
+    private readonly SemaphoreSlim pollGate = new(1, 1);
+    private DateOnly pollDay;
+    private int pollsToday;
+    private DateTimeOffset? lastPollAtUtc;
+    private bool wasPlugged;
+    private string? accessToken;
+    private string? pollVin;
     private const string StreamHost = "customer.streaming-cardata.bmwgroup.com";
     private const int StreamPort = 9000;
     private static readonly TimeSpan TokenRenewalMargin = TimeSpan.FromMinutes(5);
@@ -99,7 +112,19 @@ public sealed class CarDataService(
                         .RefreshAsync(settings.ClientId, settings.RefreshToken, settings.Gcid, stoppingToken);
                 await StoreTokensAsync(tokens, settings, stoppingToken);
                 var gcid = tokens.Gcid ?? throw new InvalidOperationException("BMW liefert keine Kundenkennung (GCID).");
-                await StreamUntilRenewalAsync(gcid, tokens, settings.Vin, round.Token);
+                Volatile.Write(ref accessToken, tokens.AccessToken);
+                pollVin = settings.Vin;
+                // Queries run beside the stream for the whole round; a silent stream is then bridged by them.
+                var polling = PollLoopAsync(round.Token);
+                try
+                {
+                    await StreamUntilRenewalAsync(gcid, tokens, settings.Vin, round.Token);
+                }
+                finally
+                {
+                    round.Cancel();
+                    await polling;
+                }
                 backoff = TimeSpan.FromSeconds(30);
             }
             catch (CarDataSignInRequiredException exception)
@@ -220,6 +245,104 @@ public sealed class CarDataService(
             logger.LogWarning(exception, "Letzte Fahrzeugwerte konnten nicht gespeichert werden.");
         }
     }
+
+    /// <summary>"Jetzt abfragen" on the car page; still subject to the daily limit.</summary>
+    public void RequestPoll() => pollRequested.Release();
+
+    private async Task PollLoopAsync(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                var manual = await pollRequested.WaitAsync(PollCheckInterval, token);
+                var trigger = manual ? "von Hand" : DueTrigger();
+                if (trigger is not null) await PollAsync(trigger, manual, token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Round ended.
+        }
+    }
+
+    // Plugging in at the wallbox is when the planner most needs a fresh state of charge.
+    private string? DueTrigger()
+    {
+        var now = clock.UtcNow;
+        using var scope = scopes.CreateScope();
+        var plugged = scope.ServiceProvider.GetService<IEvChargerStatusSource>()?.Current.IsVehiclePlugged ?? false;
+        var justPlugged = plugged && !wasPlugged;
+        wasPlugged = plugged;
+        if (lastPollAtUtc is { } last && now - last < MinimumPollGap) return null;
+        if (justPlugged) return "Auto angesteckt";
+        var lastData = store.Car.LastMessageAtUtc;
+        var silent = lastData is null || now - lastData > PollWhenSilentFor;
+        return silent && (lastPollAtUtc is null || now - lastPollAtUtc >= PollWhenSilentFor) ? "Datenstrom still" : null;
+    }
+
+    private async Task PollAsync(string trigger, bool manual, CancellationToken token)
+    {
+        await pollGate.WaitAsync(token);
+        try
+        {
+            var now = clock.UtcNow;
+            var today = DateOnly.FromDateTime(now.UtcDateTime);
+            if (today != pollDay) (pollDay, pollsToday) = (today, 0);
+            if (pollsToday >= DailyPollLimit)
+            {
+                SetPoll($"Tageslimit von {DailyPollLimit} Abfragen erreicht; nächste Abfrage morgen.", trigger);
+                return;
+            }
+
+            if (Volatile.Read(ref accessToken) is not { } token1)
+            {
+                SetPoll("BMW liefert kein Zugriffstoken für Abfragen; bitte neu anmelden.", trigger);
+                return;
+            }
+
+            pollsToday++;
+            lastPollAtUtc = now;
+            await using var scope = scopes.CreateAsyncScope();
+            var api = scope.ServiceProvider.GetRequiredService<CarDataApiClient>();
+            var vin = pollVin ?? store.Car.Vin ?? await api.GetPrimaryVinAsync(token1, token)
+                ?? throw new InvalidOperationException("BMW nennt kein Fahrzeug, für das dieses Konto Hauptnutzer ist.");
+            var containerId = await ContainerIdAsync(api, token1, token);
+            var json = await api.GetTelematicDataAsync(token1, vin, containerId, token);
+            await HandleMessageAsync(json, pollVin);
+            SetPoll(null, trigger);
+            logger.LogInformation("BMW CarData: Abfrage ({Trigger}) erfolgreich.", trigger);
+        }
+        catch (CarDataQuotaExceededException exception)
+        {
+            pollsToday = DailyPollLimit;
+            SetPoll(exception.Message, trigger);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException or JsonException)
+        {
+            logger.LogWarning("BMW CarData: Abfrage fehlgeschlagen: {Reason}", exception.Message);
+            SetPoll(exception.Message, trigger);
+        }
+        finally
+        {
+            pollGate.Release();
+        }
+    }
+
+    // The container is created once and remembered; a stale id (deleted in the portal) is replaced on the next error.
+    private async Task<string> ContainerIdAsync(CarDataApiClient api, string token1, CancellationToken token)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var settings = scope.ServiceProvider.GetRequiredService<IControllerSettingStore>();
+        var stored = (await settings.GetSettingAsync(ControllerSettingDefaults.BmwCarDataContainerIdKey, token))?.Value;
+        if (!string.IsNullOrWhiteSpace(stored) && stored != ControllerSettingDefaults.BmwCarDataNoSnapshot) return stored;
+        var id = await api.EnsureContainerAsync(token1, CarDataMessageParser.RequiredDescriptors, token);
+        await SaveAsync(ControllerSettingDefaults.BmwCarDataContainerIdKey, id, ControllerSettingSensitivity.Normal, token);
+        return id;
+    }
+
+    private void SetPoll(string? problem, string trigger) =>
+        store.SetPoll(new CarPollDiagnostics(lastPollAtUtc, pollsToday, DailyPollLimit, problem, trigger));
 
     // Each change of state of charge or odometer is kept: the consumption per km is learned from the drives.
     private async Task RecordSampleAsync(CarSnapshot snapshot, DateTimeOffset now)

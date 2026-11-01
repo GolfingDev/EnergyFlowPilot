@@ -30,6 +30,12 @@ public sealed record CarStreamDiagnostics(
     public static readonly CarStreamDiagnostics Empty = new(null, 0, null, [], null);
 }
 
+/// <summary>Active queries of the REST API (used when the stream stays silent; BMW allows about 50 per day).</summary>
+public sealed record CarPollDiagnostics(DateTimeOffset? LastPollAtUtc, int PollsToday, int DailyLimit, string? LastProblem, string? LastTrigger)
+{
+    public static readonly CarPollDiagnostics Empty = new(null, 0, 0, null, null);
+}
+
 public enum CarDataConnectionStatus
 {
     NotConfigured,

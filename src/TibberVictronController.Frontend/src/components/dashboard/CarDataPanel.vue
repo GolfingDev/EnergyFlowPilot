@@ -22,6 +22,7 @@ interface CarStatusDto {
   lastMessageAtUtc: string | null;
   requiredDescriptors: string[];
   stream: { subscription: string | null; messagesReceived: number; lastMessageAtUtc: string | null; lastDescriptors: string[]; lastProblem: string | null } | null;
+  poll: { lastPollAtUtc: string | null; pollsToday: number; dailyLimit: number; lastProblem: string | null; lastTrigger: string | null } | null;
 }
 
 const car = ref<CarStatusDto | null>(null);
@@ -70,6 +71,17 @@ async function send(method: 'POST' | 'DELETE'): Promise<void> {
   } finally {
     busy.value = false;
     await load();
+  }
+}
+
+async function refresh(): Promise<void> {
+  busy.value = true;
+  try {
+    await fetch('/api/ev-charging/car/refresh', { method: 'POST' });
+    // The query runs in the background; give it a moment before reloading.
+    window.setTimeout(() => void load(), 4_000);
+  } finally {
+    busy.value = false;
   }
 }
 
@@ -145,9 +157,14 @@ onBeforeUnmount(() => window.clearTimeout(timer));
           <v-btn v-if="['SignInRequired', 'SignInPending', 'Error'].includes(car.connectionStatus)" color="primary" :loading="busy" @click="send('POST')">
             {{ car.connectionStatus === 'SignInPending' ? 'Neuen Code anfordern' : 'Bei BMW anmelden' }}
           </v-btn>
+          <v-btn v-if="car.connectionStatus === 'Connected'" variant="tonal" :loading="busy" @click="refresh">Jetzt abfragen</v-btn>
           <v-btn v-if="signedIn" variant="text" :disabled="busy" @click="signOut">Abmelden</v-btn>
         </div>
         <p v-if="car.vin" class="car__meta mt-2">VIN {{ car.vin }}</p>
+        <div v-if="car.poll && car.poll.dailyLimit > 0" class="car__meta mt-2">
+          Abfragen: {{ car.poll.pollsToday }} von {{ car.poll.dailyLimit }} heute<template v-if="car.poll.lastPollAtUtc">, letzte {{ date(car.poll.lastPollAtUtc) }} ({{ car.poll.lastTrigger }})</template>.
+          <span v-if="car.poll.lastProblem" class="text-warning"><br>{{ car.poll.lastProblem }}</span>
+        </div>
         <div v-if="car.stream && car.connectionStatus === 'Connected'" class="car__meta mt-2">
           Datenstrom: {{ car.stream.subscription ?? 'kein Abonnement' }} ·
           {{ car.stream.messagesReceived }} Nachrichten seit dem Start<template v-if="car.stream.lastMessageAtUtc">, letzte {{ date(car.stream.lastMessageAtUtc) }}</template>.

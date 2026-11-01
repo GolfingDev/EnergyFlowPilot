@@ -10,4 +10,6 @@ public interface ICarStatusSource
     CarDataConnectionState Connection { get; }
 
     CarStreamDiagnostics Stream { get; }
+
+    CarPollDiagnostics Poll { get; }
 }
