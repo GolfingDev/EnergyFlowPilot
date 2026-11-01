@@ -177,6 +177,85 @@ public sealed class OcppChargePointSession
         }
     }
 
+    // One fixed id: a new limit replaces the previous one, and clearing removes exactly the controller's profile.
+    public const int ControllerProfileId = 70001;
+
+    /// <summary>
+    /// Sets a TxDefaultProfile with a limit in amps that is valid only for the given time. Tried on connector 1 and,
+    /// if the wallbox refuses, on connector 0 (some firmware accepts default profiles only there).
+    /// </summary>
+    public async Task<EvChargerCommandResult> SetCurrentLimitAsync(double amps, TimeSpan validity, CancellationToken cancellationToken)
+    {
+        var now = context.Clock.UtcNow;
+        var validTo = now + validity;
+        object Profile(int connectorId) => new
+        {
+            connectorId,
+            csChargingProfiles = new
+            {
+                chargingProfileId = ControllerProfileId,
+                stackLevel = 1,
+                chargingProfilePurpose = "TxDefaultProfile",
+                chargingProfileKind = "Absolute",
+                validFrom = OcppFrame.Timestamp(now),
+                validTo = OcppFrame.Timestamp(validTo),
+                chargingSchedule = new
+                {
+                    duration = (int)validity.TotalSeconds,
+                    startSchedule = OcppFrame.Timestamp(now),
+                    chargingRateUnit = "A",
+                    chargingSchedulePeriod = new[] { new { startPeriod = 0, limit = Math.Round(amps, 1), numberPhases = 3 } }
+                }
+            }
+        };
+
+        var attempts = new List<string>();
+        foreach (var connectorId in new[] { 1, 0 })
+        {
+            var status = await StatusOfAsync("SetChargingProfile", Profile(connectorId), cancellationToken);
+            attempts.Add($"Anschluss {connectorId}: {status}");
+            if (status == "Accepted")
+                return Record(new EvChargerCommandResult(true, status,
+                    $"Ladestrom auf {amps:0.#} A begrenzt bis {validTo:HH:mm} UTC ({string.Join(", ", attempts)}).", now, validTo));
+        }
+
+        return Record(new EvChargerCommandResult(false, attempts.Count > 0 ? attempts[^1].Split(": ")[1] : "Unbekannt",
+            $"Wallbox lehnt die Begrenzung auf {amps:0.#} A ab ({string.Join(", ", attempts)}).", now, null));
+    }
+
+    public async Task<EvChargerCommandResult> ClearCurrentLimitAsync(CancellationToken cancellationToken)
+    {
+        var now = context.Clock.UtcNow;
+        var status = await StatusOfAsync("ClearChargingProfile", new { id = ControllerProfileId }, cancellationToken);
+        // "Unknown" means there was no such profile any more, which is the wanted state too.
+        var accepted = status is "Accepted" or "Unknown";
+        return Record(new EvChargerCommandResult(accepted, status,
+            accepted ? "Begrenzung aufgehoben; die Wallbox lädt wieder nach ihrer eigenen Einstellung." : $"Wallbox hebt die Begrenzung nicht auf ({status}).",
+            now, null));
+    }
+
+    private async Task<string> StatusOfAsync(string action, object payload, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await CallAsync(action, payload, cancellationToken);
+            return response.Type == OcppMessageType.CallResult
+                ? OcppPayload.OptionalText(response.Payload, "status") ?? "OhneStatus"
+                : response.ErrorCode ?? "Fehler";
+        }
+        catch (TimeoutException)
+        {
+            return "KeineAntwort";
+        }
+    }
+
+    private EvChargerCommandResult Record(EvChargerCommandResult result)
+    {
+        Update(snapshot => snapshot with { LastCommand = result });
+        context.Logger.LogInformation("Wallbox {ChargePointId}: {Description}", context.ChargePointId, result.Description);
+        return result;
+    }
+
     public void FailPendingCalls()
     {
         foreach (var call in pendingCalls.Values) call.TrySetCanceled();

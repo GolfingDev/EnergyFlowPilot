@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import CarDataPanel from '../components/dashboard/CarDataPanel.vue';
+import ChargePlanPanel from '../components/dashboard/ChargePlanPanel.vue';
 import EvChargerPanel from '../components/dashboard/EvChargerPanel.vue';
 import TripPlannerPanel from '../components/dashboard/TripPlannerPanel.vue';
 </script>
@@ -13,6 +14,7 @@ import TripPlannerPanel from '../components/dashboard/TripPlannerPanel.vue';
     </header>
     <CarDataPanel />
     <TripPlannerPanel />
+    <ChargePlanPanel />
     <EvChargerPanel />
   </v-container>
 </template>

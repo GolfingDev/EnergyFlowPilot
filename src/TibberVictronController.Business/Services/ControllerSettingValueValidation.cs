@@ -73,6 +73,7 @@ internal static class ControllerSettingValueValidation
             ControllerSettingDefaults.EvCarUsableCapacityKwhKey => (10m, 200m, false),
             ControllerSettingDefaults.EvCarConsumptionKey => (5m, 60m, false),
             ControllerSettingDefaults.EvCarMinimumSocKey => (0m, 80m, false),
+            ControllerSettingDefaults.EvCarBaseSocKey => (0m, 100m, false),
             ControllerSettingDefaults.EvTripMarginKey => (0m, 100m, false),
             ControllerSettingDefaults.EvWallboxMaximumPowerKey => (1400m, 22000m, true),
             _ => null

@@ -50,6 +50,7 @@ public static class ControllerSettingDefaults
     public const string EvCarConsumptionKey = "ev.car.consumptionKwhPer100Km";
     public const string EvCarMinimumSocKey = "ev.car.minimumSocPercent";
     public const string EvTripMarginKey = "ev.trip.marginPercent";
+    public const string EvCarBaseSocKey = "ev.car.baseSocPercent";
     public const string EvWallboxMaximumPowerKey = "ev.wallbox.maximumPowerWatts";
     public const string EvCalendarEnabledKey = "ev.calendar.enabled";
     public const string EvCalendarMailboxKey = "ev.calendar.mailbox";
@@ -214,6 +215,7 @@ public static class ControllerSettingDefaults
         new(EvCarConsumptionKey, "18", ControllerSettingSensitivity.Normal),
         new(EvCarMinimumSocKey, "15", ControllerSettingSensitivity.Normal),
         new(EvTripMarginKey, "5", ControllerSettingSensitivity.Normal),
+        new(EvCarBaseSocKey, "50", ControllerSettingSensitivity.Normal),
         new(EvWallboxMaximumPowerKey, "11000", ControllerSettingSensitivity.Normal),
         new(EvCalendarEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(EvCalendarMailboxKey, EvCalendarMailboxNotConfigured, ControllerSettingSensitivity.Normal),

@@ -107,6 +107,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IEvChargingSessionRepository, EfEvChargingSessionRepository>();
         services.AddSingleton<EvChargerStatusStore>();
         services.AddSingleton<IEvChargerStatusSource>(provider => provider.GetRequiredService<EvChargerStatusStore>());
+        services.AddSingleton<IEvChargerControl>(provider => provider.GetRequiredService<EvChargerStatusStore>());
         services.AddHttpClient<CarDataAuthClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddSingleton<CarStatusStore>();
         services.AddSingleton<ICarStatusSource>(provider => provider.GetRequiredService<CarStatusStore>());
@@ -129,6 +130,7 @@ public static class ControllerServiceCollectionExtensions
             provider.GetRequiredService<IControllerSettingStore>(),
             provider.GetRequiredService<IUtcClock>()));
         services.AddScoped<CalendarTripSyncService>();
+        services.AddScoped<EvChargePlanService>();
         services.AddScoped<CalendarSyncRunner>();
         services.AddSingleton<CalendarSyncState>();
         services.AddHostedService<CalendarSyncBackgroundService>();

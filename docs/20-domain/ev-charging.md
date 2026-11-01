@@ -1,6 +1,6 @@
 # EV Charging (Charge Amps Halo, BMW i4)
 
-Status: requirements and staged plan agreed with the operator on 2026-10-31. Stages 1 (OCPP, read-only), 2 (BMW CarData, read-only) 3 (manual trip planning) and 5 (calendar) implemented; stage 4 (charging control) is next.
+Status: requirements and staged plan agreed with the operator on 2026-10-31. Stages 1 (OCPP, read-only), 2 (BMW CarData, read-only) 3 (manual trip planning) and 5 (calendar) implemented; stage 4 is split into 4a charging plan (implemented, preview), 4b wallbox command with hardware test (implemented), 4c automatic control and 4d joint battery integration (open).
 
 ## Goal
 
@@ -82,6 +82,19 @@ Operator requirements (2026-11-01): enter "on date X I drive to Y"; adjustable m
 - **Course:** the minimal course from the current state of charge (CarData; minimum state of charge if unknown): charged only as much as needed and as late as possible. Shown as a chart and as a table with the latest charge start and the expected state of charge on return. Trips that need more than a full battery or cannot be reached in time are flagged.
 - **API:** `GET/POST /api/ev-charging/trips`, `DELETE /api/ev-charging/trips/{id}`; changes are admin-only (central write guard).
 
+## Stage 4a implementation (charging plan, preview only)
+
+- **Slots:** quarter hours of the current joint battery plan (price, PV and consumption forecast, planned home battery charging). The PV surplus offered to the car is what remains after house consumption and planned home battery charging, i.e. what would be fed in; the car never takes PV the home battery plan counts on. Without a joint plan younger than 30 minutes the plain price forecast is used (no PV surplus).
+- **Order:** (1) for each departure, earliest first, the missing energy goes into the cheapest quarter hours before it; PV surplus counts at the feed-in price, grid at its price. Energy for a departure beyond the price horizon is partly deferred (half of what full power could charge after the horizon). (2) Remaining PV surplus is always used, up to the charge limit set in the car (CarData), and only where the surplus alone reaches the wallbox minimum. (3) The cheapest remaining quarter hours fill up to the base state of charge (`ev.car.baseSocPercent`, default 50 %).
+- **Constraints:** no charging between departure and return; at least 6 A x 3 phases (4.14 kW) in every planned quarter hour, at most the wallbox power; 90 % assumed charging efficiency. Missing energy and an unreachable base state of charge are reported.
+- **Car page:** "Ladeplan" card with charging blocks (time, power, grid and PV energy, average price, reason) and the expected grid cost. `GET /api/ev-charging/charge-plan`.
+
+## Stage 4b implementation (wallbox command, hardware test)
+
+- `IEvChargerControl` (implemented by the OCPP status store for the connected wallbox): `SetChargingProfile` with a TxDefaultProfile (id 70001, stack level 1, unit A, three phases) that is valid for at most one hour (`validTo`, `duration`), tried on connector 1 and then connector 0; `ClearChargingProfile` for that id ("Unknown" counts as released). 0 A pauses, otherwise 6 to 16 A.
+- **Fail-safe:** every limit expires by itself, so the wallbox returns to its own setting (full power) when the controller stops sending; this keeps rule 1 even if the controller fails. Whether the Halo honours `validTo` must be confirmed in the hardware test.
+- **Hardware test (admin, car page, wallbox card):** pause, 6, 10 or 16 A for 15 minutes, and "Freigeben"; the wallbox's answer and the following phase currents show whether the limit works.
+
 ## Stage 5 implementation (calendar)
 
 Operator decisions (2026-11-01): calendar before charging control; only appointments with a location, or a place evident from the subject; the Entra app of the sign-in already has the permission (application permission Calendars.Read); calendar trips are taken over automatically and can be hidden one by one; places from the subject only from unambiguous patterns.
@@ -94,7 +107,8 @@ Operator decisions (2026-11-01): calendar before charging control; only appointm
 
 ## Open points
 
-- Halo firmware version and whether it accepts `TxDefaultProfile` changes during a transaction (stage 4).
+- Halo firmware 189 is connected. Hardware test open: does it accept the TxDefaultProfile (connector 1 or 0) during a running charge, follow it within seconds, and fall back to full power when `validTo` passes?
+- Wallbox energy is still contained in the house consumption history and thus in the consumption forecast; it should be subtracted (with stage 4d).
 - Exact i4 variant and typical consumption: defaults 81 kWh and 18 kWh/100 km until the operator adjusts them.
 - Winter surcharge from the temperature forecast (rule 2) is not applied yet; the margin covers it for now.
 - Skipping a single occurrence of a series (holiday) is not possible yet.

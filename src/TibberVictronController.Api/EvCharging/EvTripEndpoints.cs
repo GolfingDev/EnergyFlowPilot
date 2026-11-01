@@ -13,6 +13,7 @@ public static class EvTripEndpoints
         endpoints.MapPost("/api/ev-charging/trips", AddTripAsync).WithName("AddEvTrip").WithTags("EvCharging");
         endpoints.MapDelete("/api/ev-charging/trips/{id:int}", DeleteTripAsync).WithName("DeleteEvTrip").WithTags("EvCharging");
         endpoints.MapPut("/api/ev-charging/trips/{id:int}/ignored", SetIgnoredAsync).WithName("SetEvTripIgnored").WithTags("EvCharging");
+        endpoints.MapGet("/api/ev-charging/charge-plan", GetChargePlanAsync).WithName("GetEvChargePlan").WithTags("EvCharging");
         endpoints.MapGet("/api/ev-charging/calendar", GetCalendarStatusAsync).WithName("GetCalendarSyncStatus").WithTags("EvCharging");
         endpoints.MapPost("/api/ev-charging/calendar/sync", SyncCalendarAsync).WithName("SyncCalendar").WithTags("EvCharging");
         return endpoints;
@@ -80,11 +81,47 @@ public static class EvTripEndpoints
         return state.Current.Error is { } error ? TypedResults.BadRequest(new { message = error }) : TypedResults.NoContent();
     }
 
+    private static async Task<IResult> GetChargePlanAsync(EvChargePlanService chargePlan, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var view = await chargePlan.GetAsync(cancellationToken);
+            var plan = view.Plan;
+            return TypedResults.Ok(new EvChargePlanResponseDto(plan.CalculatedAtUtc, view.SlotSource, Math.Round(plan.GridKwh, 1), Math.Round(plan.PvKwh, 1),
+                Math.Round(plan.GridCost, 2), plan.Warnings,
+                plan.Slots.Select(slot => new EvChargeSlotDto(slot.StartsAtUtc, slot.EndsAtUtc, Math.Round(slot.PowerWatts), Math.Round(slot.GridKwh, 2),
+                    Math.Round(slot.PvKwh, 2), slot.PricePerKwh, slot.IsPriceEstimated, slot.Reason.ToString())).ToArray()));
+        }
+        catch (InvalidOperationException exception)
+        {
+            return TypedResults.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
     private static bool IsAdmin(HttpContext http, ControllerAuthenticationOptions authentication) =>
         !authentication.IsEntra || http.User.IsInRole(AppRoles.Admin);
 }
 
 public sealed record EvTripIgnoreRequestDto(bool Ignored);
+
+public sealed record EvChargeSlotDto(
+    DateTimeOffset StartsAtUtc,
+    DateTimeOffset EndsAtUtc,
+    double PowerWatts,
+    double GridKwh,
+    double PvKwh,
+    double PricePerKwh,
+    bool IsPriceEstimated,
+    string Reason);
+
+public sealed record EvChargePlanResponseDto(
+    DateTimeOffset CalculatedAtUtc,
+    string SlotSource,
+    double GridKwh,
+    double PvKwh,
+    double GridCost,
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<EvChargeSlotDto> Slots);
 
 public sealed record CalendarSyncStatusDto(
     bool Enabled,

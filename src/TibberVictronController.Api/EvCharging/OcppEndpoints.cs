@@ -113,6 +113,7 @@ public static class OcppEndpoints
         var session = new OcppChargePointSession(new OcppConnectionContext(chargePointId, generation,
             (text, ct) => socket.SendAsync(Encoding.UTF8.GetBytes(text).AsMemory(), WebSocketMessageType.Text, true, ct).AsTask(),
             services.Store, services.Clock, logger));
+        services.Store.Attach(generation, session);
         var configuration = Task.CompletedTask;
         try
         {

@@ -23,3 +23,15 @@ public interface IEvChargerStatusSource
 {
     EvChargerSnapshot Current { get; }
 }
+
+/// <summary>
+/// Charging current commands to the connected wallbox. Every limit expires by itself, so the wallbox returns to full
+/// power if the controller stops sending (rule 1: never stand still for missing data).
+/// </summary>
+public interface IEvChargerControl
+{
+    /// <summary>0 A pauses charging; otherwise 6 to 16 A on three phases.</summary>
+    Task<EvChargerCommandResult> LimitCurrentAsync(double amps, TimeSpan validity, CancellationToken cancellationToken = default);
+
+    Task<EvChargerCommandResult> ClearLimitAsync(CancellationToken cancellationToken = default);
+}

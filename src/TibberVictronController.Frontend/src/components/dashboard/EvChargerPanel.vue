@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { isAdmin } from '../../auth';
 import { formatDateTime, formatNumber, formatPower } from './dashboardFormatters';
 
 interface EvChargingSessionDto {
@@ -39,12 +40,34 @@ interface EvChargingStatusDto {
   ocppListenPort: number;
   listeningSinceUtc: string;
   wallboxConfiguration: Record<string, string | null>;
+  lastCommand: { accepted: boolean; status: string; description: string; atUtc: string; validUntilUtc: string | null } | null;
   recentSessions: EvChargingSessionDto[];
 }
 
 const status = ref<EvChargingStatusDto | null>(null);
 const error = ref<string | null>(null);
 const showConfiguration = ref(false);
+const testAmps = ref(6);
+const testBusy = ref(false);
+
+// Hardware test: does this Halo accept a time-limited charging profile? The limit expires after 15 minutes by itself.
+async function sendTest(method: 'POST' | 'DELETE'): Promise<void> {
+  testBusy.value = true;
+  try {
+    const response = await fetch('/api/ev-charging/wallbox/limit', {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: method === 'POST' ? JSON.stringify({ amps: testAmps.value, minutes: 15 }) : undefined
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { message?: string } | null;
+      error.value = body?.message ?? `Befehl fehlgeschlagen (HTTP ${response.status}).`;
+    }
+  } finally {
+    testBusy.value = false;
+    await load();
+  }
+}
 let timer: number | undefined;
 
 const chip = computed(() => {
@@ -155,6 +178,24 @@ onBeforeUnmount(() => window.clearInterval(timer));
           </tr>
         </tbody>
       </v-table>
+
+      <section v-if="isAdmin && status.isConnected" class="ev-charger__test mt-4" aria-label="Hardwaretest Ladestrom">
+        <h3 class="text-subtitle-2">Hardwaretest: Ladestrom begrenzen</h3>
+        <p class="ev-charger__meta">Prüft, ob der Halo eine zeitlich begrenzte Vorgabe annimmt. Sie läuft nach 15 Minuten von selbst ab; danach lädt die Wallbox wieder nach eigener Einstellung.</p>
+        <div class="d-flex flex-wrap align-center ga-2 mt-2">
+          <v-btn-toggle v-model="testAmps" density="compact" mandatory variant="outlined">
+            <v-btn :value="0">Pause</v-btn>
+            <v-btn :value="6">6 A</v-btn>
+            <v-btn :value="10">10 A</v-btn>
+            <v-btn :value="16">16 A</v-btn>
+          </v-btn-toggle>
+          <v-btn color="primary" size="small" :loading="testBusy" @click="sendTest('POST')">Für 15 min setzen</v-btn>
+          <v-btn size="small" variant="text" :disabled="testBusy" @click="sendTest('DELETE')">Freigeben</v-btn>
+        </div>
+        <v-alert v-if="status.lastCommand" class="mt-2" density="compact" variant="tonal" :type="status.lastCommand.accepted ? 'success' : 'warning'">
+          {{ date(status.lastCommand.atUtc) }}: {{ status.lastCommand.description }}
+        </v-alert>
+      </section>
 
       <template v-if="configurationEntries.length">
         <v-btn class="mt-2 px-0" variant="text" size="small" @click="showConfiguration = !showConfiguration">

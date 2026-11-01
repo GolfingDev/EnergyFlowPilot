@@ -7,11 +7,42 @@ namespace TibberVictronController.Dal.Ocpp;
 /// Holds the live wallbox state. Every connection gets a generation number: when the wallbox reconnects, the old,
 /// still closing connection must not overwrite the state of the new one.
 /// </summary>
-public sealed class EvChargerStatusStore : IEvChargerStatusSource
+public sealed class EvChargerStatusStore : IEvChargerStatusSource, IEvChargerControl
 {
     private readonly object gate = new();
     private EvChargerSnapshot current = EvChargerSnapshot.Empty;
     private long generation;
+    private OcppChargePointSession? session;
+
+    public void Attach(long connectionGeneration, OcppChargePointSession connectionSession)
+    {
+        lock (gate)
+        {
+            if (connectionGeneration == generation) session = connectionSession;
+        }
+    }
+
+    public Task<EvChargerCommandResult> LimitCurrentAsync(double amps, TimeSpan validity, CancellationToken cancellationToken = default)
+    {
+        if (amps is not 0 and (< 6 or > 16))
+            throw new ArgumentOutOfRangeException(nameof(amps), "Der Ladestrom muss 0 A (Pause) oder 6 bis 16 A betragen.");
+        if (validity <= TimeSpan.Zero || validity > TimeSpan.FromHours(1))
+            throw new ArgumentOutOfRangeException(nameof(validity), "Eine Begrenzung gilt hoechstens eine Stunde.");
+        return ActiveSession().SetCurrentLimitAsync(amps, validity, cancellationToken);
+    }
+
+    public Task<EvChargerCommandResult> ClearLimitAsync(CancellationToken cancellationToken = default) =>
+        ActiveSession().ClearCurrentLimitAsync(cancellationToken);
+
+    private OcppChargePointSession ActiveSession()
+    {
+        lock (gate)
+        {
+            return current.IsConnected && session is not null
+                ? session
+                : throw new InvalidOperationException("Die Wallbox ist nicht verbunden.");
+        }
+    }
 
     public EvChargerSnapshot Current
     {
@@ -40,6 +71,7 @@ public sealed class EvChargerStatusStore : IEvChargerStatusSource
         lock (gate)
         {
             if (connectionGeneration != generation) return;
+            session = null;
             // The last reading is history now; a stale power value must not look live to the planner.
             current = current with { IsConnected = false, PowerWatts = null, PowerIsDerived = false };
         }

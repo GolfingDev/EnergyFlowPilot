@@ -170,6 +170,42 @@ public sealed class OcppChargePointSessionTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CurrentLimitExpiresAndFallsBackToConnectorZero()
+    {
+        var command = session.SetCurrentLimitAsync(6, TimeSpan.FromMinutes(15), CancellationToken.None);
+
+        var first = await ReadSentAsync();
+        Assert.Equal("SetChargingProfile", first[2].GetString());
+        Assert.Equal(1, first[3].GetProperty("connectorId").GetInt32());
+        var profile = first[3].GetProperty("csChargingProfiles");
+        Assert.Equal("TxDefaultProfile", profile.GetProperty("chargingProfilePurpose").GetString());
+        Assert.Equal("2026-10-31T12:15:00.000Z", profile.GetProperty("validTo").GetString());
+        Assert.Equal(6, profile.GetProperty("chargingSchedule").GetProperty("chargingSchedulePeriod")[0].GetProperty("limit").GetDouble());
+        await AnswerAsync(first, """{"status":"Rejected"}""");
+
+        var second = await ReadSentAsync();
+        Assert.Equal(0, second[3].GetProperty("connectorId").GetInt32());
+        await AnswerAsync(second, """{"status":"Accepted"}""");
+        var result = await command;
+
+        Assert.True(result.Accepted);
+        Assert.Contains("Anschluss 1: Rejected", result.Description);
+        Assert.Equal(clock.UtcNow.AddMinutes(15), result.ValidUntilUtc);
+        Assert.Equal(result, store.Current.LastCommand);
+    }
+
+    [Fact]
+    public async Task ClearingAMissingProfileCountsAsReleased()
+    {
+        var command = session.ClearCurrentLimitAsync(CancellationToken.None);
+        var clear = await ReadSentAsync();
+        Assert.Equal(OcppChargePointSession.ControllerProfileId, clear[3].GetProperty("id").GetInt32());
+        await AnswerAsync(clear, """{"status":"Unknown"}""");
+
+        Assert.True((await command).Accepted);
+    }
+
+    [Fact]
     public void ClosingAnOldConnectionDoesNotOverwriteTheNewOne()
     {
         var oldGeneration = store.Connect(ChargePointId, clock.UtcNow);

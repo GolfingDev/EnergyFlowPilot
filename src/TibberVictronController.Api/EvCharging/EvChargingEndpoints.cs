@@ -17,6 +17,12 @@ public static class EvChargingEndpoints
         endpoints.MapGet("/api/ev-charging/status", GetStatusAsync)
             .WithName("GetEvChargingStatus")
             .WithTags("EvCharging");
+        endpoints.MapPost("/api/ev-charging/wallbox/limit", LimitAsync)
+            .WithName("LimitWallboxCurrent")
+            .WithTags("EvCharging");
+        endpoints.MapDelete("/api/ev-charging/wallbox/limit", ClearLimitAsync)
+            .WithName("ClearWallboxLimit")
+            .WithTags("EvCharging");
         endpoints.MapGet("/api/ev-charging/car", GetCar)
             .WithName("GetCarStatus")
             .WithTags("EvCharging");
@@ -47,6 +53,31 @@ public static class EvChargingEndpoints
             status.Current, recent, enabled,
             !string.IsNullOrWhiteSpace(configuredId) && configuredId != ControllerSettingDefaults.EvOcppChargePointNotConfigured,
             isAdmin, isAdmin ? LanAddresses(options.OcppListenPort) : [], options.OcppListenPort, StartedAtUtc)));
+    }
+
+    private static async Task<IResult> LimitAsync(WallboxLimitRequestDto request, IEvChargerControl control, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await control.LimitCurrentAsync(request.Amps, TimeSpan.FromMinutes(request.Minutes), cancellationToken);
+            return TypedResults.Ok(result);
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            return TypedResults.BadRequest(new { message = exception.Message });
+        }
+    }
+
+    private static async Task<IResult> ClearLimitAsync(IEvChargerControl control, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return TypedResults.Ok(await control.ClearLimitAsync(cancellationToken));
+        }
+        catch (InvalidOperationException exception)
+        {
+            return TypedResults.BadRequest(new { message = exception.Message });
+        }
     }
 
     private static IResult GetCar(HttpContext http, ICarStatusSource car, ControllerAuthenticationOptions authentication) =>
@@ -104,6 +135,8 @@ public static class EvChargingEndpoints
     }
 }
 
+public sealed record WallboxLimitRequestDto(double Amps, double Minutes);
+
 public sealed record EvChargingStatusInput(
     EvChargerSnapshot Snapshot,
     IReadOnlyList<EvChargingSession> RecentSessions,
@@ -151,6 +184,7 @@ public static class EvChargingStatusDtoMapper
             input.OcppListenPort,
             input.ListeningSinceUtc,
             setup ? snapshot.Configuration : new Dictionary<string, string?>(),
+            snapshot.LastCommand,
             input.RecentSessions.Select(session => new EvChargingSessionDto(
                 session.TransactionId, session.StartedAtUtc, session.StoppedAtUtc, session.EnergyKwh, session.StopReason)).ToArray());
     }
@@ -199,6 +233,7 @@ public sealed record EvChargingStatusResponseDto(
     int OcppListenPort,
     DateTimeOffset ListeningSinceUtc,
     IReadOnlyDictionary<string, string?> WallboxConfiguration,
+    EvChargerCommandResult? LastCommand,
     IReadOnlyList<EvChargingSessionDto> RecentSessions);
 
 public sealed record EvChargingSessionDto(

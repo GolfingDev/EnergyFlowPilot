@@ -109,6 +109,7 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'ev.calendar.enabled', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.calendar.mailbox', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.car.minimumSocPercent', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
+  { key: 'ev.car.baseSocPercent', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.car.consumptionKwhPer100Km', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.trip.marginPercent', section: 'control', subgroup: 'Auto & Fahrten', category: 'important' },
   { key: 'ev.car.usableCapacityKwh', section: 'control', subgroup: 'Auto & Fahrten', category: 'critical' },

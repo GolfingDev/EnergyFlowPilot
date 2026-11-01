@@ -71,10 +71,19 @@ public sealed record EvChargerSnapshot
     public string? ConfigurationNote { get; init; }
     public IReadOnlyDictionary<string, string?> Configuration { get; init; } = new Dictionary<string, string?>();
     public EvConnectionRejection? LastRejection { get; init; }
+    public EvChargerCommandResult? LastCommand { get; init; }
 
     public bool IsVehiclePlugged => ConnectorStatus is EvConnectorStatus.Preparing or EvConnectorStatus.Charging
         or EvConnectorStatus.SuspendedEv or EvConnectorStatus.SuspendedEvse or EvConnectorStatus.Finishing;
 }
+
+/// <summary>Outcome of a current command: the wallbox's own answer (Accepted, Rejected, NotSupported) and what was sent.</summary>
+public sealed record EvChargerCommandResult(
+    bool Accepted,
+    string Status,
+    string Description,
+    DateTimeOffset AtUtc,
+    DateTimeOffset? ValidUntilUtc);
 
 /// <summary>Last refused connection attempt on the OCPP port, so the operator can see what the wallbox tried.</summary>
 public sealed record EvConnectionRejection(
