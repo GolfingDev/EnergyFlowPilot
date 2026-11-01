@@ -36,6 +36,16 @@ public static class ControllerSettingDefaults
     public const string EvOcppChargePointIdKey = "ev.ocpp.chargePointId";
     // Normal settings need a non-empty value; this marker means "no wallbox accepted yet".
     public const string EvOcppChargePointNotConfigured = "not-configured";
+    public const string BmwCarDataClientIdKey = "bmw.cardata.clientId";
+    public const string BmwCarDataVinKey = "bmw.cardata.vin";
+    public const string BmwCarDataNotConfigured = "not-configured";
+    public const string BmwCarDataAutoVin = "auto";
+    // Internal CarData sign-in state; written only by the CarData service, never via the settings API.
+    public const string BmwCarDataSessionPrefix = "bmw.cardata.session.";
+    public const string BmwCarDataRefreshTokenKey = BmwCarDataSessionPrefix + "refreshToken";
+    public const string BmwCarDataGcidKey = BmwCarDataSessionPrefix + "gcid";
+    public const string BmwCarDataLastSnapshotKey = BmwCarDataSessionPrefix + "lastSnapshot";
+    public const string BmwCarDataNoSnapshot = "none";
     public const string WeishauptHotWaterEnabledKey = "weishauptHotWater.enabled";
     public const string WeishauptHotWaterCheapPriceKey = "weishauptHotWater.cheapPricePerKwh";
     public const string WeishauptHotWaterPvSurplusKey = "weishauptHotWater.pvSurplusWatts";
@@ -186,6 +196,11 @@ public static class ControllerSettingDefaults
         new(E3dcRespectReportedLimitsKey, "false", ControllerSettingSensitivity.Normal),
         new(EvOcppEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(EvOcppChargePointIdKey, EvOcppChargePointNotConfigured, ControllerSettingSensitivity.Normal),
+        new(BmwCarDataClientIdKey, BmwCarDataNotConfigured, ControllerSettingSensitivity.Normal),
+        new(BmwCarDataVinKey, BmwCarDataAutoVin, ControllerSettingSensitivity.Normal),
+        new(BmwCarDataRefreshTokenKey, null, ControllerSettingSensitivity.Sensitive),
+        new(BmwCarDataGcidKey, null, ControllerSettingSensitivity.Sensitive),
+        new(BmwCarDataLastSnapshotKey, BmwCarDataNoSnapshot, ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterCheapPriceKey, "0.20", ControllerSettingSensitivity.Normal),
         new(WeishauptHotWaterPvSurplusKey, "2000", ControllerSettingSensitivity.Normal),

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CarDataPanel from '../components/dashboard/CarDataPanel.vue';
 import EvChargerPanel from '../components/dashboard/EvChargerPanel.vue';
 </script>
 
@@ -9,6 +10,7 @@ import EvChargerPanel from '../components/dashboard/EvChargerPanel.vue';
       <h1>Auto</h1>
       <p>Wallbox-Verbindung, Ladevorgänge und später Ladeplanung für die nächsten Fahrten.</p>
     </header>
+    <CarDataPanel />
     <EvChargerPanel />
   </v-container>
 </template>

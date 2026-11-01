@@ -104,6 +104,8 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'e3dc.rscp.key', section: 'sources', subgroup: 'Lokaler E3/DC-Zugang', category: 'critical' },
   { key: 'ev.ocpp.enabled', section: 'sources', subgroup: 'Wallbox (OCPP)', category: 'important' },
   { key: 'ev.ocpp.chargePointId', section: 'sources', subgroup: 'Wallbox (OCPP)', category: 'important' },
+  { key: 'bmw.cardata.clientId', section: 'sources', subgroup: 'BMW CarData', category: 'important' },
+  { key: 'bmw.cardata.vin', section: 'sources', subgroup: 'BMW CarData', category: 'normal' },
   { key: 'jointBattery.shadowEnabled', section: 'control', subgroup: 'Gemeinsame Akku-Vorschau', category: 'important' },
   { key: 'jointBattery.executionEnabled', section: 'control', subgroup: 'Gemeinsame Akkusteuerung', category: 'critical' },
   { key: 'jointBattery.phase1MaximumImportWatts', section: 'control', subgroup: 'Anschlussgrenzen', category: 'critical' },

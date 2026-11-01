@@ -1,6 +1,6 @@
 # EV Charging (Charge Amps Halo, BMW i4)
 
-Status: requirements and staged plan agreed with the operator on 2026-10-31. Stage 1 (OCPP, read-only) implemented.
+Status: requirements and staged plan agreed with the operator on 2026-10-31. Stages 1 (OCPP, read-only) and 2 (BMW CarData, read-only) implemented.
 
 ## Goal
 
@@ -58,8 +58,23 @@ Each stage is deployable and testable on its own.
 2. Halo: connect to its hotspot `HALO_<serial>` (password from the letter supplied with the Halo), open `192.168.250.1`, OCPP settings → backend URL from step 1. Check the firmware version (158 or newer).
 3. The Halo connects and is rejected at first; the car page shows its id. Enter that id in the setting "Ladepunkt-ID der Wallbox". The Halo retries by itself and is then accepted.
 
+## Stage 2 implementation (BMW CarData)
+
+- **Sign-in:** OAuth device-code flow with PKCE (S256) at `customer.bmwgroup.com/gcdm/oauth/device/code` and `/token`, scope `authenticate_user openid cardata:api:read cardata:streaming:read`, client id from the BMW customer portal (no secret). Started by the admin on the car page, which shows the user code and the BMW link; the controller polls in the background (honours `authorization_pending` and `slow_down`).
+- **Tokens:** only the refresh token and the account id (gcid) are stored, encrypted with the existing data-protection key ring (`bmw.cardata.session.*`, not writable through the settings API). The ID token (one hour) stays in memory and is renewed five minutes before expiry; a refresh rejected with 400/401/403 clears the sign-in and asks for a new one. Error messages carry only the OAuth error code and description, never token values.
+- **Stream:** MQTT 3.1.1 over TLS 1.3 to `customer.streaming-cardata.bmwgroup.com:9000`, client id and user name = gcid, password = ID token, topic `<gcid>/<VIN>` (or `<gcid>/+` with VIN `auto`). Reconnects with backoff 30 s to 10 min; BMW allows one stream per account, so no other CarData stream client may run with the same account.
+- **Values:** state of charge (`...stateOfCharge.displayed`, `...batteryManagement.header` or `...charging.level`), target state of charge, charging status, cable plugged, electric range, odometer. Messages for another VIN and implausible values are ignored. The last values are persisted at most once a minute (`bmw.cardata.session.lastSnapshot`) so they survive a restart.
+- **Car page:** connection state, sign-in code, values with timestamps, setup steps and the descriptors to select (admin only).
+
+### Setup
+
+1. BMW customer portal (as primary user of the car) → BMW CarData: create a client, subscribe it to CarData API and CarData Streaming, select the descriptors listed on the car page in the stream configuration.
+2. Settings → Verbindungen → BMW CarData: enter the client id (VIN optional).
+3. Car page → "Bei BMW anmelden", open the BMW link, confirm the code.
+
 ## Open points
 
 - Halo firmware version and whether it accepts `TxDefaultProfile` changes during a transaction (stage 4).
 - Exact i4 variant (usable battery capacity) and the operator's typical consumption.
 - Calendar source for stage 5.
+- Exact CarData charging status values and whether the car reports plugged state as boolean; to be checked with real messages.

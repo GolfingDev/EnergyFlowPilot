@@ -17,6 +17,15 @@ public static class EvChargingEndpoints
         endpoints.MapGet("/api/ev-charging/status", GetStatusAsync)
             .WithName("GetEvChargingStatus")
             .WithTags("EvCharging");
+        endpoints.MapGet("/api/ev-charging/car", GetCar)
+            .WithName("GetCarStatus")
+            .WithTags("EvCharging");
+        endpoints.MapPost("/api/ev-charging/car/sign-in", StartCarSignInAsync)
+            .WithName("StartCarDataSignIn")
+            .WithTags("EvCharging");
+        endpoints.MapDelete("/api/ev-charging/car/sign-in", SignOutCarAsync)
+            .WithName("SignOutCarData")
+            .WithTags("EvCharging");
         return endpoints;
     }
 
@@ -38,6 +47,32 @@ public static class EvChargingEndpoints
             status.Current, recent, enabled,
             !string.IsNullOrWhiteSpace(configuredId) && configuredId != ControllerSettingDefaults.EvOcppChargePointNotConfigured,
             isAdmin, isAdmin ? LanAddresses(options.OcppListenPort) : [], options.OcppListenPort, StartedAtUtc)));
+    }
+
+    private static IResult GetCar(HttpContext http, ICarStatusSource car, ControllerAuthenticationOptions authentication) =>
+        TypedResults.Ok(CarStatusDtoMapper.Map(car.Car, car.Connection, !authentication.IsEntra || http.User.IsInRole(AppRoles.Admin)));
+
+    private static async Task<IResult> StartCarSignInAsync(CarDataService carData, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await carData.StartSignInAsync(cancellationToken);
+            return TypedResults.NoContent();
+        }
+        catch (InvalidOperationException exception)
+        {
+            return TypedResults.BadRequest(new { message = exception.Message });
+        }
+        catch (HttpRequestException exception)
+        {
+            return TypedResults.Problem($"BMW ist nicht erreichbar: {exception.Message}", statusCode: StatusCodes.Status502BadGateway);
+        }
+    }
+
+    private static async Task<IResult> SignOutCarAsync(CarDataService carData, CancellationToken cancellationToken)
+    {
+        await carData.SignOutAsync(cancellationToken);
+        return TypedResults.NoContent();
     }
 
     /// <summary>Candidate addresses for the wallbox setup; Tailscale (100.64.0.0/10) and link-local are not reachable for it.</summary>
@@ -179,3 +214,55 @@ public sealed record EvConnectionRejectionDto(
     DateTimeOffset AtUtc,
     string? RemoteAddress,
     string RequestedPath);
+
+public static class CarStatusDtoMapper
+{
+    public static CarStatusResponseDto Map(CarSnapshot car, CarDataConnectionState connection, bool isAdmin) => new(
+        connection.Status.ToString(),
+        ConnectionLabel(connection.Status),
+        connection.Message,
+        // The sign-in code and the selected descriptors are only useful to the admin who signs in.
+        isAdmin ? connection.UserCode : null,
+        isAdmin ? connection.VerificationUrl : null,
+        connection.SignInExpiresAtUtc,
+        connection.ConnectedSinceUtc,
+        isAdmin ? car.Vin : null,
+        car.StateOfChargePercent,
+        car.StateOfChargeAtUtc,
+        car.TargetStateOfChargePercent,
+        car.ChargingStatus,
+        car.IsPlugged,
+        car.RemainingRangeKm,
+        car.OdometerKm,
+        car.LastMessageAtUtc,
+        isAdmin ? Dal.BmwCarData.CarDataMessageParser.RequiredDescriptors : []);
+
+    private static string ConnectionLabel(CarDataConnectionStatus status) => status switch
+    {
+        CarDataConnectionStatus.NotConfigured => "Nicht eingerichtet",
+        CarDataConnectionStatus.SignInRequired => "Anmeldung nötig",
+        CarDataConnectionStatus.SignInPending => "Anmeldung läuft",
+        CarDataConnectionStatus.Connecting => "Verbindet",
+        CarDataConnectionStatus.Connected => "Verbunden",
+        _ => "Fehler"
+    };
+}
+
+public sealed record CarStatusResponseDto(
+    string ConnectionStatus,
+    string ConnectionLabel,
+    string? ConnectionMessage,
+    string? UserCode,
+    string? VerificationUrl,
+    DateTimeOffset? SignInExpiresAtUtc,
+    DateTimeOffset? ConnectedSinceUtc,
+    string? Vin,
+    double? StateOfChargePercent,
+    DateTimeOffset? StateOfChargeAtUtc,
+    double? TargetStateOfChargePercent,
+    string? ChargingStatus,
+    bool? IsPlugged,
+    double? RemainingRangeKm,
+    double? OdometerKm,
+    DateTimeOffset? LastMessageAtUtc,
+    IReadOnlyList<string> RequiredDescriptors);

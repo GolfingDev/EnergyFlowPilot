@@ -69,7 +69,7 @@ Anforderung: `docs/20-domain/battery-decision-engine.md`, Abschnitt „Gemeinsam
 Requirement: `docs/20-domain/ev-charging.md`.
 
 1. Implemented: OCPP 1.6J central system, read-only (LAN-only port 8887, sessions and meter values, metering configuration, dashboard card). Open: acceptance test with the real Halo.
-2. Open: BMW CarData read access (device-code sign-in, encrypted tokens, MQTT stream for state of charge).
+2. Implemented: BMW CarData read access (device-code sign-in, encrypted tokens, MQTT stream for state of charge, car page). Open: acceptance test with the real account.
 3. Open: destinations and trips (address with OpenStreetMap distance, recurring trips, car parameters, required state of charge per departure).
 4. Open: charging plan and control (quarter-hour plan, SetChargingProfile, planned load in the joint battery plan, full-power fallback when data is missing and a trip is due).
 5. Open: calendar integration.

@@ -5,14 +5,15 @@ using TibberVictronController.Business.Models;
 
 namespace TibberVictronController.Api.Configuration;
 
-/// <summary>Encrypts only the new RSCP credentials; other existing settings retain their storage format.</summary>
+/// <summary>Encrypts the RSCP credentials and the BMW CarData sign-in; other settings retain their storage format.</summary>
 public sealed class ProtectedRscpSettingStore(IControllerSettingStore inner, IDataProtectionProvider protection,
     ILogger<ProtectedRscpSettingStore>? logger = null) : IControllerSettingStore
 {
     private const string Prefix = "efp-rscp:v1:";
     private readonly IDataProtector protector = protection.CreateProtector("EnergyFlowPilot.RscpCredentials.v1");
     private static bool IsCredential(string key) => key is ControllerSettingDefaults.E3dcRscpUserKey or
-        ControllerSettingDefaults.E3dcRscpPasswordKey or ControllerSettingDefaults.E3dcRscpKeyKey;
+        ControllerSettingDefaults.E3dcRscpPasswordKey or ControllerSettingDefaults.E3dcRscpKeyKey or
+        ControllerSettingDefaults.BmwCarDataRefreshTokenKey or ControllerSettingDefaults.BmwCarDataGcidKey;
 
     private ControllerSetting Decode(ControllerSetting setting)
     {
