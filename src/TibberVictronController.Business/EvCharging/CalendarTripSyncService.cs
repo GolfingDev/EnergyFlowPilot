@@ -45,6 +45,9 @@ public sealed class CalendarTripSyncService(CalendarTripSyncDependencies depende
         var unresolved = new List<CalendarUnresolved>();
         var errors = new List<string>();
         var synced = new HashSet<string>(StringComparer.Ordinal);
+        // The same appointment can be in several calendars (an invitation to two family members); one car makes it
+        // one trip. The first calendar wins.
+        var seen = new HashSet<(string Subject, DateTimeOffset Start, DateTimeOffset End)>();
         var eventsRead = 0;
 
         foreach (var source in sources)
@@ -65,6 +68,7 @@ public sealed class CalendarTripSyncService(CalendarTripSyncDependencies depende
             eventsRead += events.Count;
             foreach (var appointment in events.Where(appointment => !appointment.IsCancelled))
             {
+                if (!seen.Add((appointment.Subject.Trim().ToLowerInvariant(), appointment.StartUtc, appointment.EndUtc))) continue;
                 var key = source.KeyPrefix + appointment.Id;
                 if (await SyncAppointmentAsync(appointment, key, source, existing, home, routes, unresolved, now, cancellationToken))
                     kept.Add(key);
@@ -139,12 +143,19 @@ public sealed class CalendarTripSyncService(CalendarTripSyncDependencies depende
     private async Task<IReadOnlyList<CalendarSourceInfo>> SourcesAsync(CancellationToken cancellationToken)
     {
         var sources = new List<CalendarSourceInfo>();
-        var legacy = (await dependencies.Settings.GetSettingAsync(ControllerSettingDefaults.EvCalendarMailboxKey, cancellationToken))?.Value;
-        if (!string.IsNullOrWhiteSpace(legacy) && legacy != ControllerSettingDefaults.EvCalendarMailboxNotConfigured)
-            sources.Add(new CalendarSourceInfo(legacy, null, null, string.Empty));
-        if (dependencies.UserCalendars is not null)
-            sources.AddRange((await dependencies.UserCalendars.GetAllAsync(cancellationToken))
-                .Select(calendar => new CalendarSourceInfo(calendar.Mailbox, calendar.UserId, calendar.Name, calendar.UserId + "|")));
+        var legacy = (await dependencies.Settings.GetSettingAsync(ControllerSettingDefaults.EvCalendarMailboxKey, cancellationToken))?.Value?.Trim();
+        var hasLegacy = !string.IsNullOrWhiteSpace(legacy) && legacy != ControllerSettingDefaults.EvCalendarMailboxNotConfigured;
+        var users = dependencies.UserCalendars is null ? [] : await dependencies.UserCalendars.GetAllAsync(cancellationToken);
+        foreach (var calendar in users)
+        {
+            // The user connected the mailbox that is also the shared setting: read it once, as the user's calendar, but
+            // keep the older keys so places chosen for those appointments stay.
+            var sameAsLegacy = hasLegacy && string.Equals(calendar.Mailbox.Trim(), legacy, StringComparison.OrdinalIgnoreCase);
+            sources.Add(new CalendarSourceInfo(calendar.Mailbox, calendar.UserId, calendar.Name, sameAsLegacy ? string.Empty : calendar.UserId + "|"));
+        }
+
+        if (hasLegacy && sources.All(source => source.KeyPrefix.Length > 0))
+            sources.Add(new CalendarSourceInfo(legacy!, null, null, string.Empty));
         return sources;
     }
 

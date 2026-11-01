@@ -50,11 +50,11 @@ public static class EvTripSocPlanner
         if (trips.Count > 0 && input.WinterSurchargePerKelvinPercent > 0 && temperatures.Any(temperature => temperature is null))
             warnings.Add("Für einzelne Fahrten fehlt die Temperaturprognose; dort ohne Winterzuschlag gerechnet.");
 
+        // Overlapping trips (assumed returns, appointments of several people) are normal; there is simply no charging
+        // in between. Not worth a hint (operator 2026-11-01).
         for (var i = 0; i + 1 < trips.Count; i++)
         {
-            if (returns[i].At <= trips[i + 1].DepartureAtUtc) continue;
-            warnings.Add($"Die Rückkehr der Fahrt nach {trips[i].Destination} liegt nach der Abfahrt nach {trips[i + 1].Destination}; dazwischen wird nicht geladen.");
-            returns[i] = (trips[i + 1].DepartureAtUtc, returns[i].Assumed);
+            if (returns[i].At > trips[i + 1].DepartureAtUtc) returns[i] = (trips[i + 1].DepartureAtUtc, returns[i].Assumed);
         }
 
         // Backward pass: what must be in the battery at each departure so that all later trips still work.

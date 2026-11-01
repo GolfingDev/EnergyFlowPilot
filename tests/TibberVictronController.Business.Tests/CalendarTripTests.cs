@@ -180,6 +180,37 @@ public sealed class CalendarTripTests
     }
 
     [Fact]
+    public async Task OwnMailboxThatIsAlsoTheSharedSettingIsReadOnceAndKeepsTheOlderTrips()
+    {
+        var context = new SyncContext(legacyMailbox: "Torsten@example.com");
+        context.Calendar.Events.Add(Event("a", "Klassenausflug", "Leipzig"));
+        await context.Service.SyncAsync(CancellationToken.None);
+
+        context.Users.Calendars.Add(new UserCalendar("u-1", "Torsten", "torsten@example.com", Now));
+        await context.Service.SyncAsync(CancellationToken.None);
+
+        // Operator report 2026-11-01: the same appointment showed up twice. Now one trip, still under the older key
+        // (a chosen place stays), owned by the user.
+        var trip = Assert.Single(context.Trips.Trips);
+        Assert.Equal("a", trip.ExternalId);
+        Assert.Equal("u-1", trip.OwnerId);
+    }
+
+    [Fact]
+    public async Task TheSameAppointmentInTwoCalendarsIsOneTrip()
+    {
+        var context = new SyncContext(legacyMailbox: null);
+        context.Users.Calendars.Add(new UserCalendar("u-1", "Torsten", "torsten@example.com", Now));
+        context.Users.Calendars.Add(new UserCalendar("u-2", "Carla", "carla@example.com", Now));
+        context.Calendar.ByMailbox["torsten@example.com"] = [Event("a", "Klassenausflug Carla", "Leipzig")];
+        context.Calendar.ByMailbox["carla@example.com"] = [Event("x", "Klassenausflug Carla ", "Leipzig")];
+
+        await context.Service.SyncAsync(CancellationToken.None);
+
+        Assert.Equal("u-1|a", Assert.Single(context.Trips.Trips).ExternalId);
+    }
+
+    [Fact]
     public void OnlyTheOwnerOrAnAdminMayChangeATrip()
     {
         var own = new EvTrip(1, Now, null, "Ziel", "Adresse", 10, 10, Now, OwnerId: "u-1", OwnerName: "Torsten");
