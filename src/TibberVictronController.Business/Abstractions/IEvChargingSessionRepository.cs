@@ -16,6 +16,11 @@ public interface IEvChargingSessionRepository
     Task<EvChargingSession?> StopAsync(int transactionId, double meterStopWh, DateTimeOffset stoppedAtUtc, string? reason, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<EvChargingSession>> GetRecentAsync(int maxCount, CancellationToken cancellationToken = default);
+
+    Task MarkBaseChoiceAskedAsync(int transactionId, DateTimeOffset askedAtUtc, CancellationToken cancellationToken = default);
+
+    /// <summary>Stores the driver's answer; false when the session is unknown or already finished.</summary>
+    Task<bool> SetBaseChargeModeAsync(int transactionId, EvBaseChargeMode mode, string decidedBy, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Live wallbox state for the dashboard and, later, the charging planner.</summary>

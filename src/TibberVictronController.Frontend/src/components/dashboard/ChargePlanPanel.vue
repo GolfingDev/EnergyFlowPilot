@@ -44,7 +44,22 @@ interface EvChargingControlDto {
   commandProblem: string | null;
 }
 
+interface EvBaseChoiceDto {
+  transactionId: number | null;
+  isBelowBase: boolean;
+  socPercent: number | null;
+  baseSocPercent: number;
+  mode: 'PriceDriven' | 'Immediate';
+  isDecided: boolean;
+  askedAtUtc: string | null;
+  defaultAtUtc: string | null;
+  decidedBy: string | null;
+  canDecide: boolean;
+}
+
 const plan = ref<EvChargePlanDto | null>(null);
+const baseChoice = ref<EvBaseChoiceDto | null>(null);
+const choosing = ref(false);
 const control = ref<EvChargingControlDto | null>(null);
 const modeLabel: Record<EvChargingControlDto['mode'], string> = {
   Off: 'Automatik aus', Waiting: 'Wartet', Plan: 'Lädt nach Plan', PvSurplus: 'Lädt mit PV-Überschuss', Paused: 'Pausiert', FullPowerFallback: 'Volle Leistung (Notbetrieb)'
@@ -85,8 +100,10 @@ const blocks = computed<ChargeBlock[]>(() => {
 
 async function load(): Promise<void> {
   try {
-    const [response, controlResponse] = await Promise.all([fetch('/api/ev-charging/charge-plan'), fetch('/api/ev-charging/control')]);
+    const [response, controlResponse, choiceResponse] = await Promise.all([
+      fetch('/api/ev-charging/charge-plan'), fetch('/api/ev-charging/control'), fetch('/api/ev-charging/base-choice')]);
     if (controlResponse.ok) control.value = await controlResponse.json() as EvChargingControlDto;
+    if (choiceResponse.ok) baseChoice.value = await choiceResponse.json() as EvBaseChoiceDto;
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { detail?: string } | null;
       throw new Error(body?.detail ?? `Ladeplan konnte nicht geladen werden (HTTP ${response.status}).`);
@@ -97,6 +114,27 @@ async function load(): Promise<void> {
     error.value = reason instanceof Error ? reason.message : 'Ladeplan konnte nicht geladen werden.';
   }
 }
+
+// The answer holds for the running charging session; the control follows it within half a minute.
+async function chooseBase(mode: EvBaseChoiceDto['mode']): Promise<void> {
+  if (!baseChoice.value?.transactionId) return;
+  choosing.value = true;
+  try {
+    const response = await fetch('/api/ev-charging/base-choice', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId: baseChoice.value.transactionId, mode })
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { message?: string } | null;
+      error.value = body?.message ?? `Auswahl konnte nicht gespeichert werden (HTTP ${response.status}).`;
+    }
+  } finally {
+    choosing.value = false;
+    await load();
+  }
+}
+
+const showBaseChoice = computed(() => !!baseChoice.value?.transactionId && (baseChoice.value.isBelowBase || baseChoice.value.isDecided));
 
 onMounted(() => { void load(); timer = window.setInterval(() => void load(), 30_000); });
 onBeforeUnmount(() => window.clearInterval(timer));
@@ -115,6 +153,24 @@ onBeforeUnmount(() => window.clearInterval(timer));
         Grundlage: {{ plan?.slotSource ?? '–' }}.
       </p>
       <v-alert v-if="control?.commandProblem" class="mt-2" type="warning" variant="tonal" density="compact">{{ control.commandProblem }}</v-alert>
+      <v-alert v-if="showBaseChoice && baseChoice" class="mt-2" :type="baseChoice.isDecided ? 'info' : 'warning'" variant="tonal" density="compact">
+        <template v-if="baseChoice.isDecided">
+          Grund-Ladestand {{ formatNumber(baseChoice.baseSocPercent, 0) }} %:
+          <strong>{{ baseChoice.mode === 'Immediate' ? 'jetzt laden' : 'preisgesteuert' }}</strong><template v-if="baseChoice.decidedBy"> (gewählt von {{ baseChoice.decidedBy }})</template>.
+        </template>
+        <template v-else>
+          Auto bei {{ formatNumber(baseChoice.socPercent ?? 0, 0) }} %, unter dem Grund-Ladestand von {{ formatNumber(baseChoice.baseSocPercent, 0) }} %.
+          Jetzt laden oder preisgesteuert (bis {{ formatNumber(baseChoice.baseSocPercent, 0) }} % innerhalb eines Tages zur günstigsten Zeit)?
+          <template v-if="baseChoice.defaultAtUtc && Date.parse(baseChoice.defaultAtUtc) > Date.now()">Ohne Auswahl ab {{ timeOnly.format(new Date(baseChoice.defaultAtUtc)) }} preisgesteuert.</template>
+          <template v-else>Bis zur Auswahl preisgesteuert.</template>
+        </template>
+        <div v-if="baseChoice.canDecide" class="d-flex flex-wrap ga-2 mt-2">
+          <v-btn size="small" color="primary" :variant="baseChoice.mode === 'Immediate' && baseChoice.isDecided ? 'flat' : 'tonal'" :loading="choosing"
+            @click="chooseBase('Immediate')">Jetzt laden</v-btn>
+          <v-btn size="small" :variant="baseChoice.mode === 'PriceDriven' && baseChoice.isDecided ? 'flat' : 'tonal'" :loading="choosing"
+            @click="chooseBase('PriceDriven')">Preisgesteuert</v-btn>
+        </div>
+      </v-alert>
     </div>
     <div class="px-4 pb-4">
       <v-alert v-if="error" class="mb-3" type="warning" variant="tonal" density="compact">{{ error }}</v-alert>

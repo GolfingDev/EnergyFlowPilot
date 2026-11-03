@@ -84,6 +84,26 @@ public sealed class OcppChargePointSessionTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task BaseChargeChoiceIsStoredWithTheRunningSessionOnly()
+    {
+        var start = await CallAsync("StartTransaction", """{"connectorId":1,"idTag":"car","meterStart":1000,"timestamp":"2026-10-31T11:59:00Z"}""");
+        var transactionId = start[2].GetProperty("transactionId").GetInt32();
+        var asked = new DateTimeOffset(2026, 10, 31, 12, 0, 0, TimeSpan.Zero);
+
+        await repository.MarkBaseChoiceAskedAsync(transactionId, asked);
+        await repository.MarkBaseChoiceAskedAsync(transactionId, asked.AddHours(1));
+        Assert.True(await repository.SetBaseChargeModeAsync(transactionId, EvBaseChargeMode.Immediate, "Torsten"));
+
+        var session = (await repository.GetAsync(transactionId))!;
+        Assert.Equal(EvBaseChargeMode.Immediate, session.BaseChargeMode);
+        Assert.Equal(asked, session.BaseChoiceAskedAtUtc);
+        Assert.Equal("Torsten", session.BaseChoiceBy);
+
+        await repository.StopAsync(transactionId, 2000, asked.AddHours(2), null);
+        Assert.False(await repository.SetBaseChargeModeAsync(transactionId, EvBaseChargeMode.PriceDriven, "Torsten"));
+    }
+
+    [Fact]
     public async Task RepeatedStartTransactionKeepsTheTransactionId()
     {
         const string payload = """{"connectorId":1,"idTag":"car","meterStart":1000,"timestamp":"2026-10-31T11:59:00Z"}""";

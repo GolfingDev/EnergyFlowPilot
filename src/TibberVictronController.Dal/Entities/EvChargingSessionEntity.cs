@@ -13,4 +13,8 @@ public sealed class EvChargingSessionEntity
     public string? StopReason { get; set; }
     public double? LastMeterWh { get; set; }
     public DateTimeOffset? LastMeterAtUtc { get; set; }
+    // Answer to "charge now or by price?" below the base state of charge (Immediate / PriceDriven), null while open.
+    public string? BaseChargeMode { get; set; }
+    public DateTimeOffset? BaseChoiceAskedAtUtc { get; set; }
+    public string? BaseChoiceBy { get; set; }
 }

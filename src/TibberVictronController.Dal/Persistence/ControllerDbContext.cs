@@ -126,6 +126,9 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(session => session.StartedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
             entity.Property(session => session.StoppedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
             entity.Property(session => session.LastMeterAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(session => session.BaseChargeMode).HasMaxLength(16);
+            entity.Property(session => session.BaseChoiceAskedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(session => session.BaseChoiceBy).HasMaxLength(200);
             entity.HasIndex(session => session.StartedAtUtc);
         });
     }

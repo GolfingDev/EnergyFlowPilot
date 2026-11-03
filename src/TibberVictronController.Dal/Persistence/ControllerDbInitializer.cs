@@ -29,6 +29,7 @@ public sealed class ControllerDbInitializer
         await EnsureLiveConsumptionSampleColumnsAsync(cancellationToken);
         await EnsureWeishauptEnergyColumnsAsync(cancellationToken);
         await EnsureEvTripColumnsAsync(cancellationToken);
+        await EnsureEvChargingSessionColumnsAsync(cancellationToken);
         await SeedMissingDefaultSettingsAsync(initializedAtUtc, cancellationToken);
     }
 
@@ -54,6 +55,21 @@ CREATE TABLE IF NOT EXISTS "BatterySavingsByBattery" (
 INSERT OR IGNORE INTO "BatterySavingsByBattery" ("BatteryId", "MeasuredSeconds", "AccountingDate", "Currency", "GridChargedEnergyKwh", "GridChargeCost", "PvChargedEnergyKwh", "PvOpportunityCost", "DischargedEnergyKwh", "DischargeAvoidedCost", "NetSavings", "UpdatedAtUtc")
 SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "GridChargeCost", "PvChargedEnergyKwh", "PvOpportunityCost", "DischargedEnergyKwh", "DischargeAvoidedCost", "NetSavings", "UpdatedAtUtc" FROM "BatterySavingsDailySummaries";
 """, token);
+    }
+
+    // Additive migration: the base state of charge answer per charging session (2026-11-03).
+    private async Task EnsureEvChargingSessionColumnsAsync(CancellationToken cancellationToken)
+    {
+        if (!await TableExistsAsync("EvChargingSessions", cancellationToken)) return;
+        var existing = await GetColumnNamesAsync("EvChargingSessions", cancellationToken);
+        var columns = new Dictionary<string, string>
+        {
+            ["BaseChargeMode"] = "TEXT NULL",
+            ["BaseChoiceAskedAtUtc"] = "INTEGER NULL",
+            ["BaseChoiceBy"] = "TEXT NULL"
+        };
+        foreach (var column in columns.Where(column => !existing.Contains(column.Key)))
+            await dbContext.Database.ExecuteSqlRawAsync($"ALTER TABLE \"EvChargingSessions\" ADD COLUMN \"{column.Key}\" {column.Value};", cancellationToken);
     }
 
     // Additive migration: trip tables created by an earlier release get the newer columns with neutral defaults.
@@ -307,7 +323,10 @@ CREATE TABLE IF NOT EXISTS "EvChargingSessions" (
     "MeterStopWh" REAL NULL,
     "StopReason" TEXT NULL,
     "LastMeterWh" REAL NULL,
-    "LastMeterAtUtc" INTEGER NULL
+    "LastMeterAtUtc" INTEGER NULL,
+    "BaseChargeMode" TEXT NULL,
+    "BaseChoiceAskedAtUtc" INTEGER NULL,
+    "BaseChoiceBy" TEXT NULL
 );
 CREATE INDEX IF NOT EXISTS "IX_EvChargingSessions_StartedAtUtc" ON "EvChargingSessions" ("StartedAtUtc");
 """;

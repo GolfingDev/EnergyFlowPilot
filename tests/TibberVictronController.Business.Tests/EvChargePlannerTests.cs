@@ -48,10 +48,24 @@ public sealed class EvChargePlannerTests
     }
 
     [Fact]
-    public void BelowTheBaseStateOfChargeChargingStartsAtOnce()
+    public void BaseStateOfChargeIsReachedEvenWhenNotCheap()
     {
-        // Operator 2026-11-03: the base state of charge is a minimum. Cheaper hours later do not count below it.
+        // A full day of prices: by price, the base state of charge has to be reached within it.
         var plan = EvChargePlanner.Plan(Input(Slots(96, index => index < 8 ? 0.35 : 0.30), [], currentSoc: 40) with { BaseSocPercent = 50, FutureValuePerKwh = 0.10 });
+
+        // 40 % -> 50 % = 8.1 kWh in the battery = 9 kWh at the wallbox, in the cheaper second half.
+        // The 1 kWh state grid may leave a few watt hours short of exactly 50 %.
+        Assert.InRange(plan.GridKwh, 8.9, 9.5);
+        Assert.All(plan.Slots, slot => Assert.Equal(0.30, slot.PricePerKwh));
+        Assert.All(plan.Slots, slot => Assert.Equal(EvChargeReason.BaseSoc, slot.Reason));
+    }
+
+    [Fact]
+    public void ChargeNowStartsAtOnceBelowTheBaseStateOfCharge()
+    {
+        // Operator 2026-11-03: the driver answered "charge now"; cheaper hours later do not count below the base.
+        var plan = EvChargePlanner.Plan(Input(Slots(96, index => index < 8 ? 0.35 : 0.30), [], currentSoc: 40) with
+            { BaseSocPercent = 50, FutureValuePerKwh = 0.10, BaseMode = EvBaseChargeMode.Immediate });
 
         // 40 % -> 50 % = 8.1 kWh in the battery = 9 kWh at the wallbox, right now at full power.
         // The 1 kWh state grid may leave a few watt hours short of exactly 50 %.
@@ -115,11 +129,37 @@ public sealed class EvChargePlannerTests
     }
 
     [Fact]
-    public void BaseStateOfChargeDoesNotWaitForPricesThatAreNotPublishedYet()
+    public void BaseStateOfChargeWaitsForPricesThatAreNotPublishedYet()
     {
+        // Only four hours of prices known: by price, the base state of charge can still be reached tomorrow night.
         var plan = EvChargePlanner.Plan(Input(Slots(16, _ => 0.30), [], currentSoc: 40) with { BaseSocPercent = 50, FutureValuePerKwh = 0.10 });
+        Assert.Empty(plan.Slots);
 
-        Assert.Equal(Now, plan.Slots[0].StartsAtUtc);
+        // "Charge now" does not wait.
+        var now = EvChargePlanner.Plan(Input(Slots(16, _ => 0.30), [], currentSoc: 40) with
+            { BaseSocPercent = 50, FutureValuePerKwh = 0.10, BaseMode = EvBaseChargeMode.Immediate });
+        Assert.Equal(Now, now.Slots[0].StartsAtUtc);
+    }
+
+    [Fact]
+    public void BaseChoiceIsAskedOnceBelowTheBaseAndDefaultsToPrice()
+    {
+        var session = new EvChargingSession(7, "cp", 1, "tag", Now, 0, null, null, null, null, null);
+
+        var fresh = EvBaseChargeChoice.Resolve(session, 26, 30);
+        Assert.True(fresh.ShouldAsk);
+        Assert.Equal(EvBaseChargeMode.PriceDriven, fresh.Mode);
+
+        var asked = EvBaseChargeChoice.Resolve(session with { BaseChoiceAskedAtUtc = Now }, 26, 30);
+        Assert.False(asked.ShouldAsk);
+        Assert.Equal(Now.AddMinutes(15), asked.DefaultAtUtc);
+
+        var answered = EvBaseChargeChoice.Resolve(session with { BaseChoiceAskedAtUtc = Now, BaseChargeMode = EvBaseChargeMode.Immediate, BaseChoiceBy = "Torsten" }, 26, 30);
+        Assert.Equal(EvBaseChargeMode.Immediate, answered.Mode);
+        Assert.Equal("Torsten", answered.DecidedBy);
+
+        Assert.False(EvBaseChargeChoice.Resolve(session, 45, 30).ShouldAsk);
+        Assert.False(EvBaseChargeChoice.Resolve(session with { StoppedAtUtc = Now }, 26, 30).ShouldAsk);
     }
 
     [Fact]

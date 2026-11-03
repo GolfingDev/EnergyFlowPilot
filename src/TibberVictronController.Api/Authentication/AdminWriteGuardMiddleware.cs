@@ -25,7 +25,8 @@ public sealed class AdminWriteGuardMiddleware(RequestDelegate next)
     // Drivers change their own trips and calendar and may ask for fresh car data; ownership is checked by the endpoint.
     private static bool IsDriverPath(PathString path) =>
         path.StartsWithSegments("/api/ev-charging/trips") || path.StartsWithSegments("/api/ev-charging/calendar") ||
-        path.StartsWithSegments("/api/ev-charging/my-calendar") || path.StartsWithSegments("/api/ev-charging/car/refresh");
+        path.StartsWithSegments("/api/ev-charging/my-calendar") || path.StartsWithSegments("/api/ev-charging/car/refresh") ||
+        path.StartsWithSegments("/api/ev-charging/base-choice");
 
     private static bool IsReadOnlyMethod(string method) =>
         HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);

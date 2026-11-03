@@ -87,7 +87,30 @@ public sealed class EfEvChargingSessionRepository(ControllerDbContext dbContext)
         return entities.Select(Map).ToArray();
     }
 
+    public async Task MarkBaseChoiceAskedAsync(int transactionId, DateTimeOffset askedAtUtc, CancellationToken cancellationToken = default)
+    {
+        var entity = await dbContext.EvChargingSessions.FirstOrDefaultAsync(session => session.TransactionId == transactionId, cancellationToken);
+        if (entity is null || entity.BaseChoiceAskedAtUtc is not null) return;
+        entity.BaseChoiceAskedAtUtc = askedAtUtc;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<bool> SetBaseChargeModeAsync(int transactionId, EvBaseChargeMode mode, string decidedBy, CancellationToken cancellationToken = default)
+    {
+        var entity = await dbContext.EvChargingSessions.FirstOrDefaultAsync(session => session.TransactionId == transactionId, cancellationToken);
+        if (entity is null || entity.StoppedAtUtc is not null) return false;
+        entity.BaseChargeMode = mode.ToString();
+        entity.BaseChoiceBy = decidedBy.Length <= 200 ? decidedBy : decidedBy[..200];
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static EvChargingSession Map(EvChargingSessionEntity entity) => new(
         entity.TransactionId, entity.ChargePointId, entity.ConnectorId, entity.IdTag, entity.StartedAtUtc, entity.MeterStartWh,
-        entity.StoppedAtUtc, entity.MeterStopWh, entity.StopReason, entity.LastMeterWh, entity.LastMeterAtUtc);
+        entity.StoppedAtUtc, entity.MeterStopWh, entity.StopReason, entity.LastMeterWh, entity.LastMeterAtUtc)
+    {
+        BaseChargeMode = Enum.TryParse<EvBaseChargeMode>(entity.BaseChargeMode, out var mode) ? mode : null,
+        BaseChoiceAskedAtUtc = entity.BaseChoiceAskedAtUtc,
+        BaseChoiceBy = entity.BaseChoiceBy
+    };
 }

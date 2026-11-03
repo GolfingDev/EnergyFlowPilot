@@ -16,6 +16,13 @@ public enum EvConnectorStatus
 }
 
 /// <summary>One charging session (OCPP transaction). Meter readings are in Wh as reported by the wallbox.</summary>
+/// <summary>How a car below the base state of charge charges: at once, or in the cheapest hours within a day.</summary>
+public enum EvBaseChargeMode
+{
+    PriceDriven,
+    Immediate
+}
+
 public sealed record EvChargingSession(
     int TransactionId,
     string ChargePointId,
@@ -30,6 +37,13 @@ public sealed record EvChargingSession(
     DateTimeOffset? LastMeterAtUtc)
 {
     public bool IsActive => StoppedAtUtc is null;
+
+    /// <summary>The driver's answer for this charging session; null while nobody has decided.</summary>
+    public EvBaseChargeMode? BaseChargeMode { get; init; }
+
+    public DateTimeOffset? BaseChoiceAskedAtUtc { get; init; }
+
+    public string? BaseChoiceBy { get; init; }
 
     // A meter reset or a wrong unit must not show negative energy.
     public double EnergyKwh => Math.Max(0, ((MeterStopWh ?? LastMeterWh ?? MeterStartWh) - MeterStartWh) / 1000d);

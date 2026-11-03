@@ -69,6 +69,7 @@ public sealed class EvChargingControlService(
     private DateTimeOffset appliedUntilUtc;
     private DateTimeOffset retryAtUtc = DateTimeOffset.MinValue;
     private string? commandProblem;
+    private EvBaseChargeMode planBaseMode;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -102,7 +103,9 @@ public sealed class EvChargingControlService(
             return;
         }
 
-        await RefreshPlanAsync(scope.ServiceProvider, now, cancellationToken);
+        var choice = await scope.ServiceProvider.GetRequiredService<EvBaseChargeChoiceService>().GetAsync(cancellationToken);
+        await RefreshPlanAsync(scope.ServiceProvider, now, choice.Mode != planBaseMode, cancellationToken);
+        planBaseMode = choice.Mode;
         var wallbox = charger.Current;
         await SampleSurplusAsync(scope.ServiceProvider, wallbox, now, cancellationToken);
         if (!wallbox.IsConnected || !wallbox.IsVehiclePlugged)
@@ -112,6 +115,14 @@ public sealed class EvChargingControlService(
             return;
         }
 
+        if (choice is { ShouldAsk: true, TransactionId: { } transaction })
+        {
+            // Once per charging session; the page (and later a push message) shows the question until it is answered.
+            await scope.ServiceProvider.GetRequiredService<IEvChargingSessionRepository>().MarkBaseChoiceAskedAsync(transaction, now, cancellationToken);
+            logger.LogInformation("Auto bei {Soc:0} % unter dem Grund-Ladestand von {Base:0} %: Frage \"jetzt oder preisgesteuert\" gestellt.",
+                choice.SocPercent, choice.BaseSocPercent);
+        }
+
         var allowance = double.TryParse((await settings.GetSettingAsync(ControllerSettingDefaults.EvChargingPvGridAllowanceKey, cancellationToken))?.Value,
             System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var watts) ? watts : 0;
         var decision = EvChargingDecider.Decide(new EvChargingDecisionInput(now, plan, planProblem, AverageAvailable()) { PvGridAllowanceWatts = allowance });
@@ -119,10 +130,10 @@ public sealed class EvChargingControlService(
         state.Set(new EvChargingControlSnapshot(true, decision.Mode, decision.Amps, decision.Reason, now, commandProblem));
     }
 
-    private async Task RefreshPlanAsync(IServiceProvider services, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task RefreshPlanAsync(IServiceProvider services, DateTimeOffset now, bool force, CancellationToken cancellationToken)
     {
         var quarterChanged = now.Ticks / TimeSpan.FromMinutes(15).Ticks != planCalculatedAtUtc.Ticks / TimeSpan.FromMinutes(15).Ticks;
-        if (plan is not null && !quarterChanged && now - planCalculatedAtUtc < PlanRefresh) return;
+        if (plan is not null && !force && !quarterChanged && now - planCalculatedAtUtc < PlanRefresh) return;
         try
         {
             plan = (await services.GetRequiredService<EvChargePlanService>().GetAsync(cancellationToken)).Plan;

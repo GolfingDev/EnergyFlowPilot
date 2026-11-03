@@ -140,6 +140,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<CalendarTripSyncService>();
         services.AddScoped<IUserCalendarRepository, EfUserCalendarRepository>();
         services.AddScoped<EvChargePlanService>();
+        services.AddScoped<EvBaseChargeChoiceService>();
         services.AddSingleton<EvChargingControlState>();
         services.AddSingleton<EvChargeLoadForecast>();
         services.AddHostedService<EvChargingControlService>();

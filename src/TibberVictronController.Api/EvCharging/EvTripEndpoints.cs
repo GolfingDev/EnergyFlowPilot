@@ -20,6 +20,8 @@ public static class EvTripEndpoints
         endpoints.MapPost("/api/ev-charging/calendar/location", SetCalendarPlaceAsync).WithName("SetCalendarPlace").WithTags("EvCharging");
         endpoints.MapPut("/api/ev-charging/trips/{id:int}/occurrences/{date}/skipped", SetOccurrenceSkippedAsync).WithName("SetEvTripOccurrenceSkipped").WithTags("EvCharging");
         endpoints.MapGet("/api/ev-charging/charge-plan", GetChargePlanAsync).WithName("GetEvChargePlan").WithTags("EvCharging");
+        endpoints.MapGet("/api/ev-charging/base-choice", GetBaseChoiceAsync).WithName("GetEvBaseChoice").WithTags("EvCharging");
+        endpoints.MapPut("/api/ev-charging/base-choice", SetBaseChoiceAsync).WithName("SetEvBaseChoice").WithTags("EvCharging").RequireDriver();
         endpoints.MapGet("/api/ev-charging/control", (EvChargingControlState state) =>
         {
             var current = state.Current;
@@ -185,6 +187,27 @@ public static class EvTripEndpoints
         return state.Current.Error is { } error ? TypedResults.BadRequest(new { message = error }) : TypedResults.NoContent();
     }
 
+    private static async Task<IResult> GetBaseChoiceAsync(HttpContext http, EvBaseChargeChoiceService choices, CancellationToken cancellationToken)
+    {
+        var choice = await choices.GetAsync(cancellationToken);
+        return TypedResults.Ok(new EvBaseChoiceDto(choice.TransactionId, choice.IsBelowBase, choice.SocPercent, choice.BaseSocPercent, choice.Mode.ToString(),
+            choice.IsDecided, choice.AskedAtUtc, choice.DefaultAtUtc, choice.DecidedBy, AdminOnlyEndpoints.IsDriver(http)));
+    }
+
+    // The answer belongs to the running charging session; an answer for an earlier session is refused.
+    private static async Task<IResult> SetBaseChoiceAsync(HttpContext http, EvBaseChoiceRequestDto request, EvBaseChargeChoiceService choices,
+        IEvChargingSessionRepository sessions, CancellationToken cancellationToken)
+    {
+        if (!Enum.TryParse<EvBaseChargeMode>(request.Mode, out var mode) || !Enum.IsDefined(mode))
+            return TypedResults.BadRequest(new { message = "Unbekannte Auswahl; erlaubt sind Immediate und PriceDriven." });
+        var current = await choices.GetAsync(cancellationToken);
+        if (current.TransactionId is not { } transaction || (request.TransactionId is { } asked && asked != transaction))
+            return TypedResults.Conflict(new { message = "Dieser Ladevorgang ist schon beendet." });
+        if (!await sessions.SetBaseChargeModeAsync(transaction, mode, AdminOnlyEndpoints.Actor(http).Name, cancellationToken))
+            return TypedResults.Conflict(new { message = "Dieser Ladevorgang ist schon beendet." });
+        return TypedResults.NoContent();
+    }
+
     private static async Task<IResult> GetChargePlanAsync(HttpContext http, EvChargePlanService chargePlan, CancellationToken cancellationToken)
     {
         try
@@ -209,6 +232,20 @@ public static class EvTripEndpoints
     }
 
 }
+
+public sealed record EvBaseChoiceDto(
+    int? TransactionId,
+    bool IsBelowBase,
+    double? SocPercent,
+    double BaseSocPercent,
+    string Mode,
+    bool IsDecided,
+    DateTimeOffset? AskedAtUtc,
+    DateTimeOffset? DefaultAtUtc,
+    string? DecidedBy,
+    bool CanDecide);
+
+public sealed record EvBaseChoiceRequestDto(int? TransactionId, string? Mode);
 
 public sealed record MyCalendarDto(bool Available, bool SyncEnabled, string? Mailbox, bool Connected, DateTimeOffset? ConnectedAtUtc);
 

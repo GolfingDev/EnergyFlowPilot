@@ -7,7 +7,10 @@ using TibberVictronController.Business.Models;
 
 namespace TibberVictronController.Api.EvCharging;
 
-public sealed record EvChargePlanView(EvChargePlan Plan, string SlotSource, EvTripPlanView Trips);
+public sealed record EvChargePlanView(EvChargePlan Plan, string SlotSource, EvTripPlanView Trips)
+{
+    public EvBaseChargeChoiceState? BaseChoice { get; init; }
+}
 
 /// <summary>
 /// Collects the inputs of the car charging plan. Prices and PV surplus come from the joint battery plan: its slots
@@ -31,6 +34,7 @@ public sealed class EvChargePlanService(
         var tripView = await trips.GetPlanAsync(cancellationToken);
         var (slots, source) = await SlotsAsync(now, cancellationToken);
         var car = services.GetRequiredService<ICarStatusSource>().Car;
+        var choice = await services.GetRequiredService<EvBaseChargeChoiceService>().GetAsync(cancellationToken);
         var plan = EvChargePlanner.Plan(new EvChargePlanInput(
             now,
             car.StateOfChargePercent,
@@ -39,8 +43,8 @@ public sealed class EvChargePlanService(
             await NumberAsync(ControllerSettingDefaults.EvCarBaseSocKey, cancellationToken),
             await NumberAsync(ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey, cancellationToken),
             slots,
-            tripView.Plan.Trips));
-        return new EvChargePlanView(plan, source, tripView);
+            tripView.Plan.Trips) { BaseMode = choice.Mode });
+        return new EvChargePlanView(plan, source, tripView) { BaseChoice = choice };
     }
 
     private async Task<(IReadOnlyList<EvChargeSlotInput> Slots, string Source)> SlotsAsync(DateTimeOffset now, CancellationToken cancellationToken)
