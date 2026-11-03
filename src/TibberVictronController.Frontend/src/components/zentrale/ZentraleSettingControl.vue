@@ -23,6 +23,8 @@ const props = withDefaults(defineProps<{
   /** Asked before a switch changes; for settings that stop or start real device control. */
   confirmText?: string;
   inverted?: boolean;
+  /** Shown instead of "0 …" when zero means "no limit". */
+  zeroLabel?: string;
   /** Extra validation against other settings, returns a German message or null. */
   validate?: (storedValue: number) => string | null;
 }>(), { min: 0, max: 100, step: 1, scale: 1, unit: '', inverted: false });
@@ -67,6 +69,7 @@ function followUntilApplied(startedAt = Date.now()): void {
 }
 onBeforeUnmount(() => window.clearTimeout(followUp));
 const display = (value: number | null) => value == null ? '–'
+  : value === 0 && props.zeroLabel ? props.zeroLabel
   : `${value.toLocaleString('de-DE', { maximumFractionDigits: props.step < 1 ? 1 : 0 })}${props.unit ? ` ${props.unit}` : ''}`;
 
 function toStored(displayValue: number): number {

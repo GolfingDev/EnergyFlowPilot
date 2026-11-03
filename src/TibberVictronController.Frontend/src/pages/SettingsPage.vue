@@ -132,6 +132,8 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'jointBattery.e3dc.maximumSocPercent', section: 'battery', subgroup: 'E3/DC-Vorschau', category: 'important' },
   { key: 'jointBattery.e3dc.roundTripEfficiencyPercent', section: 'battery', subgroup: 'E3/DC-Vorschau', category: 'important' },
   { key: 'jointBattery.e3dc.respectReportedLimits', section: 'battery', subgroup: 'E3/DC-Vorschau', category: 'important' },
+  { key: 'jointBattery.e3dc.maximumChargePowerWatts', section: 'battery', subgroup: 'E3/DC-Vorschau', category: 'important' },
+  { key: 'jointBattery.e3dc.maximumDischargePowerWatts', section: 'battery', subgroup: 'E3/DC-Vorschau', category: 'important' },
   { key: 'decision.minimumSavingsPerKwh', section: 'control', subgroup: 'Wirtschaftliche Steuerung', category: 'important', helpText: 'Mindestvorteil für Netzladung und Verschieben von Akkuenergie. 3 bedeutet 3 ct/kWh, nicht 3 EUR. Verluste und konfigurierte Verschleißkosten werden zusätzlich berücksichtigt. Kein maximaler Einkaufspreis.' },
   { key: 'battery.wearCostPerKwh', section: 'control', subgroup: 'Wirtschaftliche Steuerung', category: 'important', helpText: 'Zusätzliche Verschleißkosten für netzgeladene Energie. Einmal anhand der Batterie kalkulieren; nur im erweiterten Modus sichtbar.' },
   { key: 'electricityPrices.supplierName', section: 'forecast', subgroup: 'Strompreise', category: 'important', helpText: 'Name deines Stromanbieters, unabhängig von der technischen Preisquelle.' },

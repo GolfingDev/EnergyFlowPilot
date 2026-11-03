@@ -52,6 +52,7 @@ internal static class ControllerSettingValueValidation
             ControllerSettingDefaults.EnergyChartsVatKey => (0m, 100m, false),
             ControllerSettingDefaults.E3dcRscpPortKey => (1m, 65535m, true),
             ControllerSettingDefaults.JointBatteryGridLimitKey => (0m, 100000m, true),
+            ControllerSettingDefaults.E3dcMaximumChargePowerKey or ControllerSettingDefaults.E3dcMaximumDischargePowerKey => (0m, 100000m, true),
             ControllerSettingDefaults.JointBatteryPhase1LimitKey or ControllerSettingDefaults.JointBatteryPhase2LimitKey or
             ControllerSettingDefaults.JointBatteryPhase3LimitKey or ControllerSettingDefaults.JointBatteryVictronInputLimitKey => (0m, 100000m, true),
             ControllerSettingDefaults.E3dcPlanningMaximumSocKey or ControllerSettingDefaults.E3dcEfficiencyKey => (1m, 100m, false),

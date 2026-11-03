@@ -88,10 +88,10 @@ const batterySegments = computed(() => plannedActions(data, 12).filter(a => a.ta
           <dl class="z-facts">
             <div><dt>{{ (live?.gridPowerWatts ?? 0) < 0 ? 'Einspeisung' : 'Bezug' }} jetzt</dt><dd>{{ kw(live?.gridPowerWatts) }}</dd></div>
             <div><dt>Strompreis jetzt</dt><dd>{{ priceText(currentPrice) }}</dd></div>
-            <div v-if="state.shadow?.maximumGridImportWatts"><dt>Bezugsgrenze der Planung</dt><dd>{{ kw(state.shadow.maximumGridImportWatts) }}</dd></div>
+            <div v-if="state.shadow?.maximumGridImportWatts"><dt>Wirksame Netzgrenze der Planung</dt><dd>{{ kw(state.shadow.maximumGridImportWatts) }}</dd></div>
           </dl>
-          <ZentraleSettingControl setting-key="jointBattery.maximumGridImportWatts" label="Maximaler Netzbezug für Akkuladung" kind="slider" :min="1" :max="30" :step="0.5" :scale="0.001" unit="kW"
-            hint="Begrenzt, wie viel die gemeinsame Planung zum Laden aus dem Netz ziehen darf." />
+          <ZentraleSettingControl setting-key="jointBattery.maximumGridImportWatts" label="Netzleistungsbudget (Haus und Akkus)" kind="slider" :min="0" :max="30" :step="0.5" :scale="0.001" unit="kW" zero-label="keine zusätzliche Grenze"
+            hint="Gesamtgrenze für Haus und beide Akkus in der gemeinsamen Planung. 0 = keine zusätzliche Grenze; Anschluss- und Phasengrenzen gelten immer." />
           <ZentraleSettingControl v-if="expertMode" setting-key="gridFeedIn.compensationPricePerKwh" label="Einspeisevergütung" kind="slider" :min="0" :max="20" :step="0.1" :scale="100" unit="ct/kWh" />
         </template>
 

@@ -32,6 +32,9 @@ public static class ControllerSettingDefaults
     // false: request up to the E3/DC system limit and use what the device grants; true: never request more than
     // its reported effective limit (EMS_USED_CHARGE/DISCHARGE_LIMIT, e.g. 97 W at the reserve).
     public const string E3dcRespectReportedLimitsKey = "jointBattery.e3dc.respectReportedLimits";
+    // Own upper limits for E3/DC requests in watts; 0 means none. They only lower requests, nothing is written to the device.
+    public const string E3dcMaximumChargePowerKey = "jointBattery.e3dc.maximumChargePowerWatts";
+    public const string E3dcMaximumDischargePowerKey = "jointBattery.e3dc.maximumDischargePowerWatts";
     public const string EvOcppEnabledKey = "ev.ocpp.enabled";
     public const string EvOcppChargePointIdKey = "ev.ocpp.chargePointId";
     // Normal settings need a non-empty value; this marker means "no wallbox accepted yet".
@@ -212,6 +215,8 @@ public static class ControllerSettingDefaults
         new(E3dcPlanningMaximumSocKey, "95", ControllerSettingSensitivity.Normal),
         new(E3dcEfficiencyKey, "90", ControllerSettingSensitivity.Normal),
         new(E3dcRespectReportedLimitsKey, "false", ControllerSettingSensitivity.Normal),
+        new(E3dcMaximumChargePowerKey, "0", ControllerSettingSensitivity.Normal),
+        new(E3dcMaximumDischargePowerKey, "0", ControllerSettingSensitivity.Normal),
         new(EvOcppEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(EvOcppChargePointIdKey, EvOcppChargePointNotConfigured, ControllerSettingSensitivity.Normal),
         new(BmwCarDataClientIdKey, BmwCarDataNotConfigured, ControllerSettingSensitivity.Normal),

@@ -112,7 +112,8 @@ const stopJoint = () => run(manualBusy, () => data.stopJointManualCharge());
         </section>
         <section class="z-card" aria-labelledby="z-grid-title">
           <header class="z-card__head"><h2 id="z-grid-title"><v-icon icon="mdi-transmission-tower" size="22" class="z-control__icon" />Netzmanagement</h2></header>
-          <ZentraleSettingControl setting-key="jointBattery.maximumGridImportWatts" label="Maximaler Netzbezug für Akkuladung" kind="slider" :min="1" :max="30" :step="0.5" :scale="0.001" unit="kW" />
+          <ZentraleSettingControl setting-key="jointBattery.maximumGridImportWatts" label="Netzleistungsbudget (Haus und Akkus)" kind="slider" :min="0" :max="30" :step="0.5" :scale="0.001" unit="kW" zero-label="keine zusätzliche Grenze"
+            hint="Gesamtgrenze für Haus und beide Akkus in der gemeinsamen Planung. Anschluss- und Phasengrenzen gelten immer." />
           <ZentraleSettingControl setting-key="gridFeedIn.compensationPricePerKwh" label="Einspeisevergütung" kind="slider" :min="0" :max="20" :step="0.1" :scale="100" unit="ct/kWh" />
           <ZentraleSettingControl v-if="data.evAvailable.value" setting-key="ev.charging.pvGridAllowanceWatts" label="Netzanteil beim PV-Überschussladen (Auto)" kind="slider" :min="0" :max="5" :step="0.1" :scale="0.001" unit="kW" />
           <router-link v-if="isAdmin" class="z-link" :to="{ name: 'settings', query: { section: 'control' } }">Alle Strategie-Einstellungen <v-icon icon="mdi-arrow-right" size="16" /></router-link>

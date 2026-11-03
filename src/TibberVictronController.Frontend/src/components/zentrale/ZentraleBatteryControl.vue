@@ -179,7 +179,9 @@ function chooseMode(mode: 'auto' | 'manual' | null): void {
           <div><dt>Ladegrenze laut Gerät</dt><dd>{{ kw(e3dcLimits?.effectiveChargeLimitWatts) }}</dd></div>
           <div><dt>Entladegrenze laut Gerät</dt><dd>{{ kw(e3dcLimits?.effectiveDischargeLimitWatts) }}</dd></div>
         </dl>
-        <p class="z-note">Das E3/DC meldet seine Leistungsgrenzen selbst; der Controller setzt dafür keinen eigenen Wert.</p>
+        <ZentraleSettingControl setting-key="jointBattery.e3dc.maximumChargePowerWatts" label="Eigene Grenze Ladeleistung" kind="slider" :min="0" :max="10" :step="0.1" :scale="0.001" unit="kW" zero-label="keine" />
+        <ZentraleSettingControl setting-key="jointBattery.e3dc.maximumDischargePowerWatts" label="Eigene Grenze Entladeleistung" kind="slider" :min="0" :max="10" :step="0.1" :scale="0.001" unit="kW" zero-label="keine" />
+        <p class="z-note">Eigene Grenzen senken nur, was die gemeinsame Steuerung vom E3/DC anfordert; ins Gerät wird nichts dauerhaft geschrieben. Die Gerätegrenzen gelten zusätzlich.</p>
         <ZentraleSettingControl v-if="expertMode" setting-key="jointBattery.e3dc.respectReportedLimits" label="Gemeldete Grenzen in der Planung beachten" kind="switch" />
       </template>
     </section>
