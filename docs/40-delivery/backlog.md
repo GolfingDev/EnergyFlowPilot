@@ -86,7 +86,7 @@ Requirement: `docs/10-architecture/frontend-architecture.md`, section "Energy Fl
 
 1. Implemented: design "Zentrale" (dark and light) with sidebar, dashboard (key figures, energy flow, status, automations, 24 h forecast, planned actions), context panel with direct battery, car and hot water control, pages Analyse, Steuerung and Automationen, settings search and app-wide expert level.
 2. Implemented in part: compressor power demand (Weishaupt register 33103, percent) is read, stored and shown; the flow shows the heat pump as running without kW. Open: check the register on the device; electrical power needs a sub-meter, Modbus offers none.
-3. Open, backend: one automation status endpoint (rule name, state, trigger values, affected devices, expected end) for battery optimization, car charging and hot water, instead of three sources combined in the frontend.
+3. Implemented: `GET /api/automations` (rule, state, current action, trigger text, devices, next change, command problem) for battery optimisation, car charging and hot water; the Zentrale uses it.
 4. Open, backend: decision parameters per log entry (price compared with which later price, threshold, reserve) as structured values, so "why" can show numbers next to the planner text.
 5. Implemented: the decision worker reports the start of its last completed cycle in `/api/status`; the UI shows "taken over" only after a cycle that started after the save.
 6. Implemented: own E3/DC charge and discharge limits (`jointBattery.e3dc.maximumChargePowerWatts` / `...DischargePowerWatts`, 0 = none). They only lower planner and live limiter requests; nothing is written to the device, in line with "volatile commands only".

@@ -1,6 +1,6 @@
 import { leitstandCategoryLabels, type LeitstandCategory } from '../leitstand/leitstandTypes';
 import { activeFlowWatts, type ZentraleData } from './useZentraleData';
-import { evModeLabels, evReasonLabels, type ZentraleTarget } from './zentraleTypes';
+import { evModeLabels, evReasonLabels, type AutomationStatusDto, type ZentraleTarget } from './zentraleTypes';
 import { clock, kw, kwh, percent, priceText, when } from './zentraleFormat';
 
 /*
@@ -116,9 +116,30 @@ export interface AutomationItem {
   /** True when the setting switches the automation off (simulation mode), so the switch shows the inverse. */
   settingInverted: boolean;
   critical: boolean;
+  problem?: string | null;
 }
 
+const automationLook: Record<AutomationStatusDto['id'], { target: AutomationItem['id']; icon: string; color: string; settingLabel: string }> = {
+  battery: { target: 'automation-battery', icon: 'mdi-battery-sync-outline', color: 'var(--z-battery)', settingLabel: 'Befehle an die Akkus senden' },
+  ev: { target: 'automation-ev', icon: 'mdi-car-electric-outline', color: 'var(--z-ev)', settingLabel: 'Auto automatisch laden' },
+  hotWater: { target: 'automation-hotwater', icon: 'mdi-water-boiler', color: 'var(--z-heat)', settingLabel: 'Warmwasser-Preissteuerung' }
+};
+
+/** Automations as the backend describes them (/api/automations); the local derivation is only a fallback. */
 export function automations(data: ZentraleData): AutomationItem[] {
+  const dtos = data.state.automations;
+  if (!dtos) return localAutomations(data);
+  return dtos.filter(dto => dto.id in automationLook).map(dto => {
+    const look = automationLook[dto.id];
+    return {
+      id: look.target, title: dto.title, icon: look.icon, color: look.color, enabled: dto.enabled, stateLabel: dto.state, action: dto.action,
+      trigger: dto.trigger, devices: dto.devices, until: dto.nextChangeAtUtc ? `${dto.nextChange ?? 'Nächster Wechsel'}: ${when(dto.nextChangeAtUtc)}` : null,
+      ruleId: dto.ruleId, settingKey: dto.settingKey, settingLabel: look.settingLabel, settingInverted: dto.settingInverted, critical: true, problem: dto.problem
+    };
+  });
+}
+
+function localAutomations(data: ZentraleData): AutomationItem[] {
   const { state, setting, jointControlActive, evAvailable, heatPumpAvailable } = data;
   const items: AutomationItem[] = [];
   const overview = state.summary?.overview ?? state.summary?.current ?? null;

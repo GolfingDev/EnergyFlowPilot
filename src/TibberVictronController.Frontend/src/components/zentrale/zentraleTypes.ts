@@ -73,5 +73,22 @@ export const evReasonLabels: Record<EvSlotReason, string> = {
   Trip: 'für eine Fahrt', PvSurplus: 'mit PV-Überschuss', BaseSoc: 'bis zum Grund-Ladestand', CheapPrice: 'bei günstigem Strom', ImmediateTarget: 'bis zum Sofort-Ladeziel'
 };
 
+/** One automation from /api/automations; texts come from the backend. */
+export interface AutomationStatusDto {
+  id: 'battery' | 'ev' | 'hotWater';
+  title: string;
+  enabled: boolean | null;
+  state: string;
+  action: string;
+  trigger: string | null;
+  devices: string;
+  nextChangeAtUtc: string | null;
+  nextChange: string | null;
+  ruleId: string | null;
+  settingKey: string;
+  settingInverted: boolean;
+  problem: string | null;
+}
+
 /** What a click in the flow, a KPI card or a list opens in the side panel. */
 export type ZentraleTarget = 'pv' | 'victron' | 'e3dc' | 'house' | 'grid' | 'ev' | 'heatpump' | 'price' | 'automation-battery' | 'automation-ev' | 'automation-hotwater';

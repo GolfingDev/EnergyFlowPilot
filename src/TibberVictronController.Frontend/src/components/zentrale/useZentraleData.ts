@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { errorText, getJson, sendJson } from './zentraleApi';
 import type {
-  CarStatusDto, ControllerSettingResponseDto, ControllerStatusResponseDto, DashboardSummaryDto, EvBaseChoiceDto, EvChargePlanDto,
+  AutomationStatusDto, CarStatusDto, ControllerSettingResponseDto, ControllerStatusResponseDto, DashboardSummaryDto, EvBaseChoiceDto, EvChargePlanDto,
   EvControlDto, HotWaterReportDto, JointBatteryShadowDto, ManualChargeStatusResponseDto, WallboxStatusDto
 } from './zentraleTypes';
 
@@ -29,6 +29,7 @@ const state = reactive({
   status: null as ControllerStatusResponseDto | null,
   legacyManualCharge: null as ManualChargeStatusResponseDto | null,
   settings: {} as Record<string, ControllerSettingResponseDto>,
+  automations: null as AutomationStatusDto[] | null,
   errors: {} as Record<string, string>,
   lastLoadedAtUtc: null as string | null
 });
@@ -77,12 +78,17 @@ async function refreshSlow(): Promise<void> {
       load<EvBaseChoiceDto>('Grund-Ladestand', '/api/ev-charging/base-choice', v => { state.baseChoice = v; }, true),
       load<HotWaterReportDto>('Warmwasser', '/api/weishaupt/hot-water', v => { state.hotWater = v; }, true),
       refreshStatus(),
+      refreshAutomations(),
       load<ManualChargeStatusResponseDto>('Manuelle Ladung', '/api/manual-charge', v => { state.legacyManualCharge = v; }, true),
       refreshSettings()
     ]);
   } finally {
     slowRunning = false;
   }
+}
+
+async function refreshAutomations(): Promise<void> {
+  await load<AutomationStatusDto[]>('Automationen', '/api/automations', v => { state.automations = v; });
 }
 
 async function refreshStatus(): Promise<void> {
@@ -172,6 +178,7 @@ async function saveSetting(key: string, value: string): Promise<ControllerSettin
   const saved = await sendJson<ControllerSettingResponseDto>('PUT', `/api/settings/${encodeURIComponent(key)}`, { value }, 'Einstellung wurde nicht gespeichert');
   // Read back from the store instead of trusting the response alone: only a persisted value counts as confirmed.
   await refreshSettings();
+  void refreshAutomations();
   return saved;
 }
 
@@ -194,7 +201,7 @@ export function useZentraleData() {
 
   return {
     state, now, live, isStale, batteries, jointControlActive, evAvailable, heatPumpAvailable, heatPumpDemand,
-    setting, refreshAll, refreshFast, refreshSlow, refreshSettings, refreshStatus, saveSetting,
+    setting, refreshAll, refreshFast, refreshSlow, refreshSettings, refreshStatus, refreshAutomations, saveSetting,
     startJointManualCharge, stopJointManualCharge, startLegacyManualCharge, stopLegacyManualCharge, evAction
   };
 }

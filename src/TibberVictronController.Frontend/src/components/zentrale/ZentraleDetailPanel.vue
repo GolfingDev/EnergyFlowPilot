@@ -113,6 +113,7 @@ const batterySegments = computed(() => plannedActions(data, 12).filter(a => a.ta
             <div><dt>Betroffene Geräte</dt><dd>{{ automation.devices }}</dd></div>
             <div v-if="automation.until"><dt>Als Nächstes</dt><dd>{{ automation.until }}</dd></div>
             <div v-if="expertMode && automation.ruleId"><dt>Regel</dt><dd><code>{{ automation.ruleId }}</code></dd></div>
+            <div v-if="automation.problem"><dt>Problem</dt><dd class="z-note--warning">{{ automation.problem }}</dd></div>
           </dl>
           <section class="z-block">
             <h3>Warum?</h3>

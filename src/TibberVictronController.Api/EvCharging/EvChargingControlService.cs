@@ -35,6 +35,12 @@ public sealed class EvChargeLoadForecast
         plan.Slots.ToDictionary(slot => slot.StartsAtUtc, slot => slot.GridKwh + slot.PvKwh));
 
     public void Clear() => Volatile.Write(ref kwhBySlotStart, new Dictionary<DateTimeOffset, double>());
+
+    /// <summary>Start of the running or next quarter hour with planned car energy; null without a plan.</summary>
+    public DateTimeOffset? NextPlannedStartUtc(DateTimeOffset nowUtc) => Volatile.Read(ref kwhBySlotStart)
+        .Where(slot => slot.Value > 0 && slot.Key.AddMinutes(15) > nowUtc)
+        .Select(slot => (DateTimeOffset?)slot.Key)
+        .Min();
 }
 
 /// <summary>

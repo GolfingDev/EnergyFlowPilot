@@ -133,7 +133,7 @@ The house is the busbar: each line connects exactly one component with the house
 
 ### Explanations
 
-Status sentences combine measured facts with texts the backend delivers (planner reason, charging control reason, hot water plan). The frontend never invents a reason. Warnings and critical checks come first; normal operation is not shown as a warning. Automations show rule, state, current action, trigger text, affected devices and the next planned change.
+Status sentences combine measured facts with texts the backend delivers (planner reason, charging control reason, hot water plan). The frontend never invents a reason. Warnings and critical checks come first; normal operation is not shown as a warning. Automations show rule, state, current action, trigger text, affected devices and the next planned change. They come from `GET /api/automations`: `AutomationStatusService` (Api) only reads states the controller already holds (dashboard summary with planner overview, simulation flag, joint execution state, car charging control state and planned car load, hot water control state); `AutomationStatusBuilder` (Business) turns them into German texts. Nothing is recalculated or sent. The car and hot water automations are listed only when the wallbox or the heat pump connection is switched on.
 
 ### Control feedback
 

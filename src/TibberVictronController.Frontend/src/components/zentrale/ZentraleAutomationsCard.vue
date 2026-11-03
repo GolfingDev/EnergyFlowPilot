@@ -31,6 +31,7 @@ const activeCount = computed(() => items.value.filter(i => i.enabled).length);
             <small v-if="detailed && item.trigger" class="z-auto__why">Warum: {{ item.trigger }}</small>
             <small v-if="detailed && item.until">{{ item.until }}</small>
             <small v-if="detailed && expertMode && item.ruleId"><code>{{ item.ruleId }}</code></small>
+            <small v-if="item.problem" class="z-auto__problem">{{ item.problem }}</small>
           </span>
           <v-icon icon="mdi-information-outline" size="18" class="z-auto__info" />
         </button>
@@ -49,6 +50,7 @@ const activeCount = computed(() => items.value.filter(i => i.enabled).length);
 .z-auto__text strong { font-size: .88rem; font-weight: 600; }
 .z-auto__text small { font-size: .78rem; color: var(--efp-muted); line-height: 1.4; }
 .z-auto__why { color: var(--efp-secondary) !important; }
+.z-auto__problem { color: var(--efp-warning-text) !important; }
 .z-auto__on { color: var(--efp-success); }
 .z-auto__off { color: var(--efp-muted); }
 .z-auto__info { color: var(--efp-muted); }

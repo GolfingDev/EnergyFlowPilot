@@ -1,3 +1,4 @@
+using TibberVictronController.Api.Automations;
 using TibberVictronController.Api.Push;
 using TibberVictronController.Api.Authentication;
 using TibberVictronController.Api.Configuration;
@@ -55,6 +56,7 @@ app.MapWeishauptHotWaterEndpoints();
 app.MapWeishauptEnergyEndpoints();
 app.MapDashboardTelemetryEndpoints();
 app.MapDashboardSummaryEndpoints();
+app.MapAutomationEndpoints();
 app.MapDashboardHub();
 app.MapOcppEndpoints();
 app.MapEvChargingEndpoints();

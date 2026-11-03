@@ -151,6 +151,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddSingleton<BaseChoiceAnswerToken>();
         services.AddSingleton<EvChargingControlState>();
         services.AddSingleton<EvChargeLoadForecast>();
+        services.AddScoped<TibberVictronController.Api.Automations.AutomationStatusService>();
         services.AddHostedService<EvChargingControlService>();
         services.AddScoped<CalendarSyncRunner>();
         services.AddSingleton<CalendarSyncState>();
