@@ -87,11 +87,21 @@ public static class EvChargingEndpoints
         }
     }
 
-    private static IResult GetCar(HttpContext http, ICarStatusSource car, ControllerAuthenticationOptions authentication) =>
-        TypedResults.Ok(CarStatusDtoMapper.Map(car.Car, car.Connection, car.Stream, !authentication.IsEntra || http.User.IsInRole(AppRoles.Admin)) with
+    // The wallbox knows for sure whether a car is plugged in at home; BMW's own value is only used while the wallbox
+    // is not connected (operator 2026-11-03: plugged in, but the page said otherwise).
+    private static IResult GetCar(HttpContext http, ICarStatusSource car, IEvChargerStatusSource wallbox, ControllerAuthenticationOptions authentication)
+    {
+        var isAdmin = !authentication.IsEntra || http.User.IsInRole(AppRoles.Admin);
+        var charger = wallbox.Current;
+        var dto = CarStatusDtoMapper.Map(car.Car, car.Connection, car.Stream, isAdmin);
+        return TypedResults.Ok(dto with
         {
+            IsPlugged = charger.IsConnected ? charger.IsVehiclePlugged : car.Car.IsPlugged,
+            PlugSource = charger.IsConnected ? "Wallbox" : car.Car.IsPlugged is null ? null : "BMW",
+            BmwPluggedRawValue = isAdmin ? car.Car.PluggedRawValue : null,
             Poll = new CarPollDiagnosticsDto(car.Poll.LastPollAtUtc, car.Poll.PollsToday, car.Poll.DailyLimit, car.Poll.LastProblem, car.Poll.LastTrigger)
         });
+    }
 
     private static async Task<IResult> StartCarSignInAsync(CarDataService carData, CancellationToken cancellationToken)
     {
@@ -315,6 +325,11 @@ public sealed record CarStatusResponseDto(
     CarStreamDiagnosticsDto? Stream)
 {
     public CarPollDiagnosticsDto? Poll { get; init; }
+
+    /// <summary>"Wallbox" or "BMW": where <see cref="IsPlugged"/> comes from.</summary>
+    public string? PlugSource { get; init; }
+
+    public string? BmwPluggedRawValue { get; init; }
 }
 
 public sealed record CarPollDiagnosticsDto(DateTimeOffset? LastPollAtUtc, int PollsToday, int DailyLimit, string? LastProblem, string? LastTrigger);

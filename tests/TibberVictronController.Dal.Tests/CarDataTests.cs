@@ -35,6 +35,24 @@ public sealed class CarDataTests
         Assert.Equal(Now, after.LastMessageAtUtc);
     }
 
+    [Theory]
+    [InlineData("\"PLUGGED_IN\"", true)]
+    [InlineData("\"CONNECTED\"", true)]
+    [InlineData("\"NOT_PLUGGED\"", false)]
+    [InlineData("\"DISCONNECTED\"", false)]
+    [InlineData("\"false\"", false)]
+    [InlineData("1", true)]
+    [InlineData("\"INVALID\"", null)]
+    public void PlugStatusIsRecognisedInAnySpellingAndKeptRaw(string value, bool? expected)
+    {
+        var message = """{"data":{"vehicle.powertrain.tractionBattery.charging.port.anyPosition.isPlugged":{"value":""" + value + "}}}";
+
+        var after = CarDataMessageParser.Apply(CarSnapshot.Empty, message, null, Now)!;
+
+        Assert.Equal(expected, after.IsPlugged);
+        Assert.Equal(value.Trim('"'), after.PluggedRawValue);
+    }
+
     [Fact]
     public void MessagesForOtherCarsAndInvalidValuesAreIgnored()
     {

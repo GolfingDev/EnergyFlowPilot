@@ -226,12 +226,16 @@ public sealed class CarDataService(
         }
 
         var updated = false;
+        var previousPlug = store.Car.PluggedRawValue;
         var snapshot = store.UpdateCar(current =>
         {
             var next = CarDataMessageParser.Apply(current, json, vin, now);
             updated = next is not null;
             return next ?? current;
         });
+        if (snapshot.PluggedRawValue != previousPlug)
+            logger.LogInformation("BMW CarData: Steckerstatus '{Raw}' -> {Plugged}.", snapshot.PluggedRawValue,
+                snapshot.IsPlugged switch { true => "angesteckt", false => "nicht angesteckt", null => "nicht erkannt" });
         if (updated) await RecordSampleAsync(snapshot, now);
         if (!updated || now - snapshotPersistedAtUtc < SnapshotPersistInterval) return;
         snapshotPersistedAtUtc = now;

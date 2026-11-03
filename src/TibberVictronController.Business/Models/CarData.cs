@@ -11,6 +11,8 @@ public sealed record CarSnapshot
     public double? TargetStateOfChargePercent { get; init; }
     public string? ChargingStatus { get; init; }
     public bool? IsPlugged { get; init; }
+    // The plug value exactly as BMW sent it: its format is not documented, this shows what arrives (no personal data).
+    public string? PluggedRawValue { get; init; }
     public double? RemainingRangeKm { get; init; }
     public double? OdometerKm { get; init; }
     public DateTimeOffset? LastMessageAtUtc { get; init; }

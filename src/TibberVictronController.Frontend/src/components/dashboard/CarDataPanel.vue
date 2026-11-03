@@ -17,6 +17,8 @@ interface CarStatusDto {
   targetStateOfChargePercent: number | null;
   chargingStatus: string | null;
   isPlugged: boolean | null;
+  plugSource?: string | null;
+  bmwPluggedRawValue?: string | null;
   remainingRangeKm: number | null;
   odometerKm: number | null;
   lastMessageAtUtc: string | null;
@@ -118,6 +120,7 @@ onBeforeUnmount(() => window.clearTimeout(timer));
         <div class="car__metric">
           <span class="car__label">Ladekabel</span>
           <span class="car__value">{{ car.isPlugged === null ? '–' : car.isPlugged ? 'Angesteckt' : 'Nicht angesteckt' }}</span>
+          <span v-if="car.plugSource" class="car__meta">laut {{ car.plugSource }}</span>
         </div>
         <div v-if="car.chargingStatus" class="car__metric">
           <span class="car__label">Ladestatus laut Auto</span>
@@ -168,6 +171,7 @@ onBeforeUnmount(() => window.clearTimeout(timer));
         <div v-if="car.stream && car.connectionStatus === 'Connected'" class="car__meta mt-2">
           Datenstrom: {{ car.stream.subscription ?? 'kein Abonnement' }} ·
           {{ car.stream.messagesReceived }} Nachrichten seit dem Start<template v-if="car.stream.lastMessageAtUtc">, letzte {{ date(car.stream.lastMessageAtUtc) }}</template>.
+          <template v-if="car.bmwPluggedRawValue !== null && car.bmwPluggedRawValue !== undefined"><br>Steckerstatus von BMW: „{{ car.bmwPluggedRawValue }}“</template>
           <template v-if="car.stream.lastDescriptors.length"><br>Datenpunkte der letzten Nachricht: {{ car.stream.lastDescriptors.join(', ') }}</template>
           <span v-if="car.stream.lastProblem" class="text-warning"><br>{{ car.stream.lastProblem }}</span>
           <template v-if="car.stream.messagesReceived === 0"><br>Noch keine Nachricht: Im BMW-Portal unter CarData Streaming müssen die Datenpunkte ausgewählt und gespeichert sein. BMW sendet nur, wenn sich einer davon ändert (Fahren, Laden, Anstecken).</template>

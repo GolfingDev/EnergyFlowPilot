@@ -88,8 +88,12 @@ public static class CarDataMessageParser
                     next = next with { TargetStateOfChargePercent = target };
                 else if (entry.Name == ChargingStatusDescriptor && value.ValueKind == JsonValueKind.String)
                     next = next with { ChargingStatus = value.GetString() };
-                else if (entry.Name == PluggedDescriptor && Plugged(value) is { } plugged)
-                    next = next with { IsPlugged = plugged };
+                else if (entry.Name == PluggedDescriptor)
+                {
+                    var raw = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
+                    next = next with { PluggedRawValue = raw.Length <= 40 ? raw : raw[..40] };
+                    if (Plugged(value) is { } plugged) next = next with { IsPlugged = plugged };
+                }
                 else if (entry.Name == RangeDescriptor && Number(value) is { } range and >= 0)
                     next = next with { RemainingRangeKm = range };
                 else if (entry.Name == OdometerDescriptor && Number(value) is { } odometer and >= 0)
@@ -108,18 +112,25 @@ public static class CarDataMessageParser
         _ => null
     };
 
+    // BMW does not document the value format (operator 2026-11-03: plugged in, but nothing was recognised), so any
+    // spelling of "(not) plugged/connected" counts; the raw value is kept for diagnosis.
     private static bool? Plugged(JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.True => true,
         JsonValueKind.False => false,
-        JsonValueKind.String => value.GetString()?.ToUpperInvariant() switch
-        {
-            "TRUE" or "CONNECTED" or "PLUGGED" => true,
-            "FALSE" or "DISCONNECTED" or "NOT_CONNECTED" or "UNPLUGGED" => false,
-            _ => null
-        },
+        JsonValueKind.Number when value.TryGetDouble(out var number) => number != 0,
+        JsonValueKind.String => PluggedText(value.GetString()?.Trim().ToUpperInvariant() ?? string.Empty),
         _ => null
     };
+
+    private static bool? PluggedText(string text)
+    {
+        if (text is "TRUE" or "1" or "YES") return true;
+        if (text is "FALSE" or "0" or "NO") return false;
+        if (text.Contains("NOT") || text.StartsWith("UN", StringComparison.Ordinal) || text.StartsWith("DIS", StringComparison.Ordinal) ||
+            text.StartsWith("NO_", StringComparison.Ordinal)) return false;
+        return text.Contains("PLUG") || text.Contains("CONNECT") ? true : null;
+    }
 
     private static DateTimeOffset? Timestamp(JsonElement descriptor) =>
         descriptor.TryGetProperty("timestamp", out var timestamp) && timestamp.ValueKind == JsonValueKind.String &&
