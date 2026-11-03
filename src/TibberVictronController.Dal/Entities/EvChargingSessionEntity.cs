@@ -17,4 +17,6 @@ public sealed class EvChargingSessionEntity
     public string? BaseChargeMode { get; set; }
     public DateTimeOffset? BaseChoiceAskedAtUtc { get; set; }
     public string? BaseChoiceBy { get; set; }
+    public bool IsStoppedByUser { get; set; }
+    public string? StoppedBy { get; set; }
 }

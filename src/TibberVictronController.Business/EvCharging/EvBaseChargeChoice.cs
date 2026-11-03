@@ -13,7 +13,13 @@ public sealed record EvBaseChargeChoiceState(
     bool ShouldAsk,
     DateTimeOffset? AskedAtUtc,
     DateTimeOffset? DefaultAtUtc,
-    string? DecidedBy);
+    string? DecidedBy)
+{
+    /// <summary>Stopped by hand for this charging session (operator 2026-11-03).</summary>
+    public bool IsStopped { get; init; }
+
+    public string? StoppedBy { get; init; }
+}
 
 /// <summary>
 /// Operator 2026-11-03: when the car is plugged in below the base state of charge, the drivers are asked whether it
@@ -24,7 +30,14 @@ public static class EvBaseChargeChoice
 {
     public static readonly TimeSpan AnswerTime = TimeSpan.FromMinutes(15);
 
-    public static EvBaseChargeChoiceState Resolve(EvChargingSession? session, double? socPercent, double baseSocPercent)
+    public static EvBaseChargeChoiceState Resolve(EvChargingSession? session, double? socPercent, double baseSocPercent) =>
+        ResolveChoice(session, socPercent, baseSocPercent) with
+        {
+            IsStopped = session is { IsActive: true, IsStoppedByUser: true },
+            StoppedBy = session is { IsActive: true, IsStoppedByUser: true } ? session.StoppedBy : null
+        };
+
+    private static EvBaseChargeChoiceState ResolveChoice(EvChargingSession? session, double? socPercent, double baseSocPercent)
     {
         if (session is not { IsActive: true })
             return new EvBaseChargeChoiceState(null, false, socPercent, baseSocPercent, EvBaseChargeMode.PriceDriven, false, false, null, null, null);

@@ -16,6 +16,7 @@ public static class PushEndpoints
         endpoints.MapPost("/api/push/test", TestAsync).WithName("TestPush").WithTags("Push").RequireDriver();
         // Answer from a notification button: authorised by the token in the message, not by a browser session.
         endpoints.MapPost("/api/push/base-choice", AnswerAsync).WithName("AnswerBaseChoiceFromPush").WithTags("Push").AllowAnonymous();
+        endpoints.MapPost("/api/push/charge-stop", StopAsync).WithName("StopChargingFromPush").WithTags("Push").AllowAnonymous();
         return endpoints;
     }
 
@@ -48,6 +49,16 @@ public static class PushEndpoints
             : TypedResults.BadRequest(new { message = failed > 0 ? "Der Push-Dienst hat die Testnachricht abgelehnt." : "Auf keinem Geraet sind Benachrichtigungen eingeschaltet." });
     }
 
+    private static async Task<IResult> StopAsync(PushChargeStopDto request, BaseChoiceAnswerToken tokens, IEvChargingSessionRepository sessions,
+        CancellationToken cancellationToken)
+    {
+        if (tokens.Read(request.Token) is not { } answer)
+            return TypedResults.Json(new { message = "Die Benachrichtigung ist abgelaufen; bitte auf der Seite Auto stoppen." }, statusCode: StatusCodes.Status403Forbidden);
+        return await sessions.SetStoppedByUserAsync(answer.TransactionId, request.Stopped, answer.UserName, cancellationToken)
+            ? TypedResults.NoContent()
+            : TypedResults.Conflict(new { message = "Dieser Ladevorgang ist schon beendet." });
+    }
+
     private static async Task<IResult> AnswerAsync(PushBaseChoiceAnswerDto request, BaseChoiceAnswerToken tokens, IEvChargingSessionRepository sessions,
         CancellationToken cancellationToken)
     {
@@ -62,6 +73,8 @@ public static class PushEndpoints
 }
 
 public sealed record PushPublicKeyDto(string PublicKey);
+
+public sealed record PushChargeStopDto(string? Token, bool Stopped);
 
 public sealed record PushSubscriptionDto(string? Endpoint, string? P256dh, string? Auth);
 

@@ -21,6 +21,9 @@ public interface IEvChargingSessionRepository
 
     /// <summary>Stores the driver's answer; false when the session is unknown or already finished.</summary>
     Task<bool> SetBaseChargeModeAsync(int transactionId, EvBaseChargeMode mode, string decidedBy, CancellationToken cancellationToken = default);
+
+    /// <summary>Stops or resumes charging of a running session by hand; false when it is unknown or finished.</summary>
+    Task<bool> SetStoppedByUserAsync(int transactionId, bool stopped, string by, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Live wallbox state for the dashboard and, later, the charging planner.</summary>

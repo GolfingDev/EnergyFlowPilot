@@ -26,30 +26,43 @@ self.addEventListener('push', (event) => {
   }));
 });
 
+const STOP = { action: 'Stop', title: 'Laden stoppen' };
+const RESUME = { action: 'Resume', title: 'Fortsetzen' };
+const BUTTONS = {
+  Immediate: { url: '/api/push/base-choice', body: { mode: 'Immediate' }, title: 'Lädt jetzt', text: 'Das Auto lädt bis zum Grund-Ladestand.', next: [STOP] },
+  PriceDriven: { url: '/api/push/base-choice', body: { mode: 'PriceDriven' }, title: 'Lädt preisgesteuert', text: 'Bis zum Grund-Ladestand in den günstigsten Stunden.', next: [STOP] },
+  Stop: { url: '/api/push/charge-stop', body: { stopped: true }, title: 'Laden gestoppt', text: 'Bis „Fortsetzen“ oder zum nächsten Anstecken.', next: [RESUME] },
+  Resume: { url: '/api/push/charge-stop', body: { stopped: false }, title: 'Laden fortgesetzt', text: 'Das Auto lädt wieder nach Plan.', next: [STOP] }
+};
+
 self.addEventListener('notificationclick', (event) => {
   const notification = event.notification;
   const data = notification.data || {};
   notification.close();
   event.waitUntil((async () => {
-    // A button of the base state of charge question answers directly; the token in the message authorises it.
-    if (data.type === 'base-choice' && data.token && (event.action === 'Immediate' || event.action === 'PriceDriven')) {
+    // Buttons answer directly; the token in the message authorises them (the sign-in may have expired).
+    const answer = data.token ? BUTTONS[event.action] : undefined;
+    if (answer) {
       try {
-        const response = await fetch('/api/push/base-choice', {
+        const response = await fetch(answer.url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: data.token, mode: event.action })
+          body: JSON.stringify({ token: data.token, ...answer.body })
         });
         if (response.ok) {
-          await self.registration.showNotification('Auswahl gespeichert', {
-            body: event.action === 'Immediate' ? 'Das Auto lädt jetzt bis zum Grund-Ladestand.' : 'Das Auto lädt preisgesteuert.',
+          // The follow-up notification offers the opposite, so charging can always be stopped or resumed from here.
+          await self.registration.showNotification(answer.title, {
+            body: answer.text,
             tag: notification.tag,
             icon: '/icon-192.png',
-            badge: '/badge-96.png'
+            badge: '/badge-96.png',
+            actions: answer.next,
+            data: { url: data.url, token: data.token, type: 'charge' }
           });
           return;
         }
       } catch {
-        // Offline or expired: open the page, where the question can be answered as well.
+        // Offline or expired: open the page, where the same buttons exist.
       }
     }
 

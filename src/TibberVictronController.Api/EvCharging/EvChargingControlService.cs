@@ -94,6 +94,17 @@ public sealed class EvChargingControlService(
         await using var scope = scopes.CreateAsyncScope();
         var settings = scope.ServiceProvider.GetRequiredService<IControllerSettingStore>();
         var enabled = bool.TryParse((await settings.GetSettingAsync(ControllerSettingDefaults.EvChargingControlEnabledKey, cancellationToken))?.Value, out var on) && on;
+        var choice = await scope.ServiceProvider.GetRequiredService<EvBaseChargeChoiceService>().GetAsync(cancellationToken);
+        // Stopped by hand: 0 A for this charging session, with or without the automatic control (operator 2026-11-03).
+        if (choice.IsStopped && charger.Current is { IsConnected: true, IsVehiclePlugged: true })
+        {
+            var stop = new EvChargingDecision(EvChargingMode.Paused, 0,
+                $"Laden von Hand gestoppt{(choice.StoppedBy is null ? string.Empty : $" ({choice.StoppedBy})")}; weiter mit \u201eFortsetzen\u201c oder neu anstecken.");
+            await ApplyAsync(stop, now, cancellationToken);
+            state.Set(new EvChargingControlSnapshot(enabled, stop.Mode, stop.Amps, stop.Reason, now, commandProblem));
+            return;
+        }
+
         if (!enabled)
         {
             if (limitActive) await ReleaseAsync(cancellationToken);
@@ -103,7 +114,6 @@ public sealed class EvChargingControlService(
             return;
         }
 
-        var choice = await scope.ServiceProvider.GetRequiredService<EvBaseChargeChoiceService>().GetAsync(cancellationToken);
         await RefreshPlanAsync(scope.ServiceProvider, now, choice.Mode != planBaseMode, cancellationToken);
         planBaseMode = choice.Mode;
         var wallbox = charger.Current;
@@ -145,7 +155,7 @@ public sealed class EvChargingControlService(
                 $"Ladestand {choice.SocPercent:0} %, Grund-Ladestand {choice.BaseSocPercent:0} %. Jetzt laden oder preisgesteuert? Ohne Antwort ab {defaultAt:HH:mm} Uhr preisgesteuert.",
                 $"ev-base-choice-{transaction}", "/car")
             {
-                Actions = [new Push.PushAction("Immediate", "Jetzt laden"), new Push.PushAction("PriceDriven", "Preisgesteuert")]
+                Actions = [new Push.PushAction("Immediate", "Jetzt laden"), new Push.PushAction("PriceDriven", "Preisgesteuert"), new Push.PushAction("Stop", "Nicht laden")]
             };
             var (delivered, failed) = await services.GetRequiredService<Push.WebPushService>().SendAsync(
                 subscription => message with { Token = tokens.Create(transaction, subscription.UserName) }, null, EvBaseChargeChoice.AnswerTime, cancellationToken);

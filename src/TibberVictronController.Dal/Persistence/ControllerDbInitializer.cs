@@ -66,7 +66,9 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
         {
             ["BaseChargeMode"] = "TEXT NULL",
             ["BaseChoiceAskedAtUtc"] = "INTEGER NULL",
-            ["BaseChoiceBy"] = "TEXT NULL"
+            ["BaseChoiceBy"] = "TEXT NULL",
+            ["IsStoppedByUser"] = "INTEGER NOT NULL DEFAULT 0",
+            ["StoppedBy"] = "TEXT NULL"
         };
         foreach (var column in columns.Where(column => !existing.Contains(column.Key)))
             await dbContext.Database.ExecuteSqlRawAsync($"ALTER TABLE \"EvChargingSessions\" ADD COLUMN \"{column.Key}\" {column.Value};", cancellationToken);
@@ -351,7 +353,9 @@ CREATE TABLE IF NOT EXISTS "EvChargingSessions" (
     "LastMeterAtUtc" INTEGER NULL,
     "BaseChargeMode" TEXT NULL,
     "BaseChoiceAskedAtUtc" INTEGER NULL,
-    "BaseChoiceBy" TEXT NULL
+    "BaseChoiceBy" TEXT NULL,
+    "IsStoppedByUser" INTEGER NOT NULL DEFAULT 0,
+    "StoppedBy" TEXT NULL
 );
 CREATE INDEX IF NOT EXISTS "IX_EvChargingSessions_StartedAtUtc" ON "EvChargingSessions" ("StartedAtUtc");
 """;

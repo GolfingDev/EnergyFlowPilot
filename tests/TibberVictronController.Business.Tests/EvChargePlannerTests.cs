@@ -160,6 +160,12 @@ public sealed class EvChargePlannerTests
 
         Assert.False(EvBaseChargeChoice.Resolve(session, 45, 30).ShouldAsk);
         Assert.False(EvBaseChargeChoice.Resolve(session with { StoppedAtUtc = Now }, 26, 30).ShouldAsk);
+
+        // Stopped by hand counts only while the session runs; plugging in again starts a new session.
+        var stopped = session with { IsStoppedByUser = true, StoppedBy = "Carla" };
+        Assert.True(EvBaseChargeChoice.Resolve(stopped, 26, 30).IsStopped);
+        Assert.Equal("Carla", EvBaseChargeChoice.Resolve(stopped, 26, 30).StoppedBy);
+        Assert.False(EvBaseChargeChoice.Resolve(stopped with { StoppedAtUtc = Now }, 26, 30).IsStopped);
     }
 
     [Fact]

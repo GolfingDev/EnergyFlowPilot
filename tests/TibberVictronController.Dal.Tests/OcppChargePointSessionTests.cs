@@ -99,8 +99,14 @@ public sealed class OcppChargePointSessionTests : IAsyncLifetime
         Assert.Equal(asked, session.BaseChoiceAskedAtUtc);
         Assert.Equal("Torsten", session.BaseChoiceBy);
 
+        Assert.True(await repository.SetStoppedByUserAsync(transactionId, true, "Carla"));
+        Assert.True((await repository.GetAsync(transactionId))!.IsStoppedByUser);
+        Assert.True(await repository.SetStoppedByUserAsync(transactionId, false, "Carla"));
+        Assert.Null((await repository.GetAsync(transactionId))!.StoppedBy);
+
         await repository.StopAsync(transactionId, 2000, asked.AddHours(2), null);
         Assert.False(await repository.SetBaseChargeModeAsync(transactionId, EvBaseChargeMode.PriceDriven, "Torsten"));
+        Assert.False(await repository.SetStoppedByUserAsync(transactionId, true, "Torsten"));
     }
 
     [Fact]

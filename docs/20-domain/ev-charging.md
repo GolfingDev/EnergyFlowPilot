@@ -181,6 +181,7 @@ Operator decision: no native Android app; the web page becomes installable (PWA)
 - **Car page:** "Benachrichtigungen auf diesem Gerät" (drivers): switch on (browser permission, subscription), test message, switch off.
 - **Question:** sent once per charging session together with the question on the car page, with the buttons "Jetzt laden" and "Preisgesteuert". A button answers directly via `POST /api/push/base-choice` with a token in the message (data protection, 6 hours, names session and user), because the sign-in cookie may have expired; otherwise the car page opens.
 - **API:** `GET /api/push/public-key`, `PUT/DELETE /api/push/subscription`, `POST /api/push/test` (drivers and admins).
+- **Stop charging (operator 2026-11-03):** "Laden stoppen" on the car page (drivers) and in the push messages ("Nicht laden" with the question; after every answer the notification offers the opposite: stop or resume). It sets 0 A for the running charging session, also with the automatic control off, until "Fortsetzen" or until the car is plugged in again (`EvChargingSessions.IsStoppedByUser`, `StoppedBy`; `PUT /api/ev-charging/base-choice/stopped`, `POST /api/push/charge-stop` with the message token).
 
 ## Open points
 

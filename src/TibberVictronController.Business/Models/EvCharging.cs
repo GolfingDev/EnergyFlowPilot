@@ -45,6 +45,11 @@ public sealed record EvChargingSession(
 
     public string? BaseChoiceBy { get; init; }
 
+    /// <summary>Charging stopped by hand for this session (0 A) until resumed or the car is plugged in again.</summary>
+    public bool IsStoppedByUser { get; init; }
+
+    public string? StoppedBy { get; init; }
+
     // A meter reset or a wrong unit must not show negative energy.
     public double EnergyKwh => Math.Max(0, ((MeterStopWh ?? LastMeterWh ?? MeterStartWh) - MeterStartWh) / 1000d);
 }

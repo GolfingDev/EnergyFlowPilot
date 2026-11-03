@@ -105,12 +105,24 @@ public sealed class EfEvChargingSessionRepository(ControllerDbContext dbContext)
         return true;
     }
 
+    public async Task<bool> SetStoppedByUserAsync(int transactionId, bool stopped, string by, CancellationToken cancellationToken = default)
+    {
+        var entity = await dbContext.EvChargingSessions.FirstOrDefaultAsync(session => session.TransactionId == transactionId, cancellationToken);
+        if (entity is null || entity.StoppedAtUtc is not null) return false;
+        entity.IsStoppedByUser = stopped;
+        entity.StoppedBy = stopped ? (by.Length <= 200 ? by : by[..200]) : null;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static EvChargingSession Map(EvChargingSessionEntity entity) => new(
         entity.TransactionId, entity.ChargePointId, entity.ConnectorId, entity.IdTag, entity.StartedAtUtc, entity.MeterStartWh,
         entity.StoppedAtUtc, entity.MeterStopWh, entity.StopReason, entity.LastMeterWh, entity.LastMeterAtUtc)
     {
         BaseChargeMode = Enum.TryParse<EvBaseChargeMode>(entity.BaseChargeMode, out var mode) ? mode : null,
         BaseChoiceAskedAtUtc = entity.BaseChoiceAskedAtUtc,
-        BaseChoiceBy = entity.BaseChoiceBy
+        BaseChoiceBy = entity.BaseChoiceBy,
+        IsStoppedByUser = entity.IsStoppedByUser,
+        StoppedBy = entity.StoppedBy
     };
 }

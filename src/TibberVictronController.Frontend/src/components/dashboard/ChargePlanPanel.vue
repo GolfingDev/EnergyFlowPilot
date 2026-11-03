@@ -55,6 +55,8 @@ interface EvBaseChoiceDto {
   defaultAtUtc: string | null;
   decidedBy: string | null;
   canDecide: boolean;
+  isStopped: boolean;
+  stoppedBy: string | null;
 }
 
 const plan = ref<EvChargePlanDto | null>(null);
@@ -134,6 +136,24 @@ async function chooseBase(mode: EvBaseChoiceDto['mode']): Promise<void> {
   }
 }
 
+async function setStopped(stopped: boolean): Promise<void> {
+  if (!baseChoice.value?.transactionId) return;
+  choosing.value = true;
+  try {
+    const response = await fetch('/api/ev-charging/base-choice/stopped', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId: baseChoice.value.transactionId, stopped })
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { message?: string } | null;
+      error.value = body?.message ?? `Laden konnte nicht ${stopped ? 'gestoppt' : 'fortgesetzt'} werden (HTTP ${response.status}).`;
+    }
+  } finally {
+    choosing.value = false;
+    await load();
+  }
+}
+
 const showBaseChoice = computed(() => !!baseChoice.value?.transactionId && (baseChoice.value.isBelowBase || baseChoice.value.isDecided));
 
 onMounted(() => { void load(); timer = window.setInterval(() => void load(), 30_000); });
@@ -153,7 +173,15 @@ onBeforeUnmount(() => window.clearInterval(timer));
         Grundlage: {{ plan?.slotSource ?? '–' }}.
       </p>
       <v-alert v-if="control?.commandProblem" class="mt-2" type="warning" variant="tonal" density="compact">{{ control.commandProblem }}</v-alert>
-      <v-alert v-if="showBaseChoice && baseChoice" class="mt-2" :type="baseChoice.isDecided ? 'info' : 'warning'" variant="tonal" density="compact">
+      <div v-if="baseChoice?.transactionId && baseChoice.canDecide" class="d-flex flex-wrap align-center ga-2 mt-2">
+        <v-btn v-if="!baseChoice.isStopped" size="small" color="error" variant="tonal" prepend-icon="mdi-stop" :loading="choosing"
+          @click="setStopped(true)">Laden stoppen</v-btn>
+        <template v-else>
+          <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-play" :loading="choosing" @click="setStopped(false)">Fortsetzen</v-btn>
+          <span class="plan__meta">Gestoppt<template v-if="baseChoice.stoppedBy"> von {{ baseChoice.stoppedBy }}</template>, bis „Fortsetzen“ oder zum nächsten Anstecken.</span>
+        </template>
+      </div>
+      <v-alert v-if="showBaseChoice && baseChoice && !baseChoice.isStopped" class="mt-2" :type="baseChoice.isDecided ? 'info' : 'warning'" variant="tonal" density="compact">
         <template v-if="baseChoice.isDecided">
           Grund-Ladestand {{ formatNumber(baseChoice.baseSocPercent, 0) }} %:
           <strong>{{ baseChoice.mode === 'Immediate' ? 'jetzt laden' : 'preisgesteuert' }}</strong><template v-if="baseChoice.decidedBy"> (gewählt von {{ baseChoice.decidedBy }})</template>.

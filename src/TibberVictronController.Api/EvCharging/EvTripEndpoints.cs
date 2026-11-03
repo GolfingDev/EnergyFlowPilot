@@ -22,6 +22,7 @@ public static class EvTripEndpoints
         endpoints.MapGet("/api/ev-charging/charge-plan", GetChargePlanAsync).WithName("GetEvChargePlan").WithTags("EvCharging");
         endpoints.MapGet("/api/ev-charging/base-choice", GetBaseChoiceAsync).WithName("GetEvBaseChoice").WithTags("EvCharging");
         endpoints.MapPut("/api/ev-charging/base-choice", SetBaseChoiceAsync).WithName("SetEvBaseChoice").WithTags("EvCharging").RequireDriver();
+        endpoints.MapPut("/api/ev-charging/base-choice/stopped", SetStoppedAsync).WithName("SetEvChargingStopped").WithTags("EvCharging").RequireDriver();
         endpoints.MapGet("/api/ev-charging/control", (EvChargingControlState state) =>
         {
             var current = state.Current;
@@ -191,7 +192,21 @@ public static class EvTripEndpoints
     {
         var choice = await choices.GetAsync(cancellationToken);
         return TypedResults.Ok(new EvBaseChoiceDto(choice.TransactionId, choice.IsBelowBase, choice.SocPercent, choice.BaseSocPercent, choice.Mode.ToString(),
-            choice.IsDecided, choice.AskedAtUtc, choice.DefaultAtUtc, choice.DecidedBy, AdminOnlyEndpoints.IsDriver(http)));
+            choice.IsDecided, choice.AskedAtUtc, choice.DefaultAtUtc, choice.DecidedBy, AdminOnlyEndpoints.IsDriver(http))
+        {
+            IsStopped = choice.IsStopped,
+            StoppedBy = choice.StoppedBy
+        });
+    }
+
+    private static async Task<IResult> SetStoppedAsync(HttpContext http, EvChargingStopRequestDto request, EvBaseChargeChoiceService choices,
+        IEvChargingSessionRepository sessions, CancellationToken cancellationToken)
+    {
+        var current = await choices.GetAsync(cancellationToken);
+        if (current.TransactionId is not { } transaction || (request.TransactionId is { } asked && asked != transaction) ||
+            !await sessions.SetStoppedByUserAsync(transaction, request.Stopped, AdminOnlyEndpoints.Actor(http).Name, cancellationToken))
+            return TypedResults.Conflict(new { message = "Es läuft kein Ladevorgang." });
+        return TypedResults.NoContent();
     }
 
     // The answer belongs to the running charging session; an answer for an earlier session is refused.
@@ -243,7 +258,14 @@ public sealed record EvBaseChoiceDto(
     DateTimeOffset? AskedAtUtc,
     DateTimeOffset? DefaultAtUtc,
     string? DecidedBy,
-    bool CanDecide);
+    bool CanDecide)
+{
+    public bool IsStopped { get; init; }
+
+    public string? StoppedBy { get; init; }
+}
+
+public sealed record EvChargingStopRequestDto(int? TransactionId, bool Stopped);
 
 public sealed record EvBaseChoiceRequestDto(int? TransactionId, string? Mode);
 
