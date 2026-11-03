@@ -1,4 +1,6 @@
 export type EnergyFlowThemeName =
+  | 'zentrale'
+  | 'zentraleLight'
   | 'leitstandLight'
   | 'leitstandDark'
   | 'orbit'
@@ -15,6 +17,14 @@ export interface EnergyFlowThemeDefinition {
 }
 
 export const energyFlowThemes: EnergyFlowThemeDefinition[] = [
+  {
+    name: 'zentrale', label: 'Zentrale Dunkel', dark: true, icon: 'mdi-home-lightning-bolt',
+    description: 'Energy Flow Zentrale: Energiefluss mit direkter Steuerung, Status, Automationen und Prognose auf einen Blick.'
+  },
+  {
+    name: 'zentraleLight', label: 'Zentrale Hell', dark: false, icon: 'mdi-home-lightning-bolt-outline',
+    description: 'Energy Flow Zentrale in heller Ausführung für Tageslicht und Tablets an der Wand.'
+  },
   {
     name: 'horizon', label: 'Horizont', dark: true, icon: 'mdi-chart-timeline-variant',
     description: 'Zeit statt Kacheln: interaktive Preislandschaft und getrennte Speicherverläufe in Nachtblau, Koralle und Türkis.'
@@ -56,7 +66,12 @@ export const energyFlowThemes: EnergyFlowThemeDefinition[] = [
   }
 ];
 
-export const defaultEnergyFlowTheme: EnergyFlowThemeName = 'leitstandLight';
+export const defaultEnergyFlowTheme: EnergyFlowThemeName = 'zentrale';
+
+/** Both Zentrale variants share one shell and one dashboard; only the colour tokens differ. */
+export function isZentraleTheme(name: string | null | undefined): boolean {
+  return name === 'zentrale' || name === 'zentraleLight';
+}
 
 export function isEnergyFlowThemeName(value: string | null): value is EnergyFlowThemeName {
   return energyFlowThemes.some((theme) => theme.name === value);

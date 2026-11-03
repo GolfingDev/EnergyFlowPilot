@@ -22,7 +22,8 @@ import OrbitDashboard from '../components/orbit/OrbitDashboard.vue';
 import HorizonDashboard from '../components/horizon/HorizonDashboard.vue';
 import EnergyWorkspaceDashboard from '../components/workspace/EnergyWorkspaceDashboard.vue';
 import { formatCurrency, formatDateTime, formatNumber, formatPercent, formatPower, formatPrice, getDecisionLabel } from '../components/dashboard/dashboardFormatters';
-import { getEnergyFlowTheme } from '../themeRegistry';
+import ZentraleDashboard from '../components/zentrale/ZentraleDashboard.vue';
+import { getEnergyFlowTheme, isZentraleTheme } from '../themeRegistry';
 import type {
   ApiErrorDto,
   BatteryForecastResponseDto,
@@ -120,6 +121,8 @@ const currentConsumptionWatts = computed(() => {
   return liveTelemetry.value?.currentHouseConsumptionWatts ?? null;
 });
 const activeTheme = computed(() => getEnergyFlowTheme(theme.global.name.value));
+// The Zentrale loads its own shared data; the requests below would only duplicate load on the controller.
+const usesZentraleDashboard = computed(() => isZentraleTheme(activeTheme.value.name));
 const usesMissionDashboard = computed(() => false);
 const usesLeitstandDashboard = computed(() => activeTheme.value.name === 'leitstandLight' || activeTheme.value.name === 'leitstandDark');
 const usesOrbitDashboard = computed(() => activeTheme.value.name === 'orbit');
@@ -999,6 +1002,10 @@ provide(jointBatteryUiKey, {
 });
 
 onMounted(() => {
+  if (usesZentraleDashboard.value) {
+    return;
+  }
+
   void loadDashboard();
   void startLiveUpdates();
   startLiveTelemetryPolling();
@@ -1012,7 +1019,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <v-container class="dashboard-page" :class="dashboardLayoutClass" fluid>
+  <ZentraleDashboard v-if="usesZentraleDashboard" />
+  <v-container v-else class="dashboard-page" :class="dashboardLayoutClass" fluid>
     <JointBatteryShadowPanel v-if="!usesLeitstandDashboard && !usesOrbitDashboard && !usesWorkspaceDashboard && !usesHorizonDashboard" :state="jointBatteryShadow" :recovery-busy="isJointRecoveryBusy"
       :manual-charge-busy="isJointManualChargeBusy" :can-control="isAdmin"
       @confirm-recovery="confirmJointBatteryRecovery"

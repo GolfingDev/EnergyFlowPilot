@@ -80,6 +80,19 @@ Requirement: `docs/20-domain/ev-charging.md`.
 5. Implemented: calendar integration (Microsoft Graph application permission, places from location field or unambiguous subject patterns, automatic trips that can be hidden). Per-user calendars, trip owners and the Driver role implemented.
 7. Implemented: "charge now or by price" below the base state of charge per charging session, installable app (PWA) with push messages. Open: test on the operator's Android phone. Open: acceptance test with the real calendar, Exchange restriction to the drivers' mailboxes, several cars.
 
+## Energy Flow Zentrale (UI redesign)
+
+Requirement: `docs/10-architecture/frontend-architecture.md`, section "Energy Flow Zentrale".
+
+1. Implemented: design "Zentrale" (dark and light) with sidebar, dashboard (key figures, energy flow, status, automations, 24 h forecast, planned actions), context panel with direct battery, car and hot water control, pages Analyse, Steuerung and Automationen, settings search and app-wide expert level.
+2. Open, backend: live electrical power of the heat pump (Weishaupt Modbus register or a sub-meter), so the flow can draw the heat pump line with measured power instead of a plain connection.
+3. Open, backend: one automation status endpoint (rule name, state, trigger values, affected devices, expected end) for battery optimization, car charging and hot water, instead of three sources combined in the frontend.
+4. Open, backend: decision parameters per log entry (price compared with which later price, threshold, reserve) as structured values, so "why" can show numbers next to the planner text.
+5. Open, backend: command acknowledgement per setting change (stored → read by the controller at time X), so "applied" no longer has to be inferred from the next decision timestamp.
+6. Open, backend: E3/DC power limits as settable values, if the RSCP interface allows it; today they are shown read-only.
+7. Open, backend: longer review ranges (week, month, year) for grid and storage energy; today the review covers up to 48 hours and the savings cover day to year.
+8. Open: hardware acceptance of the direct controls on the Raspberry Pi with real devices (manual charge, limits, car session commands).
+
 ## Rule
 
 Backlog items should remain small enough to implement and verify in one focused step.

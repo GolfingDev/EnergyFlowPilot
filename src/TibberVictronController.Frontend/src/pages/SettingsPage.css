@@ -453,3 +453,14 @@
     justify-content: stretch;
   }
 }
+
+/* Search across all settings, including expert ones. */
+.settings-search { display: grid; gap: 8px; margin-bottom: 16px; }
+.settings-search__results { list-style: none; margin: 0; padding: 4px; border: 1px solid var(--efp-border); border-radius: 10px; background: var(--efp-surface); }
+.settings-search__results button { display: grid; width: 100%; gap: 2px; padding: 8px 10px; text-align: left; border-radius: 8px; color: var(--efp-text); background: none; border: 0; cursor: pointer; }
+.settings-search__results button:hover, .settings-search__results button:focus-visible { background: var(--efp-surface-muted); }
+.settings-search__results span { font-size: .78rem; color: var(--efp-muted); }
+.settings-search__empty { padding: 8px 10px; font-size: .84rem; color: var(--efp-muted); }
+.settings-search__recent { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .8rem; color: var(--efp-muted); }
+.settings-search__recent button { padding: 3px 10px; font-size: .78rem; color: var(--efp-text); background: var(--efp-surface); border: 1px solid var(--efp-border); border-radius: 99px; cursor: pointer; }
+.setting-row--highlight { outline: 2px solid var(--efp-primary); outline-offset: 4px; border-radius: 8px; transition: outline-color 1s; }

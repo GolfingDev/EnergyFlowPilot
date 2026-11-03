@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { expertMode } from '../uiMode';
 import DynamicTariffComparison from '../components/settings/DynamicTariffComparison.vue';
 import PvForecastCorrection from '../components/settings/PvForecastCorrection.vue';
 import SiteAddressCard from '../components/settings/SiteAddressCard.vue';
@@ -257,7 +258,12 @@ const fallbackMetadata: SettingMetadataDto[] = [
 
 const route = useRoute();
 const activeSectionKey = ref<SectionKey>('control');
-const showAdvanced = ref(false);
+// The page's extended mode is the app-wide expert level, so the choice is made once for all views.
+const showAdvanced = expertMode;
+const searchQuery = ref('');
+const highlightKey = ref<string | null>(null);
+const recentStorageKey = 'efp-settings-recent';
+const recentKeys = ref<string[]>(readRecentKeys());
 const settings = ref<ControllerSettingResponseDto[]>([]);
 const metadata = ref<GuiMetadataResponseDto | null>(null);
 const status = ref<ControllerStatusResponseDto | null>(null);
@@ -287,6 +293,29 @@ const sections = computed(() => sectionDefinitions
     fields: visibleFields.value.filter((field) => field.section === section.key)
   }))
   .filter((section) => section.fields.length > 0));
+
+const sectionTitleByKey = new Map(sectionDefinitions.map(section => [section.key, section.title]));
+
+// Search covers every setting, including expert ones, so nothing has to be found by clicking through sections.
+const searchResults = computed(() => {
+  const terms = searchQuery.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return [];
+  return availableFields.value
+    .map(field => {
+      const label = getFieldLabel(field).toLowerCase();
+      const haystack = [label, getFieldDescription(field), field.subgroup, sectionTitleByKey.get(field.section) ?? '', field.key].join(' ').toLowerCase();
+      if (!terms.every(term => haystack.includes(term))) return null;
+      return { field, score: terms.reduce((sum, term) => sum + (label.includes(term) ? 2 : 1), 0) };
+    })
+    .filter((entry): entry is { field: FieldDefinition; score: number } => entry !== null)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8)
+    .map(entry => entry.field);
+});
+
+const recentFields = computed(() => recentKeys.value
+  .map(key => availableFields.value.find(field => field.key === key))
+  .filter((field): field is FieldDefinition => field !== undefined));
 
 const activeSection = computed(() => sections.value.find((section) => section.key === activeSectionKey.value) ?? sections.value[0]);
 
@@ -433,6 +462,37 @@ async function loadPageData(): Promise<void> {
   }
 }
 
+function readRecentKeys(): string[] {
+  try {
+    const stored = JSON.parse(localStorage.getItem(recentStorageKey) ?? '[]') as unknown;
+    return Array.isArray(stored) ? stored.filter((key): key is string => typeof key === 'string').slice(0, 6) : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberFields(keys: string[]): void {
+  recentKeys.value = [...keys, ...recentKeys.value.filter(key => !keys.includes(key))].slice(0, 6);
+  try {
+    localStorage.setItem(recentStorageKey, JSON.stringify(recentKeys.value));
+  } catch {
+    // Without storage the list only lasts for this visit.
+  }
+}
+
+async function jumpToField(field: FieldDefinition): Promise<void> {
+  if (!visibleFields.value.includes(field)) showAdvanced.value = true;
+  activeSectionKey.value = field.section;
+  searchQuery.value = '';
+  rememberFields([field.key]);
+  highlightKey.value = field.key;
+  await nextTick();
+  const element = document.getElementById(field.key);
+  element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  element?.focus({ preventScroll: true });
+  window.setTimeout(() => { if (highlightKey.value === field.key) highlightKey.value = null; }, 2500);
+}
+
 async function saveSettings(): Promise<void> {
   if (!canSave.value) {
     return;
@@ -446,6 +506,7 @@ async function saveSettings(): Promise<void> {
     // Credentials first: changing the selection must not race with saving the new supplier's access data.
     const changedKeys = Object.keys(draftValues.value).filter((key) => draftValues.value[key] !== initialValues.value[key])
       .sort((a, b) => Number(a === 'electricityPrices.provider') - Number(b === 'electricityPrices.provider'));
+    rememberFields(changedKeys);
 
     for (const key of changedKeys) {
       const setting = getSettingOrFallback(key);
@@ -867,6 +928,32 @@ watch(showAdvanced, ensureActiveSection);
         :disabled="isSaving"
       />
     </section>
+    <section class="settings-search" aria-label="Einstellungen durchsuchen">
+      <v-text-field
+        v-model="searchQuery"
+        prepend-inner-icon="mdi-magnify"
+        label="Einstellung suchen, z. B. Ladegrenze, Tibber, Wallbox"
+        clearable
+        hide-details
+        density="comfortable"
+        variant="outlined"
+        @keydown.enter="searchResults[0] && jumpToField(searchResults[0])"
+      />
+      <ul v-if="searchQuery" class="settings-search__results" aria-label="Suchtreffer">
+        <li v-for="field in searchResults" :key="field.key">
+          <button type="button" @click="jumpToField(field)">
+            <strong>{{ getFieldLabel(field) }}</strong>
+            <span>{{ sectionTitleByKey.get(field.section) }} · {{ field.subgroup }}<template v-if="!isEverydaySetting(field.key)"> · Experte</template></span>
+          </button>
+        </li>
+        <li v-if="!searchResults.length" class="settings-search__empty">Keine passende Einstellung gefunden.</li>
+      </ul>
+      <div v-else-if="recentFields.length" class="settings-search__recent">
+        <span>Zuletzt verwendet:</span>
+        <button v-for="field in recentFields" :key="field.key" type="button" @click="jumpToField(field)">{{ getFieldLabel(field) }}</button>
+      </div>
+    </section>
+
     <v-alert v-if="hiddenDirtyCount > 0" class="mb-4" type="info" variant="tonal">
       {{ hiddenDirtyCount }} Änderung(en) im erweiterten Modus sind noch ungespeichert und werden beim Speichern mit übernommen.
       <v-btn variant="text" size="small" @click="showAdvanced = true">Erweiterte Werte anzeigen</v-btn>
@@ -980,6 +1067,7 @@ watch(showAdvanced, ensureActiveSection);
                 :key="field.key"
                 class="setting-row"
                 :class="{
+                  'setting-row--highlight': highlightKey === field.key,
                   'setting-row--important': field.category === 'important',
                   'setting-row--critical': field.category === 'critical'
                 }"

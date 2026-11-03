@@ -113,3 +113,40 @@ Das sechste Design „Horizont“ setzt auf eine große interaktive Zeitlinie in
 Energiezentrale und Kachelwerk zeigen direkt an ihren Netzenergie-Graphen die Netzkostensumme für denselben gewählten Abschnitt (24 Stunden, 48 Stunden oder 7 Tage). Die Summe stammt aus `DashboardReview.costs.actualCost`: erfasste Bezugsenergie bewertet mit den jeweiligen Intervallpreisen, abzüglich Einspeisevergütung, ohne Grundpreis. Sie wird nicht aus Gesamtenergie und Durchschnittspreis im Frontend nachgerechnet. Auch negative Summen bleiben sichtbar.
 
 Beim Zeitraumwechsel werden alte Beträge ausgeblendet und der neue Datenstand abgewartet. Fehlende Kosten erscheinen als unbekannt, nicht als null. Bei unvollständiger Preisbewertung nennt die Anzeige den Anteil bewerteter erfasster Messintervalle und bezeichnet die Summe als unvollständig. Messlücken werden dadurch nicht als vollständig erfasster Verbrauch ausgegeben; die Darstellung ist eine Auswertung der erfassten Messwerte, keine Stromabrechnung.
+
+
+## Energy Flow Zentrale
+
+The designs `zentrale` (dark) and `zentraleLight` render their own app frame (`ZentraleShell.vue`) and dashboard (`ZentraleDashboard.vue`). `zentrale` is the default for browsers without a stored design; a stored choice stays. All other designs are unchanged.
+
+### Navigation
+
+Sidebar with Dashboard, Analyse, Steuerung, Automationen and Einstellungen (admins only). Tablets get an icon rail, phones a bottom bar. The car and heating pages stay reachable from Steuerung and the context panel. Below the navigation the user switches the operating level (Standard / Experte) and light/dark; other designs remain selectable.
+
+### Dashboard
+
+Reading order: key figures, energy flow with status and automations beside it, 24 h forecast with planned actions below. Every key figure, flow node, status sentence, automation and planned action opens the same context panel on the right (bottom sheet on phones). Control starts there: a click on "Akku 1" shows mode (Automatik / Sofort laden), charge limit and reserve, and power limits, without changing the page.
+
+### Energy flow
+
+The house is the busbar: each line connects exactly one component with the house. PV charging a battery therefore shows "PV → Haus" and "Haus → Akku", which is what the meters measure; no line claims an unmeasured allocation between two components. Lines animate only for measured power above 50 W and only while live data are at most two minutes old. Line direction follows the measured sign. The heat pump has no live power measurement; its line is a plain dotted connection. Components that are not set up (wallbox, heat pump, E3/DC) are not drawn. The house value is the measured balance (grid minus both batteries plus PV) and includes the car. On phones the drawing becomes a list with the same values and directions.
+
+### Explanations
+
+Status sentences combine measured facts with texts the backend delivers (planner reason, charging control reason, hot water plan). The frontend never invents a reason. Warnings and critical checks come first; normal operation is not shown as a warning. Automations show rule, state, current action, trigger text, affected devices and the next planned change.
+
+### Control feedback
+
+Setting changes show four states: changed here, sent, stored (the value read back from `/api/settings` matches), and recalculated (a decision or joint plan newer than the confirmation exists). Manual charging shows sent, accepted by the backend, reported active, and the battery measuring charging power. Errors and rejected commands are shown in German next to the control. Controls are only offered for what the backend supports: the E3/DC has no settable power limit and without joint control no command path at all; this is stated in the panel.
+
+### Expert level
+
+`expertMode` (`uiMode.ts`, stored in the browser) is one switch for all views and is the same as the extended mode of the settings page. It adds technical parameters (hard minimum, wear cost, horizon, hot water thresholds, rule IDs, execution details). Safety-relevant states (stale data, recovery pending, simulation mode, device errors) are visible on both levels.
+
+### Settings
+
+The settings page keeps its three zones and adds a search over all settings, including expert ones; a hit opens the section, enables the expert level if needed and highlights the field. Recently used and recently saved settings are offered as shortcuts.
+
+### Data
+
+One shared store (`useZentraleData.ts`) polls the summary, joint battery state and wallbox every 15 s, and car, charging control and plan, hot water, status and settings every 60 s, only while a Zentrale view is open. The classic dashboard requests are skipped while the Zentrale design is active. Colours of energy kinds are defined once as `--z-*` tokens in `styles.css` and used by flow, key figures and charts.

@@ -1,0 +1,43 @@
+/* Shared building blocks of the Zentrale. Global on purpose: the side panel renders outside the page components. */
+.z-card { min-width: 0; padding: 16px 18px; background: var(--efp-surface); border: 1px solid var(--efp-border); border-radius: 14px; color: var(--efp-text); box-shadow: var(--efp-shadow); }
+.z-card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.z-card__head h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1.02rem; font-weight: 600; }
+.z-pill { padding: 2px 10px; font-size: .74rem; border-radius: 99px; color: var(--efp-primary); background: var(--efp-card-accent); border: 1px solid color-mix(in srgb, var(--efp-primary) 35%, transparent); }
+.z-live { display: inline-flex; align-items: center; gap: 6px; font-size: .76rem; color: var(--efp-warning-text); }
+.z-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--efp-warning); }
+.z-live--ok { color: var(--efp-muted); }
+.z-live--ok i { background: var(--efp-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--efp-success) 20%, transparent); }
+
+.z-block { display: grid; gap: 4px; }
+.z-block h3 { margin: 0 0 4px; font-size: .8rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--efp-muted); }
+.z-block--expert { padding: 10px 12px; border: 1px dashed var(--efp-border); border-radius: 10px; }
+.z-note { margin: 2px 0; font-size: .8rem; line-height: 1.45; color: var(--efp-muted); }
+.z-note--warning { color: var(--efp-warning-text); }
+.z-note--error { color: var(--efp-error); }
+.z-note--ok { color: var(--efp-success); }
+.z-facts { display: grid; gap: 0; margin: 0; }
+.z-facts > div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--efp-border-soft); font-size: .84rem; }
+.z-facts > div:last-child { border-bottom: 0; }
+.z-facts dt { color: var(--efp-muted); }
+.z-facts dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.z-facts small { color: var(--efp-muted); }
+.z-list { margin: 0; padding-left: 18px; font-size: .82rem; line-height: 1.55; }
+.z-steps { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 0; padding: 0; list-style: none; font-size: .76rem; color: var(--efp-muted); }
+.z-steps li::before { content: '○ '; }
+.z-steps li.done { color: var(--efp-success); }
+.z-steps li.done::before { content: '✓ '; }
+.z-steps li.busy::before { content: '… '; }
+.z-steps li.failed { color: var(--efp-error); }
+.z-steps li.failed::before { content: '✕ '; }
+.z-link { display: inline-flex; align-items: center; gap: 4px; font-size: .84rem; color: var(--efp-primary); text-decoration: none; }
+.z-link:hover { text-decoration: underline; }
+
+.z-page { display: grid; gap: 14px; max-width: 1680px; margin: 0 auto; padding: 18px 22px 28px; }
+.z-page__intro { margin: 0; color: var(--efp-muted); font-size: .9rem; }
+.z-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.z-tabs button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: .86rem; color: var(--efp-muted); background: var(--efp-surface);
+  border: 1px solid var(--efp-border); border-radius: 10px; cursor: pointer; }
+.z-tabs button[aria-selected='true'] { color: var(--efp-text); border-color: var(--efp-primary); background: var(--z-active-nav); }
+.z-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+@media (max-width: 960px) { .z-grid-2 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) { .z-page { padding: 12px 12px 90px; } .z-card { padding: 14px; } }

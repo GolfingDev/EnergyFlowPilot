@@ -435,3 +435,77 @@ select {
   --efp-shadow: 0 12px 36px #040b1933;
   --efp-strong-shadow: 0 20px 48px #040b1955;
 }
+
+/*
+ * Energy Flow Zentrale. The --efp-* tokens keep reused panels readable; the --z-* tokens are the one place
+ * where every energy kind gets its colour, so flow lines, KPI cards and charts always agree.
+ */
+.v-theme--zentrale {
+  --efp-background: #0b1220;
+  --efp-background-art: #0b1220;
+  --efp-surface: #111a2b;
+  --efp-panel-background: #111a2b;
+  --efp-surface-muted: #0e1626;
+  --efp-topbar-background: #0b1220;
+  --efp-nav-background: #0d1525;
+  --efp-border: #22304a;
+  --efp-border-soft: #1a2639;
+  --efp-text: #e8eef7;
+  --efp-muted: #93a3b8;
+  --efp-secondary: #b7c3d4;
+  --efp-primary: #4ade80;
+  --efp-success: #4ade80;
+  --efp-warning: #f59e0b;
+  --efp-warning-text: #fbbf24;
+  --efp-error: #f87171;
+  --efp-card-accent: rgba(74, 222, 128, 0.1);
+  --efp-page-glow: transparent;
+  --efp-shadow: 0 6px 18px rgba(2, 6, 16, 0.35);
+  --efp-strong-shadow: 0 14px 36px rgba(2, 6, 16, 0.55);
+  --z-pv: #facc15;
+  --z-battery: #4ade80;
+  --z-grid-import: #818cf8;
+  --z-grid-export: #22d3ee;
+  --z-house: #38bdf8;
+  --z-ev: #2dd4bf;
+  --z-heat: #fb7185;
+  --z-price: #c084fc;
+  --z-idle: #3a4a63;
+  --z-surface-raised: #16223a;
+  --z-active-nav: rgba(74, 222, 128, 0.14);
+}
+
+.v-theme--zentraleLight {
+  --efp-background: #eef2f6;
+  --efp-background-art: #eef2f6;
+  --efp-surface: #ffffff;
+  --efp-panel-background: #ffffff;
+  --efp-surface-muted: #f5f7fa;
+  --efp-topbar-background: #eef2f6;
+  --efp-nav-background: #ffffff;
+  --efp-border: #d5dde7;
+  --efp-border-soft: #e5eaf0;
+  --efp-text: #0f1a2a;
+  --efp-muted: #526175;
+  --efp-secondary: #3b4a5e;
+  --efp-primary: #15803d;
+  --efp-success: #15803d;
+  --efp-warning: #b45309;
+  --efp-warning-text: #92400e;
+  --efp-error: #b91c1c;
+  --efp-card-accent: rgba(21, 128, 61, 0.08);
+  --efp-page-glow: transparent;
+  --efp-shadow: 0 2px 8px rgba(15, 26, 42, 0.06);
+  --efp-strong-shadow: 0 12px 30px rgba(15, 26, 42, 0.16);
+  --z-pv: #ca8a04;
+  --z-battery: #16a34a;
+  --z-grid-import: #4f46e5;
+  --z-grid-export: #0891b2;
+  --z-house: #0284c7;
+  --z-ev: #0d9488;
+  --z-heat: #e11d48;
+  --z-price: #9333ea;
+  --z-idle: #c3ccd8;
+  --z-surface-raised: #f5f7fa;
+  --z-active-nav: rgba(21, 128, 61, 0.1);
+}

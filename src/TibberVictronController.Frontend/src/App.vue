@@ -5,11 +5,13 @@ import { useTheme } from 'vuetify';
 import GeneralOverlay from './components/GeneralOverlay.vue'
 import ThemeMenuPanel from './components/ThemeMenuPanel.vue';
 import BuildInfo from './components/BuildInfo.vue';
+import ZentraleShell from './components/zentrale/ZentraleShell.vue';
 import { currentUser, isAdmin, isDriver, logout, roleLabel } from './auth';
 import {
   defaultEnergyFlowTheme,
   getEnergyFlowTheme,
   isEnergyFlowThemeName,
+  isZentraleTheme,
   type EnergyFlowThemeName
 } from './themeRegistry';
 
@@ -72,6 +74,8 @@ const settingsMenuGroups: SettingsMenuGroup[] = [
 
 const activeRouteName = computed(() => String(route.name ?? ''));
 const activeTheme = computed(() => getEnergyFlowTheme(theme.global.name.value));
+// The Zentrale brings its own frame (sidebar, header, bottom bar); the other designs keep the existing one.
+const usesZentraleShell = computed(() => isZentraleTheme(activeTheme.value.name));
 const usesExecutiveShell = computed(() => activeTheme.value.name === 'energyCenter' || activeTheme.value.name === 'tileLab');
 const pageTitle = computed(() => {
   switch (activeRouteName.value) {
@@ -128,7 +132,9 @@ function toggleExecutiveSidebar(): void {
 </script>
 
 <template>
+  <ZentraleShell v-if="usesZentraleShell" :theme-name="activeTheme.name" @change-theme="changeTheme" />
   <v-app
+    v-else
     class="app-shell"
     :class="{
       'app-shell--executive': usesExecutiveShell,

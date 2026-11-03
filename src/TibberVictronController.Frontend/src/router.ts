@@ -4,6 +4,9 @@ import DashboardPage from './pages/DashboardPage.vue';
 import HeatingPage from './pages/HeatingPage.vue';
 import EvChargingPage from './pages/EvChargingPage.vue';
 import SettingsPage from './pages/SettingsPage.vue';
+import AnalysisPage from './pages/AnalysisPage.vue';
+import ControlPage from './pages/ControlPage.vue';
+import AutomationsPage from './pages/AutomationsPage.vue';
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -16,6 +19,21 @@ export const router = createRouter({
       path: '/dashboard',
       name: 'dashboard',
       component: DashboardPage
+    },
+    {
+      path: '/analysis',
+      name: 'analysis',
+      component: AnalysisPage
+    },
+    {
+      path: '/control',
+      name: 'control',
+      component: ControlPage
+    },
+    {
+      path: '/automations',
+      name: 'automations',
+      component: AutomationsPage
     },
     {
       path: '/heating',
