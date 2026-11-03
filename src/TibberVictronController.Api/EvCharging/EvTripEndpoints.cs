@@ -23,6 +23,7 @@ public static class EvTripEndpoints
         endpoints.MapGet("/api/ev-charging/base-choice", GetBaseChoiceAsync).WithName("GetEvBaseChoice").WithTags("EvCharging");
         endpoints.MapPut("/api/ev-charging/base-choice", SetBaseChoiceAsync).WithName("SetEvBaseChoice").WithTags("EvCharging").RequireDriver();
         endpoints.MapPut("/api/ev-charging/base-choice/stopped", SetStoppedAsync).WithName("SetEvChargingStopped").WithTags("EvCharging").RequireDriver();
+        endpoints.MapPut("/api/ev-charging/base-choice/target", SetImmediateTargetAsync).WithName("SetEvImmediateTarget").WithTags("EvCharging").RequireDriver();
         endpoints.MapGet("/api/ev-charging/control", (EvChargingControlState state) =>
         {
             var current = state.Current;
@@ -195,8 +196,22 @@ public static class EvTripEndpoints
             choice.IsDecided, choice.AskedAtUtc, choice.DefaultAtUtc, choice.DecidedBy, AdminOnlyEndpoints.IsDriver(http))
         {
             IsStopped = choice.IsStopped,
-            StoppedBy = choice.StoppedBy
+            StoppedBy = choice.StoppedBy,
+            ImmediateTargetPercent = choice.ImmediateTargetPercent,
+            ImmediateTargetBy = choice.ImmediateTargetBy
         });
+    }
+
+    private static async Task<IResult> SetImmediateTargetAsync(HttpContext http, EvImmediateTargetRequestDto request, EvBaseChargeChoiceService choices,
+        IEvChargingSessionRepository sessions, CancellationToken cancellationToken)
+    {
+        if (request.TargetPercent is { } target && (double.IsNaN(target) || target < 1 || target > 100))
+            return TypedResults.BadRequest(new { message = "Das Ladeziel muss zwischen 1 und 100 % liegen." });
+        var current = await choices.GetAsync(cancellationToken);
+        if (current.TransactionId is not { } transaction || (request.TransactionId is { } asked && asked != transaction) ||
+            !await sessions.SetImmediateTargetAsync(transaction, request.TargetPercent is { } value ? Math.Round(value) : null, AdminOnlyEndpoints.Actor(http).Name, cancellationToken))
+            return TypedResults.Conflict(new { message = "Es läuft kein Ladevorgang; das Ladeziel gilt erst nach dem Anstecken." });
+        return TypedResults.NoContent();
     }
 
     private static async Task<IResult> SetStoppedAsync(HttpContext http, EvChargingStopRequestDto request, EvBaseChargeChoiceService choices,
@@ -263,7 +278,13 @@ public sealed record EvBaseChoiceDto(
     public bool IsStopped { get; init; }
 
     public string? StoppedBy { get; init; }
+
+    public double? ImmediateTargetPercent { get; init; }
+
+    public string? ImmediateTargetBy { get; init; }
 }
+
+public sealed record EvImmediateTargetRequestDto(int? TransactionId, double? TargetPercent);
 
 public sealed record EvChargingStopRequestDto(int? TransactionId, bool Stopped);
 

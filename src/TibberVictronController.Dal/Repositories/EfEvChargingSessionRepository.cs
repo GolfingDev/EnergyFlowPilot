@@ -115,6 +115,18 @@ public sealed class EfEvChargingSessionRepository(ControllerDbContext dbContext)
         return true;
     }
 
+    public async Task<bool> SetImmediateTargetAsync(int transactionId, double? targetPercent, string by, CancellationToken cancellationToken = default)
+    {
+        var entity = await dbContext.EvChargingSessions.FirstOrDefaultAsync(session => session.TransactionId == transactionId, cancellationToken);
+        if (entity is null || entity.StoppedAtUtc is not null) return false;
+        entity.ImmediateTargetPercent = targetPercent;
+        entity.ImmediateTargetBy = targetPercent is null ? null : by.Length <= 200 ? by : by[..200];
+        // A new target means "charge now": a stop by hand from before would contradict it.
+        if (targetPercent is not null) (entity.IsStoppedByUser, entity.StoppedBy) = (false, null);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static EvChargingSession Map(EvChargingSessionEntity entity) => new(
         entity.TransactionId, entity.ChargePointId, entity.ConnectorId, entity.IdTag, entity.StartedAtUtc, entity.MeterStartWh,
         entity.StoppedAtUtc, entity.MeterStopWh, entity.StopReason, entity.LastMeterWh, entity.LastMeterAtUtc)
@@ -123,6 +135,8 @@ public sealed class EfEvChargingSessionRepository(ControllerDbContext dbContext)
         BaseChoiceAskedAtUtc = entity.BaseChoiceAskedAtUtc,
         BaseChoiceBy = entity.BaseChoiceBy,
         IsStoppedByUser = entity.IsStoppedByUser,
-        StoppedBy = entity.StoppedBy
+        StoppedBy = entity.StoppedBy,
+        ImmediateTargetPercent = entity.ImmediateTargetPercent,
+        ImmediateTargetBy = entity.ImmediateTargetBy
     };
 }

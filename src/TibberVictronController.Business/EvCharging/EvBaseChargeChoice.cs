@@ -19,6 +19,10 @@ public sealed record EvBaseChargeChoiceState(
     public bool IsStopped { get; init; }
 
     public string? StoppedBy { get; init; }
+
+    public double? ImmediateTargetPercent { get; init; }
+
+    public string? ImmediateTargetBy { get; init; }
 }
 
 /// <summary>
@@ -34,7 +38,9 @@ public static class EvBaseChargeChoice
         ResolveChoice(session, socPercent, baseSocPercent) with
         {
             IsStopped = session is { IsActive: true, IsStoppedByUser: true },
-            StoppedBy = session is { IsActive: true, IsStoppedByUser: true } ? session.StoppedBy : null
+            StoppedBy = session is { IsActive: true, IsStoppedByUser: true } ? session.StoppedBy : null,
+            ImmediateTargetPercent = session is { IsActive: true } ? session.ImmediateTargetPercent : null,
+            ImmediateTargetBy = session is { IsActive: true, ImmediateTargetPercent: not null } ? session.ImmediateTargetBy : null
         };
 
     private static EvBaseChargeChoiceState ResolveChoice(EvChargingSession? session, double? socPercent, double baseSocPercent)

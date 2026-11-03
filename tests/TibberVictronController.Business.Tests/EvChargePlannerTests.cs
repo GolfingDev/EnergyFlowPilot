@@ -142,6 +142,19 @@ public sealed class EvChargePlannerTests
     }
 
     [Fact]
+    public void ImmediateTargetChargesAtOnceThenTheCheapHoursFollowThePlan()
+    {
+        // Operator 2026-11-03: "charge now up to 60 %", although the later hours are cheaper.
+        var plan = EvChargePlanner.Plan(Input(Slots(96, index => index < 8 ? 0.35 : 0.30), [], currentSoc: 40) with
+            { BaseSocPercent = 0, FutureValuePerKwh = 0.10, ImmediateTargetSocPercent = 60 });
+
+        Assert.Equal(Now, plan.Slots[0].StartsAtUtc);
+        Assert.All(plan.Slots, slot => Assert.Equal(EvChargeReason.ImmediateTarget, slot.Reason));
+        // 40 % -> 60 % of 81 kWh = 16.2 kWh in the battery, 18 kWh at the wallbox (the state grid may round a little).
+        Assert.InRange(plan.GridKwh, 17.5, 18.6);
+    }
+
+    [Fact]
     public void BaseChoiceIsAskedOnceBelowTheBaseAndDefaultsToPrice()
     {
         var session = new EvChargingSession(7, "cp", 1, "tag", Now, 0, null, null, null, null, null);

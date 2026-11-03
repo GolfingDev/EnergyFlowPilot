@@ -19,4 +19,6 @@ public sealed class EvChargingSessionEntity
     public string? BaseChoiceBy { get; set; }
     public bool IsStoppedByUser { get; set; }
     public string? StoppedBy { get; set; }
+    public double? ImmediateTargetPercent { get; set; }
+    public string? ImmediateTargetBy { get; set; }
 }

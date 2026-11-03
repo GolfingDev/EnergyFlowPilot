@@ -50,6 +50,11 @@ public sealed record EvChargingSession(
 
     public string? StoppedBy { get; init; }
 
+    /// <summary>Charge at once up to this state of charge in this session (set by hand), then follow the plan.</summary>
+    public double? ImmediateTargetPercent { get; init; }
+
+    public string? ImmediateTargetBy { get; init; }
+
     // A meter reset or a wrong unit must not show negative energy.
     public double EnergyKwh => Math.Max(0, ((MeterStopWh ?? LastMeterWh ?? MeterStartWh) - MeterStartWh) / 1000d);
 }

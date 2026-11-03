@@ -69,7 +69,7 @@ public sealed class EvChargingControlService(
     private DateTimeOffset appliedUntilUtc;
     private DateTimeOffset retryAtUtc = DateTimeOffset.MinValue;
     private string? commandProblem;
-    private EvBaseChargeMode planBaseMode;
+    private (EvBaseChargeMode Mode, double? Target) planChoice;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -114,8 +114,9 @@ public sealed class EvChargingControlService(
             return;
         }
 
-        await RefreshPlanAsync(scope.ServiceProvider, now, choice.Mode != planBaseMode, cancellationToken);
-        planBaseMode = choice.Mode;
+        // A new answer or target applies at once, not only with the next quarter hour.
+        await RefreshPlanAsync(scope.ServiceProvider, now, (choice.Mode, choice.ImmediateTargetPercent) != planChoice, cancellationToken);
+        planChoice = (choice.Mode, choice.ImmediateTargetPercent);
         var wallbox = charger.Current;
         await SampleSurplusAsync(scope.ServiceProvider, wallbox, now, cancellationToken);
         if (!wallbox.IsConnected || !wallbox.IsVehiclePlugged)

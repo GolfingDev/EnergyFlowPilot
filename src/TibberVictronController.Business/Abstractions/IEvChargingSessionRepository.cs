@@ -24,6 +24,9 @@ public interface IEvChargingSessionRepository
 
     /// <summary>Stops or resumes charging of a running session by hand; false when it is unknown or finished.</summary>
     Task<bool> SetStoppedByUserAsync(int transactionId, bool stopped, string by, CancellationToken cancellationToken = default);
+
+    /// <summary>Sets (null: removes) the immediate charge target of a running session; false when it is unknown or finished.</summary>
+    Task<bool> SetImmediateTargetAsync(int transactionId, double? targetPercent, string by, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Live wallbox state for the dashboard and, later, the charging planner.</summary>

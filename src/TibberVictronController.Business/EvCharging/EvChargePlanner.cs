@@ -34,6 +34,9 @@ public sealed record EvChargePlanInput(
 
     /// <summary>Below the base state of charge: cheapest hours within a day (default) or at once (driver's answer).</summary>
     public EvBaseChargeMode BaseMode { get; init; } = EvBaseChargeMode.PriceDriven;
+
+    /// <summary>Charge at once up to this state of charge (set by hand for the running session), then follow the plan.</summary>
+    public double? ImmediateTargetSocPercent { get; init; }
 }
 
 public enum EvChargeReason
@@ -41,7 +44,8 @@ public enum EvChargeReason
     Trip,
     PvSurplus,
     BaseSoc,
-    CheapPrice
+    CheapPrice,
+    ImmediateTarget
 }
 
 public sealed record EvPlannedChargeSlot(
@@ -127,11 +131,14 @@ public static class EvChargePlanner
         // those prices (half of it, for safety), so a cheap night tomorrow can still be used.
         var baseDeferable = immediate ? 0 : Math.Max(0, (input.NowUtc + BaseSocDeadline - horizonEnd).TotalHours) * car.ChargePowerWatts / 1000d * efficiency * 0.5;
         var baseTarget = Math.Max(0, baseEnergy - baseDeferable);
+        // Charged at full power right away: the base state of charge when the driver chose "now", and a target set by hand.
+        var manualEnergy = input.ImmediateTargetSocPercent is { } manual ? Math.Clamp(manual / 100d * capacity, 0, limit) : 0;
+        var immediateEnergy = Math.Max(immediate ? baseEnergy : 0, manualEnergy);
         var terminalTarget = TerminalTripTarget(input.Trips, horizonEnd, capacity, car, efficiency);
 
         // Energy states: 1 kWh steps up to the car's limit plus the exact current, reserve and base values.
         var states = Enumerable.Range(0, (int)Math.Floor(limit) + 1).Select(kwh => (double)kwh)
-            .Concat([start, reserve, baseEnergy, limit]).Where(e => e >= 0 && e <= Math.Max(limit, start)).Distinct().Order().ToArray();
+            .Concat([start, reserve, baseEnergy, manualEnergy, limit]).Where(e => e >= 0 && e <= Math.Max(limit, start)).Distinct().Order().ToArray();
         var powers = Enumerable.Range(6, 11).Select(amps => Math.Min(amps * WattsPerAmp, car.ChargePowerWatts) / 1000d)
             .Where(power => power * 1000 >= MinimumChargePowerWatts - 1).Distinct().ToArray();
 
@@ -166,7 +173,7 @@ public static class EvChargePlanner
         }
 
         // Hours at home below the base state of charge; away (no hours) nothing can be done about it.
-        double BelowBase(int i, double energyAfter) => immediate ? BelowBasePenaltyPerKwhHour * Math.Max(0, baseEnergy - energyAfter) * hours[i] : 0;
+        double BelowBase(int i, double energyAfter) => BelowBasePenaltyPerKwhHour * Math.Max(0, immediateEnergy - energyAfter) * hours[i];
 
         (double Power, double Cost) BestAction(int i, double energy, double[] next)
         {
@@ -228,6 +235,8 @@ public static class EvChargePlanner
             var nextDeparture = departures.Keys.Where(key => key > index).DefaultIfEmpty(-1).Min();
             if (nextDeparture >= 0 && trace[nextDeparture] <= reserve + departures[nextDeparture].EnergyKwh + NeedTolerance) return EvChargeReason.Trip;
             if (nextDeparture < 0 && terminalTarget > 0 && current <= terminalTarget + NeedTolerance) return EvChargeReason.Trip;
+            if (manualEnergy > 0 && trace[index] < manualEnergy - 0.1)
+                return EvChargeReason.ImmediateTarget;
             if (pv >= grid) return EvChargeReason.PvSurplus;
             return energyAfter <= baseEnergy + 0.5 ? EvChargeReason.BaseSoc : EvChargeReason.CheapPrice;
         }

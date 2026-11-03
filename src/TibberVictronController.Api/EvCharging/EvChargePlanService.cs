@@ -43,7 +43,7 @@ public sealed class EvChargePlanService(
             await NumberAsync(ControllerSettingDefaults.EvCarBaseSocKey, cancellationToken),
             await NumberAsync(ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey, cancellationToken),
             slots,
-            tripView.Plan.Trips) { BaseMode = choice.Mode });
+            tripView.Plan.Trips) { BaseMode = choice.Mode, ImmediateTargetSocPercent = choice.ImmediateTargetPercent });
         return new EvChargePlanView(plan, source, tripView) { BaseChoice = choice };
     }
 

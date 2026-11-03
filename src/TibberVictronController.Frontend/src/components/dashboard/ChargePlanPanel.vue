@@ -10,7 +10,7 @@ interface EvChargeSlotDto {
   pvKwh: number;
   pricePerKwh: number;
   isPriceEstimated: boolean;
-  reason: 'Trip' | 'PvSurplus' | 'BaseSoc' | 'CheapPrice';
+  reason: 'Trip' | 'PvSurplus' | 'BaseSoc' | 'CheapPrice' | 'ImmediateTarget';
 }
 
 interface EvChargePlanDto {
@@ -57,6 +57,8 @@ interface EvBaseChoiceDto {
   canDecide: boolean;
   isStopped: boolean;
   stoppedBy: string | null;
+  immediateTargetPercent: number | null;
+  immediateTargetBy: string | null;
 }
 
 const plan = ref<EvChargePlanDto | null>(null);
@@ -74,7 +76,9 @@ let timer: number | undefined;
 
 const dateTime = new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
 const timeOnly = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
-const reasonLabel: Record<EvChargeSlotDto['reason'], string> = { Trip: 'für Fahrt', PvSurplus: 'PV-Überschuss', BaseSoc: 'Grund-Ladestand', CheapPrice: 'günstiger Strom' };
+const reasonLabel: Record<EvChargeSlotDto['reason'], string> = {
+  Trip: 'für Fahrt', PvSurplus: 'PV-Überschuss', BaseSoc: 'Grund-Ladestand', CheapPrice: 'günstiger Strom', ImmediateTarget: 'Sofort-Ladeziel'
+};
 const cents = (euro: number) => `${formatNumber(euro * 100, 1)} ct/kWh`;
 
 // Adjacent quarter hours with the same reason read better as one charging block.
@@ -154,6 +158,29 @@ async function setStopped(stopped: boolean): Promise<void> {
   }
 }
 
+const targetInput = ref<number | null>(80);
+
+// "Charge now up to X %" for the running session; afterwards the plan continues as usual.
+async function setTarget(target: number | null): Promise<void> {
+  if (!baseChoice.value?.transactionId) return;
+  choosing.value = true;
+  try {
+    const response = await fetch('/api/ev-charging/base-choice/target', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId: baseChoice.value.transactionId, targetPercent: target })
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { message?: string } | null;
+      error.value = body?.message ?? `Ladeziel konnte nicht gespeichert werden (HTTP ${response.status}).`;
+    } else {
+      error.value = null;
+    }
+  } finally {
+    choosing.value = false;
+    await load();
+  }
+}
+
 const showBaseChoice = computed(() => !!baseChoice.value?.transactionId && (baseChoice.value.isBelowBase || baseChoice.value.isDecided));
 
 onMounted(() => { void load(); timer = window.setInterval(() => void load(), 30_000); });
@@ -179,6 +206,18 @@ onBeforeUnmount(() => window.clearInterval(timer));
         <template v-else>
           <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-play" :loading="choosing" @click="setStopped(false)">Fortsetzen</v-btn>
           <span class="plan__meta">Gestoppt<template v-if="baseChoice.stoppedBy"> von {{ baseChoice.stoppedBy }}</template>, bis „Fortsetzen“ oder zum nächsten Anstecken.</span>
+        </template>
+      </div>
+      <div v-if="baseChoice?.transactionId && baseChoice.canDecide" class="plan__target mt-2">
+        <template v-if="baseChoice.immediateTargetPercent !== null">
+          <span>Lädt sofort bis <strong>{{ formatNumber(baseChoice.immediateTargetPercent, 0) }} %</strong><template v-if="baseChoice.immediateTargetBy"> (von {{ baseChoice.immediateTargetBy }})</template>, danach nach Plan.</span>
+          <v-btn size="small" variant="text" :loading="choosing" @click="setTarget(null)">Aufheben</v-btn>
+        </template>
+        <template v-else>
+          <span>Sofort laden bis</span>
+          <v-text-field v-model.number="targetInput" class="plan__target-input" type="number" min="1" max="100" suffix="%" density="compact" hide-details />
+          <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-lightning-bolt" :loading="choosing"
+            :disabled="!targetInput || targetInput < 1 || targetInput > 100" @click="setTarget(targetInput)">Starten</v-btn>
         </template>
       </div>
       <v-alert v-if="showBaseChoice && baseChoice && !baseChoice.isStopped" class="mt-2" :type="baseChoice.isDecided ? 'info' : 'warning'" variant="tonal" density="compact">
@@ -236,6 +275,17 @@ onBeforeUnmount(() => window.clearInterval(timer));
 </template>
 
 <style scoped>
+.plan__target {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan__target-input {
+  max-width: 110px;
+}
+
 .plan__meta {
   font-size: 0.8rem;
   opacity: 0.7;
