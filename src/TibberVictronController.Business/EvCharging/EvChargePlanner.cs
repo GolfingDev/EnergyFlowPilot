@@ -72,7 +72,7 @@ public sealed record EvChargePlan(
 /// home batteries would store (their marginal value, so PV goes where it saves more), then the grid. Departures are
 /// hard requirements (the car must come back with at least the minimum state of charge); the car is away between
 /// departure and return. Energy left at the end is worth its expected later price, so cheap hours are used beyond
-/// the trips; the base state of charge is a lower bound. The wallbox charges with 0 or 6 to 16 A on three phases.
+/// the trips; below the base state of charge the car charges at once. The wallbox charges with 0 or 6 to 16 A on three phases.
 /// </summary>
 public static class EvChargePlanner
 {
@@ -83,10 +83,12 @@ public static class EvChargePlanner
     // strongly, but not absolutely, avoided.
     private const double TripShortfallPenaltyPerKwh = 10;
     private const double BaseShortfallPenaltyPerKwh = 1;
+    // Below the base state of charge every hour at home counts against the plan (operator 2026-11-03: "30 % is always
+    // the minimum", so a car at 26 % charges now, not in the cheapest hour of the night). Far above any price difference,
+    // so the car charges at full power until the base is reached.
+    private const double BelowBasePenaltyPerKwhHour = 5;
     private const double EstimatedPriceHurdlePerKwh = 0.02;
     private const double FutureValueShare = 0.85;
-    // The base state of charge should be reached within a day, not necessarily before the published prices end.
-    private static readonly TimeSpan BaseSocDeadline = TimeSpan.FromHours(24);
     private static readonly (string Name, double Factor)[] ScenarioFactors = [("wenig PV", 0.5), ("erwartete PV", 1.0), ("viel PV", 1.3)];
 
     public static EvChargePlan Plan(EvChargePlanInput input)
@@ -115,10 +117,7 @@ public static class EvChargePlanner
         var departures = Departures(slots, input.Trips);
         var horizonEnd = slots[^1].EndsAtUtc;
         var futureValue = socKnown ? (input.FutureValuePerKwh ?? Median(slots.Select(slot => slot.PricePerKwh)) * FutureValueShare) / efficiency : 0;
-        // What full power could charge between the end of the known prices and the base deadline may wait for those
-        // prices (half of it, for safety), so a cheap night tomorrow can still be used.
-        var baseDeferable = Math.Max(0, (input.NowUtc + BaseSocDeadline - horizonEnd).TotalHours) * car.ChargePowerWatts / 1000d * efficiency * 0.5;
-        var baseTarget = Math.Max(0, baseEnergy - baseDeferable);
+        var baseTarget = baseEnergy;
         var terminalTarget = TerminalTripTarget(input.Trips, horizonEnd, capacity, car, efficiency);
 
         // Energy states: 1 kWh steps up to the car's limit plus the exact current, reserve and base values.
@@ -157,9 +156,12 @@ public static class EvChargePlanner
             return (cost, grid, pv);
         }
 
+        // Hours at home below the base state of charge; away (no hours) nothing can be done about it.
+        double BelowBase(int i, double energyAfter) => BelowBasePenaltyPerKwhHour * Math.Max(0, baseEnergy - energyAfter) * hours[i];
+
         (double Power, double Cost) BestAction(int i, double energy, double[] next)
         {
-            var best = (Power: 0d, Cost: Interpolate(next, states, energy));
+            var best = (Power: 0d, Cost: Interpolate(next, states, energy) + BelowBase(i, energy));
             if (hours[i] <= 0) return best;
             var candidates = powers.ToList();
             // Exactly filling up to the limit may need a power between the discrete steps.
@@ -169,7 +171,7 @@ public static class EvChargePlanner
             {
                 var after = energy + power * hours[i] * efficiency;
                 if (after > limit + 1e-6) continue;
-                var cost = SlotCost(i, power * hours[i], input.PvConfidence).Cost + Interpolate(next, states, after) + power * 1e-6;
+                var cost = SlotCost(i, power * hours[i], input.PvConfidence).Cost + Interpolate(next, states, after) + BelowBase(i, after) + power * 1e-6;
                 if (cost < best.Cost - 1e-9) best = (power, cost);
             }
 

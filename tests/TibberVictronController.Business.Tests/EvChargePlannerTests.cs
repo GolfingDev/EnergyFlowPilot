@@ -48,15 +48,16 @@ public sealed class EvChargePlannerTests
     }
 
     [Fact]
-    public void BaseStateOfChargeIsReachedEvenWhenNotCheap()
+    public void BelowTheBaseStateOfChargeChargingStartsAtOnce()
     {
-        // A full day of prices: the base state of charge has to be reached within it.
+        // Operator 2026-11-03: the base state of charge is a minimum. Cheaper hours later do not count below it.
         var plan = EvChargePlanner.Plan(Input(Slots(96, index => index < 8 ? 0.35 : 0.30), [], currentSoc: 40) with { BaseSocPercent = 50, FutureValuePerKwh = 0.10 });
 
-        // 40 % -> 50 % = 8.1 kWh in the battery = 9 kWh at the wallbox, in the cheaper second half.
+        // 40 % -> 50 % = 8.1 kWh in the battery = 9 kWh at the wallbox, right now at full power.
         // The 1 kWh state grid may leave a few watt hours short of exactly 50 %.
         Assert.InRange(plan.GridKwh, 8.9, 9.5);
-        Assert.All(plan.Slots, slot => Assert.Equal(0.30, slot.PricePerKwh));
+        Assert.Equal(Now, plan.Slots[0].StartsAtUtc);
+        Assert.All(plan.Slots, slot => Assert.Equal(0.35, slot.PricePerKwh));
         Assert.All(plan.Slots, slot => Assert.Equal(EvChargeReason.BaseSoc, slot.Reason));
     }
 
@@ -114,12 +115,11 @@ public sealed class EvChargePlannerTests
     }
 
     [Fact]
-    public void BaseStateOfChargeWaitsForPricesThatAreNotPublishedYet()
+    public void BaseStateOfChargeDoesNotWaitForPricesThatAreNotPublishedYet()
     {
-        // Only four hours of prices known: the base state of charge can still be reached tomorrow night.
         var plan = EvChargePlanner.Plan(Input(Slots(16, _ => 0.30), [], currentSoc: 40) with { BaseSocPercent = 50, FutureValuePerKwh = 0.10 });
 
-        Assert.Empty(plan.Slots);
+        Assert.Equal(Now, plan.Slots[0].StartsAtUtc);
     }
 
     [Fact]
