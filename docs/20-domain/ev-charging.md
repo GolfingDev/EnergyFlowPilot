@@ -184,6 +184,11 @@ Operator decision: no native Android app; the web page becomes installable (PWA)
 - **Immediate charge target (operator 2026-11-03):** "Sofort laden bis X %" on the car page (drivers) for the running charging session: full power at once up to X % (capped at the car's own charge limit), then the plan continues as usual; "Aufheben" removes it. Setting a target also ends a stop by hand. Stored with the session (`ImmediateTargetPercent`, `ImmediateTargetBy`); `PUT /api/ev-charging/base-choice/target`. Plan slots show the reason "Sofort-Ladeziel".
 - **Stop charging (operator 2026-11-03):** "Laden stoppen" on the car page (drivers) and in the push messages ("Nicht laden" with the question; after every answer the notification offers the opposite: stop or resume). It sets 0 A for the running charging session, also with the automatic control off, until "Fortsetzen" or until the car is plugged in again (`EvChargingSessions.IsStoppedByUser`, `StoppedBy`; `PUT /api/ev-charging/base-choice/stopped`, `POST /api/push/charge-stop` with the message token).
 
+## State of charge between BMW reports and plug status (2026-11-03)
+
+- **Estimate (operator report: 26 % reported for 1.5 hours while charging to 35 %, beyond the 30 % target):** BMW often sends no state of charge while charging, and a query returns the old value. Planning, trips and the base state of charge question use BMW's last value plus the energy the wallbox metered since its timestamp, times 90 % charging efficiency (`EvSocEstimator`). The meter at the time of the report comes from a 26-hour in-memory history of wallbox readings, otherwise linearly from the session start; a report from before the session counts the whole session. Each new BMW report starts again from its value. The car card and the learning keep BMW's own values.
+- **Plug status:** an open charging session counts as plugged in, even when the wallbox has not (yet) reported its connector state after a reconnect (operator report: "Nicht angesteckt laut Wallbox" while plugged in). Connector status changes are logged. BMW sends `null` for `isPlugged` for this car.
+
 ## Open points
 
 - Halo firmware 189 is connected. Hardware test open: does it accept the TxDefaultProfile (connector 1 or 0) during a running charge, follow it within seconds, and fall back to full power when `validTo` passes?

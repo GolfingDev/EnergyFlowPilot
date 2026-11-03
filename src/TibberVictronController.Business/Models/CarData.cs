@@ -16,6 +16,14 @@ public sealed record CarSnapshot
     public double? RemainingRangeKm { get; init; }
     public double? OdometerKm { get; init; }
     public DateTimeOffset? LastMessageAtUtc { get; init; }
+
+    /// <summary>Energy charged into the battery since <see cref="StateOfChargeAtUtc"/>, measured by the wallbox.</summary>
+    public double ChargedSinceSocKwh { get; init; }
+
+    /// <summary>The reported state of charge plus what was charged since; what the planning works with.</summary>
+    public double? StateOfChargeEstimatePercent(double capacityKwh) => StateOfChargePercent is { } soc
+        ? Math.Min(100, soc + (capacityKwh > 0 ? ChargedSinceSocKwh / capacityKwh * 100 : 0))
+        : null;
 }
 
 /// <summary>

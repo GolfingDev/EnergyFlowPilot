@@ -37,7 +37,7 @@ public sealed class EvChargePlanService(
         var choice = await services.GetRequiredService<EvBaseChargeChoiceService>().GetAsync(cancellationToken);
         var plan = EvChargePlanner.Plan(new EvChargePlanInput(
             now,
-            car.StateOfChargePercent,
+            car.StateOfChargeEstimatePercent(tripView.Car.UsableCapacityKwh),
             car.TargetStateOfChargePercent,
             tripView.Car,
             await NumberAsync(ControllerSettingDefaults.EvCarBaseSocKey, cancellationToken),

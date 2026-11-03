@@ -14,10 +14,12 @@ public sealed class EvBaseChargeChoiceService(
 {
     public async Task<EvBaseChargeChoiceState> GetAsync(CancellationToken cancellationToken)
     {
-        var baseSoc = double.TryParse((await settings.GetSettingAsync(ControllerSettingDefaults.EvCarBaseSocKey, cancellationToken))?.Value,
+        async Task<double> Number(string key) => double.TryParse((await settings.GetSettingAsync(key, cancellationToken))?.Value,
             NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ? value : 0;
+        var baseSoc = await Number(ControllerSettingDefaults.EvCarBaseSocKey);
+        var capacity = await Number(ControllerSettingDefaults.EvCarUsableCapacityKwhKey);
         var wallbox = charger.Current;
         var session = wallbox is { IsConnected: true, ActiveTransactionId: { } id } ? await sessions.GetAsync(id, cancellationToken) : null;
-        return EvBaseChargeChoice.Resolve(session, car.Car.StateOfChargePercent, baseSoc);
+        return EvBaseChargeChoice.Resolve(session, car.Car.StateOfChargeEstimatePercent(capacity), baseSoc);
     }
 }

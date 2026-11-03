@@ -97,8 +97,11 @@ public sealed record EvChargerSnapshot
     public EvConnectionRejection? LastRejection { get; init; }
     public EvChargerCommandResult? LastCommand { get; init; }
 
+    // An open transaction also counts: the wallbox ends it when the car is unplugged, but after a reconnect it may
+    // report its connector state only with the next change (operator 2026-11-03: plugged in, page said otherwise).
     public bool IsVehiclePlugged => ConnectorStatus is EvConnectorStatus.Preparing or EvConnectorStatus.Charging
-        or EvConnectorStatus.SuspendedEv or EvConnectorStatus.SuspendedEvse or EvConnectorStatus.Finishing;
+        or EvConnectorStatus.SuspendedEv or EvConnectorStatus.SuspendedEvse or EvConnectorStatus.Finishing
+        || ActiveTransactionId is not null;
 }
 
 /// <summary>Outcome of a current command: the wallbox's own answer (Accepted, Rejected, NotSupported) and what was sent.</summary>

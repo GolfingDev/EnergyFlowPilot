@@ -113,7 +113,9 @@ public static class ControllerServiceCollectionExtensions
         services.AddHttpClient<CarDataAuthClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddHttpClient<CarDataApiClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddSingleton<CarStatusStore>();
-        services.AddSingleton<ICarStatusSource>(provider => provider.GetRequiredService<CarStatusStore>());
+        // Planning sees BMW's last report plus what the wallbox charged since; the raw store stays for CarData itself.
+        services.AddSingleton<EstimatingCarStatusSource>();
+        services.AddSingleton<ICarStatusSource>(provider => provider.GetRequiredService<EstimatingCarStatusSource>());
         services.AddSingleton<CarDataService>();
         services.AddScoped<IEvTripRepository, EfEvTripRepository>();
         services.AddScoped<IPvForecastSnapshotRepository, EfPvForecastSnapshotRepository>();

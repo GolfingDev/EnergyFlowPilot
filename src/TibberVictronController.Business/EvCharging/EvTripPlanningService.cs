@@ -51,7 +51,7 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
         if (useLearned) car = car with { ConsumptionKwhPer100Km = learned!.KwhPer100Km };
         var trips = EvTripOccurrences.Expand(await dependencies.Trips.GetUpcomingAsync(now, cancellationToken), now, SeriesHorizon, LocalZone);
         var active = trips.Where(trip => !trip.IsIgnored).ToArray();
-        var plan = EvTripSocPlanner.Plan(new EvTripPlanInput(now, dependencies.Car.Car.StateOfChargePercent, active, car, LocalZone)
+        var plan = EvTripSocPlanner.Plan(new EvTripPlanInput(now, dependencies.Car.Car.StateOfChargeEstimatePercent(car.UsableCapacityKwh), active, car, LocalZone)
         {
             Temperatures = active.Length == 0 ? null : await TemperaturesAsync(now, cancellationToken),
             WinterSurchargePerKelvinPercent = await NumberAsync(ControllerSettingDefaults.EvTripWinterSurchargeKey, cancellationToken)

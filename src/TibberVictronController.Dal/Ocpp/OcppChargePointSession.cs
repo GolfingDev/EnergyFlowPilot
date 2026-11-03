@@ -46,6 +46,7 @@ public sealed class OcppChargePointSession
     private readonly SemaphoreSlim sendLock = new(1, 1);
     private int nextMessageId;
     private ActiveTransaction? active;
+    private EvConnectorStatus? loggedStatus;
     private DateTimeOffset? meterPersistedAtUtc;
     private (double Wh, DateTimeOffset At)? previousEnergy;
 
@@ -317,6 +318,13 @@ public sealed class OcppChargePointSession
         }
 
         var parsed = Enum.TryParse<EvConnectorStatus>(status, ignoreCase: true, out var value) ? value : EvConnectorStatus.Unknown;
+        // Status changes are the first thing to look at when the page and the car disagree (plugged in or not).
+        if (parsed != loggedStatus)
+        {
+            context.Logger.LogInformation("Wallbox {ChargePointId}: Status {Status}{Error}.", context.ChargePointId, status, error is null ? string.Empty : $" ({error})");
+            loggedStatus = parsed;
+        }
+
         Update(snapshot => snapshot with
         {
             ConnectorStatus = parsed,
