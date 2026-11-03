@@ -121,6 +121,7 @@ public sealed class EvChargingControlService(
             await scope.ServiceProvider.GetRequiredService<IEvChargingSessionRepository>().MarkBaseChoiceAskedAsync(transaction, now, cancellationToken);
             logger.LogInformation("Auto bei {Soc:0} % unter dem Grund-Ladestand von {Base:0} %: Frage \"jetzt oder preisgesteuert\" gestellt.",
                 choice.SocPercent, choice.BaseSocPercent);
+            await AskByPushAsync(scope.ServiceProvider, choice, transaction, now, cancellationToken);
         }
 
         var allowance = double.TryParse((await settings.GetSettingAsync(ControllerSettingDefaults.EvChargingPvGridAllowanceKey, cancellationToken))?.Value,
@@ -128,6 +129,32 @@ public sealed class EvChargingControlService(
         var decision = EvChargingDecider.Decide(new EvChargingDecisionInput(now, plan, planProblem, AverageAvailable()) { PvGridAllowanceWatts = allowance });
         await ApplyAsync(decision, now, cancellationToken);
         state.Set(new EvChargingControlSnapshot(true, decision.Mode, decision.Amps, decision.Reason, now, commandProblem));
+    }
+
+    // Every driver device with notifications gets the question; the first answer counts. A failed push only costs the
+    // question: the page still shows it, and without an answer the plan charges by price.
+    private async Task AskByPushAsync(IServiceProvider services, EvBaseChargeChoiceState choice, int transaction, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
+            var defaultAt = TimeZoneInfo.ConvertTime(now + EvBaseChargeChoice.AnswerTime, zone);
+            var tokens = services.GetRequiredService<Push.BaseChoiceAnswerToken>();
+            var message = new Push.PushMessage("base-choice", "Auto unter dem Grund-Ladestand",
+                $"Ladestand {choice.SocPercent:0} %, Grund-Ladestand {choice.BaseSocPercent:0} %. Jetzt laden oder preisgesteuert? Ohne Antwort ab {defaultAt:HH:mm} Uhr preisgesteuert.",
+                $"ev-base-choice-{transaction}", "/car")
+            {
+                Actions = [new Push.PushAction("Immediate", "Jetzt laden"), new Push.PushAction("PriceDriven", "Preisgesteuert")]
+            };
+            var (delivered, failed) = await services.GetRequiredService<Push.WebPushService>().SendAsync(
+                subscription => message with { Token = tokens.Create(transaction, subscription.UserName) }, null, EvBaseChargeChoice.AnswerTime, cancellationToken);
+            logger.LogInformation("Frage zum Grund-Ladestand per Push: {Delivered} zugestellt, {Failed} fehlgeschlagen.", delivered, failed);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Frage zum Grund-Ladestand konnte nicht per Push gesendet werden.");
+        }
     }
 
     private async Task RefreshPlanAsync(IServiceProvider services, DateTimeOffset now, bool force, CancellationToken cancellationToken)

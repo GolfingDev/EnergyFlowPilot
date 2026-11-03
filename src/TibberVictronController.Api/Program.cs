@@ -1,3 +1,4 @@
+using TibberVictronController.Api.Push;
 using TibberVictronController.Api.Authentication;
 using TibberVictronController.Api.Configuration;
 using TibberVictronController.Api.Dashboard;
@@ -59,6 +60,7 @@ app.MapOcppEndpoints();
 app.MapEvChargingEndpoints();
 app.MapEvTripEndpoints();
 app.MapSiteEndpoints();
+app.MapPushEndpoints();
 app.MapPvForecastCorrectionEndpoints();
 
 app.Run();

@@ -2,6 +2,7 @@
 import CarDataPanel from '../components/dashboard/CarDataPanel.vue';
 import ChargePlanPanel from '../components/dashboard/ChargePlanPanel.vue';
 import EvChargerPanel from '../components/dashboard/EvChargerPanel.vue';
+import PushNotificationsPanel from '../components/dashboard/PushNotificationsPanel.vue';
 import TripPlannerPanel from '../components/dashboard/TripPlannerPanel.vue';
 import { isDriver } from '../auth';
 </script>
@@ -18,6 +19,7 @@ import { isDriver } from '../auth';
     <TripPlannerPanel v-if="isDriver" />
     <ChargePlanPanel />
     <EvChargerPanel />
+    <PushNotificationsPanel v-if="isDriver" />
   </v-container>
 </template>
 

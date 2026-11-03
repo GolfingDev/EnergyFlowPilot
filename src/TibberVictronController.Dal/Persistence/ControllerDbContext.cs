@@ -50,6 +50,10 @@ public sealed class ControllerDbContext : DbContext
 
     public DbSet<UserCalendarEntity> UserCalendars => Set<UserCalendarEntity>();
 
+    public DbSet<WebPushSubscriptionEntity> WebPushSubscriptions => Set<WebPushSubscriptionEntity>();
+
+    public DbSet<WebPushKeyEntity> WebPushKeys => Set<WebPushKeyEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureControllerSettings(modelBuilder);
@@ -70,6 +74,24 @@ public sealed class ControllerDbContext : DbContext
             entity.HasKey(snapshot => snapshot.SlotStartUtc);
             entity.Property(snapshot => snapshot.SlotStartUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter).ValueGeneratedNever();
             entity.Property(snapshot => snapshot.CapturedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+        });
+        modelBuilder.Entity<WebPushSubscriptionEntity>(entity =>
+        {
+            entity.ToTable("WebPushSubscriptions");
+            entity.HasKey(subscription => subscription.Id);
+            entity.Property(subscription => subscription.Endpoint).HasMaxLength(1000);
+            entity.Property(subscription => subscription.P256dh).HasMaxLength(200);
+            entity.Property(subscription => subscription.Auth).HasMaxLength(100);
+            entity.Property(subscription => subscription.UserId).HasMaxLength(64);
+            entity.Property(subscription => subscription.UserName).HasMaxLength(200);
+            entity.Property(subscription => subscription.CreatedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.HasIndex(subscription => subscription.Endpoint).IsUnique();
+        });
+        modelBuilder.Entity<WebPushKeyEntity>(entity =>
+        {
+            entity.ToTable("WebPushKeys");
+            entity.HasKey(key => key.Id);
+            entity.Property(key => key.Id).ValueGeneratedNever();
         });
         modelBuilder.Entity<UserCalendarEntity>(entity =>
         {

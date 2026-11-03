@@ -128,7 +128,7 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
     {
         var databaseCreator = dbContext.GetService<IRelationalDatabaseCreator>();
 
-        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions", "EvTrips", "PvForecastSnapshots", "CarSamples", "UserCalendars" })
+        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions", "EvTrips", "PvForecastSnapshots", "CarSamples", "UserCalendars", "WebPushSubscriptions", "WebPushKeys" })
         {
             if (await databaseCreator.HasTablesAsync(cancellationToken) &&
                 await TableExistsAsync(tableName, cancellationToken))
@@ -251,6 +251,31 @@ CREATE TABLE IF NOT EXISTS "PvForecastSnapshots" (
     "SlotStartUtc" INTEGER NOT NULL CONSTRAINT "PK_PvForecastSnapshots" PRIMARY KEY,
     "ForecastKwh" REAL NOT NULL,
     "CapturedAtUtc" INTEGER NOT NULL
+);
+""";
+        }
+        if (tableName == "WebPushSubscriptions")
+        {
+            return """
+CREATE TABLE IF NOT EXISTS "WebPushSubscriptions" (
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_WebPushSubscriptions" PRIMARY KEY AUTOINCREMENT,
+    "Endpoint" TEXT NOT NULL,
+    "P256dh" TEXT NOT NULL,
+    "Auth" TEXT NOT NULL,
+    "UserId" TEXT NOT NULL,
+    "UserName" TEXT NOT NULL,
+    "CreatedAtUtc" INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_WebPushSubscriptions_Endpoint" ON "WebPushSubscriptions" ("Endpoint");
+""";
+        }
+        if (tableName == "WebPushKeys")
+        {
+            return """
+CREATE TABLE IF NOT EXISTS "WebPushKeys" (
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_WebPushKeys" PRIMARY KEY,
+    "PublicKey" TEXT NOT NULL,
+    "ProtectedPrivateKey" TEXT NOT NULL
 );
 """;
         }

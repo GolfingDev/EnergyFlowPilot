@@ -26,7 +26,7 @@ public sealed class AdminWriteGuardMiddleware(RequestDelegate next)
     private static bool IsDriverPath(PathString path) =>
         path.StartsWithSegments("/api/ev-charging/trips") || path.StartsWithSegments("/api/ev-charging/calendar") ||
         path.StartsWithSegments("/api/ev-charging/my-calendar") || path.StartsWithSegments("/api/ev-charging/car/refresh") ||
-        path.StartsWithSegments("/api/ev-charging/base-choice");
+        path.StartsWithSegments("/api/ev-charging/base-choice") || path.StartsWithSegments("/api/push");
 
     private static bool IsReadOnlyMethod(string method) =>
         HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);

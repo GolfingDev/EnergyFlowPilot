@@ -172,6 +172,16 @@ Operator decisions (2026-11-01): calendar before charging control; only appointm
 - **Privacy:** appointment subjects are stored with the trip and shown only to admins; viewers see the destination only. The Graph token stays in memory; error messages carry no secrets.
 - **Security note:** the application permission Calendars.Read allows reading every mailbox in the tenant. Restrict the app with Exchange Online RBAC for Applications to the mailboxes of the drivers (for example a management scope on a mail-enabled group).
 
+## Installable app and push messages (2026-11-03)
+
+Operator decision: no native Android app; the web page becomes installable (PWA) and asks by push message. Without an answer within 15 minutes the car charges by price; every driver with notifications gets the question, the first answer counts.
+
+- **App:** `manifest.json`, icons and a service worker (`sw.js`, no caching: the app always shows live data). nginx serves them without sign-in; Chrome on Android offers "App installieren".
+- **Push:** Web Push with VAPID (RFC 8292) and payload encryption aes128gcm (RFC 8291), implemented with .NET cryptography only (checked against the RFC 8291 example). The VAPID key pair is created on first use; the private key is stored encrypted with the data protection key ring (`WebPushKeys`). Subscriptions per device and user (`WebPushSubscriptions`); withdrawn ones (HTTP 404/410) are deleted.
+- **Car page:** "Benachrichtigungen auf diesem Gerät" (drivers): switch on (browser permission, subscription), test message, switch off.
+- **Question:** sent once per charging session together with the question on the car page, with the buttons "Jetzt laden" and "Preisgesteuert". A button answers directly via `POST /api/push/base-choice` with a token in the message (data protection, 6 hours, names session and user), because the sign-in cookie may have expired; otherwise the car page opens.
+- **API:** `GET /api/push/public-key`, `PUT/DELETE /api/push/subscription`, `POST /api/push/test` (drivers and admins).
+
 ## Open points
 
 - Halo firmware 189 is connected. Hardware test open: does it accept the TxDefaultProfile (connector 1 or 0) during a running charge, follow it within seconds, and fall back to full power when `validTo` passes?

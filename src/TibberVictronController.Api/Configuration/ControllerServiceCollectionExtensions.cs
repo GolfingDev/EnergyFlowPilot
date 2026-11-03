@@ -1,3 +1,5 @@
+using TibberVictronController.Dal.WebPush;
+using TibberVictronController.Api.Push;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using TibberVictronController.Api.JointBattery;
@@ -141,6 +143,10 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IUserCalendarRepository, EfUserCalendarRepository>();
         services.AddScoped<EvChargePlanService>();
         services.AddScoped<EvBaseChargeChoiceService>();
+        services.AddScoped<IWebPushRepository, EfWebPushRepository>();
+        services.AddHttpClient<WebPushClient>(client => client.Timeout = TimeSpan.FromSeconds(15));
+        services.AddScoped<WebPushService>();
+        services.AddSingleton<BaseChoiceAnswerToken>();
         services.AddSingleton<EvChargingControlState>();
         services.AddSingleton<EvChargeLoadForecast>();
         services.AddHostedService<EvChargingControlService>();
