@@ -309,7 +309,8 @@ function toggleExecutiveSidebar(): void {
     </v-app-bar>
 
     <v-main>
-      <nav v-if="usesExecutiveShell" class="workspace-mobile-nav" aria-label="Hauptnavigation">
+      <!-- On phones the top bar has no room for the navigation (it was clipped there); every design gets this row. -->
+      <nav class="workspace-mobile-nav" aria-label="Hauptnavigation">
         <button type="button" :aria-current="activeRouteName === 'dashboard' ? 'page' : undefined" @click="navigateTo('dashboard')"><v-icon icon="mdi-view-dashboard-outline" size="18" />Übersicht</button>
         <button type="button" :aria-current="activeRouteName === 'heating' ? 'page' : undefined" @click="navigateTo('heating')"><v-icon icon="mdi-heat-pump-outline" size="18" />Heizung</button>
         <button type="button" :aria-current="activeRouteName === 'car' ? 'page' : undefined" @click="navigateTo('car')"><v-icon icon="mdi-car-electric-outline" size="18" />Auto</button>

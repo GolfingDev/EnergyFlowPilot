@@ -683,8 +683,8 @@
 
 .workspace-mobile-nav { display: none; }
 @media (max-width: 960px) {
-  .app-shell--executive .top-bar__center { display: none; }
-  .workspace-mobile-nav { display: flex; position: sticky; top: 74px; z-index: 900; background: #fff; border-bottom: 1px solid var(--efp-border); padding: 6px 10px; gap: 6px; }
+  .top-bar__center, .app-shell--executive .top-bar__center { display: none; }
+  .workspace-mobile-nav { display: flex; position: sticky; top: 74px; z-index: 900; background: var(--efp-surface, #fff); border-bottom: 1px solid var(--efp-border); padding: 6px 10px; gap: 6px; }
   .workspace-mobile-nav button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 6px; padding: 9px 6px; font-size: 11px; color: var(--efp-muted); }
   .workspace-mobile-nav button[aria-current="page"] { color: var(--efp-primary); background: var(--efp-card-accent); font-weight: 600; }
   .workspace-mobile-nav button:focus-visible { outline: 2px solid var(--efp-primary); outline-offset: -2px; }
