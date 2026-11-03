@@ -19,6 +19,7 @@ When a requirement in this folder changes, future code changes must follow the u
 11. `40-delivery/testing-strategy.md`
 12. `40-delivery/backlog.md`
 13. `30-operations/weishaupt-warmwasser.md`
+14. `40-delivery/acceptance-zentrale.md`
 
 ## Rule
 
