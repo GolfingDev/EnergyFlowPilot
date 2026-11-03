@@ -141,6 +141,11 @@ const batteries = computed(() => (['victron', 'e3dc'] as const).map((id) => {
 }));
 
 const evAvailable = computed(() => state.wallbox?.ocppEnabled === true);
+/** Latest compressor demand if younger than ten minutes; older values say nothing about now. */
+const heatPumpDemand = computed(() => {
+  const demand = state.hotWater?.demand;
+  return demand && now.value - Date.parse(demand.measuredAtUtc) <= 10 * 60_000 ? demand.percent : null;
+});
 const heatPumpAvailable = computed(() => setting('weishauptBiblockModbus.enabled') === 'true' || (state.hotWater?.samples.length ?? 0) > 0);
 
 async function startJointManualCharge(targetKwh: number, maximumPowerKw: number | null): Promise<void> {
@@ -188,7 +193,7 @@ export function useZentraleData() {
   });
 
   return {
-    state, now, live, isStale, batteries, jointControlActive, evAvailable, heatPumpAvailable,
+    state, now, live, isStale, batteries, jointControlActive, evAvailable, heatPumpAvailable, heatPumpDemand,
     setting, refreshAll, refreshFast, refreshSlow, refreshSettings, refreshStatus, saveSetting,
     startJointManualCharge, stopJointManualCharge, startLegacyManualCharge, stopLegacyManualCharge, evAction
   };

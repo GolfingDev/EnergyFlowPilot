@@ -78,6 +78,18 @@ https://github.com/OStrama/weishaupt_modbus/blob/main/custom_components/weishaup
 20.10.2026 mit 12, 13, 197 und 5723 kWh. Abgleich mit Regleranzeige/WEM steht
 noch aus; dies ist kein geeichter separater Stromzaehler.
 
+### Leistungsanforderung des Verdichters (Erweiterung vom 03.11.2026)
+
+Zusaetzlich wird Input-Register 33103 per FC04 gelesen: Leistungsanforderung in
+Prozent (0–100). Quelle ist dieselbe Community-Liste (hpconst.py), nicht das
+Herstellerdokument; am installierten Geraet ist der Wert noch nicht geprueft.
+Werte ueber 100 gelten als unbekannt. Es ist keine elektrische Leistung: Der
+Energiefluss zeigt damit nur, ob und wie stark die Waermepumpe arbeitet, nie kW.
+Ein echter Leistungswert ist ueber Modbus nicht verfuegbar (nur ueber die
+Weboberflaeche des Geraets oder einen eigenen Zwischenzaehler). Die API liefert den
+neuesten Wert als `demand` im Warmwasserbericht; Werte aelter als 10 Minuten zeigt
+die Oberflaeche nicht als aktuell an. Die Steuerungslogik verwendet den Wert nicht.
+
 Explizite Modbus-Ausnahmen 01/02 bei optionalen Energie-Registern ergeben null;
 andere Geraete-, Transport- und Protokollfehler bleiben Fehler des Pollings.
 Ein gesamter Modbus-Abruf ist auf 30 Sekunden begrenzt.

@@ -22,7 +22,10 @@ public static class WeishauptHotWaterEndpoints
                 a.Episode.WriteConfirmed, Map(a.Episode.Plan)!, a.TargetReachedAtUtc, a.NextHeatingAtUtc,
                 a.ReserveLostAtUtc, a.TemperatureAtNeedCelsius, a.BridgedToNeed, a.HasDataGaps, a.Assessment)).ToArray(),
             report.Samples.Select(s => new HotWaterPointDto(s.MeasuredAtUtc, s.HotWaterTemperatureCelsius, s.OperatingStatusCode)).ToArray())
-        { Energy = MapEnergy(report.LatestTelemetry) });
+        {
+            Energy = MapEnergy(report.LatestTelemetry),
+            Demand = report.LatestTelemetry is { PowerDemandPercent: { } percent } latest ? new HeatPumpDemandDto(latest.MeasuredAtUtc, percent) : null
+        });
     }
 
     private static HotWaterEnergyDto? MapEnergy(WeishauptBiblockTelemetrySample? s) => s is null ? null :
@@ -41,7 +44,11 @@ public sealed record HotWaterReportDto(DateTimeOffset GeneratedAtUtc, bool IsRai
     string CostAssessment, HotWaterPlanDto? Plan, IReadOnlyList<HotWaterEpisodeDto> Episodes, IReadOnlyList<HotWaterPointDto> Samples)
 {
     public HotWaterEnergyDto? Energy { get; init; }
+
+    /// <summary>Latest compressor power demand; a percentage, not an electrical power measurement.</summary>
+    public HeatPumpDemandDto? Demand { get; init; }
 }
+public sealed record HeatPumpDemandDto(DateTimeOffset MeasuredAtUtc, ushort Percent);
 public sealed record EnergyPeriodsDto(ushort? TodayKwh, ushort? YesterdayKwh, ushort? MonthKwh, ushort? YearKwh);
 public sealed record HotWaterEnergyDto(DateTimeOffset MeasuredAtUtc, EnergyPeriodsDto TotalHeat,
     EnergyPeriodsDto HeatingHeat, EnergyPeriodsDto HotWaterHeat, EnergyPeriodsDto Electrical);

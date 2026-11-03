@@ -25,4 +25,5 @@ public sealed class WeishauptBiblockTelemetrySampleEntity
     public ushort? ElectricalYesterdayKwh { get; set; }
     public ushort? ElectricalMonthKwh { get; set; }
     public ushort? ElectricalYearKwh { get; set; }
+    public ushort? PowerDemandPercent { get; set; }
 }

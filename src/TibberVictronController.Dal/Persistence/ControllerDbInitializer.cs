@@ -120,7 +120,8 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
             "ElectricalTodayKwh",
             "ElectricalYesterdayKwh",
             "ElectricalMonthKwh",
-            "ElectricalYearKwh"
+            "ElectricalYearKwh",
+            "PowerDemandPercent"
         ];
         foreach (var column in columns)
             if (!existing.Contains(column))

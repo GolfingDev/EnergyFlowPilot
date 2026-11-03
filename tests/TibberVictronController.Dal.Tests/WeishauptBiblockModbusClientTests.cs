@@ -20,8 +20,8 @@ public sealed class WeishauptBiblockModbusClientTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        ushort[] addresses = [30001, 33101, 32102, 36101, 36102, 36103, 36104, 36201, 36202, 36203, 36204, 36301, 36302, 36303, 36304, 36701, 36702, 36703, 36704];
-        ushort[] values = [50, 19, 445, 42, 49, 600, 8000, 38, 37, 391, 5178, 4, 11, 209, 2822, 12, 13, 197, 65535];
+        ushort[] addresses = [30001, 33101, 32102, 36101, 36102, 36103, 36104, 36201, 36202, 36203, 36204, 36301, 36302, 36303, 36304, 36701, 36702, 36703, 36704, 33103];
+        ushort[] values = [50, 19, 445, 42, 49, 600, 8000, 38, 37, 391, 5178, 4, 11, 209, 2822, 12, 13, 197, 65535, 45];
         var server = Task.Run(async () =>
         {
             using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
@@ -87,5 +87,6 @@ public sealed class WeishauptBiblockModbusClientTests
         ];
         for (var i = 0; i < actual.Length; i++)
             Assert.Equal(energyExceptionCode == 0 ? (ushort?)values[i + 3] : null, actual[i]);
+        Assert.Equal(energyExceptionCode == 0 ? (ushort?)45 : null, sample.PowerDemandPercent);
     }
 }

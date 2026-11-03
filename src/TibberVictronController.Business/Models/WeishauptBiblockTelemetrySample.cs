@@ -45,4 +45,11 @@ public sealed class WeishauptBiblockTelemetrySample
     public ushort? ElectricalYesterdayKwh { get; init; }
     public ushort? ElectricalMonthKwh { get; init; }
     public ushort? ElectricalYearKwh { get; init; }
+
+    /// <summary>
+    /// Compressor power demand in percent (input register 33103). Source: community register list, not the
+    /// manufacturer document; not yet checked on the installed device. It is no electrical power measurement.
+    /// Null when unavailable or outside 0–100 %.
+    /// </summary>
+    public ushort? PowerDemandPercent { get; init; }
 }

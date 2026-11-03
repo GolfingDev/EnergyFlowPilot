@@ -18,12 +18,13 @@ const stale = computed(() => !latest.value || data.now.value - Date.parse(latest
     <section class="z-block" aria-label="Warmwasser">
       <dl class="z-facts">
         <div><dt>Warmwasser</dt><dd>{{ latest ? `${latest.temperatureCelsius.toLocaleString('de-DE', { maximumFractionDigits: 1 })} °C` : '–' }}<small v-if="latest"> · {{ age(latest.measuredAtUtc, data.now.value) }}</small></dd></div>
+        <div v-if="hot?.demand"><dt>Leistungsanforderung Verdichter</dt><dd>{{ hot.demand.percent }} %<small> · {{ age(hot.demand.measuredAtUtc, data.now.value) }}</small></dd></div>
         <div><dt>Steuerung</dt><dd>{{ hot?.isSuspended ? 'Ausgesetzt' : hot?.isRaised ? 'Sollwert angehoben' : 'Normaler Sollwert' }}</dd></div>
         <div v-if="hot?.energy?.electrical.todayKwh != null"><dt>Strom heute (Gerätezähler)</dt><dd>{{ kwh(hot.energy.electrical.todayKwh, 0) }}</dd></div>
         <div v-if="hot?.energy?.totalHeat.todayKwh != null"><dt>Wärme heute</dt><dd>{{ kwh(hot.energy.totalHeat.todayKwh, 0) }}</dd></div>
       </dl>
       <p v-if="stale" class="z-note z-note--warning">Kein aktueller Messwert der Wärmepumpe (älter als 10 Minuten).</p>
-      <p class="z-note">Die momentane Leistungsaufnahme der Wärmepumpe wird nicht gemessen; sie steckt im Hausverbrauch.</p>
+      <p class="z-note">Die momentane elektrische Leistung wird nicht gemessen; sie steckt im Hausverbrauch. Die Verdichteranforderung in Prozent zeigt nur, ob und wie stark die Wärmepumpe arbeitet.</p>
     </section>
 
     <section v-if="hot?.plan" class="z-block" aria-labelledby="z-heat-plan">

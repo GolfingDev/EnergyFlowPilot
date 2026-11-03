@@ -55,7 +55,8 @@ public sealed class WeishauptEnergyPersistenceTests
                 ElectricalTodayKwh = 12,
                 ElectricalYesterdayKwh = 13,
                 ElectricalMonthKwh = 14,
-                ElectricalYearKwh = 65535
+                ElectricalYearKwh = 65535,
+                PowerDemandPercent = 45
             });
         }
         await using var reloaded = new ControllerDbContext(options);
@@ -64,7 +65,7 @@ public sealed class WeishauptEnergyPersistenceTests
         Assert.Equal(45m, rows[0].HotWaterTemperatureCelsius);
         var properties = typeof(WeishauptBiblockTelemetrySample).GetProperties()
             .Where(p => p.PropertyType == typeof(ushort?)).ToArray();
-        Assert.Equal(16, properties.Length);
+        Assert.Equal(17, properties.Length);
         Assert.All(properties, p => Assert.Null(p.GetValue(rows[0])));
         Assert.Equal((ushort)0, rows[1].TotalHeatTodayKwh);
         Assert.Equal((ushort)1, rows[1].TotalHeatYesterdayKwh);
@@ -82,5 +83,6 @@ public sealed class WeishauptEnergyPersistenceTests
         Assert.Equal((ushort)13, rows[1].ElectricalYesterdayKwh);
         Assert.Equal((ushort)14, rows[1].ElectricalMonthKwh);
         Assert.Equal((ushort)65535, rows[1].ElectricalYearKwh);
+        Assert.Equal((ushort)45, rows[1].PowerDemandPercent);
     }
 }

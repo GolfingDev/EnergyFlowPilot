@@ -38,17 +38,20 @@ const flows = computed<Flow[]>(() => {
   if (showE3dc.value) list.push({ id: 'e3dc', path: 'M240 396 H318 Q340 396 340 374 V292 Q340 274 362 274 H404', watts: e3dc.value.watts,
     towardHouse: e3dc.value.watts == null ? null : e3dc.value.watts < 0, kind: 'battery', measured: e3dc.value.watts != null });
   if (showEv.value) list.push({ id: 'ev', path: 'M468 304 V350 Q468 372 446 372 H412 Q390 372 390 394 V432', watts: evWatts.value, towardHouse: false, kind: 'ev', measured: evWatts.value != null });
-  // No live power exists for the heat pump: its line is drawn as a plain connection, never animated.
-  if (showHeat.value) list.push({ id: 'heatpump', path: 'M532 304 V350 Q532 372 554 372 H588 Q610 372 610 394 V432', watts: null, towardHouse: false, kind: 'heat', measured: false });
+  // The heat pump reports no power, only the compressor demand in percent: the line shows "running", never kW.
+  if (showHeat.value) list.push({ id: 'heatpump', path: 'M532 304 V350 Q532 372 554 372 H588 Q610 372 610 394 V432', watts: null, towardHouse: false, kind: 'heat',
+    measured: data.heatPumpDemand.value != null });
   return list;
 });
 
 function isActive(flow: Flow): boolean {
+  if (flow.kind === 'heat') return (data.heatPumpDemand.value ?? 0) > 0;
   return !isStale.value && flow.measured && Math.abs(flow.watts ?? 0) > activeFlowWatts;
 }
 
 /** Line width grows gently with power so a 5 kW flow reads stronger than 200 W without dominating the picture. */
 function strokeWidth(flow: Flow): number {
+  if (flow.kind === 'heat') return isActive(flow) ? 3 : 2;
   return isActive(flow) ? 2.5 + Math.min(3.5, Math.abs(flow.watts ?? 0) / 2000) : 2;
 }
 
@@ -69,7 +72,12 @@ const evState = computed(() => {
   return wallbox.vehiclePlugged ? 'Angesteckt' : 'Nicht angesteckt';
 });
 
-const heatState = computed(() => state.hotWater?.isSuspended ? 'Ausgesetzt' : state.hotWater?.isRaised ? 'Anhebung aktiv' : 'Normalbetrieb');
+const heatState = computed(() => {
+  const demand = data.heatPumpDemand.value;
+  const control = state.hotWater?.isSuspended ? 'Ausgesetzt' : state.hotWater?.isRaised ? 'Anhebung aktiv' : null;
+  const running = demand == null ? null : demand > 0 ? `Verdichter ${demand} %` : 'Verdichter aus';
+  return [running, control].filter(Boolean).join(' · ') || 'Normalbetrieb';
+});
 
 /** Phone layout: one row per component, sorted like the drawing, with the same direction words. */
 const rows = computed(() => {
@@ -155,7 +163,7 @@ function open(target: ZentraleTarget): void {
         <span class="z-node__text">
           <span class="z-node__label">Wärmepumpe</span>
           <strong>{{ hotWaterSample ? `${hotWaterSample.temperatureCelsius.toLocaleString('de-DE', { maximumFractionDigits: 0 })} °C` : '–' }}</strong>
-          <small>Warmwasser · {{ heatState }}</small>
+          <small>{{ heatState }}</small>
         </span>
       </button>
     </div>
@@ -175,7 +183,7 @@ function open(target: ZentraleTarget): void {
     <footer class="z-flow__legend">
       <span><i class="z-dot z-dot--pv" />PV</span><span><i class="z-dot z-dot--battery" />Akku</span><span><i class="z-dot z-dot--grid-import" />Netzbezug</span>
       <span><i class="z-dot z-dot--grid-export" />Einspeisung</span><span v-if="showEv"><i class="z-dot z-dot--ev" />E-Auto</span>
-      <span class="z-flow__note">Linien zeigen gemessene Leistung zum bzw. vom Haus{{ showHeat ? '; Wärmepumpe ohne Leistungsmessung' : '' }}.</span>
+      <span class="z-flow__note">Linien zeigen gemessene Leistung zum bzw. vom Haus{{ showHeat ? '; Wärmepumpe: nur Verdichteranforderung in %, keine Leistungsmessung' : '' }}.</span>
     </footer>
   </section>
 </template>
@@ -193,6 +201,7 @@ function open(target: ZentraleTarget): void {
 .z-line--grid-import { stroke: var(--z-grid-import); }
 .z-line--grid-export { stroke: var(--z-grid-export); }
 .z-line--ev { stroke: var(--z-ev); }
+.z-line--heat { stroke: var(--z-heat); }
 @keyframes z-flow { from { stroke-dashoffset: 18; } to { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) { .z-line--active { animation: none; stroke-dasharray: none; } }
 .z-flow--stale .z-line--active { animation: none; }

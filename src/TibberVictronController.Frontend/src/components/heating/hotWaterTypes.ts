@@ -37,6 +37,8 @@ export interface HotWaterPointDto {
 
 export interface HotWaterReportDto {
   energy?: HotWaterEnergyDto | null;
+  /** Compressor power demand in percent; not an electrical power measurement. */
+  demand?: { measuredAtUtc: string; percent: number } | null;
   generatedAtUtc: string;
   isRaised: boolean;
   isSuspended: boolean;

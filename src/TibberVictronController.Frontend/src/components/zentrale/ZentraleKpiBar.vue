@@ -45,7 +45,8 @@ const cards = computed(() => {
   }
   if (data.heatPumpAvailable.value) {
     list.push({ id: 'heatpump', icon: 'mdi-heat-pump-outline', label: 'Wärmepumpe', value: hotWater.value ? `${hotWater.value.temperatureCelsius.toLocaleString('de-DE', { maximumFractionDigits: 0 })} °C` : '–',
-      sub: state.hotWater?.isRaised ? 'Warmwasser angehoben' : 'Warmwasser', color: 'var(--z-heat)' });
+      sub: data.heatPumpDemand.value != null ? (data.heatPumpDemand.value > 0 ? `Verdichter ${data.heatPumpDemand.value} %` : 'Verdichter aus')
+        : state.hotWater?.isRaised ? 'Warmwasser angehoben' : 'Warmwasser', color: 'var(--z-heat)' });
   }
   list.push({ id: 'grid', icon: 'mdi-transmission-tower', label: 'Netz', value: kw(grid.value),
     sub: grid.value == null ? 'keine Messung' : grid.value > activeFlowWatts ? '↓ Bezug' : grid.value < -activeFlowWatts ? '↑ Einspeisung' : 'ausgeglichen',

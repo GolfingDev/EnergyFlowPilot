@@ -129,7 +129,7 @@ Reading order: key figures, energy flow with status and automations beside it, 2
 
 ### Energy flow
 
-The house is the busbar: each line connects exactly one component with the house. PV charging a battery therefore shows "PV → Haus" and "Haus → Akku", which is what the meters measure; no line claims an unmeasured allocation between two components. Lines animate only for measured power above 50 W and only while live data are at most two minutes old. Line direction follows the measured sign. The heat pump has no live power measurement; its line is a plain dotted connection. Components that are not set up (wallbox, heat pump, E3/DC) are not drawn. The house value is the measured balance (grid minus both batteries plus PV) and includes the car. On phones the drawing becomes a list with the same values and directions.
+The house is the busbar: each line connects exactly one component with the house. PV charging a battery therefore shows "PV → Haus" and "Haus → Akku", which is what the meters measure; no line claims an unmeasured allocation between two components. Lines animate only for measured power above 50 W and only while live data are at most two minutes old. Line direction follows the measured sign. The heat pump has no live power measurement. Its line animates while the compressor demand (register 33103, percent) is above zero and at most ten minutes old; the node shows the percentage, never kW. Without demand data the line is a plain dotted connection. Components that are not set up (wallbox, heat pump, E3/DC) are not drawn. The house value is the measured balance (grid minus both batteries plus PV) and includes the car. On phones the drawing becomes a list with the same values and directions.
 
 ### Explanations
 

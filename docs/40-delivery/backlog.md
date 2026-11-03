@@ -85,7 +85,7 @@ Requirement: `docs/20-domain/ev-charging.md`.
 Requirement: `docs/10-architecture/frontend-architecture.md`, section "Energy Flow Zentrale".
 
 1. Implemented: design "Zentrale" (dark and light) with sidebar, dashboard (key figures, energy flow, status, automations, 24 h forecast, planned actions), context panel with direct battery, car and hot water control, pages Analyse, Steuerung and Automationen, settings search and app-wide expert level.
-2. Open, backend: live electrical power of the heat pump (Weishaupt Modbus register or a sub-meter), so the flow can draw the heat pump line with measured power instead of a plain connection.
+2. Implemented in part: compressor power demand (Weishaupt register 33103, percent) is read, stored and shown; the flow shows the heat pump as running without kW. Open: check the register on the device; electrical power needs a sub-meter, Modbus offers none.
 3. Open, backend: one automation status endpoint (rule name, state, trigger values, affected devices, expected end) for battery optimization, car charging and hot water, instead of three sources combined in the frontend.
 4. Open, backend: decision parameters per log entry (price compared with which later price, threshold, reserve) as structured values, so "why" can show numbers next to the planner text.
 5. Implemented: the decision worker reports the start of its last completed cycle in `/api/status`; the UI shows "taken over" only after a cycle that started after the save.

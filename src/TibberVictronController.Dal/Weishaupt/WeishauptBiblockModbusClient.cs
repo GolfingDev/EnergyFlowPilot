@@ -14,6 +14,7 @@ public sealed class WeishauptBiblockModbusClient : IWeishauptBiblockTelemetrySou
     private const ushort OutdoorTemperatureAddress = 30001;
     private const ushort OperatingStatusAddress = 33101;
     private const ushort HotWaterTemperatureAddress = 32102;
+    private const ushort PowerDemandAddress = 33103;
 
     private readonly DatabaseWeishauptBiblockModbusSettingsProvider settingsProvider;
 
@@ -67,7 +68,8 @@ public sealed class WeishauptBiblockModbusClient : IWeishauptBiblockTelemetrySou
             ElectricalTodayKwh = await ReadOptionalEnergyAsync(stream, settings.SlaveId, 36701, 16, cancellationToken),
             ElectricalYesterdayKwh = await ReadOptionalEnergyAsync(stream, settings.SlaveId, 36702, 17, cancellationToken),
             ElectricalMonthKwh = await ReadOptionalEnergyAsync(stream, settings.SlaveId, 36703, 18, cancellationToken),
-            ElectricalYearKwh = await ReadOptionalEnergyAsync(stream, settings.SlaveId, 36704, 19, cancellationToken)
+            ElectricalYearKwh = await ReadOptionalEnergyAsync(stream, settings.SlaveId, 36704, 19, cancellationToken),
+            PowerDemandPercent = await ReadOptionalPercentAsync(stream, settings.SlaveId, PowerDemandAddress, 20, cancellationToken)
         };
     }
 
@@ -83,6 +85,13 @@ public sealed class WeishauptBiblockModbusClient : IWeishauptBiblockTelemetrySou
             // Firmware may not expose optional statistics. Transport/protocol errors still fail polling.
             return null;
         }
+    }
+
+    // An unverified register must never deliver a misleading value: anything above 100 % is treated as unknown.
+    private static async Task<ushort?> ReadOptionalPercentAsync(NetworkStream stream, byte slaveId, ushort address, ushort transactionId, CancellationToken ct)
+    {
+        var value = await ReadOptionalEnergyAsync(stream, slaveId, address, transactionId, ct);
+        return value is <= 100 ? value : null;
     }
 
     private static async Task<ushort> ReadInputRegisterAsync(NetworkStream stream, byte slaveId, ushort address, ushort transactionId, CancellationToken cancellationToken)

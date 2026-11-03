@@ -21,6 +21,7 @@ public sealed class WeishauptHotWaterEndpointTests
         Assert.Equal((ushort)12, dto.Energy?.Electrical.TodayKwh);
         Assert.Equal((ushort)65535, dto.Energy?.Electrical.YearKwh);
         Assert.Null(dto.Energy?.HeatingHeat.MonthKwh);
+        Assert.Equal((ushort)45, dto.Demand?.Percent);
         var episode = Assert.Single(dto.Episodes);
         Assert.Null(episode.BridgedToNeed);
         Assert.True(episode.HasDataGaps);
@@ -41,7 +42,7 @@ public sealed class WeishauptHotWaterEndpointTests
         public Task<IReadOnlyList<WeishauptBiblockTelemetrySample>> GetSamplesAsync(DateTimeOffset start, DateTimeOffset end, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<WeishauptBiblockTelemetrySample>>([new()
             { MeasuredAtUtc = UtcNow, HotWaterTemperatureCelsius = 47m, OutdoorTemperatureCelsius = 10m, OperatingStatusCode = 19,
-              HotWaterHeatTodayKwh = 4, ElectricalTodayKwh = 12, ElectricalYearKwh = 65535 }]);
+              HotWaterHeatTodayKwh = 4, ElectricalTodayKwh = 12, ElectricalYearKwh = 65535, PowerDemandPercent = 45 }]);
         public Task SaveAsync(WeishauptHotWaterState state, CancellationToken ct) => throw new NotSupportedException();
         public Task SaveSampleAsync(WeishauptBiblockTelemetrySample sample, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<int> DeleteSamplesOlderThanAsync(DateTimeOffset threshold, CancellationToken ct = default) => throw new NotSupportedException();

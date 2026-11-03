@@ -38,7 +38,8 @@ public sealed class EfWeishauptBiblockTelemetryRepository : IWeishauptBiblockTel
             ElectricalTodayKwh = sample.ElectricalTodayKwh,
             ElectricalYesterdayKwh = sample.ElectricalYesterdayKwh,
             ElectricalMonthKwh = sample.ElectricalMonthKwh,
-            ElectricalYearKwh = sample.ElectricalYearKwh
+            ElectricalYearKwh = sample.ElectricalYearKwh,
+            PowerDemandPercent = sample.PowerDemandPercent
         });
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -81,7 +82,8 @@ public sealed class EfWeishauptBiblockTelemetryRepository : IWeishauptBiblockTel
                 ElectricalTodayKwh = s.ElectricalTodayKwh,
                 ElectricalYesterdayKwh = s.ElectricalYesterdayKwh,
                 ElectricalMonthKwh = s.ElectricalMonthKwh,
-                ElectricalYearKwh = s.ElectricalYearKwh
+                ElectricalYearKwh = s.ElectricalYearKwh,
+                PowerDemandPercent = s.PowerDemandPercent
             }).ToArrayAsync(cancellationToken);
     }
 }
