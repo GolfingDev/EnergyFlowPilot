@@ -5,6 +5,7 @@ import EnergySavingsPanel from '../components/dashboard/EnergySavingsPanel.vue';
 import WeishauptEnergyPanel from '../components/heating/WeishauptEnergyPanel.vue';
 import DynamicTariffComparison from '../components/settings/DynamicTariffComparison.vue';
 import ZentraleReviewPanel from '../components/zentrale/ZentraleReviewPanel.vue';
+import ZentraleSavingsHistory from '../components/zentrale/ZentraleSavingsHistory.vue';
 import { errorText, getJson } from '../components/zentrale/zentraleApi';
 import type { BatterySavingsResponseDto, SavingsPeriod, SavingsPeriodOption } from '../components/dashboard/dashboardTypes';
 import '../components/zentrale/zentrale.css';
@@ -65,6 +66,7 @@ watch([tab, period], () => { if (tab.value === 'costs') void loadSavings(); }, {
     <template v-if="tab === 'costs'">
       <p v-if="savingsError" class="z-note z-note--error" role="alert">{{ savingsError }}</p>
       <EnergySavingsPanel :savings="savings" :period="period" :period-options="periodOptions" :loading="savingsLoading" @change-period="period = $event" />
+      <ZentraleSavingsHistory v-if="!savingsLoading" :savings="savings" :period="period" />
       <p class="z-page__intro">Einsparung der Akkus: vermiedene Netzkosten durch Entladung abzüglich Kosten der Ladung. Modellrechnung aus Messwerten und Intervallpreisen, keine Stromabrechnung.</p>
     </template>
     <ZentraleReviewPanel v-else-if="tab === 'review'" />

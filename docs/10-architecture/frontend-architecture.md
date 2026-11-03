@@ -147,6 +147,10 @@ Setting changes show four states: changed here, sent, stored (the value read bac
 
 The settings page keeps its three zones and adds a search over all settings, including expert ones; a hit opens the section, enables the expert level if needed and highlights the field. Recently used and recently saved settings are offered as shortcuts.
 
+### Analysis
+
+Analyse has one tab per topic: costs and savings (day to year, with a daily or, for a year, monthly history of both batteries from the stored daily summaries), grid and storage review (12 h, 24 h, 48 h, 7 days, hourly measured energy and the backend cost comparison), heat pump energy and tariff comparison. Energy and money use separate, labelled axes.
+
 ### Data
 
 One shared store (`useZentraleData.ts`) polls the summary, joint battery state and wallbox every 15 s, and car, charging control and plan, hot water, status and settings every 60 s, only while a Zentrale view is open. The classic dashboard requests are skipped while the Zentrale design is active. Colours of energy kinds are defined once as `--z-*` tokens in `styles.css` and used by flow, key figures and charts.

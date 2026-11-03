@@ -5,13 +5,13 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useTheme } from 'vuetify';
 import type { DashboardReviewDto } from '../leitstand/leitstandTypes';
 import { errorText, getJson } from './zentraleApi';
-import { clock, euro, kwh } from './zentraleFormat';
+import { clock, euro, kwh, when } from './zentraleFormat';
 
 /*
  * Measured review of grid and storage energy per hour. Energy (kWh) only; the costs come from the backend's
  * DashboardReview and are not recalculated here.
  */
-const hoursOptions = [12, 24, 48] as const;
+const hoursOptions = [12, 24, 48, 168] as const;
 const hours = ref<number>(24);
 const review = ref<DashboardReviewDto | null>(null);
 const loading = ref(false);
@@ -49,7 +49,8 @@ function render(): void {
   const config: ChartConfiguration<'bar'> = {
     type: 'bar',
     data: {
-      labels: rows.map(r => clock(r.startsAtUtc)),
+      // A week has 168 hourly bars; the label then needs the day as well.
+      labels: rows.map(r => hours.value > 48 ? when(r.startsAtUtc) : clock(r.startsAtUtc)),
       datasets: [
         { label: 'Netzbezug', data: rows.map(r => r.gridImportKwh), backgroundColor: css('--z-grid-import', '#818cf8'), stack: 'grid' },
         { label: 'Einspeisung', data: rows.map(r => -r.gridExportKwh), backgroundColor: css('--z-grid-export', '#22d3ee'), stack: 'grid' },
@@ -85,7 +86,7 @@ watch(() => theme.global.name.value, () => window.setTimeout(render, 0));
     <header class="z-card__head">
       <h2 id="z-review-title"><v-icon icon="mdi-history" size="22" />Rückblick Netz & Speicher</h2>
       <div class="z-tabs" role="tablist" aria-label="Zeitraum">
-        <button v-for="option in hoursOptions" :key="option" type="button" role="tab" :aria-selected="hours === option" @click="hours = option">{{ option }} h</button>
+        <button v-for="option in hoursOptions" :key="option" type="button" role="tab" :aria-selected="hours === option" @click="hours = option">{{ option === 168 ? '7 Tage' : `${option} h` }}</button>
       </div>
     </header>
     <p v-if="error" class="z-note z-note--error" role="alert">{{ error }}</p>

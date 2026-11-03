@@ -90,7 +90,7 @@ Requirement: `docs/10-architecture/frontend-architecture.md`, section "Energy Fl
 4. Open, backend: decision parameters per log entry (price compared with which later price, threshold, reserve) as structured values, so "why" can show numbers next to the planner text.
 5. Implemented: the decision worker reports the start of its last completed cycle in `/api/status`; the UI shows "taken over" only after a cycle that started after the save.
 6. Open, backend: E3/DC power limits as settable values, if the RSCP interface allows it; today they are shown read-only.
-7. Open, backend: longer review ranges (week, month, year) for grid and storage energy; today the review covers up to 48 hours and the savings cover day to year.
+7. Implemented: review up to 7 days; week, month and year history of storage energy and savings from the stored daily summaries. Open: grid import and export per day beyond the 14-day live sample retention would need their own daily summary.
 8. Open: hardware acceptance of the direct controls on the Raspberry Pi with real devices (manual charge, limits, car session commands).
 
 ## Rule

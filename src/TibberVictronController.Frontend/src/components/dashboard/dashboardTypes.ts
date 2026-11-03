@@ -114,6 +114,7 @@ export interface BatterySavingsResponseDto {
   endDate: string;
   currency: string;
   aggregate: BatterySavingsMetricsDto;
+  dailySummaries?: (BatterySavingsMetricsDto & { batteryId: string; accountingDate: string })[];
 }
 
 export interface ManualChargeStatusResponseDto {
