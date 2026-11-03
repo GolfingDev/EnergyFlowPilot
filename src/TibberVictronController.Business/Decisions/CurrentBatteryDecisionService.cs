@@ -860,7 +860,19 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
             siteTelemetry.SupplementaryBatteryMonitoringRequired,
             siteTelemetry.SupplementaryBatteryMeasuredAtUtc,
             TibberPricePerKwh = tibberPricePerKwh,
-            TibberPriceCurrency = tibberPriceCurrency
+            TibberPriceCurrency = tibberPriceCurrency,
+            // Logged only, so a later "why" can name the thresholds that applied; the decision above does not read it.
+            DecisionParameters = new
+            {
+                configuration.MinimumSavingsPerKwh,
+                configuration.WearCostPerKwh,
+                configuration.MinimumStateOfChargePercent,
+                configuration.PlanningMinimumStateOfChargePercent,
+                configuration.PlanningMaximumStateOfChargePercent,
+                configuration.MaximumChargePowerWatts,
+                configuration.MaximumDischargePowerWatts,
+                configuration.RoundTripEfficiencyPercent
+            }
         });
 
         var result = new CurrentBatteryDecisionResult(

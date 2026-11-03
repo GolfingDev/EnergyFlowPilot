@@ -19,6 +19,31 @@ const panelOpen = ref(false);
 const entries = ref<DecisionLogEntryResponseDto[]>([]);
 const error = ref<string | null>(null);
 const filter = ref<'all' | 'Charge' | 'Discharge' | 'Idle'>('all');
+const expandedId = ref<string | null>(null);
+
+/** Inputs and thresholds of one decision as short facts; only values the backend logged appear. */
+function inputFacts(entry: DecisionLogEntryResponseDto): string[] {
+  const i = entry.inputs;
+  if (!i) return [];
+  const facts: (string | null)[] = [
+    i.gridImportWatts != null ? `Netz ${i.gridImportWatts < 0 ? 'Einspeisung' : 'Bezug'} ${kw(i.gridImportWatts)}` : null,
+    i.pvProductionWatts != null ? `PV ${kw(i.pvProductionWatts)}` : null,
+    i.batteryPowerWatts != null ? `Akku ${i.batteryPowerWatts > 0 ? 'lädt' : i.batteryPowerWatts < 0 ? 'entlädt' : 'ruht'} ${kw(i.batteryPowerWatts)}` : null,
+    i.minimumSavingsPerKwh != null ? `Mindestvorteil ${priceText(i.minimumSavingsPerKwh)}` : null,
+    i.wearCostPerKwh ? `Verschleiß ${priceText(i.wearCostPerKwh)}` : null,
+    i.planningMinimumStateOfChargePercent != null ? `Reserve ${percent(i.planningMinimumStateOfChargePercent)}` : null,
+    i.planningMaximumStateOfChargePercent != null ? `Ladegrenze ${percent(i.planningMaximumStateOfChargePercent)}` : null,
+    i.maximumChargePowerWatts != null ? `max. Laden ${kw(i.maximumChargePowerWatts)}` : null,
+    i.maximumDischargePowerWatts != null ? `max. Entladen ${kw(i.maximumDischargePowerWatts)}` : null,
+    expertMode.value && i.roundTripEfficiencyPercent != null ? `Wirkungsgrad ${percent(i.roundTripEfficiencyPercent)}` : null,
+    expertMode.value && i.electricityPriceProvider ? `Preisquelle ${i.electricityPriceProvider}` : null
+  ];
+  return facts.filter((f): f is string => f !== null);
+}
+
+function toggle(entry: DecisionLogEntryResponseDto): void {
+  expandedId.value = expandedId.value === entry.id ? null : entry.id;
+}
 let timer: number | undefined;
 
 const filtered = computed(() => filter.value === 'all' ? entries.value : entries.value.filter(e => e.decisionState === filter.value));
@@ -65,8 +90,9 @@ onBeforeUnmount(() => window.clearInterval(timer));
             <tr><th>Zeit</th><th>Entscheidung</th><th>Sollwert</th><th>Preis</th><th>Akku 1</th><th>Begründung</th><th v-if="expertMode">Regel</th></tr>
           </thead>
           <tbody>
-            <tr v-for="entry in filtered" :key="entry.id">
-              <td class="z-history__time">{{ when(entry.decidedAtUtc) }}</td>
+            <template v-for="entry in filtered" :key="entry.id">
+            <tr class="z-history__row" :aria-expanded="expandedId === entry.id" tabindex="0" @click="toggle(entry)" @keydown.enter="toggle(entry)">
+              <td class="z-history__time"><v-icon :icon="expandedId === entry.id ? 'mdi-chevron-down' : 'mdi-chevron-right'" size="16" />{{ when(entry.decidedAtUtc) }}</td>
               <td><span :class="`z-decision z-decision--${entry.decisionState.toLowerCase()}`">{{ getDecisionLabel(entry.decisionState, entry.chargeSource) }}</span></td>
               <td>{{ entry.targetPowerWatts ? kw(entry.targetPowerWatts) : '–' }}</td>
               <td>{{ priceText(entry.tibberPricePerKwh, entry.tibberPriceCurrency) }}</td>
@@ -74,6 +100,15 @@ onBeforeUnmount(() => window.clearInterval(timer));
               <td class="z-history__reason">{{ entry.reasons[0]?.message ?? '–' }}</td>
               <td v-if="expertMode"><code>{{ entry.reasons[0]?.ruleId ?? '–' }}</code></td>
             </tr>
+            <tr v-if="expandedId === entry.id" class="z-history__details">
+              <td :colspan="expertMode ? 7 : 6">
+                <p v-if="entry.reasons.length > 1" class="z-note">Weitere Gründe: {{ entry.reasons.slice(1).map(r => r.message).join(' · ') }}</p>
+                <p v-if="inputFacts(entry).length" class="z-history__facts"><span v-for="fact in inputFacts(entry)" :key="fact">{{ fact }}</span></p>
+                <p v-else class="z-note">Für diesen Eintrag wurden noch keine Eingaben und Schwellen protokolliert.</p>
+                <p class="z-note">Schwellen sind die Einstellungen zum Entscheidungszeitpunkt; Vergleichspreise innerhalb der Regeln werden nicht protokolliert.</p>
+              </td>
+            </tr>
+            </template>
             <tr v-if="!filtered.length"><td :colspan="expertMode ? 7 : 6" class="z-note">Keine Einträge.</td></tr>
           </tbody>
         </table>
@@ -92,6 +127,11 @@ th { text-align: left; font-weight: 600; font-size: .74rem; color: var(--efp-mut
 td { padding: 7px 8px; border-bottom: 1px solid var(--efp-border-soft); vertical-align: top; font-variant-numeric: tabular-nums; }
 .z-history__time { white-space: nowrap; color: var(--efp-secondary); }
 .z-history__reason { min-width: 260px; line-height: 1.4; }
+.z-history__row { cursor: pointer; }
+.z-history__row:hover td { background: var(--efp-surface-muted); }
+.z-history__details td { background: var(--efp-surface-muted); }
+.z-history__facts { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.z-history__facts span { padding: 2px 8px; font-size: .76rem; border: 1px solid var(--efp-border); border-radius: 99px; }
 .z-decision { padding: 1px 8px; border-radius: 99px; font-size: .76rem; white-space: nowrap; border: 1px solid var(--efp-border); }
 .z-decision--charge { color: var(--z-battery); border-color: color-mix(in srgb, var(--z-battery) 45%, transparent); }
 .z-decision--discharge { color: var(--z-house); border-color: color-mix(in srgb, var(--z-house) 45%, transparent); }

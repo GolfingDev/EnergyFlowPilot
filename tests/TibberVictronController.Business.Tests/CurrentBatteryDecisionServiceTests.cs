@@ -36,6 +36,8 @@ public sealed class CurrentBatteryDecisionServiceTests
         Assert.Equal(0, result.Decision.TargetPowerWatts);
         Assert.Contains(result.Reasons, r => r.RuleName == CurrentBatteryDecisionRuleIds.SupplementaryGridChargeBlocked);
         Assert.Contains("SupplementaryBatteryDischargeWatts", result.InputSummaryJson);
+        using var json = System.Text.Json.JsonDocument.Parse(result.InputSummaryJson);
+        Assert.Equal(5000, json.RootElement.GetProperty("DecisionParameters").GetProperty("MaximumChargePowerWatts").GetInt32());
     }
 
     [Fact]

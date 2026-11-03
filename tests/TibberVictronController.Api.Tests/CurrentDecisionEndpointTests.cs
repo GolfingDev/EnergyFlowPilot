@@ -78,6 +78,37 @@ public sealed class CurrentDecisionEndpointTests
         Assert.Equal("Charge", value[0].DecisionState);
         Assert.Equal("PV", value[0].ChargeSource);
         Assert.Equal(-725, value[0].BatteryPowerWatts);
+        // Entries from before the parameters were logged keep their measured inputs and show no thresholds.
+        Assert.Equal(-725, value[0].Inputs?.BatteryPowerWatts);
+        Assert.Null(value[0].Inputs?.MinimumSavingsPerKwh);
+    }
+
+    [Fact]
+    public async Task GetDecisionLogsAsyncReturnsLoggedDecisionParameters()
+    {
+        var logRepository = new FakeDecisionLogRepository(new[]
+        {
+            new DecisionLogEntry(
+                Guid.NewGuid(),
+                new DateTimeOffset(2026, 11, 3, 10, 0, 0, TimeSpan.Zero),
+                new DateTimeOffset(2026, 11, 3, 10, 0, 0, TimeSpan.Zero),
+                new DateTimeOffset(2026, 11, 3, 10, 15, 0, TimeSpan.Zero),
+                new CurrentBatteryDecision(new BatteryDecisionInstruction(BatteryDecisionState.Idle, null), 0),
+                50m, 0.25m, "EUR", 300, 0,
+                "{\"ElectricityPriceProvider\":\"tibber\",\"CurrentGridImportWatts\":300,\"CurrentPvProductionWatts\":1200," +
+                "\"DecisionParameters\":{\"MinimumSavingsPerKwh\":0.03,\"PlanningMinimumStateOfChargePercent\":20,\"PlanningMaximumStateOfChargePercent\":90,\"MaximumChargePowerWatts\":5000}}",
+                new[] { new BatteryDecisionReason("HOLD", "Halten.") })
+        });
+
+        var result = await CurrentDecisionEndpoints.GetDecisionLogsAsync(logRepository, 20, CancellationToken.None);
+
+        var inputs = Assert.Single(Assert.IsType<Ok<DecisionLogEntryResponseDto[]>>(result).Value!).Inputs!;
+        Assert.Equal("tibber", inputs.ElectricityPriceProvider);
+        Assert.Equal((300, 1200), (inputs.GridImportWatts, inputs.PvProductionWatts));
+        Assert.Equal(0.03m, inputs.MinimumSavingsPerKwh);
+        Assert.Equal((20m, 90m), (inputs.PlanningMinimumStateOfChargePercent, inputs.PlanningMaximumStateOfChargePercent));
+        Assert.Equal(5000, inputs.MaximumChargePowerWatts);
+        Assert.Null(inputs.WearCostPerKwh);
     }
 
     [Fact]

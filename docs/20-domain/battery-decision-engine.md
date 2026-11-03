@@ -392,3 +392,8 @@ Die Speicherung erfolgt nach Speicher, Datum und Währung in `BatterySavingsByBa
 ### Eigene E3/DC-Leistungsgrenzen
 
 `jointBattery.e3dc.maximumChargePowerWatts` und `jointBattery.e3dc.maximumDischargePowerWatts` begrenzen, was Planer und Live-Begrenzer vom E3/DC anfordern (Watt, 0 = keine eigene Grenze). Wirksam ist die strengere Grenze aus eigener Grenze und – falls `jointBattery.e3dc.respectReportedLimits` aktiv ist – der vom Gerät gemeldeten wirksamen Grenze; die Systemgrenze des E3/DC gilt immer. Die Werte werden nie ins Gerät geschrieben; es bleibt bei ausschließlich flüchtigen Leistungsbefehlen.
+
+
+### Protokollierte Entscheidungsparameter
+
+Jeder Eintrag im Entscheidungsprotokoll enthält in `InputSummaryJson` zusätzlich `DecisionParameters`: Mindestvorteil, Verschleißkosten, hartes Minimum, Planungsminimum und -maximum, maximale Lade- und Entladeleistung sowie Wirkungsgrad zum Entscheidungszeitpunkt. Die Werte werden nur protokolliert; die Entscheidung liest sie nicht aus dem Protokoll. `/api/decision/logs` liefert sie zusammen mit den gemessenen Eingaben strukturiert als `inputs`. Vergleichspreise, die die Regeln intern bilden, sind nicht enthalten.

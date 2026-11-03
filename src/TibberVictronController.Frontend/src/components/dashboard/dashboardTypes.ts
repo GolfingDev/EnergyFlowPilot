@@ -31,6 +31,21 @@ export interface DecisionLogEntryResponseDto {
   gridExportWatts: number | null;
   batteryPowerWatts: number | null;
   reasons: CurrentBatteryDecisionReasonDto[];
+  /** Measured inputs and configured thresholds at decision time; missing on older entries. */
+  inputs?: {
+    electricityPriceProvider: string | null;
+    gridImportWatts: number | null;
+    pvProductionWatts: number | null;
+    batteryPowerWatts: number | null;
+    minimumSavingsPerKwh: number | null;
+    wearCostPerKwh: number | null;
+    minimumStateOfChargePercent: number | null;
+    planningMinimumStateOfChargePercent: number | null;
+    planningMaximumStateOfChargePercent: number | null;
+    maximumChargePowerWatts: number | null;
+    maximumDischargePowerWatts: number | null;
+    roundTripEfficiencyPercent: number | null;
+  } | null;
 }
 
 export interface CurrentBatteryDecisionResponseDto {
