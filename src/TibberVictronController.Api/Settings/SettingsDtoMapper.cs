@@ -1,3 +1,4 @@
+using TibberVictronController.Api.Configuration;
 using TibberVictronController.Business.Models;
 using TibberVictronController.Dal.Victron;
 
@@ -36,7 +37,10 @@ public static class SettingsDtoMapper
     /// <summary>
     /// Maps a controller status snapshot to the API response shape.
     /// </summary>
-    public static ControllerStatusResponseDto MapStatus(ControllerStatusSnapshot status, VictronMqttRuntimeStatus victronMqttRuntimeStatus)
+    public static ControllerStatusResponseDto MapStatus(
+        ControllerStatusSnapshot status,
+        VictronMqttRuntimeStatus victronMqttRuntimeStatus,
+        DecisionWorkerRuntimeStatus? decisionWorkerRuntimeStatus = null)
     {
         return new ControllerStatusResponseDto(
             status.Status,
@@ -47,6 +51,9 @@ public static class SettingsDtoMapper
             victronMqttRuntimeStatus.ConnectionState,
             victronMqttRuntimeStatus.LastErrorMessage,
             victronMqttRuntimeStatus.LastSuccessfulMessageAtUtc)
-        { ElectricityPriceProvider = status.ElectricityPriceProvider };
+        {
+            ElectricityPriceProvider = status.ElectricityPriceProvider,
+            DecisionWorkerLastCompletedCycleStartedAtUtc = decisionWorkerRuntimeStatus?.LastCompletedCycleStartedAtUtc
+        };
     }
 }

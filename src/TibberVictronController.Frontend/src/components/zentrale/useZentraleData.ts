@@ -76,13 +76,17 @@ async function refreshSlow(): Promise<void> {
       load<EvChargePlanDto>('Ladeplan', '/api/ev-charging/charge-plan', v => { state.evPlan = v; }, true),
       load<EvBaseChoiceDto>('Grund-Ladestand', '/api/ev-charging/base-choice', v => { state.baseChoice = v; }, true),
       load<HotWaterReportDto>('Warmwasser', '/api/weishaupt/hot-water', v => { state.hotWater = v; }, true),
-      load<ControllerStatusResponseDto>('Systemstatus', '/api/status', v => { state.status = v; }),
+      refreshStatus(),
       load<ManualChargeStatusResponseDto>('Manuelle Ladung', '/api/manual-charge', v => { state.legacyManualCharge = v; }, true),
       refreshSettings()
     ]);
   } finally {
     slowRunning = false;
   }
+}
+
+async function refreshStatus(): Promise<void> {
+  await load<ControllerStatusResponseDto>('Systemstatus', '/api/status', v => { state.status = v; });
 }
 
 async function refreshSettings(): Promise<void> {
@@ -185,7 +189,7 @@ export function useZentraleData() {
 
   return {
     state, now, live, isStale, batteries, jointControlActive, evAvailable, heatPumpAvailable,
-    setting, refreshAll, refreshFast, refreshSlow, refreshSettings, saveSetting,
+    setting, refreshAll, refreshFast, refreshSlow, refreshSettings, refreshStatus, saveSetting,
     startJointManualCharge, stopJointManualCharge, startLegacyManualCharge, stopLegacyManualCharge, evAction
   };
 }

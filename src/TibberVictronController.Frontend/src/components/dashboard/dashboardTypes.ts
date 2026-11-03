@@ -8,6 +8,7 @@ export interface ControllerStatusResponseDto {
   victronMqttStatus: string | null;
   victronMqttLastError: string | null;
   victronMqttLastSuccessfulMessageAtUtc: string | null;
+  decisionWorkerLastCompletedCycleStartedAtUtc?: string | null;
 }
 
 export interface CurrentBatteryDecisionReasonDto {

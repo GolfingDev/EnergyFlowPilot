@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using TibberVictronController.Api.Configuration;
 using TibberVictronController.Api.Settings;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
@@ -72,10 +73,16 @@ public sealed class SettingsEndpointTests
         var service = new FakeControllerSettingsService(Array.Empty<ControllerSetting>());
         var victronMqttRuntimeStatus = new VictronMqttRuntimeStatus();
 
-        var result = await SettingsEndpoints.GetStatusAsync(service, victronMqttRuntimeStatus, CancellationToken.None);
+        var workerStatus = new DecisionWorkerRuntimeStatus();
+        var cycleStartedAtUtc = new DateTimeOffset(2026, 11, 3, 8, 0, 0, TimeSpan.Zero);
+        workerStatus.MarkCycleStarted(cycleStartedAtUtc);
+        workerStatus.MarkSuccessful(cycleStartedAtUtc.AddSeconds(3));
+
+        var result = await SettingsEndpoints.GetStatusAsync(service, victronMqttRuntimeStatus, workerStatus, CancellationToken.None);
 
         var okResult = Assert.IsType<Ok<ControllerStatusResponseDto>>(result);
         Assert.Equal("Healthy", okResult.Value!.Status);
+        Assert.Equal(cycleStartedAtUtc, okResult.Value.DecisionWorkerLastCompletedCycleStartedAtUtc);
         Assert.Equal(ControllerSettingDefaults.GetDefinitions().Count, okResult.Value.KnownSettingsCount);
     }
 

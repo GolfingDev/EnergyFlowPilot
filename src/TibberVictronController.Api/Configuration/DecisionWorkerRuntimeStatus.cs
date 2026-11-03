@@ -10,6 +10,8 @@ public sealed class DecisionWorkerRuntimeStatus
     private string? lastErrorMessage;
     private DateTimeOffset? lastSuccessfulRunAtUtc;
     private DateTimeOffset? lastFailureAtUtc;
+    private DateTimeOffset? currentCycleStartedAtUtc;
+    private DateTimeOffset? lastCompletedCycleStartedAtUtc;
 
     public string State
     {
@@ -55,6 +57,29 @@ public sealed class DecisionWorkerRuntimeStatus
         }
     }
 
+    /// <summary>
+    /// Start time of the last cycle that finished successfully. Settings are read at the start of a cycle,
+    /// so a setting saved before this moment is known to be part of the last published decision.
+    /// </summary>
+    public DateTimeOffset? LastCompletedCycleStartedAtUtc
+    {
+        get
+        {
+            lock (syncRoot)
+            {
+                return lastCompletedCycleStartedAtUtc;
+            }
+        }
+    }
+
+    public void MarkCycleStarted(DateTimeOffset startedAtUtc)
+    {
+        lock (syncRoot)
+        {
+            currentCycleStartedAtUtc = startedAtUtc;
+        }
+    }
+
     public void MarkStarting()
     {
         lock (syncRoot)
@@ -69,6 +94,7 @@ public sealed class DecisionWorkerRuntimeStatus
         {
             state = "Healthy";
             lastSuccessfulRunAtUtc = completedAtUtc;
+            lastCompletedCycleStartedAtUtc = currentCycleStartedAtUtc ?? lastCompletedCycleStartedAtUtc;
             lastErrorMessage = null;
         }
     }

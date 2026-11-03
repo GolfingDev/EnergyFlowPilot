@@ -137,7 +137,7 @@ Status sentences combine measured facts with texts the backend delivers (planner
 
 ### Control feedback
 
-Setting changes show four states: changed here, sent, stored (the value read back from `/api/settings` matches), and recalculated (a decision or joint plan newer than the confirmation exists). Manual charging shows sent, accepted by the backend, reported active, and the battery measuring charging power. Errors and rejected commands are shown in German next to the control. Controls are only offered for what the backend supports: the E3/DC has no settable power limit and without joint control no command path at all; this is stated in the panel.
+Setting changes show four states: changed here, sent, stored (the value read back from `/api/settings` matches), and taken over by the controller. The decision worker reads all settings at the start of each cycle; `/api/status` reports `decisionWorkerLastCompletedCycleStartedAtUtc`, the start of the last successfully completed cycle. A setting counts as taken over once that time is later than the confirmation and, with joint control active, the joint plan was also calculated afterwards. Until then the panel asks every 10 s for at most three minutes. Manual charging shows sent, accepted by the backend, reported active, and the battery measuring charging power. Errors and rejected commands are shown in German next to the control. Controls are only offered for what the backend supports: the E3/DC has no settable power limit and without joint control no command path at all; this is stated in the panel.
 
 ### Expert level
 

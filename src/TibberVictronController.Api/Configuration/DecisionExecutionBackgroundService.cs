@@ -81,6 +81,7 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
         var utcClock = scope.ServiceProvider.GetRequiredService<IUtcClock>();
         var currentBatteryDecisionService = scope.ServiceProvider.GetRequiredService<ICurrentBatteryDecisionService>();
         var controllerSettingStore = scope.ServiceProvider.GetRequiredService<IControllerSettingStore>();
+        runtimeStatus.MarkCycleStarted(utcClock.UtcNow);
 
         var interval = await GetIntervalAsync(controllerSettingStore, cancellationToken);
         var isShadowMode = await GetShadowModeAsync(controllerSettingStore, cancellationToken);

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { isAdmin } from '../../auth';
 import { errorText } from './zentraleApi';
 import { clock } from './zentraleFormat';
@@ -42,12 +42,30 @@ const sliderMax = computed(() => Math.max(props.max, draft.value ?? props.min));
 const dirty = computed(() => props.kind === 'slider' && draft.value != null && storedNumber.value != null
   && Math.abs(draft.value - storedNumber.value * props.scale) > props.step / 1000);
 const validationError = computed(() => dirty.value && draft.value != null && props.validate ? props.validate(toStored(draft.value)) : null);
-/** A newer decision or joint plan than the confirmation means the controller has calculated with the new value. */
+/*
+ * The decision worker reads all settings at the start of a cycle. A completed cycle that started after the save
+ * therefore used the new value; with joint control the joint plan must have been recalculated as well.
+ */
 const applied = computed(() => {
   if (phase.value !== 'confirmed' || confirmedAt.value == null) return false;
-  const stamps = [data.state.summary?.current.decidedAtUtc, data.state.shadow?.calculatedAtUtc].filter((s): s is string => !!s).map(Date.parse);
-  return stamps.some(stamp => stamp > confirmedAt.value!);
+  const after = (stamp: string | null | undefined) => !!stamp && Date.parse(stamp) > confirmedAt.value!;
+  const worker = data.state.status?.decisionWorkerLastCompletedCycleStartedAtUtc;
+  const workerApplied = worker !== undefined ? after(worker) : after(data.state.summary?.current.decidedAtUtc);
+  const jointApplied = !data.jointControlActive.value || after(data.state.shadow?.calculatedAtUtc);
+  return workerApplied && jointApplied;
 });
+let followUp: number | undefined;
+
+// Ask for the controller's state more often until it confirms; stop after three minutes.
+function followUntilApplied(startedAt = Date.now()): void {
+  window.clearTimeout(followUp);
+  if (applied.value || phase.value !== 'confirmed' || Date.now() - startedAt > 180_000) return;
+  followUp = window.setTimeout(async () => {
+    await Promise.all([data.refreshStatus(), data.refreshFast()]);
+    followUntilApplied(startedAt);
+  }, 10_000);
+}
+onBeforeUnmount(() => window.clearTimeout(followUp));
 const display = (value: number | null) => value == null ? '–'
   : `${value.toLocaleString('de-DE', { maximumFractionDigits: props.step < 1 ? 1 : 0 })}${props.unit ? ` ${props.unit}` : ''}`;
 
@@ -64,8 +82,7 @@ async function send(value: string): Promise<void> {
     if (!sameValue(data.setting(props.settingKey), value)) throw new Error('Der Wert wurde nicht übernommen; das Backend meldet weiterhin den alten Wert.');
     confirmedAt.value = Date.now();
     phase.value = 'confirmed';
-    // The controller recalculates on its own cycle; fetch the next decision a little earlier to show it.
-    window.setTimeout(() => void data.refreshFast(), 5_000);
+    followUntilApplied();
   } catch (reason) {
     phase.value = 'error';
     error.value = errorText(reason, 'Einstellung wurde nicht gespeichert.');
@@ -122,7 +139,7 @@ function toggle(next: boolean | null): void {
     <ol v-else-if="phase !== 'idle'" class="z-setting__steps" aria-live="polite">
       <li :class="{ done: phase !== 'sending' && phase !== 'error', busy: phase === 'sending', failed: phase === 'error' }">Gesendet</li>
       <li :class="{ done: phase === 'confirmed' }">Gespeichert</li>
-      <li :class="{ done: applied }">{{ applied ? 'Vom Regler neu berechnet' : 'Wartet auf nächste Berechnung' }}</li>
+      <li :class="{ done: applied }">{{ applied ? 'Vom Regler übernommen' : 'Wartet auf nächsten Regelzyklus' }}</li>
     </ol>
     <p v-if="error" class="z-setting__error" role="alert">{{ error }}</p>
     <p v-else-if="phase === 'confirmed' && confirmedAt" class="z-setting__hint">Gespeichert um {{ clock(new Date(confirmedAt).toISOString()) }}.</p>

@@ -88,7 +88,7 @@ Requirement: `docs/10-architecture/frontend-architecture.md`, section "Energy Fl
 2. Open, backend: live electrical power of the heat pump (Weishaupt Modbus register or a sub-meter), so the flow can draw the heat pump line with measured power instead of a plain connection.
 3. Open, backend: one automation status endpoint (rule name, state, trigger values, affected devices, expected end) for battery optimization, car charging and hot water, instead of three sources combined in the frontend.
 4. Open, backend: decision parameters per log entry (price compared with which later price, threshold, reserve) as structured values, so "why" can show numbers next to the planner text.
-5. Open, backend: command acknowledgement per setting change (stored → read by the controller at time X), so "applied" no longer has to be inferred from the next decision timestamp.
+5. Implemented: the decision worker reports the start of its last completed cycle in `/api/status`; the UI shows "taken over" only after a cycle that started after the save.
 6. Open, backend: E3/DC power limits as settable values, if the RSCP interface allows it; today they are shown read-only.
 7. Open, backend: longer review ranges (week, month, year) for grid and storage energy; today the review covers up to 48 hours and the savings cover day to year.
 8. Open: hardware acceptance of the direct controls on the Raspberry Pi with real devices (manual charge, limits, car session commands).

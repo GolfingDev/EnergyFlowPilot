@@ -33,14 +33,16 @@ public sealed class DecisionExecutionBackgroundServiceTests
             new RecordingOperationalEventRepository(),
             new RecordingWorkerFailureNotifier(),
             setpointPublisher);
+        var runtimeStatus = new DecisionWorkerRuntimeStatus();
         var backgroundService = new DecisionExecutionBackgroundService(
             serviceProvider,
             NullLogger<DecisionExecutionBackgroundService>.Instance,
-            new DecisionWorkerRuntimeStatus());
+            runtimeStatus);
 
         var delay = await backgroundService.ExecuteSingleCycleAsync(CancellationToken.None);
 
         Assert.Equal(TimeSpan.FromSeconds(90), delay);
+        Assert.Equal(NowUtc, runtimeStatus.LastCompletedCycleStartedAtUtc);
         Assert.Equal(1, decisionService.CallCount);
         Assert.Empty(setpointPublisher.PublishedResults);
     }
