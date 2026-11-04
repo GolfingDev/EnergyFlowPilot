@@ -423,20 +423,35 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
         var persistedHouseConsumptionWatts = TryCalculateSiteConsumptionWatts(snapshot, supplementaryPvSnapshot, measuredAtUtc)
             ?? GetPersistedHouseConsumptionWatts(snapshot, houseConsumptionWatts);
 
-        await liveConsumptionRepository.SaveSampleAsync(
-            new LiveConsumptionSample(
-                persistedHouseConsumptionWatts,
-                measuredAtUtc,
-                snapshot.GridPowerWatts,
-                snapshot.BatteryPowerWatts,
-                snapshot.BatterySocPercent,
-                GetPersistedPvProductionWatts(snapshot, persistedHouseConsumptionWatts))
+        var sample = new LiveConsumptionSample(
+            persistedHouseConsumptionWatts,
+            measuredAtUtc,
+            snapshot.GridPowerWatts,
+            snapshot.BatteryPowerWatts,
+            snapshot.BatterySocPercent,
+            GetPersistedPvProductionWatts(snapshot, persistedHouseConsumptionWatts))
+        {
+            SupplementaryBatteryPowerWatts = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.BatteryPowerWatts : null,
+            SupplementaryBatterySocPercent = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.BatterySocPercent : null,
+            SupplementaryPvProductionWatts = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.PvProductionWatts : null,
+            EvChargingWatts = CurrentWallboxWatts(measuredAtUtc)
+        };
+        await liveConsumptionRepository.SaveSampleAsync(sample);
+
+        // Dashboards get every stored sample at once instead of asking for it in fixed intervals.
+        // A failed push must never disturb telemetry storage: the next sample simply tries again.
+        try
+        {
+            var dashboardLiveUpdatePublisher = serviceProvider.GetService<IDashboardLiveUpdatePublisher>();
+            if (dashboardLiveUpdatePublisher is not null)
             {
-                SupplementaryBatteryPowerWatts = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.BatteryPowerWatts : null,
-                SupplementaryBatterySocPercent = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.BatterySocPercent : null,
-                SupplementaryPvProductionWatts = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.PvProductionWatts : null,
-                EvChargingWatts = CurrentWallboxWatts(measuredAtUtc)
-            });
+                await dashboardLiveUpdatePublisher.PublishLiveStateAsync(sample);
+            }
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "Live-Wert konnte nicht an die Dashboards gesendet werden.");
+        }
 
         await CleanupOldLiveSamplesIfDueAsync(scope.ServiceProvider, measuredAtUtc);
     }

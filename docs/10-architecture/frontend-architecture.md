@@ -153,4 +153,14 @@ Analyse has one tab per topic: costs and savings (day to year, with a daily or, 
 
 ### Data
 
-One shared store (`useZentraleData.ts`) polls the summary, joint battery state and wallbox at the rate chosen in the header status menu (5, 10, 15 (default), 30 or 60 s; stored per browser in localStorage `efp-refresh-seconds`), and car, charging control and plan, hot water, status and settings at four times that rate, between 30 s and 60 s. Polling runs only while a Zentrale view is open, and a tab that becomes visible again refreshes at once. The E3/DC values cannot be newer than the backend's E3/DC polling interval. The classic dashboard requests are skipped while the Zentrale design is active. Colours of energy kinds are defined once as `--z-*` tokens in `styles.css` and used by flow, key figures and charts.
+One shared store (`useZentraleData.ts`) loads everything once and then follows the server's SignalR hub `/api/hubs/dashboard` instead of fixed intervals:
+
+| Event | Sent when | Zentrale reaction |
+| --- | --- | --- |
+| `dashboardLiveStateUpdated` | every stored Victron live sample (`VictronMqttClientService`) | values applied directly (same `DashboardLiveStateDto` as the summary) |
+| `dashboardDecisionUpdated` | every decision cycle | reload summary, automations, status (at most every 10 s) |
+| `dashboardChanged` `{ area }` | `DashboardChangeWatcher` sees a change in joint battery, wallbox or EV control state (checked every second, read-only) | reload that area only (joint 3 s, wallbox 2 s, EV 5 s minimum gap) |
+
+The watcher only reads the in-memory states the control services already publish; the control loops are not changed. A resync every 60 s covers sources without change notes (car, hot water, settings changed elsewhere). While the connection is down the store polls every 15 s; after a reconnect, and when a tab becomes visible again, it reloads everything once. The header status menu shows the connection state. The E3/DC values cannot be newer than the backend's E3/DC polling interval.
+
+The store runs only while a Zentrale view is open. The classic dashboard requests are skipped while the Zentrale design is active. Colours of energy kinds are defined once as `--z-*` tokens in `styles.css` and used by flow, key figures and charts.

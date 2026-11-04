@@ -288,7 +288,8 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
             latestDecision.DecidedAtUtc);
     }
 
-    private static DashboardLiveState CreateLiveState(LiveConsumptionSample sample)
+    /// <summary>Live view of one stored sample; also used for the pushed live updates so both show the same numbers.</summary>
+    public static DashboardLiveState CreateLiveState(LiveConsumptionSample sample)
     {
         // The stored value is tailored to the consumption profile and leaves out what the E3/DC battery covers.
         // The live view shows the real house demand instead: grid minus both batteries plus E3/DC PV.

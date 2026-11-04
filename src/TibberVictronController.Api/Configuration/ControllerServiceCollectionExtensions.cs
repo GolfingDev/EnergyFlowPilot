@@ -163,6 +163,8 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IHomematicClimateHistoryService, HomematicClimateHistoryService>();
         services.AddScoped<IWorkerFailureNotifier, WorkerFailureEmailNotifier>();
         services.AddSingleton<IDashboardLiveUpdatePublisher, SignalRDashboardLiveUpdatePublisher>();
+        services.AddSingleton<DashboardChangeWatcher>();
+        services.AddHostedService<DashboardChangeWatcherBackgroundService>();
         services.AddScoped<IVictronSetpointPublisher, MqttVictronSetpointPublisher>();
         services.AddSingleton<VictronMqttClientService>();
         services.AddSingleton<IVictronMqttControlClient>(serviceProvider => serviceProvider.GetRequiredService<VictronMqttClientService>());

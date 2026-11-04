@@ -8,6 +8,8 @@ public sealed class SignalRDashboardLiveUpdatePublisher : IDashboardLiveUpdatePu
 {
     public const string DecisionUpdatedEventName = "dashboardDecisionUpdated";
     public const string TelemetryUpdatedEventName = "dashboardTelemetryUpdated";
+    public const string LiveStateUpdatedEventName = "dashboardLiveStateUpdated";
+    public const string ChangedEventName = "dashboardChanged";
 
     private readonly IHubContext<DashboardHub> hubContext;
 
@@ -39,6 +41,25 @@ public sealed class SignalRDashboardLiveUpdatePublisher : IDashboardLiveUpdatePu
         await hubContext.Clients.All.SendAsync(
             TelemetryUpdatedEventName,
             telemetry,
+            cancellationToken);
+    }
+
+    public async Task PublishLiveStateAsync(
+        Business.Models.LiveConsumptionSample sample,
+        CancellationToken cancellationToken = default)
+    {
+        var live = Business.Dashboard.DashboardSummaryService.CreateLiveState(sample);
+        await hubContext.Clients.All.SendAsync(
+            LiveStateUpdatedEventName,
+            DashboardLiveStateDto.From(live),
+            cancellationToken);
+    }
+
+    public async Task PublishChangedAsync(string area, CancellationToken cancellationToken = default)
+    {
+        await hubContext.Clients.All.SendAsync(
+            ChangedEventName,
+            new DashboardChangedDto(area),
             cancellationToken);
     }
 

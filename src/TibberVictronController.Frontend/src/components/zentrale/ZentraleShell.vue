@@ -6,7 +6,7 @@ import ThemeMenuPanel from '../ThemeMenuPanel.vue';
 import { currentUser, isAdmin, isDriver, logout, roleLabel } from '../../auth';
 import { expertMode } from '../../uiMode';
 import type { EnergyFlowThemeName } from '../../themeRegistry';
-import { refreshIntervalOptions, refreshSeconds, useZentraleData } from './useZentraleData';
+import { useZentraleData } from './useZentraleData';
 import './zentrale.css';
 
 /** App frame of the Zentrale: sidebar on desktop, icon rail on tablets, bottom bar on phones. */
@@ -54,7 +54,14 @@ const refreshing = ref(false);
 const lastLoadedText = computed(() => data.state.lastLoadedAtUtc
   ? new Date(data.state.lastLoadedAtUtc).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin' })
   : '–');
-// The E3/DC is polled by the backend; a faster page rate cannot make its values newer than that.
+const connectionText = computed(() => {
+  switch (data.state.connection) {
+    case 'connected': return { icon: 'mdi-lan-connect', title: 'Live-Verbindung aktiv', detail: 'Der Server schickt jede neue Messung und jede Änderung sofort.' };
+    case 'connecting': return { icon: 'mdi-lan-pending', title: 'Live-Verbindung wird aufgebaut', detail: 'Bis dahin werden die Werte regelmäßig abgefragt.' };
+    default: return { icon: 'mdi-lan-disconnect', title: 'Live-Verbindung getrennt', detail: 'Werte werden alle 15 s abgefragt, bis die Verbindung wieder steht.' };
+  }
+});
+// The E3/DC is polled by the backend; even a live connection cannot make its values newer than that.
 const e3dcPollingSeconds = computed(() => data.batteries.value[1]?.available ? data.setting('hagerEnergy.pollingIntervalSeconds') : null);
 
 async function refreshNow(): Promise<void> {
@@ -126,17 +133,14 @@ onBeforeUnmount(() => window.clearInterval(clockTimer));
             <v-menu v-model="refreshMenuOpen" location="bottom end" offset="10" :close-on-content-click="false">
               <template #activator="{ props: menuProps }">
                 <button type="button" class="z-health" :class="`z-health--${health.kind}`" v-bind="menuProps" role="status"
-                  :aria-label="`${health.label}. Aktualisierung alle ${refreshSeconds} Sekunden, ändern`">
+                  :aria-label="`${health.label}. ${connectionText.title}. Details`">
                   <i aria-hidden="true" />{{ health.label }}<v-icon icon="mdi-chevron-down" size="16" />
                 </button>
               </template>
               <div class="z-refresh" role="group" aria-labelledby="z-refresh-title">
-                <strong id="z-refresh-title">Live-Werte aktualisieren alle</strong>
-                <div class="z-refresh__options">
-                  <button v-for="seconds in refreshIntervalOptions" :key="seconds" type="button" :aria-pressed="refreshSeconds === seconds"
-                    @click="refreshSeconds = seconds">{{ seconds }} s</button>
-                </div>
-                <p>Stand {{ lastLoadedText }} · gilt für diesen Browser</p>
+                <strong id="z-refresh-title"><v-icon :icon="connectionText.icon" size="18" :class="`z-refresh__icon--${data.state.connection}`" /> {{ connectionText.title }}</strong>
+                <p>{{ connectionText.detail }}</p>
+                <p>Letzte Daten {{ lastLoadedText }}</p>
                 <p v-if="e3dcPollingSeconds">Akku 2 (E3/DC) liefert neue Werte nur alle {{ e3dcPollingSeconds }} s (Einstellung „E3/DC Polling-Intervall“).</p>
                 <v-btn size="small" variant="tonal" prepend-icon="mdi-refresh" :loading="refreshing" @click="refreshNow">Jetzt aktualisieren</v-btn>
               </div>
@@ -206,9 +210,9 @@ onBeforeUnmount(() => window.clearInterval(clockTimer));
 .z-refresh { display: grid; gap: 8px; width: 280px; padding: 14px; color: var(--efp-text); background: var(--efp-surface); border: 1px solid var(--efp-border); border-radius: 12px; }
 .z-refresh strong { font-size: .86rem; font-weight: 600; }
 .z-refresh p { margin: 0; font-size: .76rem; color: var(--efp-muted); line-height: 1.4; }
-.z-refresh__options { display: flex; gap: 4px; }
-.z-refresh__options button { flex: 1; padding: 5px 0; font-size: .8rem; color: var(--efp-text); background: none; border: 1px solid var(--efp-border); border-radius: 8px; cursor: pointer; }
-.z-refresh__options button[aria-pressed='true'] { color: var(--efp-primary); border-color: var(--efp-primary); background: color-mix(in srgb, var(--efp-primary) 12%, transparent); font-weight: 600; }
+.z-refresh__icon--connected { color: var(--efp-success); }
+.z-refresh__icon--connecting { color: var(--efp-muted); }
+.z-refresh__icon--disconnected { color: var(--efp-warning); }
 .z-health i { width: 9px; height: 9px; border-radius: 50%; background: var(--efp-muted); }
 .z-health--ok i { background: var(--efp-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--efp-success) 22%, transparent); }
 .z-health--warning { color: var(--efp-warning-text); }

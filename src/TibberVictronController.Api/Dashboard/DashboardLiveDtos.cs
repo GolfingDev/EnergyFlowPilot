@@ -6,3 +6,6 @@ public sealed record DashboardTelemetryUpdateDto(
     int? CurrentBatteryPowerWatts,
     decimal? StateOfChargePercent,
     DateTimeOffset MeasuredAtUtc);
+
+/// <summary>Area whose data changed: "joint", "wallbox" or "ev".</summary>
+public sealed record DashboardChangedDto(string Area);

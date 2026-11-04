@@ -1,42 +1,36 @@
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { HubConnectionBuilder, HttpTransportType, LogLevel, type HubConnection } from '@microsoft/signalr';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { errorText, getJson, sendJson } from './zentraleApi';
 import type {
   AutomationStatusDto, CarStatusDto, ControllerSettingResponseDto, ControllerStatusResponseDto, DashboardSummaryDto, EvBaseChoiceDto, EvChargePlanDto,
   EvControlDto, HotWaterReportDto, JointBatteryShadowDto, ManualChargeStatusResponseDto, WallboxStatusDto
 } from './zentraleTypes';
+import type { DashboardLiveStateDto } from '../leitstand/leitstandTypes';
 
 /** Power below this is measurement noise; such a flow is shown as inactive instead of flickering. */
 export const activeFlowWatts = 50;
 /** Live values older than this are not presented as current. */
 export const staleAfterMilliseconds = 120_000;
 
-/** Choices for how often live values are fetched; a per-browser preference like the design. */
-export const refreshIntervalOptions = [5, 10, 15, 30, 60] as const;
-const refreshStorageKey = 'efp-refresh-seconds';
-const defaultRefreshSeconds = 15;
+/*
+ * The server sends changes as they happen (SignalR): every stored live sample with its values, and a short note when
+ * a decision, the joint battery control, the wallbox or the car charging control changed. Only the changed area is
+ * reloaded. Timers remain as safety nets only: a slow resync for sources without change notes (car, hot water,
+ * settings changed elsewhere) and polling while the live connection is down.
+ */
+const resyncMilliseconds = 60_000;
+const fallbackPollMilliseconds = 15_000;
+const reconnectMilliseconds = 5_000;
 
-function readStoredRefreshSeconds(): number {
-  try {
-    const stored = Number(localStorage.getItem(refreshStorageKey));
-    return (refreshIntervalOptions as readonly number[]).includes(stored) ? stored : defaultRefreshSeconds;
-  } catch {
-    return defaultRefreshSeconds;
-  }
-}
-
-/** Seconds between two fetches of the live values (flow, batteries, wallbox). */
-export const refreshSeconds = ref(readStoredRefreshSeconds());
-
-// Plans, settings and status change rarely; they follow the live rate at a quarter of it, between 30 s and 60 s.
-const fastIntervalMilliseconds = () => refreshSeconds.value * 1000;
-const slowIntervalMilliseconds = () => Math.min(60, Math.max(30, refreshSeconds.value * 4)) * 1000;
+export type LiveConnectionState = 'connecting' | 'connected' | 'disconnected';
 
 /*
- * One shared store for shell, dashboard and pages. Several components on screen must not each poll the Raspberry Pi,
- * so polling runs once while at least one component uses the data.
+ * One shared store for shell, dashboard and pages. Several components on screen must not each talk to the Raspberry Pi,
+ * so the connection and the loads run once while at least one component uses the data.
  */
 const state = reactive({
   summary: null as DashboardSummaryDto | null,
+  pushedLive: null as DashboardLiveStateDto | null,
   shadow: null as JointBatteryShadowDto | null,
   wallbox: null as WallboxStatusDto | null,
   car: null as CarStatusDto | null,
@@ -49,13 +43,16 @@ const state = reactive({
   settings: {} as Record<string, ControllerSettingResponseDto>,
   automations: null as AutomationStatusDto[] | null,
   errors: {} as Record<string, string>,
-  lastLoadedAtUtc: null as string | null
+  lastLoadedAtUtc: null as string | null,
+  connection: 'connecting' as LiveConnectionState
 });
 const now = ref(Date.now());
 let subscribers = 0;
-let fastTimer: number | undefined;
-let slowTimer: number | undefined;
+let resyncTimer: number | undefined;
+let fallbackTimer: number | undefined;
+let reconnectTimer: number | undefined;
 let clockTimer: number | undefined;
+let hub: HubConnection | null = null;
 let fastRunning = false;
 let slowRunning = false;
 
@@ -70,15 +67,25 @@ async function load<T>(source: string, url: string, assign: (value: T | null) =>
   }
 }
 
+const loadSummary = () => load<DashboardSummaryDto>('Energiedaten', '/api/dashboard/summary', v => { if (v) state.summary = v; });
+const loadShadow = () => load<JointBatteryShadowDto>('Akkusteuerung', '/api/joint-battery/shadow', v => { state.shadow = v; }, true);
+const loadWallbox = () => load<WallboxStatusDto>('Wallbox', '/api/ev-charging/status', v => { state.wallbox = v; }, true);
+const loadLegacyManualCharge = () => load<ManualChargeStatusResponseDto>('Manuelle Ladung', '/api/manual-charge', v => { state.legacyManualCharge = v; }, true);
+
+async function loadEv(): Promise<void> {
+  await Promise.all([
+    load<CarStatusDto>('Fahrzeug', '/api/ev-charging/car', v => { state.car = v; }, true),
+    load<EvControlDto>('Ladesteuerung', '/api/ev-charging/control', v => { state.evControl = v; }, true),
+    load<EvChargePlanDto>('Ladeplan', '/api/ev-charging/charge-plan', v => { state.evPlan = v; }, true),
+    load<EvBaseChoiceDto>('Grund-Ladestand', '/api/ev-charging/base-choice', v => { state.baseChoice = v; }, true)
+  ]);
+}
+
 async function refreshFast(): Promise<void> {
   if (fastRunning) return;
   fastRunning = true;
   try {
-    await Promise.all([
-      load<DashboardSummaryDto>('Energiedaten', '/api/dashboard/summary', v => { if (v) state.summary = v; }),
-      load<JointBatteryShadowDto>('Akkusteuerung', '/api/joint-battery/shadow', v => { state.shadow = v; }, true),
-      load<WallboxStatusDto>('Wallbox', '/api/ev-charging/status', v => { state.wallbox = v; }, true)
-    ]);
+    await Promise.all([loadSummary(), loadShadow(), loadWallbox()]);
     state.lastLoadedAtUtc = new Date().toISOString();
   } finally {
     fastRunning = false;
@@ -90,14 +97,11 @@ async function refreshSlow(): Promise<void> {
   slowRunning = true;
   try {
     await Promise.all([
-      load<CarStatusDto>('Fahrzeug', '/api/ev-charging/car', v => { state.car = v; }, true),
-      load<EvControlDto>('Ladesteuerung', '/api/ev-charging/control', v => { state.evControl = v; }, true),
-      load<EvChargePlanDto>('Ladeplan', '/api/ev-charging/charge-plan', v => { state.evPlan = v; }, true),
-      load<EvBaseChoiceDto>('Grund-Ladestand', '/api/ev-charging/base-choice', v => { state.baseChoice = v; }, true),
+      loadEv(),
       load<HotWaterReportDto>('Warmwasser', '/api/weishaupt/hot-water', v => { state.hotWater = v; }, true),
       refreshStatus(),
       refreshAutomations(),
-      load<ManualChargeStatusResponseDto>('Manuelle Ladung', '/api/manual-charge', v => { state.legacyManualCharge = v; }, true),
+      loadLegacyManualCharge(),
       refreshSettings()
     ]);
   } finally {
@@ -123,52 +127,156 @@ async function refreshAll(): Promise<void> {
   await Promise.all([refreshFast(), refreshSlow()]);
 }
 
-function startTimers(): void {
-  fastTimer = window.setInterval(() => void refreshFast(), fastIntervalMilliseconds());
-  slowTimer = window.setInterval(() => void refreshSlow(), slowIntervalMilliseconds());
+/**
+ * Runs a reload at most once per gap, however many change notes arrive. A note during a running reload is not lost:
+ * it schedules exactly one more reload afterwards, so the last change is always fetched.
+ */
+function coalesced(task: () => Promise<unknown>, gapMilliseconds: number): () => void {
+  let running = false;
+  let pending = false;
+  let lastStartedAt = 0;
+  let timer: number | undefined;
+  async function run(): Promise<void> {
+    timer = undefined;
+    if (running) { pending = true; return; }
+    const wait = lastStartedAt + gapMilliseconds - Date.now();
+    if (wait > 0) { timer = window.setTimeout(() => void run(), wait); return; }
+    running = true;
+    lastStartedAt = Date.now();
+    try {
+      await task();
+    } finally {
+      running = false;
+      if (pending) { pending = false; void run(); }
+    }
+  }
+  return () => { if (timer === undefined) void run(); };
 }
 
-function stopTimers(): void {
-  window.clearInterval(fastTimer);
-  window.clearInterval(slowTimer);
+// The summary contains the full plan calculation; one reload per burst of decisions is plenty.
+const onDecisionChanged = coalesced(async () => {
+  await Promise.all([loadSummary(), refreshAutomations(), refreshStatus(), loadLegacyManualCharge()]);
+  state.lastLoadedAtUtc = new Date().toISOString();
+}, 10_000);
+const onJointChanged = coalesced(() => Promise.all([loadShadow(), refreshAutomations()]), 3_000);
+const onWallboxChanged = coalesced(loadWallbox, 2_000);
+const onEvChanged = coalesced(() => Promise.all([loadEv(), refreshAutomations()]), 5_000);
+
+function applyLive(live: DashboardLiveStateDto): void {
+  state.pushedLive = live;
+  state.lastLoadedAtUtc = new Date().toISOString();
 }
 
-// Browsers throttle timers in background tabs; coming back must not show minutes-old values until the next tick.
+function startFallbackPolling(): void {
+  if (fallbackTimer !== undefined) return;
+  fallbackTimer = window.setInterval(() => void refreshAll(), fallbackPollMilliseconds);
+}
+
+function stopFallbackPolling(): void {
+  window.clearInterval(fallbackTimer);
+  fallbackTimer = undefined;
+}
+
+function scheduleReconnect(): void {
+  if (reconnectTimer !== undefined || subscribers === 0) return;
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = undefined;
+    void connect();
+  }, reconnectMilliseconds);
+}
+
+function markDisconnected(): void {
+  state.connection = 'disconnected';
+  startFallbackPolling();
+}
+
+async function connect(): Promise<void> {
+  if (hub || subscribers === 0) return;
+  state.connection = 'connecting';
+  const connection = new HubConnectionBuilder()
+    .withUrl('/api/hubs/dashboard', { transport: HttpTransportType.ServerSentEvents | HttpTransportType.LongPolling })
+    .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
+    .configureLogging(LogLevel.Warning)
+    .build();
+  connection.on('dashboardLiveStateUpdated', applyLive);
+  connection.on('dashboardDecisionUpdated', onDecisionChanged);
+  connection.on('dashboardChanged', (change: { area: string }) => {
+    if (change.area === 'joint') onJointChanged();
+    else if (change.area === 'wallbox') onWallboxChanged();
+    else if (change.area === 'ev') onEvChanged();
+  });
+  connection.onreconnecting(() => markDisconnected());
+  connection.onreconnected(() => {
+    state.connection = 'connected';
+    stopFallbackPolling();
+    // Changes during the gap were not sent; fetch everything once.
+    void refreshAll();
+  });
+  connection.onclose(() => {
+    if (hub !== connection) return;
+    hub = null;
+    markDisconnected();
+    scheduleReconnect();
+  });
+  hub = connection;
+  try {
+    await connection.start();
+    state.connection = 'connected';
+    stopFallbackPolling();
+  } catch {
+    if (hub === connection) hub = null;
+    markDisconnected();
+    scheduleReconnect();
+  }
+}
+
+async function disconnect(): Promise<void> {
+  window.clearTimeout(reconnectTimer);
+  reconnectTimer = undefined;
+  const connection = hub;
+  hub = null;
+  try {
+    await connection?.stop();
+  } catch {
+    // Leaving the page; nothing left to clean up.
+  }
+}
+
+// Browsers throttle background tabs and phones drop connections while asleep; coming back must not show old values.
 function onVisibilityChange(): void {
-  if (document.visibilityState === 'visible') void refreshAll();
+  if (document.visibilityState !== 'visible') return;
+  void refreshAll();
+  if (!hub) void connect();
 }
 
 function start(): void {
   void refreshAll();
-  startTimers();
+  void connect();
+  resyncTimer = window.setInterval(() => { if (state.connection === 'connected') void refreshAll(); }, resyncMilliseconds);
   clockTimer = window.setInterval(() => { now.value = Date.now(); }, 5_000);
   document.addEventListener('visibilitychange', onVisibilityChange);
 }
 
 function stop(): void {
-  stopTimers();
+  window.clearInterval(resyncTimer);
   window.clearInterval(clockTimer);
+  stopFallbackPolling();
   document.removeEventListener('visibilitychange', onVisibilityChange);
+  void disconnect();
 }
-
-watch(refreshSeconds, (value) => {
-  try {
-    localStorage.setItem(refreshStorageKey, String(value));
-  } catch {
-    // Without storage the choice simply lasts for this visit.
-  }
-  if (subscribers > 0) {
-    stopTimers();
-    startTimers();
-    void refreshFast();
-  }
-});
 
 function setting(key: string): string | null {
   return state.settings[key]?.value ?? null;
 }
 
-const live = computed(() => state.summary?.live ?? null);
+// The pushed sample and the summary's sample are the same kind of value; show whichever was measured last.
+const live = computed(() => {
+  const fromSummary = state.summary?.live ?? null;
+  const pushed = state.pushedLive;
+  if (!pushed) return fromSummary;
+  if (!fromSummary) return pushed;
+  return Date.parse(pushed.measuredAtUtc) >= Date.parse(fromSummary.measuredAtUtc) ? pushed : fromSummary;
+});
 const isStale = computed(() => !live.value || now.value - Date.parse(live.value.measuredAtUtc) > staleAfterMilliseconds);
 
 /** Joint control owns both batteries; then commands go through the joint endpoints, otherwise only Victron is steerable. */

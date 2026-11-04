@@ -66,17 +66,7 @@ public static class DashboardSummaryDtoMapper
                 summary.Current.PricePerKwh,
                 summary.Current.Currency,
                 summary.Current.DecidedAtUtc),
-            summary.Live is null
-                ? null
-                : new DashboardLiveStateDto(
-                    summary.Live.MeasuredAtUtc,
-                    summary.Live.GridPowerWatts,
-                    summary.Live.HouseConsumptionWatts,
-                    summary.Live.BatteryPowerWatts,
-                    summary.Live.BatterySocPercent,
-                    summary.Live.SupplementaryPvProductionWatts,
-                    summary.Live.SupplementaryBatteryPowerWatts,
-                    summary.Live.SupplementaryBatterySocPercent),
+            summary.Live is null ? null : DashboardLiveStateDto.From(summary.Live),
             summary.Checks.Select(check => new DashboardCheckDto(check.CheckId, ToName(check.Severity), check.Message)).ToArray(),
             summary.PlanSlots.Select(slot => new DashboardPlanSlotDto(
                 slot.TimeSlot.StartsAtUtc,
@@ -183,7 +173,18 @@ public sealed record DashboardLiveStateDto(
     decimal? BatterySocPercent,
     decimal? SupplementaryPvProductionWatts,
     decimal? SupplementaryBatteryPowerWatts,
-    decimal? SupplementaryBatterySocPercent);
+    decimal? SupplementaryBatterySocPercent)
+{
+    public static DashboardLiveStateDto From(DashboardLiveState live) => new(
+        live.MeasuredAtUtc,
+        live.GridPowerWatts,
+        live.HouseConsumptionWatts,
+        live.BatteryPowerWatts,
+        live.BatterySocPercent,
+        live.SupplementaryPvProductionWatts,
+        live.SupplementaryBatteryPowerWatts,
+        live.SupplementaryBatterySocPercent);
+}
 
 public sealed record DashboardCheckDto(string CheckId, string Severity, string Message);
 
