@@ -94,7 +94,7 @@ Requirement: `docs/10-architecture/frontend-architecture.md`, section "Energy Fl
 8. Partly accepted on 2026-11-04 with real devices (checklist: `docs/40-delivery/acceptance-zentrale.md`); the operator ended the session early because everything checked worked and will report errors as they show up.
    - Passed: 1 flow values against device portals, live connection, line animation, heat pump compressor percentage (register 33103 plausible while running), phone layout; 2 joint manual charge start and return to automatic, charge limit and reserve taken over (reserve above limit refused), lower charge power respected, viewer sees no controls; 3 own E3/DC charge cap of 1 kW respected and reset to 0; 4 grid power budget respected, 0 shows "keine zusätzliche Grenze".
    - Not checked: 1 stale data after a Victron outage; 3 E3/DC panel without joint control (joint control is always on); 4 minimum advantage and the dry-run switch; 5 car; 6 hot water; 7 automations and history.
-   - Finding: battery 2 values in the flow come from the E3/DC cloud (polled every 60 s) and look current although they lag, e.g. still "lädt" after charging stopped. Planned fix: use the local RSCP reading of the joint execution when fresh, cloud only as fallback.
+   - Finding: battery 2 values in the flow come from the E3/DC cloud (polled every 60 s) and look current although they lag, e.g. still "lädt" after charging stopped. Fixed: the stored live sample takes the newest E3/DC battery reading (local RSCP of the joint execution or preview, cloud as fallback); see `docs/30-operations/e3dc-rscp.md`. To confirm on site after deployment.
 
 ## Rule
 

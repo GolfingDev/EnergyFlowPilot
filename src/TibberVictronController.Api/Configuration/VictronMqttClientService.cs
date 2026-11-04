@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MQTTnet;
 using MQTTnet.Protocol;
 using TibberVictronController.Api.Dashboard;
+using TibberVictronController.Api.JointBattery;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Models;
 using TibberVictronController.Dal.Battery;
@@ -422,6 +423,7 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
         var supplementaryPvSnapshot = serviceProvider.GetService<HagerEnergyTelemetrySnapshotStore>()?.Current;
         var persistedHouseConsumptionWatts = TryCalculateSiteConsumptionWatts(snapshot, supplementaryPvSnapshot, measuredAtUtc)
             ?? GetPersistedHouseConsumptionWatts(snapshot, houseConsumptionWatts);
+        var supplementaryBattery = NewestSupplementaryBatteryReading(supplementaryPvSnapshot, measuredAtUtc);
 
         var sample = new LiveConsumptionSample(
             persistedHouseConsumptionWatts,
@@ -431,8 +433,8 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             snapshot.BatterySocPercent,
             GetPersistedPvProductionWatts(snapshot, persistedHouseConsumptionWatts))
         {
-            SupplementaryBatteryPowerWatts = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.BatteryPowerWatts : null,
-            SupplementaryBatterySocPercent = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.BatterySocPercent : null,
+            SupplementaryBatteryPowerWatts = supplementaryBattery?.PowerWatts,
+            SupplementaryBatterySocPercent = supplementaryBattery?.StateOfChargePercent,
             SupplementaryPvProductionWatts = IsFresh(supplementaryPvSnapshot, measuredAtUtc) ? supplementaryPvSnapshot!.PvProductionWatts : null,
             EvChargingWatts = CurrentWallboxWatts(measuredAtUtc)
         };
@@ -536,6 +538,22 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             measuredAtUtc);
 
         return Math.Max(0m, gridPowerWatts - batteryPowerWatts + supplementaryPvSnapshot.PvProductionWatts - supplementaryChargeFromSiteWatts);
+    }
+
+    /// <summary>
+    /// E3/DC battery power and charge for the stored sample. The cloud is polled only every minute, so a stopped charge
+    /// would still show as charging; the local RSCP readings of the joint control are used whenever they are newer.
+    /// Only readings already taken are used: this path never talks to the E3/DC itself.
+    /// </summary>
+    private SupplementaryBatteryReading? NewestSupplementaryBatteryReading(HagerEnergyTelemetrySnapshot? cloud, DateTimeOffset measuredAtUtc)
+    {
+        var executionUnit = serviceProvider.GetService<JointBatteryExecutionState>()?.LastLive?.Batteries
+            .FirstOrDefault(battery => battery.Id == "e3dc");
+        var previewTelemetry = serviceProvider.GetService<JointBatteryRuntimeState>()?.Current.LocalTelemetry;
+        return SupplementaryBatteryReading.Newest(measuredAtUtc, SupplementaryPvMaxAge,
+            executionUnit is null ? null : new(executionUnit.State.MeasuredAtUtc, executionUnit.State.StateOfChargePercent, executionUnit.MeasuredPowerWatts),
+            previewTelemetry is null ? null : new(previewTelemetry.MeasuredAtUtc, previewTelemetry.SocPercent, previewTelemetry.BatteryPowerWatts),
+            cloud is null ? null : new(cloud.LastSuccessfulPollAtUtc, cloud.BatterySocPercent, cloud.BatteryPowerWatts));
     }
 
     private static bool IsFresh(HagerEnergyTelemetrySnapshot? snapshot, DateTimeOffset measuredAtUtc)

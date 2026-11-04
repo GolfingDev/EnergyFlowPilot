@@ -2,6 +2,16 @@
 
 Die bestehende Hager-Cloud-Anbindung liest Telemetrie. Ein OAuth-Token für die Cloud bestätigt keinen lokalen RSCP-Zugang und keine Schreibrechte.
 
+## Akkuwerte in den Live-Samples
+
+Leistung und Ladestand des E3/DC-Akkus in jedem gespeicherten Live-Sample (Dashboard, Rückblick, Ersparnis) stammen aus der neuesten vorhandenen Messung, höchstens 5 Minuten alt:
+
+- **lokale RSCP-Messung der gemeinsamen Ausführung:** jede Sekunde, solange sie steuert;
+- **lokale RSCP-Messung der gemeinsamen Vorschau:** alle 30 s;
+- **Hager-Cloud:** standardmäßig alle 60 s.
+
+Die Cloud allein zeigte ein beendetes Laden bis zu einer Minute lang weiter als Laden (Abnahme vom 2026-11-04). Der Speicherpfad liest dafür nur bereits vorliegende Messungen und spricht den E3/DC nie selbst an. Die PV-Erzeugung des E3/DC und der aus dem Netz geladene Anteil im Verbrauchsprofil kommen weiterhin aus der Cloud.
+
 Die Open-Source-Projekte [python-e3dc](https://github.com/fsantini/python-e3dc) und [E3DC-Control](https://github.com/Eba-M/E3DC-Control) implementieren lokale RSCP-Steuerbefehle, unter anderem Leistungsgrenzen und Betriebsmodi. Das ist ein Beleg für Protokollfunktionen, keine Kompatibilitätszusage für das installierte Gerät oder dessen Firmware.
 
 ## Voraussetzungen vor Ort
