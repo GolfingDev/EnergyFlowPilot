@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { errorText, getJson, sendJson } from './zentraleApi';
 import type {
   AutomationStatusDto, CarStatusDto, ControllerSettingResponseDto, ControllerStatusResponseDto, DashboardSummaryDto, EvBaseChoiceDto, EvChargePlanDto,
@@ -10,8 +10,26 @@ export const activeFlowWatts = 50;
 /** Live values older than this are not presented as current. */
 export const staleAfterMilliseconds = 120_000;
 
-const fastIntervalMilliseconds = 15_000;
-const slowIntervalMilliseconds = 60_000;
+/** Choices for how often live values are fetched; a per-browser preference like the design. */
+export const refreshIntervalOptions = [5, 10, 15, 30, 60] as const;
+const refreshStorageKey = 'efp-refresh-seconds';
+const defaultRefreshSeconds = 15;
+
+function readStoredRefreshSeconds(): number {
+  try {
+    const stored = Number(localStorage.getItem(refreshStorageKey));
+    return (refreshIntervalOptions as readonly number[]).includes(stored) ? stored : defaultRefreshSeconds;
+  } catch {
+    return defaultRefreshSeconds;
+  }
+}
+
+/** Seconds between two fetches of the live values (flow, batteries, wallbox). */
+export const refreshSeconds = ref(readStoredRefreshSeconds());
+
+// Plans, settings and status change rarely; they follow the live rate at a quarter of it, between 30 s and 60 s.
+const fastIntervalMilliseconds = () => refreshSeconds.value * 1000;
+const slowIntervalMilliseconds = () => Math.min(60, Math.max(30, refreshSeconds.value * 4)) * 1000;
 
 /*
  * One shared store for shell, dashboard and pages. Several components on screen must not each poll the Raspberry Pi,
@@ -105,18 +123,46 @@ async function refreshAll(): Promise<void> {
   await Promise.all([refreshFast(), refreshSlow()]);
 }
 
+function startTimers(): void {
+  fastTimer = window.setInterval(() => void refreshFast(), fastIntervalMilliseconds());
+  slowTimer = window.setInterval(() => void refreshSlow(), slowIntervalMilliseconds());
+}
+
+function stopTimers(): void {
+  window.clearInterval(fastTimer);
+  window.clearInterval(slowTimer);
+}
+
+// Browsers throttle timers in background tabs; coming back must not show minutes-old values until the next tick.
+function onVisibilityChange(): void {
+  if (document.visibilityState === 'visible') void refreshAll();
+}
+
 function start(): void {
   void refreshAll();
-  fastTimer = window.setInterval(() => void refreshFast(), fastIntervalMilliseconds);
-  slowTimer = window.setInterval(() => void refreshSlow(), slowIntervalMilliseconds);
+  startTimers();
   clockTimer = window.setInterval(() => { now.value = Date.now(); }, 5_000);
+  document.addEventListener('visibilitychange', onVisibilityChange);
 }
 
 function stop(): void {
-  window.clearInterval(fastTimer);
-  window.clearInterval(slowTimer);
+  stopTimers();
   window.clearInterval(clockTimer);
+  document.removeEventListener('visibilitychange', onVisibilityChange);
 }
+
+watch(refreshSeconds, (value) => {
+  try {
+    localStorage.setItem(refreshStorageKey, String(value));
+  } catch {
+    // Without storage the choice simply lasts for this visit.
+  }
+  if (subscribers > 0) {
+    stopTimers();
+    startTimers();
+    void refreshFast();
+  }
+});
 
 function setting(key: string): string | null {
   return state.settings[key]?.value ?? null;

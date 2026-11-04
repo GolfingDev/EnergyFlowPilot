@@ -76,7 +76,12 @@ async function act(path: 'base-choice' | 'base-choice/stopped' | 'base-choice/ta
             </template>
           </div>
           <div class="z-slider-row"><label for="z-ev-target">Sofort laden bis</label><strong>{{ target }} %</strong></div>
-          <v-slider id="z-ev-target" v-model="target" :min="20" :max="100" :step="5" color="primary" density="compact" hide-details />
+          <!-- 1 % steps; the buttons make exact values easy on a touch screen where dragging is coarse. -->
+          <div class="z-ev-target">
+            <v-btn icon="mdi-minus" size="x-small" variant="tonal" aria-label="Ladeziel 1 % niedriger" :disabled="target <= 20" @click="target = Math.max(20, target - 1)" />
+            <v-slider id="z-ev-target" v-model="target" :min="20" :max="100" :step="1" color="primary" density="compact" hide-details />
+            <v-btn icon="mdi-plus" size="x-small" variant="tonal" aria-label="Ladeziel 1 % höher" :disabled="target >= 100" @click="target = Math.min(100, target + 1)" />
+          </div>
           <div class="z-actions">
             <v-btn size="small" color="primary" variant="flat" :loading="busy" @click="act('base-choice/target', { targetPercent: target }, `Ladeziel ${target} % gesetzt.`)">Ziel setzen</v-btn>
             <v-btn v-if="choice.immediateTargetPercent != null" size="small" variant="text" :loading="busy" @click="act('base-choice/target', { targetPercent: null }, 'Ladeziel entfernt.')">Ziel entfernen</v-btn>
@@ -103,4 +108,5 @@ async function act(path: 'base-choice' | 'base-choice/stopped' | 'base-choice/ta
 .z-ev { display: grid; gap: 14px; }
 .z-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .z-slider-row { display: flex; justify-content: space-between; font-size: .86rem; margin-top: 6px; }
+.z-ev-target { display: flex; align-items: center; gap: 8px; }
 </style>
