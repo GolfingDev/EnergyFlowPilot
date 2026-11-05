@@ -49,6 +49,8 @@ public static class ControllerSettingDefaults
     public const string BmwCarDataGcidKey = BmwCarDataSessionPrefix + "gcid";
     public const string BmwCarDataLastSnapshotKey = BmwCarDataSessionPrefix + "lastSnapshot";
     public const string BmwCarDataContainerIdKey = BmwCarDataSessionPrefix + "containerId";
+    // Why BMW ended the sign-in; survives a restart so the car page does not just say "not signed in".
+    public const string BmwCarDataSignInProblemKey = BmwCarDataSessionPrefix + "signInProblem";
     public const string BmwCarDataNoSnapshot = "none";
     public const string SiteAddressKey = "site.address";
     public const string SiteAddressNotConfigured = "not-configured";
@@ -225,6 +227,7 @@ public static class ControllerSettingDefaults
         new(BmwCarDataGcidKey, null, ControllerSettingSensitivity.Sensitive),
         new(BmwCarDataLastSnapshotKey, BmwCarDataNoSnapshot, ControllerSettingSensitivity.Normal),
         new(BmwCarDataContainerIdKey, BmwCarDataNoSnapshot, ControllerSettingSensitivity.Normal),
+        new(BmwCarDataSignInProblemKey, BmwCarDataNoSnapshot, ControllerSettingSensitivity.Normal),
         new(SiteAddressKey, SiteAddressNotConfigured, ControllerSettingSensitivity.Normal),
         // i4 eDrive40/M50 (about 81 kWh usable); eDrive35 has about 67 kWh.
         new(EvCarUsableCapacityKwhKey, "81", ControllerSettingSensitivity.Normal),

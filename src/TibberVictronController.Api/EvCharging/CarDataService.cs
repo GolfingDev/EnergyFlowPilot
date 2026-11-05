@@ -47,6 +47,8 @@ public sealed class CarDataService(
     private CancellationTokenSource? currentRound;
     private DateTimeOffset snapshotPersistedAtUtc = DateTimeOffset.MinValue;
     private bool firstMessageLogged;
+    // Last logged raw value per descriptor (this process run only); also the lock for the diagnostic log.
+    private readonly Dictionary<string, string> loggedValues = new(StringComparer.Ordinal);
     private (double? Soc, double? Odometer) lastSample;
 
     public async Task<CarDataConnectionState> StartSignInAsync(CancellationToken cancellationToken)
@@ -78,6 +80,8 @@ public sealed class CarDataService(
         lock (signInGate) signInCancellation?.Cancel();
         await SaveAsync(ControllerSettingDefaults.BmwCarDataRefreshTokenKey, null, ControllerSettingSensitivity.Sensitive, cancellationToken);
         await SaveAsync(ControllerSettingDefaults.BmwCarDataGcidKey, null, ControllerSettingSensitivity.Sensitive, cancellationToken);
+        await SaveAsync(ControllerSettingDefaults.BmwCarDataSignInProblemKey, ControllerSettingDefaults.BmwCarDataNoSnapshot,
+            ControllerSettingSensitivity.Normal, cancellationToken);
         store.SetConnection(new CarDataConnectionState(CarDataConnectionStatus.SignInRequired, "Von BMW abgemeldet."));
         InterruptRound();
     }
@@ -100,7 +104,7 @@ public sealed class CarDataService(
                     if (store.Connection.Status != CarDataConnectionStatus.SignInPending)
                         store.SetConnection(settings.ClientId is null
                             ? CarDataConnectionState.NotConfigured
-                            : new CarDataConnectionState(CarDataConnectionStatus.SignInRequired, "Noch nicht bei BMW angemeldet."));
+                            : new CarDataConnectionState(CarDataConnectionStatus.SignInRequired, settings.SignInProblem ?? "Noch nicht bei BMW angemeldet."));
                     await WaitAsync(IdleCheckInterval, stoppingToken);
                     continue;
                 }
@@ -131,6 +135,7 @@ public sealed class CarDataService(
             {
                 logger.LogWarning("BMW CarData: {Reason}", exception.Message);
                 await SaveAsync(ControllerSettingDefaults.BmwCarDataRefreshTokenKey, null, ControllerSettingSensitivity.Sensitive, stoppingToken);
+                await SaveAsync(ControllerSettingDefaults.BmwCarDataSignInProblemKey, exception.Message, ControllerSettingSensitivity.Normal, stoppingToken);
                 store.SetConnection(new CarDataConnectionState(CarDataConnectionStatus.SignInRequired, exception.Message));
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -157,7 +162,7 @@ public sealed class CarDataService(
         using var client = new MqttClientFactory().CreateMqttClient();
         var disconnected = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         client.ApplicationMessageReceivedAsync += eventArguments =>
-            HandleMessageAsync(eventArguments.ApplicationMessage.ConvertPayloadToString(), vin);
+            HandleMessageAsync(eventArguments.ApplicationMessage.ConvertPayloadToString(), vin, "Datenstrom");
         client.DisconnectedAsync += eventArguments =>
         {
             disconnected.TrySetResult(eventArguments.ReasonString ?? eventArguments.Reason.ToString());
@@ -205,9 +210,10 @@ public sealed class CarDataService(
         await client.DisconnectAsync(new MqttClientDisconnectOptionsBuilder().Build(), CancellationToken.None);
     }
 
-    private async Task HandleMessageAsync(string json, string? vin)
+    private async Task HandleMessageAsync(string json, string? vin, string source)
     {
         var now = clock.UtcNow;
+        LogRawValues(json, source);
         var (messageVin, descriptors, problem) = CarDataMessageParser.Describe(json);
         if (problem is null && vin is not null && messageVin is not null && !string.Equals(vin, messageVin, StringComparison.OrdinalIgnoreCase))
             problem = "Nachricht fuer ein anderes Fahrzeug.";
@@ -248,6 +254,26 @@ public sealed class CarDataService(
         {
             logger.LogWarning(exception, "Letzte Fahrzeugwerte konnten nicht gespeichert werden.");
         }
+    }
+
+    // Shows what BMW really sends, so descriptors selected in the portal can be judged from the log: every descriptor
+    // once per process run, descriptors the parser does not evaluate yet also on every change of value.
+    private void LogRawValues(string json, string source)
+    {
+        var lines = new List<string>();
+        lock (loggedValues)
+        {
+            foreach (var raw in CarDataMessageParser.ReadValues(json))
+            {
+                var evaluated = CarDataMessageParser.IsEvaluated(raw.Descriptor);
+                if (loggedValues.TryGetValue(raw.Descriptor, out var previous) && (evaluated || previous == raw.Value)) continue;
+                loggedValues[raw.Descriptor] = raw.Value;
+                lines.Add($"{raw.Descriptor} = {raw.Value}{(raw.Unit is null ? string.Empty : " " + raw.Unit)} " +
+                    $"({raw.Timestamp ?? "ohne Zeitstempel"}){(evaluated ? string.Empty : " [nicht ausgewertet]")}");
+            }
+        }
+
+        if (lines.Count > 0) logger.LogInformation("BMW CarData Rohwerte ({Source}): {Values}", source, string.Join("; ", lines));
     }
 
     /// <summary>"Jetzt abfragen" on the car page; still subject to the daily limit.</summary>
@@ -313,7 +339,7 @@ public sealed class CarDataService(
                 ?? throw new InvalidOperationException("BMW nennt kein Fahrzeug, für das dieses Konto Hauptnutzer ist.");
             var containerId = await ContainerIdAsync(api, token1, token);
             var json = await api.GetTelematicDataAsync(token1, vin, containerId, token);
-            await HandleMessageAsync(json, pollVin);
+            await HandleMessageAsync(json, pollVin, "Abfrage");
             SetPoll(null, trigger);
             logger.LogInformation("BMW CarData: Abfrage ({Trigger}) erfolgreich.", trigger);
         }
@@ -386,6 +412,8 @@ public sealed class CarDataService(
                         continue;
                     case CarDataPollOutcome.Completed:
                         await StoreTokensAsync(result.Tokens!, null, cancellationToken);
+                        await SaveAsync(ControllerSettingDefaults.BmwCarDataSignInProblemKey, ControllerSettingDefaults.BmwCarDataNoSnapshot,
+                            ControllerSettingSensitivity.Normal, cancellationToken);
                         store.SetConnection(new CarDataConnectionState(CarDataConnectionStatus.Connecting, "Bei BMW angemeldet. Verbindung wird aufgebaut."));
                         logger.LogInformation("BMW CarData: Anmeldung abgeschlossen.");
                         InterruptRound();
@@ -441,11 +469,13 @@ public sealed class CarDataService(
         async Task<string?> Read(string key) => (await settings.GetSettingAsync(key, cancellationToken))?.Value;
         var clientId = await Read(ControllerSettingDefaults.BmwCarDataClientIdKey);
         var vin = await Read(ControllerSettingDefaults.BmwCarDataVinKey);
+        var signInProblem = await Read(ControllerSettingDefaults.BmwCarDataSignInProblemKey);
         return new CarDataSettings(
             string.IsNullOrWhiteSpace(clientId) || clientId == ControllerSettingDefaults.BmwCarDataNotConfigured ? null : clientId,
             string.IsNullOrWhiteSpace(vin) || vin == ControllerSettingDefaults.BmwCarDataAutoVin ? null : vin.ToUpperInvariant(),
             await Read(ControllerSettingDefaults.BmwCarDataRefreshTokenKey),
-            await Read(ControllerSettingDefaults.BmwCarDataGcidKey));
+            await Read(ControllerSettingDefaults.BmwCarDataGcidKey),
+            string.IsNullOrWhiteSpace(signInProblem) || signInProblem == ControllerSettingDefaults.BmwCarDataNoSnapshot ? null : signInProblem);
     }
 
     private async Task SaveAsync(string key, string? value, ControllerSettingSensitivity sensitivity, CancellationToken cancellationToken)
@@ -475,5 +505,5 @@ public sealed class CarDataService(
         await wake.WaitAsync(delay, cancellationToken);
     }
 
-    private sealed record CarDataSettings(string? ClientId, string? Vin, string? RefreshToken, string? Gcid);
+    private sealed record CarDataSettings(string? ClientId, string? Vin, string? RefreshToken, string? Gcid, string? SignInProblem);
 }

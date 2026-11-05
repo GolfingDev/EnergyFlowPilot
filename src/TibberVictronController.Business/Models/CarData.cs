@@ -17,6 +17,10 @@ public sealed record CarSnapshot
     public double? OdometerKm { get; init; }
     public DateTimeOffset? LastMessageAtUtc { get; init; }
 
+    // BMW's measurement time per value (key: value name). A query returns last known values that can be older than
+    // what the stream already delivered; without these times an old value would overwrite a newer one.
+    public IReadOnlyDictionary<string, DateTimeOffset>? ValueTimesUtc { get; init; }
+
     /// <summary>Energy charged into the battery since <see cref="StateOfChargeAtUtc"/>, measured by the wallbox.</summary>
     public double ChargedSinceSocKwh { get; init; }
 

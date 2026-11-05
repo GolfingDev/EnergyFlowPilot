@@ -65,6 +65,71 @@ public sealed class CarDataTests
     }
 
     [Fact]
+    public void OlderValuesFromAQueryDoNotOverwriteNewerStreamValues()
+    {
+        const string stream = """
+            {"data":{
+              "vehicle.vehicle.travelledDistance":{"value":15051,"unit":"km","timestamp":"2026-11-01T08:50:00Z"},
+              "vehicle.drivetrain.batteryManagement.header":{"value":35,"unit":"%","timestamp":"2026-11-01T08:50:00Z"}}}
+            """;
+        const string staleQuery = """
+            {"data":{
+              "vehicle.vehicle.travelledDistance":{"value":15042,"unit":"km","timestamp":"2026-11-01T07:30:00Z"},
+              "vehicle.powertrain.electric.battery.stateOfCharge.displayed":{"value":30,"unit":"%","timestamp":"2026-11-01T07:30:00Z"},
+              "vehicle.drivetrain.electricEngine.remainingElectricRange":{"value":118,"unit":"km","timestamp":"2026-11-01T07:30:00Z"}}}
+            """;
+
+        var afterStream = CarDataMessageParser.Apply(CarSnapshot.Empty, stream, null, Now)!;
+        var afterQuery = CarDataMessageParser.Apply(afterStream, staleQuery, null, Now.AddMinutes(5))!;
+
+        Assert.Equal(15051, afterQuery.OdometerKm);
+        Assert.Equal(35, afterQuery.StateOfChargePercent);
+        Assert.Equal(118, afterQuery.RemainingRangeKm);
+        Assert.Equal(Now.AddMinutes(5), afterQuery.LastMessageAtUtc);
+    }
+
+    [Fact]
+    public void NewestStateOfChargeWinsAndTheDisplayedValueBreaksTies()
+    {
+        const string sameTime = """
+            {"data":{
+              "vehicle.drivetrain.batteryManagement.header":{"value":34,"timestamp":"2026-11-01T08:50:00Z"},
+              "vehicle.powertrain.electric.battery.stateOfCharge.displayed":{"value":35,"timestamp":"2026-11-01T08:50:00Z"}}}
+            """;
+        const string headerNewer = """
+            {"data":{
+              "vehicle.powertrain.electric.battery.stateOfCharge.displayed":{"value":35,"timestamp":"2026-11-01T08:50:00Z"},
+              "vehicle.drivetrain.batteryManagement.header":{"value":37,"timestamp":"2026-11-01T08:58:00Z"}}}
+            """;
+
+        Assert.Equal(35, CarDataMessageParser.Apply(CarSnapshot.Empty, sameTime, null, Now)!.StateOfChargePercent);
+        var newer = CarDataMessageParser.Apply(CarSnapshot.Empty, headerNewer, null, Now)!;
+        Assert.Equal(37, newer.StateOfChargePercent);
+        Assert.Equal(new DateTimeOffset(2026, 11, 1, 8, 58, 0, TimeSpan.Zero), newer.StateOfChargeAtUtc);
+    }
+
+    [Fact]
+    public void RawValuesForTheLogLeaveOutPositionData()
+    {
+        const string message = """
+            {"data":{
+              "vehicle.cabin.hvac.preconditioning.status":{"value":"STANDBY","timestamp":"2026-11-01T08:50:00Z"},
+              "vehicle.cabin.infotainment.navigation.currentLocation.latitude":{"value":48.1},
+              "vehicle.powertrain.tractionBattery.charging.port.anyPosition.isPlugged":{"value":null},
+              "vehicle.drivetrain.electricEngine.charging.power":{"value":7.4,"unit":"kW"}}}
+            """;
+
+        var values = CarDataMessageParser.ReadValues(message);
+
+        Assert.Equal(3, values.Count);
+        Assert.DoesNotContain(values, value => value.Descriptor.Contains("latitude"));
+        Assert.Contains(new CarDataRawValue("vehicle.drivetrain.electricEngine.charging.power", "7.4", "kW", null), values);
+        Assert.Contains(values, value => value.Value == "null");
+        Assert.True(CarDataMessageParser.IsEvaluated("vehicle.drivetrain.batteryManagement.header"));
+        Assert.False(CarDataMessageParser.IsEvaluated("vehicle.drivetrain.electricEngine.charging.power"));
+    }
+
+    [Fact]
     public async Task DeviceFlowUsesPkceAndReturnsTheUserCode()
     {
         var handler = new RecordingHttpMessageHandler("""
