@@ -109,6 +109,26 @@ public sealed class CarDataTests
     }
 
     [Fact]
+    public void ChargingPortStatusGivesThePlugStateAndAnEmptyIsPluggedDoesNotHideIt()
+    {
+        // As the i4 sends it: isPlugged without value or timestamp, the plug state in the charging port status.
+        const string plugged = """
+            {"data":{
+              "vehicle.body.chargingPort.status":{"value":"CONNECTED","timestamp":"2026-11-05T17:23:52Z"},
+              "vehicle.powertrain.tractionBattery.charging.port.anyPosition.isPlugged":{"value":null}}}
+            """;
+        const string unplugged = """{"data":{"vehicle.body.chargingPort.status":{"value":"DISCONNECTED","timestamp":"2026-11-05T17:30:00Z"}}}""";
+
+        var afterPlug = CarDataMessageParser.Apply(CarSnapshot.Empty, plugged, null, Now)!;
+        var afterUnplug = CarDataMessageParser.Apply(afterPlug, unplugged, null, Now)!;
+
+        Assert.True(afterPlug.IsPlugged);
+        Assert.Equal("CONNECTED", afterPlug.PluggedRawValue);
+        Assert.False(afterUnplug.IsPlugged);
+        Assert.True(CarDataMessageParser.IsEvaluated("vehicle.body.chargingPort.status"));
+    }
+
+    [Fact]
     public void RawValuesForTheLogLeaveOutPositionData()
     {
         const string message = """

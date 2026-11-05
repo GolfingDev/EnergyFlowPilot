@@ -31,6 +31,9 @@ public static class CarDataMessageParser
     private static readonly string[] LocationMarkers = ["location", "latitude", "longitude", "gps", "heading", "altitude"];
     private const string TargetDescriptor = "vehicle.powertrain.electric.battery.stateOfCharge.target";
     private const string ChargingStatusDescriptor = "vehicle.drivetrain.electricEngine.charging.status";
+    // The i4 leaves isPlugged empty (null, never a timestamp); the charging port status carries the plug state
+    // (seen 2026-11-05: "CONNECTED"). isPlugged stays as a fallback for other models.
+    private const string ChargingPortDescriptor = "vehicle.body.chargingPort.status";
     private const string PluggedDescriptor = "vehicle.powertrain.tractionBattery.charging.port.anyPosition.isPlugged";
     private const string RangeDescriptor = "vehicle.drivetrain.electricEngine.remainingElectricRange";
     private const string OdometerDescriptor = "vehicle.vehicle.travelledDistance";
@@ -42,6 +45,7 @@ public static class CarDataMessageParser
         "vehicle.drivetrain.batteryManagement.header",
         TargetDescriptor,
         ChargingStatusDescriptor,
+        ChargingPortDescriptor,
         PluggedDescriptor,
         RangeDescriptor,
         OdometerDescriptor
@@ -103,6 +107,23 @@ public static class CarDataMessageParser
                     continue;
                 }
 
+                if (entry.Name is ChargingPortDescriptor or PluggedDescriptor)
+                {
+                    var raw = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
+                    raw = raw.Length <= 40 ? raw : raw[..40];
+                    if (Plugged(value) is not { } plugged)
+                    {
+                        // An empty or unknown value must not hide what the other plug descriptor reported.
+                        if (next.IsPlugged is null) next = next with { PluggedRawValue = raw };
+                        continue;
+                    }
+
+                    if (times.TryGetValue(PluggedField, out var knownPlug) && at < knownPlug) continue;
+                    next = next with { IsPlugged = plugged, PluggedRawValue = raw };
+                    times[PluggedField] = at;
+                    continue;
+                }
+
                 // A value measured before the one already known is stale (typically from a query) and is skipped.
                 if (Field(entry.Name) is not { } field || times.TryGetValue(field, out var known) && at < known) continue;
                 if (ApplyValue(next, entry.Name, value) is not { } applied) continue;
@@ -151,7 +172,7 @@ public static class CarDataMessageParser
     {
         TargetDescriptor => TargetField,
         ChargingStatusDescriptor => ChargingStatusField,
-        PluggedDescriptor => PluggedField,
+        ChargingPortDescriptor or PluggedDescriptor => PluggedField,
         RangeDescriptor => RangeField,
         OdometerDescriptor => OdometerField,
         _ => null
@@ -166,10 +187,6 @@ public static class CarDataMessageParser
                 return next with { TargetStateOfChargePercent = target };
             case ChargingStatusDescriptor when value.ValueKind == JsonValueKind.String:
                 return next with { ChargingStatus = value.GetString() };
-            case PluggedDescriptor:
-                var raw = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
-                next = next with { PluggedRawValue = raw.Length <= 40 ? raw : raw[..40] };
-                return Plugged(value) is { } plugged ? next with { IsPlugged = plugged } : next;
             case RangeDescriptor when Number(value) is { } range and >= 0:
                 return next with { RemainingRangeKm = range };
             case OdometerDescriptor when Number(value) is { } odometer and >= 0:

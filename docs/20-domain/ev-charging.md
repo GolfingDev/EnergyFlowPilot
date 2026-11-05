@@ -139,13 +139,17 @@ Operator requirement (2026-11-01): charge beyond the trip plan whenever power is
 
 ## CarData queries (when the stream stays silent)
 
-- REST API `https://api-cardata.bmwgroup.com` (header `x-version: v1`, access token of the same sign-in): the controller creates one data container `EnergyFlowPilot v1` with the descriptors it evaluates (id stored in `bmw.cardata.session.containerId`) and reads `GET /customers/vehicles/{vin}/telematicData?containerId=...`. Without a configured VIN the primary vehicle comes from `GET /customers/vehicles/mappings`. The answer goes through the same parser as stream messages.
+- REST API `https://api-cardata.bmwgroup.com` (header `x-version: v1`, access token of the same sign-in): the controller creates one data container `EnergyFlowPilot v2` with the descriptors it evaluates (stored as `name|id` in `bmw.cardata.session.containerId`; a new container name after a change of the descriptor list makes the controller look up or create the fitting container) and reads `GET /customers/vehicles/{vin}/telematicData?containerId=...`. Without a configured VIN the primary vehicle comes from `GET /customers/vehicles/mappings`. The answer goes through the same parser as stream messages.
 - **When:** if no car data has arrived for an hour (then at most hourly), right after a car is plugged in at the wallbox (at most every 10 minutes), and with "Jetzt abfragen" on the car page. BMW allows about 50 calls per day; the controller stops at 40 (counted per UTC day in memory) and treats HTTP 429 as quota used up.
 - The car page (admin) shows the calls today, the last call with its trigger, and problems.
 
 ## CarData stream diagnostics
 
 The car page (admin) shows the subscription result, the number of stream messages since start, the time and descriptor names (no values) of the last message, and why a message was not used. A refused subscription is an error (with the hint to enter the VIN instead of `auto`). The first message per connection is logged with its descriptor names.
+
+Raw values (2026-11-05): every descriptor of stream and query is logged with value, unit and BMW timestamp when its value changes (per process run); descriptors the parser does not evaluate are marked `[nicht ausgewertet]`. Position data (location, latitude, longitude, GPS, heading, altitude) is never logged. Observed: an awake car sends its full selected state in bursts every few seconds, arriving within about a second; a query returns the last values BMW holds, often tens of minutes old (the remaining range carries the query time as timestamp).
+
+Stale values: each value keeps BMW's measurement time (`CarSnapshot.ValueTimesUtc`, state of charge: `StateOfChargeAtUtc`); a value measured before the known one is skipped. Of the state of charge descriptors the newest wins, the displayed value on equal times; for the i4, `stateOfCharge.displayed` is empty and `batteryManagement.header` carries the value.
 
 ## Per-user calendar, trip owners and the Driver role (2026-11-01)
 
@@ -187,7 +191,7 @@ Operator decision: no native Android app; the web page becomes installable (PWA)
 ## State of charge between BMW reports and plug status (2026-11-03)
 
 - **Estimate (operator report: 26 % reported for 1.5 hours while charging to 35 %, beyond the 30 % target):** BMW often sends no state of charge while charging, and a query returns the old value. Planning, trips and the base state of charge question use BMW's last value plus the energy the wallbox metered since its timestamp, times 90 % charging efficiency (`EvSocEstimator`). The meter at the time of the report comes from a 26-hour in-memory history of wallbox readings, otherwise linearly from the session start; a report from before the session counts the whole session. Each new BMW report starts again from its value. The car card and the learning keep BMW's own values.
-- **Plug status:** an open charging session counts as plugged in, even when the wallbox has not (yet) reported its connector state after a reconnect (operator report: "Nicht angesteckt laut Wallbox" while plugged in). Connector status changes are logged. BMW sends `null` for `isPlugged` for this car.
+- **Plug status:** an open charging session counts as plugged in, even when the wallbox has not (yet) reported its connector state after a reconnect (operator report: "Nicht angesteckt laut Wallbox" while plugged in). Connector status changes are logged. BMW sends `null` for `isPlugged` for this car (never with a timestamp); the plug state comes from `vehicle.body.chargingPort.status` (`CONNECTED`, seen 2026-11-05). `isPlugged` stays as a fallback; an empty or unknown plug value never overwrites a recognised one.
 
 ## Open points
 

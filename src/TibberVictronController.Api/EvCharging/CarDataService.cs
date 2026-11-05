@@ -47,7 +47,7 @@ public sealed class CarDataService(
     private CancellationTokenSource? currentRound;
     private DateTimeOffset snapshotPersistedAtUtc = DateTimeOffset.MinValue;
     private bool firstMessageLogged;
-    // Last logged reading (value and BMW timestamp) per descriptor, this process run only; also the lock for the log.
+    // Last logged raw value per descriptor (this process run only); also the lock for the diagnostic log.
     private readonly Dictionary<string, string> loggedValues = new(StringComparer.Ordinal);
     private (double? Soc, double? Odometer) lastSample;
 
@@ -256,8 +256,8 @@ public sealed class CarDataService(
         }
     }
 
-    // Shows what BMW really sends and when, so descriptors selected in the portal can be judged from the log: every new
-    // reading (value or BMW timestamp changed); a query repeating the last known reading is left out.
+    // Shows what BMW really sends and when, so descriptors selected in the portal can be judged from the log. Only
+    // changed values are logged: an awake car repeats its full state every few seconds (seen 2026-11-05).
     private void LogRawValues(string json, string source)
     {
         var lines = new List<string>();
@@ -266,9 +266,8 @@ public sealed class CarDataService(
             foreach (var raw in CarDataMessageParser.ReadValues(json))
             {
                 var evaluated = CarDataMessageParser.IsEvaluated(raw.Descriptor);
-                var reading = raw.Value + "@" + raw.Timestamp;
-                if (loggedValues.TryGetValue(raw.Descriptor, out var previous) && previous == reading) continue;
-                loggedValues[raw.Descriptor] = reading;
+                if (loggedValues.TryGetValue(raw.Descriptor, out var previous) && previous == raw.Value) continue;
+                loggedValues[raw.Descriptor] = raw.Value;
                 lines.Add($"{raw.Descriptor} = {raw.Value}{(raw.Unit is null ? string.Empty : " " + raw.Unit)} " +
                     $"({raw.Timestamp ?? "ohne Zeitstempel"}){(evaluated ? string.Empty : " [nicht ausgewertet]")}");
             }
@@ -360,15 +359,18 @@ public sealed class CarDataService(
         }
     }
 
-    // The container is created once and remembered; a stale id (deleted in the portal) is replaced on the next error.
+    // The container is created once and remembered as "name|id"; a new container name (changed descriptor list)
+    // invalidates the remembered id, so the fitting container is looked up or created on the next query.
     private async Task<string> ContainerIdAsync(CarDataApiClient api, string token1, CancellationToken token)
     {
         await using var scope = scopes.CreateAsyncScope();
         var settings = scope.ServiceProvider.GetRequiredService<IControllerSettingStore>();
         var stored = (await settings.GetSettingAsync(ControllerSettingDefaults.BmwCarDataContainerIdKey, token))?.Value;
-        if (!string.IsNullOrWhiteSpace(stored) && stored != ControllerSettingDefaults.BmwCarDataNoSnapshot) return stored;
+        var prefix = CarDataApiClient.ContainerName + "|";
+        if (stored is not null && stored.StartsWith(prefix, StringComparison.Ordinal) && stored.Length > prefix.Length)
+            return stored[prefix.Length..];
         var id = await api.EnsureContainerAsync(token1, CarDataMessageParser.RequiredDescriptors, token);
-        await SaveAsync(ControllerSettingDefaults.BmwCarDataContainerIdKey, id, ControllerSettingSensitivity.Normal, token);
+        await SaveAsync(ControllerSettingDefaults.BmwCarDataContainerIdKey, prefix + id, ControllerSettingSensitivity.Normal, token);
         return id;
     }
 
