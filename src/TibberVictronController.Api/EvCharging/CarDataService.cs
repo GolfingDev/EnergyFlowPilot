@@ -47,7 +47,7 @@ public sealed class CarDataService(
     private CancellationTokenSource? currentRound;
     private DateTimeOffset snapshotPersistedAtUtc = DateTimeOffset.MinValue;
     private bool firstMessageLogged;
-    // Last logged raw value per descriptor (this process run only); also the lock for the diagnostic log.
+    // Last logged reading (value and BMW timestamp) per descriptor, this process run only; also the lock for the log.
     private readonly Dictionary<string, string> loggedValues = new(StringComparer.Ordinal);
     private (double? Soc, double? Odometer) lastSample;
 
@@ -256,8 +256,8 @@ public sealed class CarDataService(
         }
     }
 
-    // Shows what BMW really sends, so descriptors selected in the portal can be judged from the log: every descriptor
-    // once per process run, descriptors the parser does not evaluate yet also on every change of value.
+    // Shows what BMW really sends and when, so descriptors selected in the portal can be judged from the log: every new
+    // reading (value or BMW timestamp changed); a query repeating the last known reading is left out.
     private void LogRawValues(string json, string source)
     {
         var lines = new List<string>();
@@ -266,8 +266,9 @@ public sealed class CarDataService(
             foreach (var raw in CarDataMessageParser.ReadValues(json))
             {
                 var evaluated = CarDataMessageParser.IsEvaluated(raw.Descriptor);
-                if (loggedValues.TryGetValue(raw.Descriptor, out var previous) && (evaluated || previous == raw.Value)) continue;
-                loggedValues[raw.Descriptor] = raw.Value;
+                var reading = raw.Value + "@" + raw.Timestamp;
+                if (loggedValues.TryGetValue(raw.Descriptor, out var previous) && previous == reading) continue;
+                loggedValues[raw.Descriptor] = reading;
                 lines.Add($"{raw.Descriptor} = {raw.Value}{(raw.Unit is null ? string.Empty : " " + raw.Unit)} " +
                     $"({raw.Timestamp ?? "ohne Zeitstempel"}){(evaluated ? string.Empty : " [nicht ausgewertet]")}");
             }
