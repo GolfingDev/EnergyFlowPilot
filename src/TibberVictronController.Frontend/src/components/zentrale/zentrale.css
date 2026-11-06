@@ -40,4 +40,4 @@
 .z-tabs button[aria-selected='true'] { color: var(--efp-text); border-color: var(--efp-primary); background: var(--z-active-nav); }
 .z-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
 @media (max-width: 960px) { .z-grid-2 { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 640px) { .z-page { padding: 12px 12px 90px; } .z-card { padding: 14px; } }
+@media (max-width: 640px) { .z-page { padding: 12px 12px 28px; } .z-card { padding: 14px; } }

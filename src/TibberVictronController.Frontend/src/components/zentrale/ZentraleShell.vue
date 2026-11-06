@@ -239,6 +239,8 @@ onBeforeUnmount(() => window.clearInterval(clockTimer));
   .z-header { padding: 12px 12px 0; }
   .z-header__title h1 { font-size: 1.3rem; }
   .z-header__title p, .z-header__title :deep(.build-info), .z-header__clock, .z-expert-badge { display: none; }
+  /* Room for the fixed bottom bar on every page (the car, heating and settings pages bring no padding of their own). */
+  .z-main { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
   .z-bottom-nav { position: fixed; z-index: 1005; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-around; padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
     background: var(--efp-nav-background); border-top: 1px solid var(--efp-border); }
   .z-bottom-nav a { flex: 1; display: grid; justify-items: center; gap: 2px; padding: 4px 0; font-size: .68rem; color: var(--efp-muted); text-decoration: none; }
