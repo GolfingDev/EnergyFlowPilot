@@ -64,7 +64,7 @@ async function act(path: 'base-choice' | 'base-choice/stopped' | 'base-choice/ta
       <p v-if="!hasSession" class="z-note">Kein Ladevorgang offen. Befehle sind möglich, sobald das Auto angesteckt ist.</p>
       <template v-else-if="choice">
         <p v-if="choice.isStopped" class="z-note z-note--warning">Laden ist von Hand angehalten{{ choice.stoppedBy ? ` (${choice.stoppedBy})` : '' }}.</p>
-        <p v-if="choice.immediateTargetPercent != null" class="z-note">Sofort laden bis {{ percent(choice.immediateTargetPercent) }} ist gesetzt; danach gilt wieder der Plan.</p>
+        <p v-if="choice.immediateTargetPercent != null" class="z-note">Sofort laden bis {{ percent(choice.immediateTargetPercent) }} ist gesetzt; darüber nur noch mit PV-Überschuss oder für eine Fahrt.</p>
         <p v-if="choice.isBelowBase" class="z-note">Unter dem Grund-Ladestand von {{ percent(choice.baseSocPercent) }}: {{ choice.mode === 'Immediate' ? 'lädt sofort' : 'lädt nach Preis' }}.</p>
         <template v-if="canAct">
           <div class="z-actions">

@@ -75,20 +75,63 @@ public sealed class EvChargePlannerTests
         Assert.All(plan.Slots, slot => Assert.Equal(EvChargeReason.BaseSoc, slot.Reason));
     }
 
-    [Theory]
-    [InlineData(0.05, true)]   // home battery values the PV less than grid power costs: the car takes it
-    [InlineData(0.40, false)]  // home battery saves more with it: the car charges from the grid instead
-    public void PvGoesWhereItSavesMore(double batteryValue, bool carTakesPv)
+    [Fact]
+    public void HomeBatteriesGetThePvFirstWithoutATrip()
     {
-        var slots = Slots(4, _ => 0.30).Select(slot => slot with { BatteryPvKwh = 2.5, BatteryPvValuePerKwh = batteryValue }).ToList();
+        // Operator 2026-11-06: PV fills the home batteries first; the car only gets what would be fed in.
+        var slots = Slots(16, _ => 0.30).Select(slot => slot with { BatteryPvKwh = 2.5 }).ToList();
+
+        var plan = EvChargePlanner.Plan(Input(slots, [], currentSoc: 40) with { BaseSocPercent = 0, PvConfidence = 1 });
+
+        Assert.Empty(plan.Slots);
+    }
+
+    [Fact]
+    public void ACarThatNeedsEnergyForATripTakesThePvAheadOfTheHomeBatteries()
+    {
+        var slots = Slots(4, _ => 0.30).Select(slot => slot with { BatteryPvKwh = 2.5 }).ToList();
 
         var plan = EvChargePlanner.Plan(Input(slots, [Requirement(Now.AddHours(1), energyKwh: 4)], currentSoc: 15) with
         {
-            BaseSocPercent = 0, FutureValuePerKwh = 0, PvConfidence = 1
+            BaseSocPercent = 0, PvConfidence = 1
         });
 
-        Assert.Equal(carTakesPv, plan.PvKwh > 1);
-        Assert.Equal(!carTakesPv, plan.GridKwh > 1);
+        // The trip lacks 4 kWh in the battery = 4.4 kWh at the wallbox. PV covers most of it (the wallbox's fixed current
+        // steps may need a little grid power), but the car never takes more home battery PV than it lacks.
+        Assert.True(plan.PvKwh > 3 * plan.GridKwh);
+        Assert.InRange(plan.PvKwh, 3, 4.45);
+    }
+
+    [Fact]
+    public void CheapestHoursOfAnExpensivePhaseDoNotFillTheCar()
+    {
+        // Operator 2026-11-06: 0.42 EUR overnight against 0.55 in the evening is not cheap when the last weeks had 0.32.
+        var slots = Slots(96, index => index < 32 ? 0.42 : 0.55);
+
+        var expensive = EvChargePlanner.Plan(Input(slots, [], currentSoc: 40) with { BaseSocPercent = 30, FutureValuePerKwh = 0.32 });
+        var cheap = EvChargePlanner.Plan(Input(slots, [], currentSoc: 40) with { BaseSocPercent = 30, FutureValuePerKwh = 0.45 });
+        var noHistory = EvChargePlanner.Plan(Input(slots, [], currentSoc: 40) with { BaseSocPercent = 30 });
+
+        Assert.Empty(expensive.Slots);
+        Assert.Empty(noHistory.Slots);
+        Assert.All(cheap.Slots, slot => Assert.Equal(EvChargeReason.CheapPrice, slot.Reason));
+        Assert.NotEmpty(cheap.Slots);
+    }
+
+    [Fact]
+    public void ImmediateTargetCapsTheGridButNotThePvSurplus()
+    {
+        // Operator 2026-11-06: "charge up to 50 %" ended at 60 % in cheap night hours; above the target only PV surplus.
+        // The later hours are below the long-term cheap price, but still dearer than feeding in PV.
+        var gridOnly = EvChargePlanner.Plan(Input(Slots(96, index => index < 8 ? 0.35 : 0.15), [], currentSoc: 40) with
+            { BaseSocPercent = 0, FutureValuePerKwh = 0.20, ImmediateTargetSocPercent = 60 });
+        var withPv = EvChargePlanner.Plan(Input(Slots(16, _ => 0.30).Select(slot => slot with { SurplusKwh = 1.5 }).ToList(), [], currentSoc: 60) with
+            { BaseSocPercent = 0, FutureValuePerKwh = 0.10, ImmediateTargetSocPercent = 60 });
+
+        // 40 % -> 60 % of 81 kWh = 16.2 kWh in the battery, 18 kWh at the wallbox; nothing more in the cheap hours.
+        Assert.InRange(gridOnly.GridKwh, 17.5, 18.6);
+        Assert.True(withPv.PvKwh > 5);
+        Assert.True(withPv.GridKwh < 0.5);
     }
 
     [Fact]
@@ -142,7 +185,7 @@ public sealed class EvChargePlannerTests
     }
 
     [Fact]
-    public void ImmediateTargetChargesAtOnceThenTheCheapHoursFollowThePlan()
+    public void ImmediateTargetChargesAtOnce()
     {
         // Operator 2026-11-03: "charge now up to 60 %", although the later hours are cheaper.
         var plan = EvChargePlanner.Plan(Input(Slots(96, index => index < 8 ? 0.35 : 0.30), [], currentSoc: 40) with

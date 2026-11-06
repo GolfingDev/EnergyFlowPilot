@@ -46,8 +46,10 @@ public static class EvChargingDecider
                 $"Kein Ladeplan ({input.PlanProblem ?? "keine Preise"}): volle Leistung, damit das Auto sicher geladen wird.");
 
         var slot = plan.Slots.FirstOrDefault(slot => slot.StartsAtUtc <= input.NowUtc && input.NowUtc < slot.EndsAtUtc);
-        // PV-only quarter hours follow the live surplus instead of the forecast.
-        double? planAmps = slot is { GridKwh: > 0 } ? Clamp(slot.PowerWatts / VoltsTimesPhases) : null;
+        // PV-only quarter hours follow the live surplus instead of the forecast: the home batteries take the PV first,
+        // the car gets what is fed in. For a coming trip the car charges as planned, ahead of the home batteries
+        // (operator 2026-11-06).
+        double? planAmps = slot is { GridKwh: > 0 } or { Reason: EvChargeReason.Trip } ? Clamp(slot.PowerWatts / VoltsTimesPhases) : null;
         // The current follows the surplus so that (almost) nothing comes from the grid; just below the minimum, six amps
         // are accepted if the grid share stays within the allowance.
         double? surplusAmps = input.AverageAvailableWatts switch
@@ -69,8 +71,17 @@ public static class EvChargingDecider
         if ((surplusAmps ?? 0) > (planAmps ?? 0))
             return new EvChargingDecision(EvChargingMode.PvSurplus, surplusAmps, $"PV-Überschuss: {surplusAmps:0} A.");
         return new EvChargingDecision(EvChargingMode.Plan, planAmps,
-            $"Geplanter Ladeblock ({slot!.PricePerKwh * 100:0.0} ct/kWh): {planAmps:0} A.");
+            $"Geplanter Ladeblock {ReasonText(slot!.Reason)} ({slot.PricePerKwh * 100:0.0} ct/kWh): {planAmps:0} A.");
     }
+
+    public static string ReasonText(EvChargeReason reason) => reason switch
+    {
+        EvChargeReason.Trip => "für eine Fahrt",
+        EvChargeReason.PvSurplus => "mit PV-Überschuss",
+        EvChargeReason.BaseSoc => "bis zum Grund-Ladestand",
+        EvChargeReason.ImmediateTarget => "bis zum Sofort-Ladeziel",
+        _ => "bei günstigem Strom"
+    };
 
     private static double Clamp(double amps) => Math.Round(Math.Clamp(amps, MinimumAmps, MaximumAmps), 0, MidpointRounding.AwayFromZero);
 }

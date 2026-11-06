@@ -253,7 +253,12 @@ public static class EvTripEndpoints
                 Math.Round(plan.GridCost, 2), warnings,
                 plan.Scenarios.Select(scenario => new EvChargeScenarioDto(scenario.Name, scenario.PvFactor, Math.Round(scenario.GridKwh, 1), Math.Round(scenario.GridCost, 2))).ToArray(),
                 plan.Slots.Select(slot => new EvChargeSlotDto(slot.StartsAtUtc, slot.EndsAtUtc, Math.Round(slot.PowerWatts), Math.Round(slot.GridKwh, 2),
-                    Math.Round(slot.PvKwh, 2), slot.PricePerKwh, slot.IsPriceEstimated, slot.Reason.ToString())).ToArray()));
+                    Math.Round(slot.PvKwh, 2), slot.PricePerKwh, slot.IsPriceEstimated, slot.Reason.ToString())).ToArray())
+            {
+                CheapThreshold = view.CheapThreshold is { } cheap
+                    ? new EvCheapThresholdDto(cheap.PricePerKwh, cheap.Percentile, cheap.HistoryDays, cheap.Problem)
+                    : null
+            });
         }
         catch (InvalidOperationException exception)
         {
@@ -318,7 +323,13 @@ public sealed record EvChargePlanResponseDto(
     double GridCost,
     IReadOnlyList<string> Warnings,
     IReadOnlyList<EvChargeScenarioDto> Scenarios,
-    IReadOnlyList<EvChargeSlotDto> Slots);
+    IReadOnlyList<EvChargeSlotDto> Slots)
+{
+    /// <summary>Grid price below which the car fills up beyond its need; null: only with PV surplus (see the problem).</summary>
+    public EvCheapThresholdDto? CheapThreshold { get; init; }
+}
+
+public sealed record EvCheapThresholdDto(double? PricePerKwh, double Percentile, int HistoryDays, string? Problem);
 
 public sealed record CalendarSyncStatusDto(
     bool Enabled,

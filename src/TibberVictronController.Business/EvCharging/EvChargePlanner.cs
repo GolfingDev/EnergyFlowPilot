@@ -4,13 +4,11 @@ namespace TibberVictronController.Business.EvCharging;
 
 /// <summary>
 /// One quarter hour offered to the car: grid price, PV that would otherwise be fed in, and PV the home battery plan
-/// would store (the car may take it at what that energy would save in the home battery).
+/// would store (the car takes it only for a coming trip).
 /// </summary>
 public sealed record EvChargeSlotInput(DateTimeOffset StartsAtUtc, DateTimeOffset EndsAtUtc, double PricePerKwh, bool IsPriceEstimated, double SurplusKwh)
 {
     public double BatteryPvKwh { get; init; }
-
-    public double BatteryPvValuePerKwh { get; init; }
 }
 
 public sealed record EvChargePlanInput(
@@ -24,8 +22,8 @@ public sealed record EvChargePlanInput(
     IReadOnlyList<EvTripRequirement> Trips)
 {
     /// <summary>
-    /// Expected later grid price for energy left in the car at the end of the horizon; null uses 85 % of the median
-    /// slot price. Charging pays off when it is cheaper than this, so the car fills up in cheap hours without a trip.
+    /// Long-term cheap grid price (operator 2026-11-06: a percentile of the last 30 days): beyond its need the car fills
+    /// up from the grid only below it. Null: no filling from the grid, only with PV surplus.
     /// </summary>
     public double? FutureValuePerKwh { get; init; }
 
@@ -75,12 +73,14 @@ public sealed record EvChargePlan(
 
 /// <summary>
 /// Cost-optimal charging plan for the car: dynamic programming over the car's battery energy per quarter hour.
-/// Each kWh at the wallbox comes from the cheapest source of its slot: PV that would be fed in (feed-in price), PV the
-/// home batteries would store (their marginal value, so PV goes where it saves more), then the grid. Departures are
-/// hard requirements (the car must come back with at least the minimum state of charge); the car is away between
-/// departure and return. Energy left at the end is worth its expected later price, so cheap hours are used beyond
-/// the trips; the base state of charge is reached within a day, or at once when the driver chose so. The wallbox
-/// charges with 0 or 6 to 16 A on three phases.
+/// Each kWh at the wallbox comes from the cheapest source of its slot: PV that would be fed in (feed-in price), then
+/// the grid. PV the home batteries would store goes to them first; the car gets it, ahead of them, only while it
+/// needs energy for a coming trip (operator 2026-11-06). Departures are hard requirements (the car must come back
+/// with at least the minimum state of charge); the car is away between departure and return. Beyond trips, base
+/// state of charge and a target set by hand the car charges only what is cheap: grid power below the long-term cheap
+/// price, or PV surplus, up to the car's own limit; a target set by hand caps the grid share. The base state of
+/// charge is reached within a day, or at once when the driver chose so. The wallbox charges with 0 or 6 to 16 A on
+/// three phases.
 /// </summary>
 public static class EvChargePlanner
 {
@@ -97,7 +97,8 @@ public static class EvChargePlanner
     // "By price": the base state of charge should be reached within a day, not necessarily before the published prices end.
     private static readonly TimeSpan BaseSocDeadline = TimeSpan.FromHours(24);
     private const double EstimatedPriceHurdlePerKwh = 0.02;
-    private const double FutureValueShare = 0.85;
+    // Bonus per kWh of PV surplus in the optimiser, so it is always charged (up to the car's limit).
+    private const double PvFillMarginPerKwh = 0.01;
     private static readonly (string Name, double Factor)[] ScenarioFactors = [("wenig PV", 0.5), ("erwartete PV", 1.0), ("viel PV", 1.3)];
 
     public static EvChargePlan Plan(EvChargePlanInput input)
@@ -125,7 +126,10 @@ public static class EvChargePlanner
         var hours = slots.Select(slot => AvailableHours(slot, input.NowUtc, input.Trips)).ToArray();
         var departures = Departures(slots, input.Trips);
         var horizonEnd = slots[^1].EndsAtUtc;
-        var futureValue = socKnown ? (input.FutureValuePerKwh ?? Median(slots.Select(slot => slot.PricePerKwh)) * FutureValueShare) / efficiency : 0;
+        // Energy beyond the need is worth the long-term cheap price (per kWh in the battery), so grid power fills up only
+        // below it; without a price history nothing. The cheapest hours of an expensive phase are not cheap (operator
+        // 2026-11-06: 0.42 EUR/kWh overnight). PV surplus is taken by its own (negative) price, see SlotCost.
+        var futureValue = socKnown ? (input.FutureValuePerKwh ?? 0) / efficiency : 0;
         var immediate = input.BaseMode == EvBaseChargeMode.Immediate;
         // By price: what full power could charge between the end of the known prices and the base deadline may wait for
         // those prices (half of it, for safety), so a cheap night tomorrow can still be used.
@@ -135,6 +139,11 @@ public static class EvChargePlanner
         var manualEnergy = input.ImmediateTargetSocPercent is { } manual ? Math.Clamp(manual / 100d * capacity, 0, limit) : 0;
         var immediateEnergy = Math.Max(immediate ? baseEnergy : 0, manualEnergy);
         var terminalTarget = TerminalTripTarget(input.Trips, horizonEnd, capacity, car, efficiency);
+        // A target set by hand caps filling from the grid: above it only PV surplus is worth charging (operator 2026-11-06).
+        var gridFillCap = manualEnergy > 0 ? manualEnergy : limit;
+        // PV the home batteries would store goes to them first; the car gets it, ahead of them, only for the energy it
+        // still lacks for the next trip and only before that departure (operator 2026-11-06).
+        var batteryPvForTrip = BatteryPvForTrip(slots, departures, Math.Max(0, NextTripNeed(departures, terminalTarget, reserve) - start) / efficiency);
 
         // Energy states: 1 kWh steps up to the car's limit plus the exact current, reserve and base values.
         var states = Enumerable.Range(0, (int)Math.Floor(limit) + 1).Select(kwh => (double)kwh)
@@ -143,20 +152,22 @@ public static class EvChargePlanner
             .Where(power => power * 1000 >= MinimumChargePowerWatts - 1).Distinct().ToArray();
 
         double Terminal(double energy) =>
-            -futureValue * Math.Min(energy, limit)
+            -futureValue * Math.Min(energy, gridFillCap)
             + BaseShortfallPenaltyPerKwh * Math.Max(0, baseTarget - energy)
             + TripShortfallPenaltyPerKwh * Math.Max(0, terminalTarget - energy);
 
-        // Cost of w kWh at the wallbox in slot i: the sources are used in order of their price (the home battery's PV
-        // can be dearer than grid power when it saves an expensive evening), with the PV share the plan relies on.
+        // Cost of w kWh at the wallbox in slot i: the sources are used in order of their price, with the PV share the
+        // plan relies on. PV surplus is always taken, up to the car's limit (operator 2026-11-06: PV fills the batteries
+        // until all are full): a small bonus instead of its feed-in price, so it never makes grid energy look worth more.
         (double Cost, double GridKwh, double PvKwh) SlotCost(int i, double wallboxKwh, double pvFactor)
         {
             var slot = slots[i];
             var gridPrice = slot.PricePerKwh + (slot.IsPriceEstimated ? EstimatedPriceHurdlePerKwh : 0);
             var sources = new[]
             {
-                (Kwh: pvFactor * slot.SurplusKwh, Price: input.FeedInPricePerKwh, IsPv: true),
-                (Kwh: pvFactor * slot.BatteryPvKwh, Price: slot.BatteryPvValuePerKwh, IsPv: true),
+                // Unknown state of charge: no filling up, so PV surplus keeps its feed-in price and serves only trips.
+                (Kwh: pvFactor * slot.SurplusKwh, Price: socKnown ? -PvFillMarginPerKwh : input.FeedInPricePerKwh, IsPv: true),
+                (Kwh: pvFactor * batteryPvForTrip[i], Price: input.FeedInPricePerKwh, IsPv: true),
                 (Kwh: double.MaxValue, Price: gridPrice, IsPv: false)
             };
             double remaining = wallboxKwh, cost = 0, grid = 0, pv = 0;
@@ -259,6 +270,29 @@ public static class EvChargePlanner
             plannedSlots.Sum(slot => slot.GridKwh * slot.PricePerKwh), warnings) { Scenarios = scenarios };
     }
 
+    // Energy the car needs for its next trip: reserve plus trip energy at the first departure in the horizon, else
+    // what must be in the battery at the horizon end for a later one; 0 without a trip.
+    private static double NextTripNeed(IReadOnlyDictionary<int, (double EnergyKwh, string Destination)> departures, double terminalTarget,
+        double reserve) =>
+        departures.Count > 0 ? reserve + departures[departures.Keys.Min()].EnergyKwh : terminalTarget;
+
+    // Home battery PV the car may take per slot: the earliest slots before the next departure (all slots for a trip
+    // after the horizon) until the missing wallbox energy is covered; nothing when the car already has enough.
+    private static double[] BatteryPvForTrip(EvChargeSlotInput[] slots, IReadOnlyDictionary<int, (double EnergyKwh, string Destination)> departures,
+        double missingWallboxKwh)
+    {
+        var result = new double[slots.Length];
+        var end = departures.Count > 0 ? departures.Keys.Min() : slots.Length;
+        var budget = missingWallboxKwh;
+        for (var i = 0; i < end && budget > 0; i++)
+        {
+            result[i] = Math.Min(Math.Max(0, slots[i].BatteryPvKwh), budget);
+            budget -= result[i];
+        }
+
+        return result;
+    }
+
     /// <summary>At a departure the trip energy leaves the battery; coming back below the minimum costs a penalty.</summary>
     private static (double Energy, double Penalty) ApplyDeparture(IReadOnlyDictionary<int, (double EnergyKwh, string Destination)> departures,
         int index, double energy, double reserve)
@@ -305,12 +339,6 @@ public static class EvChargePlanner
         if (start >= slot.EndsAtUtc) return 0;
         if (trips.Any(trip => trip.Trip.DepartureAtUtc < slot.EndsAtUtc && trip.ReturnAtUtc > start)) return 0;
         return (slot.EndsAtUtc - start).TotalHours;
-    }
-
-    private static double Median(IEnumerable<double> values)
-    {
-        var sorted = values.Order().ToArray();
-        return sorted.Length == 0 ? 0 : sorted.Length % 2 == 1 ? sorted[sorted.Length / 2] : (sorted[sorted.Length / 2 - 1] + sorted[sorted.Length / 2]) / 2;
     }
 
     private static double Interpolate(double[] values, double[] states, double energy)

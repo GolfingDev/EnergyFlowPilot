@@ -34,6 +34,23 @@ public sealed class EvChargingDeciderTests
         Assert.Equal(16, decision.Amps);
     }
 
+    [Fact]
+    public void PvQuarterHourForATripChargesAsPlannedAheadOfTheHomeBatteries()
+    {
+        // No live surplus: the home batteries take the PV. A trip slot still charges (operator 2026-11-06).
+        var start = new DateTimeOffset(2026, 11, 2, 12, 0, 0, TimeSpan.Zero);
+        EvChargePlan PvSlot(EvChargeReason reason) => new(Now,
+            [new EvPlannedChargeSlot(start, start.AddMinutes(15), 6900, 0, 1.7, 0.30, false, reason)], 0, 1.7, 0, []);
+
+        var trip = EvChargingDecider.Decide(new EvChargingDecisionInput(Now, PvSlot(EvChargeReason.Trip), null, 0));
+        var surplus = EvChargingDecider.Decide(new EvChargingDecisionInput(Now, PvSlot(EvChargeReason.PvSurplus), null, 0));
+
+        Assert.Equal(EvChargingMode.Plan, trip.Mode);
+        Assert.Equal(10, trip.Amps);
+        Assert.Contains("für eine Fahrt", trip.Reason);
+        Assert.Equal(EvChargingMode.Paused, surplus.Mode);
+    }
+
     [Theory]
     [InlineData(5000, 0, 6)]      // (5000 - 300) / 690 = 6.8 -> 6 A without grid
     [InlineData(9000, 0, 12)]     // 8700 / 690 = 12.6 -> 12 A

@@ -22,6 +22,7 @@ interface EvChargePlanDto {
   warnings: string[];
   scenarios: { name: string; pvFactor: number; gridKwh: number; gridCost: number }[];
   slots: EvChargeSlotDto[];
+  cheapThreshold: { pricePerKwh: number | null; percentile: number; historyDays: number; problem: string | null } | null;
 }
 
 interface ChargeBlock {
@@ -199,6 +200,13 @@ onBeforeUnmount(() => window.clearInterval(timer));
         <template v-else>Vorschau: Die Automatik ist aus (Einstellungen, „Auto automatisch laden“).</template>
         Grundlage: {{ plan?.slotSource ?? '–' }}.
       </p>
+      <p v-if="plan?.cheapThreshold" class="plan__meta">
+        <template v-if="plan.cheapThreshold.pricePerKwh !== null">
+          Über den Bedarf hinaus aus dem Netz nur unter {{ formatNumber(plan.cheapThreshold.pricePerKwh * 100, 1) }} ct/kWh
+          (günstigste {{ formatNumber(plan.cheapThreshold.percentile, 0) }} % der letzten {{ plan.cheapThreshold.historyDays }} Tage); PV-Überschuss immer.
+        </template>
+        <template v-else>Über den Bedarf hinaus nur mit PV-Überschuss: {{ plan.cheapThreshold.problem }}</template>
+      </p>
       <v-alert v-if="control?.commandProblem" class="mt-2" type="warning" variant="tonal" density="compact">{{ control.commandProblem }}</v-alert>
       <div v-if="baseChoice?.transactionId && baseChoice.canDecide" class="d-flex flex-wrap align-center ga-2 mt-2">
         <v-btn v-if="!baseChoice.isStopped" size="small" color="error" variant="tonal" prepend-icon="mdi-stop" :loading="choosing"
@@ -210,7 +218,7 @@ onBeforeUnmount(() => window.clearInterval(timer));
       </div>
       <div v-if="baseChoice?.transactionId && baseChoice.canDecide" class="plan__target mt-2">
         <template v-if="baseChoice.immediateTargetPercent !== null">
-          <span>Lädt sofort bis <strong>{{ formatNumber(baseChoice.immediateTargetPercent, 0) }} %</strong><template v-if="baseChoice.immediateTargetBy"> (von {{ baseChoice.immediateTargetBy }})</template>, danach nach Plan.</span>
+          <span>Lädt sofort bis <strong>{{ formatNumber(baseChoice.immediateTargetPercent, 0) }} %</strong><template v-if="baseChoice.immediateTargetBy"> (von {{ baseChoice.immediateTargetBy }})</template>; darüber nur noch mit PV-Überschuss oder für eine Fahrt.</span>
           <v-btn size="small" variant="text" :loading="choosing" @click="setTarget(null)">Aufheben</v-btn>
         </template>
         <template v-else>

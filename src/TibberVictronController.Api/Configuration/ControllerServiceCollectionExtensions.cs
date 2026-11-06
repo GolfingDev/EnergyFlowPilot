@@ -144,6 +144,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<CalendarTripSyncService>();
         services.AddScoped<IUserCalendarRepository, EfUserCalendarRepository>();
         services.AddScoped<EvChargePlanService>();
+        services.AddSingleton<EvCheapPriceThresholdCache>();
         services.AddScoped<EvBaseChargeChoiceService>();
         services.AddScoped<IWebPushRepository, EfWebPushRepository>();
         services.AddHttpClient<WebPushClient>(client => client.Timeout = TimeSpan.FromSeconds(15));

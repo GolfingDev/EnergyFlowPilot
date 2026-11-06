@@ -76,6 +76,7 @@ public sealed class EvChargingControlService(
     private DateTimeOffset retryAtUtc = DateTimeOffset.MinValue;
     private string? commandProblem;
     private (EvBaseChargeMode Mode, double? Target) planChoice;
+    private (EvChargingMode Mode, double? Amps)? loggedDecision;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -107,6 +108,7 @@ public sealed class EvChargingControlService(
             var stop = new EvChargingDecision(EvChargingMode.Paused, 0,
                 $"Laden von Hand gestoppt{(choice.StoppedBy is null ? string.Empty : $" ({choice.StoppedBy})")}; weiter mit \u201eFortsetzen\u201c oder neu anstecken.");
             await ApplyAsync(stop, now, cancellationToken);
+            LogChange(stop);
             state.Set(new EvChargingControlSnapshot(enabled, stop.Mode, stop.Amps, stop.Reason, now, commandProblem));
             return;
         }
@@ -145,7 +147,17 @@ public sealed class EvChargingControlService(
             System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var watts) ? watts : 0;
         var decision = EvChargingDecider.Decide(new EvChargingDecisionInput(now, plan, planProblem, AverageAvailable()) { PvGridAllowanceWatts = allowance });
         await ApplyAsync(decision, now, cancellationToken);
+        LogChange(decision);
         state.Set(new EvChargingControlSnapshot(true, decision.Mode, decision.Amps, decision.Reason, now, commandProblem));
+    }
+
+    // Each change of the wallbox decision is logged with its reason, so a charging night can be explained afterwards
+    // (operator 2026-11-06: charged to 60 % instead of 50 %, and the log did not say why).
+    private void LogChange(EvChargingDecision decision)
+    {
+        if (loggedDecision == (decision.Mode, decision.Amps)) return;
+        loggedDecision = (decision.Mode, decision.Amps);
+        logger.LogInformation("Wallbox-Steuerung: {Reason}", decision.Reason);
     }
 
     // Every driver device with notifications gets the question; the first answer counts. A failed push only costs the
