@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { expertMode } from '../uiMode';
 import DynamicTariffComparison from '../components/settings/DynamicTariffComparison.vue';
 import PvForecastCorrection from '../components/settings/PvForecastCorrection.vue';
+import PriceForecastAccuracy from '../components/settings/PriceForecastAccuracy.vue';
 import SiteAddressCard from '../components/settings/SiteAddressCard.vue';
 import { useRoute } from 'vue-router';
 import { isEverydaySetting, usesCents, settingInputValue, settingStoredValue, secretPresentation, settingUpdatePayload, numericControlErrors } from './settingsPresentation';
@@ -153,6 +154,7 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'battery.roundTripEfficiencyPercent', section: 'battery', subgroup: 'Wirkungsgrad', category: 'important' },
   { key: 'tibber.accessToken', section: 'forecast', subgroup: 'Tibber', category: 'critical', helpText: 'Token werden nie im Klartext angezeigt. Leer lassen behält einen vorhandenen geheimen Wert.' },
   { key: 'tibber.homeSelection', section: 'forecast', subgroup: 'Tibber', category: 'normal' },
+  { key: 'priceForecast.energyForecast.token', section: 'forecast', subgroup: 'Preisprognose (energyforecast.de)', category: 'normal', helpText: 'API-Token von energyforecast.de. Wird verschlüsselt gespeichert und nie angezeigt; leer lassen behält einen vorhandenen Wert.' },
   { key: 'forecast.horizonHours', section: 'control', subgroup: 'Planungshorizont', category: 'important' },
   { key: 'gridFeedIn.compensationPricePerKwh', section: 'control', subgroup: 'Wirtschaftliche Steuerung', category: 'important' },
   { key: 'pvForecast.apiKey', section: 'forecast', subgroup: 'Forecast.Solar', category: 'critical', helpText: 'Optionaler Forecast.Solar API-Key für bezahlte Pläne. Leer lassen behält einen vorhandenen geheimen Wert.' },
@@ -1159,6 +1161,7 @@ watch(showAdvanced, ensureActiveSection);
           <DynamicTariffComparison v-if="activeSection.key === 'forecast'" />
           <SiteAddressCard v-if="activeSection.key === 'forecast'" />
           <PvForecastCorrection v-if="activeSection.key === 'forecast'" />
+          <PriceForecastAccuracy v-if="activeSection.key === 'forecast'" />
         </section>
       </main>
 

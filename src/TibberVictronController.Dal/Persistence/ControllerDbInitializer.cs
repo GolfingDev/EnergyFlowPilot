@@ -133,7 +133,7 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
     {
         var databaseCreator = dbContext.GetService<IRelationalDatabaseCreator>();
 
-        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions", "EvTrips", "PvForecastSnapshots", "CarSamples", "UserCalendars", "WebPushSubscriptions", "WebPushKeys" })
+        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions", "EvTrips", "PvForecastSnapshots", "CarSamples", "UserCalendars", "WebPushSubscriptions", "WebPushKeys", "PriceForecastSnapshots" })
         {
             if (await databaseCreator.HasTablesAsync(cancellationToken) &&
                 await TableExistsAsync(tableName, cancellationToken))
@@ -295,6 +295,19 @@ CREATE TABLE IF NOT EXISTS "UserCalendars" (
 );
 """;
         }
+        if (tableName == "PriceForecastSnapshots")
+        {
+            return """
+CREATE TABLE IF NOT EXISTS "PriceForecastSnapshots" (
+    "SlotStartUtc" INTEGER NOT NULL,
+    "LeadDays" INTEGER NOT NULL,
+    "SpotPricePerKwh" REAL NOT NULL,
+    "CapturedAtUtc" INTEGER NOT NULL,
+    CONSTRAINT "PK_PriceForecastSnapshots" PRIMARY KEY ("SlotStartUtc", "LeadDays")
+);
+""";
+        }
+
         if (tableName == "CarSamples")
         {
             return """

@@ -138,6 +138,15 @@ Operator requirement (2026-11-01): charge beyond the trip plan whenever power is
 - **Joint plan:** while the automatic car charging is on, the car's planned energy per quarter hour is added to the consumption forecast of the joint battery plan. The planner then decides, as for any house load, whether the home batteries cover it (only when cheaper than grid power); otherwise the car charges from the grid and the live limiter does not discharge for it.
 - **No oscillation:** the PV surplus offered to the car adds its own planned charging back to the joint plan's consumption, so the car plan does not shrink because of itself.
 
+## Price forecast beyond the auction, shadow operation (2026-11-06)
+
+Operator decision: energyforecast.de (Pro plan: today plus six days, quarter-hourly) may later let the car plan over a whole week, e.g. put the energy for a trip in five days into the cheapest night before it. First it is only measured on own data; nothing is controlled from it.
+
+- **Fetch:** `GET https://www.energyforecast.de/api/v2/forecast?market_zone=...&fixed_cost_cent=0&vat=0&token=...` every three hours (about 8 of 500 daily calls), zone from `energyCharts.biddingZone`. Exchange prices without tariff, so they compare with any supplier. Token in `priceForecast.energyForecast.token` (sensitive, encrypted like the RSCP credentials, never in messages); empty: no fetch.
+- **Storage:** `PriceForecastSnapshots`, the latest forecast per quarter hour and whole day of lead time (0 = less than a day ahead), plus the published price (`LeadDays` -1) as reference; 90 days.
+- **Comparison:** per lead time the mean absolute error and the bias in ct/kWh, and for whole local days what charging in the forecast's cheapest four hours would have cost more than in the really cheapest four (`PriceForecastAccuracy`, last 30 days). Settings, section prices/forecast: "Preisprognose (Schattenbetrieb)"; `GET /api/forecast/price-forecast-accuracy`.
+- **Next step after a few weeks:** decide by these numbers up to which lead time the car planning uses the forecast (as estimated prices with a hurdle growing with the lead time; trips keep their safety margin).
+
 ## CarData queries (when the stream stays silent)
 
 - REST API `https://api-cardata.bmwgroup.com` (header `x-version: v1`, access token of the same sign-in): the controller creates one data container `EnergyFlowPilot v2` with the descriptors it evaluates (stored as `name|id` in `bmw.cardata.session.containerId`; a new container name after a change of the descriptor list makes the controller look up or create the fitting container) and reads `GET /customers/vehicles/{vin}/telematicData?containerId=...`. Without a configured VIN the primary vehicle comes from `GET /customers/vehicles/mappings`. The answer goes through the same parser as stream messages.

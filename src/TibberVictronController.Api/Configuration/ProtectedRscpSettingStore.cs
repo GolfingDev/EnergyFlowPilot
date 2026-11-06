@@ -13,7 +13,8 @@ public sealed class ProtectedRscpSettingStore(IControllerSettingStore inner, IDa
     private readonly IDataProtector protector = protection.CreateProtector("EnergyFlowPilot.RscpCredentials.v1");
     private static bool IsCredential(string key) => key is ControllerSettingDefaults.E3dcRscpUserKey or
         ControllerSettingDefaults.E3dcRscpPasswordKey or ControllerSettingDefaults.E3dcRscpKeyKey or
-        ControllerSettingDefaults.BmwCarDataRefreshTokenKey or ControllerSettingDefaults.BmwCarDataGcidKey;
+        ControllerSettingDefaults.BmwCarDataRefreshTokenKey or ControllerSettingDefaults.BmwCarDataGcidKey or
+        ControllerSettingDefaults.PriceForecastTokenKey;
 
     private ControllerSetting Decode(ControllerSetting setting)
     {

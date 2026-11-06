@@ -64,3 +64,43 @@ public sealed class EfCarSampleRepository(ControllerDbContext dbContext) : ICarS
         return entities.Select(entity => new CarSample(entity.MeasuredAtUtc, entity.SocPercent, entity.OdometerKm)).ToArray();
     }
 }
+
+public sealed class EfPriceForecastSnapshotRepository(ControllerDbContext dbContext) : IPriceForecastSnapshotRepository
+{
+    // Enough for a few weeks of shadow comparison; at most 8 rows per quarter hour (7 lead days and the actual price).
+    private static readonly TimeSpan Retention = TimeSpan.FromDays(90);
+
+    public async Task UpsertAsync(IReadOnlyCollection<PriceForecastSnapshot> snapshots, CancellationToken cancellationToken = default)
+    {
+        if (snapshots.Count == 0) return;
+        var from = snapshots.Min(snapshot => snapshot.SlotStartUtc);
+        var to = snapshots.Max(snapshot => snapshot.SlotStartUtc);
+        var existing = await dbContext.PriceForecastSnapshots.Where(entity => entity.SlotStartUtc >= from && entity.SlotStartUtc <= to)
+            .ToDictionaryAsync(entity => (entity.SlotStartUtc, entity.LeadDays), cancellationToken);
+        foreach (var snapshot in snapshots)
+        {
+            if (!existing.TryGetValue((snapshot.SlotStartUtc, snapshot.LeadDays), out var entity))
+            {
+                entity = new PriceForecastSnapshotEntity { SlotStartUtc = snapshot.SlotStartUtc, LeadDays = snapshot.LeadDays };
+                dbContext.PriceForecastSnapshots.Add(entity);
+                existing[(snapshot.SlotStartUtc, snapshot.LeadDays)] = entity;
+            }
+
+            entity.SpotPricePerKwh = (double)snapshot.SpotPricePerKwh;
+            entity.CapturedAtUtc = snapshot.CapturedAtUtc;
+        }
+
+        var threshold = snapshots.Max(snapshot => snapshot.CapturedAtUtc) - Retention;
+        await dbContext.PriceForecastSnapshots.Where(entity => entity.SlotStartUtc < threshold).ExecuteDeleteAsync(cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PriceForecastSnapshot>> GetAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken = default)
+    {
+        var entities = await dbContext.PriceForecastSnapshots.AsNoTracking()
+            .Where(entity => entity.SlotStartUtc >= fromUtc && entity.SlotStartUtc < toUtc)
+            .ToListAsync(cancellationToken);
+        return entities.Select(entity => new PriceForecastSnapshot(entity.SlotStartUtc, entity.LeadDays, (decimal)entity.SpotPricePerKwh, entity.CapturedAtUtc))
+            .ToArray();
+    }
+}

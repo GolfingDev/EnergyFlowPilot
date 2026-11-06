@@ -48,6 +48,8 @@ public sealed class ControllerDbContext : DbContext
 
     public DbSet<CarSampleEntity> CarSamples => Set<CarSampleEntity>();
 
+    public DbSet<PriceForecastSnapshotEntity> PriceForecastSnapshots => Set<PriceForecastSnapshotEntity>();
+
     public DbSet<UserCalendarEntity> UserCalendars => Set<UserCalendarEntity>();
 
     public DbSet<WebPushSubscriptionEntity> WebPushSubscriptions => Set<WebPushSubscriptionEntity>();
@@ -101,6 +103,13 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(calendar => calendar.Name).HasMaxLength(200);
             entity.Property(calendar => calendar.Mailbox).HasMaxLength(254);
             entity.Property(calendar => calendar.ConnectedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+        });
+        modelBuilder.Entity<PriceForecastSnapshotEntity>(entity =>
+        {
+            entity.ToTable("PriceForecastSnapshots");
+            entity.HasKey(snapshot => new { snapshot.SlotStartUtc, snapshot.LeadDays });
+            entity.Property(snapshot => snapshot.SlotStartUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(snapshot => snapshot.CapturedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
         });
         modelBuilder.Entity<CarSampleEntity>(entity =>
         {

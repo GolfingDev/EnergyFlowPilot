@@ -7,6 +7,14 @@ public sealed class PvForecastSnapshotEntity
     public DateTimeOffset CapturedAtUtc { get; set; }
 }
 
+public sealed class PriceForecastSnapshotEntity
+{
+    public DateTimeOffset SlotStartUtc { get; set; }
+    public int LeadDays { get; set; }
+    public double SpotPricePerKwh { get; set; }
+    public DateTimeOffset CapturedAtUtc { get; set; }
+}
+
 public sealed class UserCalendarEntity
 {
     public string UserId { get; set; } = string.Empty;
