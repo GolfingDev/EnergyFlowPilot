@@ -166,7 +166,10 @@ public sealed class EvChargingControlService(
             };
             var (delivered, failed) = await services.GetRequiredService<Push.WebPushService>().SendAsync(
                 subscription => message with { Token = tokens.Create(transaction, subscription.UserName) }, null, EvBaseChargeChoice.AnswerTime, cancellationToken);
-            logger.LogInformation("Frage zum Grund-Ladestand per Push: {Delivered} zugestellt, {Failed} fehlgeschlagen.", delivered, failed);
+            if (delivered + failed == 0)
+                logger.LogWarning("Frage zum Grund-Ladestand nicht per Push gesendet: kein Gerät mit eingeschalteten Benachrichtigungen angemeldet.");
+            else
+                logger.LogInformation("Frage zum Grund-Ladestand per Push: {Delivered} zugestellt, {Failed} fehlgeschlagen.", delivered, failed);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

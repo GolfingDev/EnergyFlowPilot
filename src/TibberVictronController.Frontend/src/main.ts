@@ -1,7 +1,7 @@
 import { createApp } from 'vue';
 import App from './App.vue';
 import { installSessionGuard, loadCurrentUser } from './auth';
-import { registerServiceWorker } from './push';
+import { registerServiceWorker, syncPush } from './push';
 import { router } from './router';
 import { vuetify } from './vuetify';
 import './styles.css';
@@ -13,5 +13,7 @@ registerServiceWorker();
 void loadCurrentUser().then((signedIn) => {
   if (signedIn) {
     createApp(App).use(router).use(vuetify).mount('#app');
+    // Viewers get a refusal here, which is fine: only drivers receive notifications.
+    void syncPush().catch(() => false);
   }
 });

@@ -26,6 +26,26 @@ self.addEventListener('push', (event) => {
   }));
 });
 
+// The browser may replace a subscription (expiry, renewal at the push service). Without passing the new one on, the
+// server keeps sending to the dead address and the push service answers HTTP 410 (seen 2026-11-05).
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil((async () => {
+    let subscription = event.newSubscription;
+    if (!subscription) {
+      const keyResponse = await fetch('/api/push/public-key');
+      if (!keyResponse.ok) return;
+      const { publicKey } = await keyResponse.json();
+      subscription = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: publicKey });
+    }
+    const json = subscription.toJSON();
+    await fetch('/api/push/subscription', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint: json.endpoint, p256dh: json.keys && json.keys.p256dh, auth: json.keys && json.keys.auth })
+    });
+  })().catch(() => undefined));
+});
+
 const STOP = { action: 'Stop', title: 'Laden stoppen' };
 const RESUME = { action: 'Resume', title: 'Fortsetzen' };
 const BUTTONS = {

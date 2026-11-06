@@ -19,8 +19,41 @@ async function registration(): Promise<ServiceWorkerRegistration> {
 export async function pushState(): Promise<PushState> {
   if (!pushSupported()) return 'unsupported';
   if (Notification.permission === 'denied') return 'blocked';
+  // "On" only when the server knows this device too; otherwise the page offers to switch on again.
+  return await syncPush() ? 'on' : 'off';
+}
+
+function sameKey(subscription: PushSubscription, publicKey: string): boolean {
+  const own = subscription.options.applicationServerKey;
+  if (!own) return false;
+  const expected = keyBytes(publicKey);
+  const actual = new Uint8Array(own);
+  return actual.length === expected.length && actual.every((value, index) => value === expected[index]);
+}
+
+function register(subscription: PushSubscription): Promise<Response> {
+  const json = subscription.toJSON();
+  return fetch('/api/push/subscription', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint: json.endpoint, p256dh: json.keys?.p256dh, auth: json.keys?.auth })
+  });
+}
+
+/**
+ * Sends this device's subscription to the server again. The server forgets a subscription the push service rejects
+ * (Google answered HTTP 410 on 2026-11-05) while the browser still showed "on", so every app start re-registers it.
+ * False when there is nothing usable to register: no subscription, one for an older server key, or the server refuses.
+ */
+export async function syncPush(): Promise<boolean> {
+  if (!pushSupported() || Notification.permission !== 'granted') return false;
   const subscription = await (await registration()).pushManager.getSubscription();
-  return subscription ? 'on' : 'off';
+  if (!subscription) return false;
+  const keyResponse = await fetch('/api/push/public-key');
+  if (!keyResponse.ok) return false;
+  const { publicKey } = await keyResponse.json() as { publicKey: string };
+  if (!sameKey(subscription, publicKey)) return false;
+  return (await register(subscription)).ok;
 }
 
 function keyBytes(base64Url: string): Uint8Array<ArrayBuffer> {
@@ -46,12 +79,7 @@ export async function enablePush(): Promise<void> {
   const existing = await worker.pushManager.getSubscription();
   if (existing) await existing.unsubscribe();
   const subscription = await worker.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) });
-  const json = subscription.toJSON();
-  const response = await fetch('/api/push/subscription', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ endpoint: json.endpoint, p256dh: json.keys?.p256dh, auth: json.keys?.auth })
-  });
+  const response = await register(subscription);
   if (!response.ok) {
     await subscription.unsubscribe();
     throw await failure(response, 'Benachrichtigungen konnten nicht eingeschaltet werden');
