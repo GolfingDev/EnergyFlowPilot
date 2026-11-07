@@ -9,8 +9,11 @@ Login oder Preisabgleich. Bestehende Installationen werden nicht automatisch auf
 - Einstellungen > Prognosen > Strompreise: `electricityPrices.provider`
   mit `tibber` (Standard, auch bei fehlendem Setting), `octopusGermany` oder `energyCharts`.
 - Tibber verwendet unveraendert seine bisherigen Zugangseinstellungen.
-- Octopus benoetigt `octopus.apiKey` (sensitive, nicht in Frontend-Leseantworten)
-  und `octopus.accountNumber` (Kundennummer A-...).
+- Octopus benoetigt `octopus.email` und `octopus.password` (beide sensitive,
+  verschluesselt gespeichert, nicht in Frontend-Leseantworten; Betreiber
+  2026-11-07: Octopus Deutschland gibt keinen API-Key aus) sowie
+  `octopus.accountNumber` (Kundennummer A-...). `octopus.apiKey` bleibt als
+  Alternative; sind E-Mail und Passwort eingetragen, haben sie Vorrang.
   Die normale Kundennummer-Einstellung nutzt intern den Platzhalter
   `not-configured`; die GUI zeigt dafuer ein leeres Eingabefeld. Der Adapter
   weist den Platzhalter ohne API-Aufruf zurueck.
@@ -29,9 +32,13 @@ Login oder Preisabgleich. Bestehende Installationen werden nicht automatisch auf
 Fest vorgegebener deutscher HTTPS-Endpunkt:
 `https://api.oeg-kraken.energy/v1/graphql/`.
 Kein Versand von API-Keys an frei konfigurierbare URLs oder die britische API.
-Anmeldung per `obtainKrakenToken(input: { APIKey: ... })`; Token als
-`Authorization` ohne automatisch ergaenztes Bearer-Praefix.
-E-Mail/Passwort-Anmeldung ist nicht implementiert.
+Anmeldung per `obtainKrakenToken(input: { email: ..., password: ... })` wie in
+der deutschen Anleitung, ersatzweise `obtainKrakenToken(input: { APIKey: ... })`;
+Token als `Authorization` ohne automatisch ergaenztes Bearer-Praefix.
+Eine abgelehnte Anmeldung (GraphQL-Fehler, HTTP 400/401/403) sperrt weitere
+Versuche fuer 30 Minuten, damit falsche Passwoerter das Kundenkonto nicht
+sperren; geaenderte Zugangsdaten heben die Sperre sofort auf. HTTP 429 und
+Serverfehler zaehlen nicht als Ablehnung (eine Minute Pause).
 
 Preisabfrage: `account.properties.electricityMalos.agreements.unitRateForecast`
 mit `validFrom`, `validTo` und
@@ -84,7 +91,7 @@ erneut. Alte gespeicherte Tageswerte werden nicht geloescht oder umbewertet.
 
 ## Spaetere Inbetriebnahme
 
-1. API-Key und Kundennummer lokal in den Einstellungen speichern, nicht im Chat.
+1. E-Mail, Passwort und Kundennummer in den Einstellungen speichern, nicht im Chat.
 2. Aktiven dynamicOctopus-Vertrag sowie API-Key-Berechtigung bestaetigen.
 3. Bei Umschaltung wenigstens aktuellen und negativen/positiven Beispielpreis
    gegen die Octopus-App vergleichen; Faktor 100 und Bruttoanteile pruefen.

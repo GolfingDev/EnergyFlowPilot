@@ -142,7 +142,9 @@ const fieldDefinitions: FieldDefinition[] = [
   { key: 'energyCharts.grossSurchargePerKwh', section: 'forecast', subgroup: 'Energy-Charts / eigener Tarif', category: 'critical', helpText: 'Bruttoaufschlag inklusive Netzentgelten, Abgaben und Lieferantenmarge. Bei Energy-Charts erforderlich; 0 ausdrücklich eintragen, wenn kein Aufschlag gilt.' },
   { key: 'energyCharts.vatPercent', section: 'forecast', subgroup: 'Energy-Charts / eigener Tarif', category: 'important' },
   { key: 'electricityPrices.provider', section: 'forecast', subgroup: 'Strompreise', category: 'critical', helpText: 'Direkte Tibber-/Octopus-Schnittstelle oder Energy-Charts mit eigenem Tarifaufschlag. Anbietername frei wählbar; kein automatischer Quellenwechsel.' },
-  { key: 'octopus.apiKey', section: 'forecast', subgroup: 'Octopus Deutschland', category: 'critical', helpText: 'API-Key, kein Passwort. Leer lassen behält den gespeicherten Schlüssel.' },
+  { key: 'octopus.email', section: 'forecast', subgroup: 'Octopus Deutschland', category: 'critical', helpText: 'E-Mail des Octopus-Kundenkontos. Wird verschlüsselt gespeichert und nicht wieder angezeigt; leer lassen behält den gespeicherten Wert.' },
+  { key: 'octopus.password', section: 'forecast', subgroup: 'Octopus Deutschland', category: 'critical', helpText: 'Passwort des Octopus-Kundenkontos. Wird verschlüsselt gespeichert und nie angezeigt; leer lassen behält das gespeicherte Passwort.' },
+  { key: 'octopus.apiKey', section: 'forecast', subgroup: 'Octopus Deutschland', category: 'normal', helpText: 'Nur falls Octopus einen API-Key ausgibt; E-Mail und Passwort haben Vorrang. Leer lassen behält den gespeicherten Schlüssel.' },
   { key: 'octopus.accountNumber', section: 'forecast', subgroup: 'Octopus Deutschland', category: 'important' },
   { key: 'battery.totalCapacityKwh', section: 'battery', subgroup: 'Harte Grenzen', category: 'critical' },
   { key: 'battery.minimumStateOfChargePercent', section: 'battery', subgroup: 'Harte Grenzen', category: 'critical', helpText: 'Harte Untergrenze zum Schutz des Akkus.' },
@@ -369,7 +371,7 @@ const warningMessages = computed(() => {
   }
 
   const provider = getDraftValue('electricityPrices.provider') || 'tibber';
-  const accessKeys = provider === 'energyCharts' ? ['energyCharts.grossSurchargePerKwh'] : provider === 'octopusGermany' ? ['octopus.apiKey', 'octopus.accountNumber'] : ['tibber.accessToken'];
+  const accessKeys = provider === 'energyCharts' ? ['energyCharts.grossSurchargePerKwh'] : provider === 'octopusGermany' ? octopusAccessKeys() : ['tibber.accessToken'];
   if (accessKeys.some(key => !isSettingConfigured(key)))
     warnings.push('Zugang zur ausgewählten Strompreisquelle unvollständig. Unter Erweiterter Modus → Stromtarif & Prognosen einrichten.');
   return warnings;
@@ -617,14 +619,20 @@ function getNumericDraftValue(key: string): number | null {
   return Number.isFinite(parsedValue) ? parsedValue : null;
 }
 
+// Octopus Germany signs in with e-mail and password; an API key only replaces them when it is the one configured.
+function octopusAccessKeys(): string[] {
+  const withApiKey = isSettingConfigured('octopus.apiKey') && !isSettingConfigured('octopus.email') && !isSettingConfigured('octopus.password');
+  return withApiKey ? ['octopus.apiKey', 'octopus.accountNumber'] : ['octopus.email', 'octopus.password', 'octopus.accountNumber'];
+}
+
 function getFieldErrors(key: string): string[] {
   if (key === 'energyCharts.grossSurchargePerKwh' && !getDraftValue(key).trim() && getDraftValue('electricityPrices.provider') !== 'energyCharts') return [];
   const errors: string[] = numericControlErrors(key, getDraftValue(key));
   const numericValue = getNumericDraftValue(key);
   const provider = getDraftValue('electricityPrices.provider') || 'tibber';
   const requiredForProvider = provider === 'energyCharts' ? ['energyCharts.grossSurchargePerKwh'] : provider === 'octopusGermany'
-    ? ['octopus.apiKey', 'octopus.accountNumber'] : ['tibber.accessToken'];
-  const editingAccess = ['electricityPrices.provider', 'energyCharts.grossSurchargePerKwh', 'tibber.accessToken', 'octopus.apiKey', 'octopus.accountNumber']
+    ? octopusAccessKeys() : ['tibber.accessToken'];
+  const editingAccess = ['electricityPrices.provider', 'energyCharts.grossSurchargePerKwh', 'tibber.accessToken', 'octopus.apiKey', 'octopus.email', 'octopus.password', 'octopus.accountNumber']
     .some(accessKey => getDraftValue(accessKey) !== (initialValues.value[accessKey] ?? ''));
   if (editingAccess && requiredForProvider.includes(key) && !isSettingConfigured(key))
     errors.push('Für die ausgewählte Strompreisquelle erforderlich.');

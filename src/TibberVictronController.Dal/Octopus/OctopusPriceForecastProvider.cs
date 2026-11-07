@@ -9,13 +9,22 @@ using TibberVictronController.Business.Models;
 
 namespace TibberVictronController.Dal.Octopus;
 
+/// <summary>Octopus refused the sign-in (wrong e-mail, password or API key).</summary>
+public sealed class OctopusSignInRejectedException(string message) : InvalidOperationException(message);
+
+/// <summary>Octopus is temporarily unavailable (HTTP 429 or a server error); says nothing about the credentials.</summary>
+public sealed class OctopusUnavailableException(string message) : InvalidOperationException(message);
+
 /// <summary>German dynamicOctopus only. Never falls back to UK rates, spot prices or another supplier.</summary>
 public sealed class OctopusPriceForecastProvider(
     HttpClient httpClient, IControllerSettingStore settings, OctopusPriceCache cache, IUtcClock clock)
     : IElectricityPriceForecastProvider
 {
     public const string Endpoint = "https://api.oeg-kraken.energy/v1/graphql/";
+    public static readonly TimeSpan SignInRetryDelay = TimeSpan.FromMinutes(30);
     public string Source => "octopusGermany";
+
+    private sealed record OctopusCredentials(string? Email, string? Password, string? ApiKey);
     private const string TokenQuery = """
         mutation Token($input: ObtainJSONWebTokenInput!) {
           obtainKrakenToken(input: $input) { token }
@@ -41,12 +50,18 @@ public sealed class OctopusPriceForecastProvider(
     {
         if (startsAtUtc.Offset != TimeSpan.Zero || endsAtUtc.Offset != TimeSpan.Zero || startsAtUtc >= endsAtUtc)
             throw new ArgumentException("Der Strompreiszeitraum muss in UTC vorwaerts verlaufen.");
-        var key = (await settings.GetSettingAsync(ControllerSettingDefaults.OctopusApiKeyKey, cancellationToken))?.Value;
-        var account = (await settings.GetSettingAsync(ControllerSettingDefaults.OctopusAccountNumberKey, cancellationToken))?.Value;
-        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(account) ||
-            account == ControllerSettingDefaults.OctopusAccountNumberNotConfigured)
-            throw new InvalidOperationException("Octopus Deutschland benoetigt API-Key und Kundennummer.");
-        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { key, account }))));
+        async Task<string?> Setting(string name) => (await settings.GetSettingAsync(name, cancellationToken))?.Value is { } value &&
+            !string.IsNullOrWhiteSpace(value) ? value.Trim() : null;
+        var email = await Setting(ControllerSettingDefaults.OctopusEmailKey);
+        var password = (await settings.GetSettingAsync(ControllerSettingDefaults.OctopusPasswordKey, cancellationToken))?.Value;
+        var key = await Setting(ControllerSettingDefaults.OctopusApiKeyKey);
+        var account = await Setting(ControllerSettingDefaults.OctopusAccountNumberKey);
+        // E-mail and password, as Octopus Germany documents the sign-in; an API key only when no password is set.
+        var credentials = email is not null && !string.IsNullOrEmpty(password) ? new OctopusCredentials(email, password, null)
+            : key is not null ? new OctopusCredentials(null, null, key) : null;
+        if (credentials is null || account is null || account == ControllerSettingDefaults.OctopusAccountNumberNotConfigured)
+            throw new InvalidOperationException("Octopus Deutschland benoetigt E-Mail und Passwort (oder einen API-Key) sowie die Kundennummer.");
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { credentials, account }))));
         await cache.Gate.WaitAsync(cancellationToken);
         try
         {
@@ -66,19 +81,20 @@ public sealed class OctopusPriceForecastProvider(
                 try
                 {
                     if (cache.Token is null || now >= cache.TokenExpiresAtUtc)
-                        await AuthenticateAsync(key, cancellationToken);
+                        await AuthenticateAsync(credentials, cancellationToken);
                     using var response = await GetPricesAsync(account, cancellationToken);
                     cache.Prices = ParsePrices(response.RootElement);
                     cache.PricesExpireAtUtc = clock.UtcNow.AddMinutes(10);
                 }
                 catch (OperationCanceledException) { throw; }
-                catch
+                catch (Exception exception)
                 {
                     // Bound retries across battery, dashboard and warm-water consumers, without stale supplier fallback.
+                    // A refused sign-in waits much longer: repeated wrong passwords could lock the customer account.
                     cache.Token = null;
                     cache.Prices = [];
                     cache.PricesExpireAtUtc = default;
-                    cache.RetryAfterUtc = clock.UtcNow.AddMinutes(1);
+                    cache.RetryAfterUtc = clock.UtcNow.Add(exception is OctopusSignInRejectedException ? SignInRetryDelay : TimeSpan.FromMinutes(1));
                     throw;
                 }
             }
@@ -87,9 +103,23 @@ public sealed class OctopusPriceForecastProvider(
         finally { cache.Gate.Release(); }
     }
 
-    private async Task AuthenticateAsync(string key, CancellationToken ct)
+    private async Task AuthenticateAsync(OctopusCredentials credentials, CancellationToken ct)
     {
-        using var response = await SendAsync(TokenQuery, new { input = new { APIKey = key } }, null, ct);
+        object input = credentials.ApiKey is { } key ? new { APIKey = key } : new { email = credentials.Email, password = credentials.Password };
+        JsonDocument response;
+        try
+        {
+            response = await SendAsync(TokenQuery, new { input }, null, ct);
+        }
+        catch (InvalidOperationException exception) when (exception is not OctopusUnavailableException)
+        {
+            // Octopus answers wrong credentials with a GraphQL error; its text may echo the input, so it is not passed on.
+            throw new OctopusSignInRejectedException(credentials.ApiKey is null
+                ? "Octopus-Anmeldung abgelehnt; E-Mail und Passwort pruefen. Naechster Versuch in 30 Minuten."
+                : "Octopus-Anmeldung abgelehnt; API-Key pruefen. Naechster Versuch in 30 Minuten.");
+        }
+
+        using var _ = response;
         if (!response.RootElement.GetProperty("data").TryGetProperty("obtainKrakenToken", out var authentication) ||
             authentication.ValueKind != JsonValueKind.Object ||
             !authentication.TryGetProperty("token", out var token) || token.ValueKind != JsonValueKind.String ||
@@ -111,6 +141,8 @@ public sealed class OctopusPriceForecastProvider(
         using var response = await httpClient.SendAsync(request, ct);
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             throw new InvalidOperationException("Octopus-Zugriff verweigert; API-Key oder Berechtigungen pruefen.");
+        if (response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500)
+            throw new OctopusUnavailableException($"Octopus hat den Abruf mit HTTP {(int)response.StatusCode} beantwortet.");
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"Octopus hat den Abruf mit HTTP {(int)response.StatusCode} beantwortet.");
         JsonDocument document;

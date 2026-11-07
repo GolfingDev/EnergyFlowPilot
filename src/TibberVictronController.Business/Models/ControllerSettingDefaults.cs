@@ -135,6 +135,9 @@ public static class ControllerSettingDefaults
     public const string TariffComparisonOffersKey = "electricityPrices.comparisonOffers";
     public const string ElectricityPriceProviderChangedAtKey = "electricityPrices.providerChangedAtUtc";
     public const string OctopusApiKeyKey = "octopus.apiKey";
+    // Octopus Germany documents the sign-in with the customer's e-mail and password (operator 2026-11-07: no API key).
+    public const string OctopusEmailKey = "octopus.email";
+    public const string OctopusPasswordKey = "octopus.password";
     public const string OctopusAccountNumberKey = "octopus.accountNumber";
     public const string OctopusAccountNumberNotConfigured = "not-configured";
     public const string ElectricityPriceProviderNeverChanged = "never";
@@ -311,6 +314,8 @@ public static class ControllerSettingDefaults
         new(TariffComparisonOffersKey, "[]", ControllerSettingSensitivity.Normal),
         new(ElectricityPriceProviderChangedAtKey, ElectricityPriceProviderNeverChanged, ControllerSettingSensitivity.Normal),
         new(OctopusApiKeyKey, null, ControllerSettingSensitivity.Sensitive),
+        new(OctopusEmailKey, null, ControllerSettingSensitivity.Sensitive),
+        new(OctopusPasswordKey, null, ControllerSettingSensitivity.Sensitive),
         new(OctopusAccountNumberKey, OctopusAccountNumberNotConfigured, ControllerSettingSensitivity.Normal),
         new(TibberHomeSelectionKey, "first", ControllerSettingSensitivity.Normal),
         new(TibberAccessTokenKey, null, ControllerSettingSensitivity.Sensitive),

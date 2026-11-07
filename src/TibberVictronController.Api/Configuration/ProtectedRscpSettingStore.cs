@@ -5,7 +5,11 @@ using TibberVictronController.Business.Models;
 
 namespace TibberVictronController.Api.Configuration;
 
-/// <summary>Encrypts the RSCP credentials and the BMW CarData sign-in; other settings retain their storage format.</summary>
+/// <summary>
+/// Encrypts the RSCP credentials, the BMW CarData sign-in, the Octopus sign-in and the price forecast token; other
+/// settings retain their storage format. Values stored before they were protected stay readable and are encrypted
+/// with their next save.
+/// </summary>
 public sealed class ProtectedRscpSettingStore(IControllerSettingStore inner, IDataProtectionProvider protection,
     ILogger<ProtectedRscpSettingStore>? logger = null) : IControllerSettingStore
 {
@@ -14,7 +18,8 @@ public sealed class ProtectedRscpSettingStore(IControllerSettingStore inner, IDa
     private static bool IsCredential(string key) => key is ControllerSettingDefaults.E3dcRscpUserKey or
         ControllerSettingDefaults.E3dcRscpPasswordKey or ControllerSettingDefaults.E3dcRscpKeyKey or
         ControllerSettingDefaults.BmwCarDataRefreshTokenKey or ControllerSettingDefaults.BmwCarDataGcidKey or
-        ControllerSettingDefaults.PriceForecastTokenKey;
+        ControllerSettingDefaults.PriceForecastTokenKey or ControllerSettingDefaults.OctopusEmailKey or
+        ControllerSettingDefaults.OctopusPasswordKey or ControllerSettingDefaults.OctopusApiKeyKey;
 
     private ControllerSetting Decode(ControllerSetting setting)
     {

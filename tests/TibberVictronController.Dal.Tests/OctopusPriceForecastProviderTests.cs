@@ -128,7 +128,9 @@ public sealed class OctopusPriceForecastProviderTests
         await fixture.Provider.GetPriceForecastAsync(Start, Start.AddHours(1));
         fixture.Clock.UtcNow = Start.AddMinutes(11);
         fixture.Handler.Status = (HttpStatusCode)status;
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Provider.GetPriceForecastAsync(Start, Start.AddHours(1)));
+        var error = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => fixture.Provider.GetPriceForecastAsync(Start, Start.AddHours(1)));
+        // Overload and server errors are outages, not a refused sign-in: they must not trigger the 30-minute pause.
+        Assert.Equal(status != 401, error is OctopusUnavailableException);
     }
 
     [Fact]
@@ -157,6 +159,51 @@ public sealed class OctopusPriceForecastProviderTests
             null, ControllerSettingSensitivity.Sensitive, Start));
         await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Provider.GetPriceForecastAsync(Start, Start.AddHours(1)));
         Assert.Empty(fixture.Handler.Bodies);
+    }
+
+    [Fact]
+    public async Task EmailAndPasswordSignInTakesPrecedenceOverTheApiKey()
+    {
+        // Operator 2026-11-07: Octopus Germany signs in with the customer's e-mail and password.
+        var fixture = new Fixture(Wrap(Entry));
+        await fixture.Settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.OctopusEmailKey, "kunde@example.org",
+            ControllerSettingSensitivity.Sensitive, Start));
+        await fixture.Settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.OctopusPasswordKey, "geheim",
+            ControllerSettingSensitivity.Sensitive, Start));
+
+        Assert.Single(await fixture.Provider.GetPriceForecastAsync(Start, Start.AddHours(1)));
+
+        using var authentication = JsonDocument.Parse(fixture.Handler.Bodies[0]);
+        var input = authentication.RootElement.GetProperty("variables").GetProperty("input");
+        Assert.Equal("kunde@example.org", input.GetProperty("email").GetString());
+        Assert.Equal("geheim", input.GetProperty("password").GetString());
+        Assert.False(input.TryGetProperty("APIKey", out _));
+        Assert.DoesNotContain("geheim", fixture.Handler.Bodies[1]);
+    }
+
+    [Fact]
+    public async Task RejectedSignInWaitsThirtyMinutesWithoutLeakingTheCredentials()
+    {
+        var fixture = new Fixture(Wrap(Entry));
+        await fixture.Settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.OctopusEmailKey, "kunde@example.org",
+            ControllerSettingSensitivity.Sensitive, Start));
+        await fixture.Settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.OctopusPasswordKey, "falsch",
+            ControllerSettingSensitivity.Sensitive, Start));
+        fixture.Handler.TokenResponse = """{"errors":[{"message":"Invalid data for kunde@example.org falsch"}],"data":{"obtainKrakenToken":null}}""";
+
+        var error = await Assert.ThrowsAsync<OctopusSignInRejectedException>(() => fixture.Provider.GetPriceForecastAsync(Start, Start.AddHours(1)));
+        Assert.Contains("E-Mail und Passwort", error.Message);
+        Assert.DoesNotContain("falsch", error.ToString());
+        Assert.DoesNotContain("kunde@example.org", error.ToString());
+
+        // Repeated wrong passwords could lock the account: no new attempt for 30 minutes, at once after a correction.
+        fixture.Clock.UtcNow = Start.AddMinutes(29);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Provider.GetPriceForecastAsync(Start, Start.AddHours(1)));
+        Assert.Single(fixture.Handler.Bodies);
+        fixture.Handler.TokenResponse = Token;
+        await fixture.Settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.OctopusPasswordKey, "richtig",
+            ControllerSettingSensitivity.Sensitive, Start));
+        Assert.Single(await fixture.Provider.GetPriceForecastAsync(Start, Start.AddHours(1)));
     }
 
     [Theory]
@@ -215,6 +262,7 @@ public sealed class OctopusPriceForecastProviderTests
         public List<string> Bodies { get; } = [];
         public List<string?> Headers { get; } = [];
         public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
+        public string TokenResponse { get; set; } = Token;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Assert.Equal(OctopusPriceForecastProvider.Endpoint, request.RequestUri!.AbsoluteUri);
@@ -222,7 +270,7 @@ public sealed class OctopusPriceForecastProviderTests
             var body = await request.Content!.ReadAsStringAsync(ct);
             Bodies.Add(body);
             Headers.Add(request.Headers.TryGetValues("Authorization", out var values) ? values.Single() : null);
-            return new HttpResponseMessage(Status) { Content = new StringContent(body.Contains("obtainKrakenToken") ? Token : priceResponse) };
+            return new HttpResponseMessage(Status) { Content = new StringContent(body.Contains("obtainKrakenToken") ? TokenResponse : priceResponse) };
         }
     }
 }
