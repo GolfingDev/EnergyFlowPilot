@@ -181,3 +181,8 @@ see what is missing and that an admin can enter it.
   card, and the electricity cost page; missing tariff periods open the tariff editor there.
 - **New code:** throw `MissingSettingException` with the key instead of a plain text, and show `SettingQuickFix` next to
   the message.
+- **Status texts** carry the keys too: joint battery preview and execution blockers (E3/DC access, External-ESS mode,
+  connection and phase limits; `JointBatteryShadowDto.MissingSettings`), the automation list (`AutomationStatusDto`),
+  the Victron MQTT error (`ControllerStatusResponseDto.VictronMqttMissingSettings`, settings page and classic dashboard)
+  and the price forecast token (checked every 10 minutes while it is missing, so an entered token is used soon).
+  Calendar and BMW sign-in problems are no settings and keep their own actions.
