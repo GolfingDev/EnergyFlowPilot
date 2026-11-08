@@ -27,6 +27,8 @@
 ## External Systems
 
 - Do not call real Tibber API in unit tests.
+- Live tests against real services use `RequiresEnvironmentVariableFact` and run only with `RUN_LIVE_TESTS=1`; a token in the environment alone does not enable them.
+- CI (`.github/workflows/ci.yml`) runs the backend tests, the frontend type check and the frontend unit tests on every push to `main`.
 - Do not require real MQTT/Victron hardware in tests.
 - Use fakes, mocks or controlled test doubles.
 

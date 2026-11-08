@@ -44,7 +44,7 @@
 - **Savings accounting** — daily, weekly, monthly and yearly savings tracked against a baseline
 - **Configurable limits** — battery capacity, charge/discharge thresholds, minimum SoC reserve, planning profile
 - **Multi-theme Vue dashboard** — light and dark themes, live energy flow visualization
-- **Secure settings model** — sensitive values (API tokens, credentials) stored encrypted, never returned to the frontend
+- **Secure settings model** — sensitive values (API tokens, credentials) are never returned to the frontend; selected credentials (E3/DC, BMW, Octopus, price forecast) are stored encrypted
 - **Raspberry Pi ready** — systemd service, deployment scripts, optional nginx reverse proxy
 
 ---
@@ -153,11 +153,11 @@ Multiple themes are available including a dark mission dashboard, a control-cent
 ### Backend
 
 ```powershell
-dotnet build
+dotnet build TibberVictronController.slnx
 dotnet run --project src/TibberVictronController.Api
 ```
 
-The API starts on `http://localhost:5000`. On first run it creates a local SQLite database and seeds default settings. Configure Tibber token, MQTT host and battery parameters through the Settings page.
+The API starts on `http://localhost:5094`. On first run it creates a local SQLite database and seeds default settings. Configure Tibber token, MQTT host and battery parameters through the Settings page.
 
 ### Frontend (dev server)
 
@@ -170,8 +170,9 @@ npm run dev        # Vite dev server on :5173, proxies /api to backend
 ### Tests
 
 ```powershell
-dotnet test
+dotnet test TibberVictronController.slnx
 dotnet test tests/TibberVictronController.Business.Tests   # single project
+# Live tests against the real Tibber API: set RUN_LIVE_TESTS=1 and TIBBER_ACCESS_TOKEN
 ```
 
 ---

@@ -20,6 +20,16 @@ When a requirement in this folder changes, future code changes must follow the u
 12. `40-delivery/backlog.md`
 13. `30-operations/weishaupt-warmwasser.md`
 14. `40-delivery/acceptance-zentrale.md`
+15. `10-architecture/frontend-architecture.md`
+16. `20-domain/energy-costs.md`
+17. `20-domain/ev-charging.md`
+18. `30-operations/persistence-model.md`
+19. `30-operations/authentication-and-remote-access.md`
+20. `30-operations/e3dc-rscp.md`
+21. `30-operations/electricity-price-providers.md`
+22. `30-operations/homematic-telemetry.md`
+
+Audit reports are in `audits/`. They describe a past state and are not requirements.
 
 ## Rule
 

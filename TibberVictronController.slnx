@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TibberVictronController.Api/TibberVictronController.Api.csproj" />
+    <Project Path="src/TibberVictronController.Business/TibberVictronController.Business.csproj" />
+    <Project Path="src/TibberVictronController.Dal/TibberVictronController.Dal.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TibberVictronController.Api.Tests/TibberVictronController.Api.Tests.csproj" />
+    <Project Path="tests/TibberVictronController.Business.Tests/TibberVictronController.Business.Tests.csproj" />
+    <Project Path="tests/TibberVictronController.Dal.Tests/TibberVictronController.Dal.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -2,7 +2,7 @@
 
 ## Role
 
-Codex acts as AI-first software architect and senior .NET developer for this project.
+The coding agent (any vendor) acts as AI-first software architect and senior .NET developer for this project. Short operational instructions for agents are in `AGENTS.md` at the repository root.
 
 ## Collaboration Rules
 

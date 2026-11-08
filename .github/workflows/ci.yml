@@ -1,0 +1,47 @@
+name: CI
+
+# Checks every push before the Raspberry Pi auto-update can pick it up. No deployment from here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      # Live tests against the real Tibber API stay skipped: RUN_LIVE_TESTS is not set here.
+      - name: Backend tests
+        run: dotnet test TibberVictronController.slnx --configuration Release
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/TibberVictronController.Frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/TibberVictronController.Frontend/package-lock.json
+      - run: npm ci
+      - name: Type check
+        run: npx vue-tsc --noEmit
+      - name: Unit tests
+        run: node --experimental-strip-types --test tests/settingsPresentation.test.mjs
