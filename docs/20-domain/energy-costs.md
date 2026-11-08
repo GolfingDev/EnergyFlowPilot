@@ -66,3 +66,62 @@ to earlier periods.
 - **API:** `GET /api/energy-costs/report?kind=day|week|month|quarter|year&date=YYYY-MM-DD` or
   `kind=custom&from=...&to=...`, `GET /api/energy-costs/report.csv` (same parameters), `GET /api/energy-costs/day?date=...`
   (quarter hours of one day), `GET/PUT /api/energy-costs/tariffs` (PUT admins only).
+
+## Page (step 4)
+
+Route `/energy-costs` ("Stromkosten" in every navigation: Zentrale sidebar and phone bar, classic top navigation,
+executive sidebar and the phone navigation row). The page uses the shared Zentrale building blocks and the colours of
+the selected design; charts use chart.js.
+
+- **Period bar:** day, week, month, quarter, year, free; previous/next, "Aktuell". The selection lives in the URL
+  (`?kind=month&date=...`), so a view can be shared.
+- **Key figures:** house consumption (with daily average), grid import (with export), import cost (with weighted
+  purchase price and cost per day, "Teilkosten" when incomplete), total after compensation (base fee and feed-in, or
+  "nicht hinterlegt"); each with the change against the previous period.
+- **Charts** (one y-axis each, fixed colours per quantity, validated palette for light and dark designs):
+  consumption and supply (house, grid import, PV; both batteries on demand as net charging), cost bars (import cost,
+  base fee, feed-in compensation negative; a day bar opens the day detail), comparison (energy and cost, current
+  against previous or the same elapsed part), day detail (import, retail price and import cost per quarter hour as
+  three aligned charts instead of a dual axis).
+- **Collapsed details:** table with all columns, coverage and CSV download; excluded days with reason; tariff periods
+  (admins edit); a short calculation note.
+- **Navigation fixes found while checking the page:** the classic phone navigation row stacks icon and label below
+  520 px, the classic top navigation drops its subtitles below 1700 px and its tagline below 1500 px and hands over to
+  the navigation row below 1160 px, the Zentrale phone bar shrinks its labels below 420 px; otherwise five or six
+  entries overlapped or widened the page.
+
+## Available history (2026-11-08)
+
+| Quantity | From | Source |
+|---|---|---|
+| Grid import/export, import cost | 2026-05-05 | decision log (coverage above 98 % per month) |
+| House consumption, PV, batteries, car | 2026-10-25 | live samples |
+
+Monthly import cost computed from the decision log for the operator on 2026-11-08 (without base fee): May (from the
+5th) 249.1 kWh / 68.30 EUR (13.1 kWh without price), June 45.0 kWh / 10.99 EUR, July 79.4 kWh / 22.87 EUR, August
+65.8 kWh / 19.49 EUR, September 93.3 kWh / 29.30 EUR, October 747.8 kWh / 222.45 EUR, November to the 8th 370.9 kWh /
+157.73 EUR; check 1 to 7 November: decision log 326.1 kWh against live samples 324.2 kWh (0.6 %). The live samples
+were also exported to `backups/LiveConsumptionSamples-20261108-1622.csv.gz` on the Pi before the retention was raised.
+
+## Limitations
+
+- Battery power is measured on the DC side without loss correction; the house balance can be a few percent off.
+- The E3/DC values (PV, battery) come from the Hager API about every 30 s; within that time the balance holds the
+  last value.
+- All PV is assumed behind the E3/DC (internal and external inverter); the Victron has no PV of its own.
+- The price is the work price the decision log recorded for the quarter hour (the selected supplier at that time);
+  where the controller did not run, there is no price and the cost is partial. Tibber's base fee has no history in the
+  controller; it has to be entered as a tariff period.
+- Octopus (from 2026-11-12) prices on the intraday auction IDA1; the stored price is Octopus' own, so costs stay
+  correct.
+
+## Checks
+
+- Unit tests (Business): integration and quarter-hour split, gaps without interpolation, house balance with all flows
+  and only when complete, negative and missing prices, per-group merge (no downgrade) and idempotent recalculation,
+  calendar periods with Monday weeks, month and quarter boundaries, DST days (23/25 hours, base fee share), same
+  elapsed part across summer/winter time, tariff change within a period, partial cost and excluded days, comparison
+  only when both sides are measured, CSV format, tariff validation.
+- Page checked in headless Chrome with synthetic data in the Zentrale (dark and light) and classic designs at
+  1440, 1280 and 1100 px and at 390 px phone width (DevTools device emulation): no horizontal overflow, aligned day
+  charts, readable navigation.

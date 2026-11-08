@@ -3,6 +3,7 @@ import { isAdmin } from './auth';
 import DashboardPage from './pages/DashboardPage.vue';
 import HeatingPage from './pages/HeatingPage.vue';
 import EvChargingPage from './pages/EvChargingPage.vue';
+import EnergyCostsPage from './pages/EnergyCostsPage.vue';
 import SettingsPage from './pages/SettingsPage.vue';
 import AnalysisPage from './pages/AnalysisPage.vue';
 import ControlPage from './pages/ControlPage.vue';
@@ -39,6 +40,11 @@ export const router = createRouter({
       path: '/heating',
       name: 'heating',
       component: HeatingPage
+    },
+    {
+      path: '/energy-costs',
+      name: 'energyCosts',
+      component: EnergyCostsPage
     },
     {
       path: '/car',

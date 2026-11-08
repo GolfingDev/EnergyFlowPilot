@@ -22,6 +22,7 @@ const navigation = computed(() => [
   { name: 'dashboard', label: 'Dashboard', icon: 'mdi-view-dashboard-outline', routes: ['dashboard'] },
   { name: 'analysis', label: 'Analyse', icon: 'mdi-chart-box-outline', routes: ['analysis'] },
   { name: 'control', label: 'Steuerung', icon: 'mdi-tune-variant', routes: ['control', 'car', 'heating'] },
+  { name: 'energyCosts', label: 'Stromkosten', icon: 'mdi-cash-multiple', routes: ['energyCosts'] },
   { name: 'automations', label: 'Automationen', icon: 'mdi-robot-outline', routes: ['automations'] },
   ...(isAdmin.value ? [{ name: 'settings', label: 'Einstellungen', icon: 'mdi-cog-outline', routes: ['settings'] }] : [])
 ]);
@@ -33,7 +34,8 @@ const pages: Record<string, { title: string; subtitle: string }> = {
   automations: { title: 'Automationen', subtitle: 'Aktive Regeln, Gründe und Entscheidungsverlauf' },
   settings: { title: 'Einstellungen', subtitle: 'Konfiguration nach Themen, durchsuchbar' },
   heating: { title: 'Heizung', subtitle: 'Raumklima, Ventile und Warmwasser' },
-  car: { title: 'E-Auto', subtitle: 'Fahrten, Ladeplan und Wallbox' }
+  car: { title: 'E-Auto', subtitle: 'Fahrten, Ladeplan und Wallbox' },
+  energyCosts: { title: 'Stromkosten & Verbrauch', subtitle: 'Verbrauch, Netzbezug und tatsächliche Stromkosten' }
 };
 const routeName = computed(() => String(route.name ?? 'dashboard'));
 const page = computed(() => pages[routeName.value] ?? pages.dashboard);
@@ -245,5 +247,11 @@ onBeforeUnmount(() => window.clearInterval(clockTimer));
     background: var(--efp-nav-background); border-top: 1px solid var(--efp-border); }
   .z-bottom-nav a { flex: 1; display: grid; justify-items: center; gap: 2px; padding: 4px 0; font-size: .68rem; color: var(--efp-muted); text-decoration: none; }
   .z-bottom-nav a.active { color: var(--efp-primary); }
+  /* Six entries on a narrow phone: labels shrink and are cut instead of running into each other. */
+  .z-bottom-nav a { min-width: 0; }
+  .z-bottom-nav a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@media (max-width: 420px) {
+  .z-bottom-nav a { font-size: .6rem; }
 }
 </style>

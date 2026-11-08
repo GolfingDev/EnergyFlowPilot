@@ -290,7 +290,7 @@
   transform: translateX(-50%);
   display: flex;
   justify-content: center;
-  width: min(760px, calc(100vw - 460px));
+  width: min(900px, calc(100vw - 460px));
 }
 
 .top-bar__actions {
@@ -358,6 +358,16 @@
 .top-nav__item small {
   color: var(--efp-muted);
   font-size: 0.68rem;
+}
+
+/* Five entries do not fit at 172 px each next to the brand: below 1700 px the entries take their natural width and
+   drop the subtitles, so the navigation never runs into the brand or the actions. */
+@media (max-width: 1700px) {
+  .top-nav__item { min-width: 0; padding: 10px 14px; }
+  .top-nav__item small { display: none; }
+}
+@media (max-width: 1500px) {
+  .top-bar__copy strong { display: none; }
 }
 
 .top-nav__item--menu {
@@ -682,10 +692,16 @@
 }
 
 .workspace-mobile-nav { display: none; }
-@media (max-width: 960px) {
+/* Below 1160 px the five centre entries no longer fit between brand and actions: the navigation row takes over. */
+@media (max-width: 1160px) {
   .top-bar__center, .app-shell--executive .top-bar__center { display: none; }
   .workspace-mobile-nav { display: flex; position: sticky; top: 74px; z-index: 900; background: var(--efp-surface, #fff); border-bottom: 1px solid var(--efp-border); padding: 6px 10px; gap: 6px; }
   .workspace-mobile-nav button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 6px; padding: 9px 6px; font-size: 11px; color: var(--efp-muted); }
   .workspace-mobile-nav button[aria-current="page"] { color: var(--efp-primary); background: var(--efp-card-accent); font-weight: 600; }
   .workspace-mobile-nav button:focus-visible { outline: 2px solid var(--efp-primary); outline-offset: -2px; }
+}
+/* Narrow phones: icon above the label, so all entries fit next to each other without widening the page. */
+@media (max-width: 520px) {
+  .workspace-mobile-nav { padding: 4px 6px; gap: 2px; }
+  .workspace-mobile-nav button { min-width: 0; flex-direction: column; gap: 2px; padding: 6px 2px; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
