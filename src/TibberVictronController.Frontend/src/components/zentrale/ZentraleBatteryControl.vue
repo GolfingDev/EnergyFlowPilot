@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { isAdmin } from '../../auth';
 import { expertMode } from '../../uiMode';
 import ZentraleSettingControl from './ZentraleSettingControl.vue';
+import SettingQuickFix from '../settings/SettingQuickFix.vue';
 import { errorText } from './zentraleApi';
 import { age, batteryActivity, kw, kwh, percent, when } from './zentraleFormat';
 import { jointStatusLabels } from './zentraleModel';
@@ -196,6 +197,7 @@ function chooseMode(mode: 'auto' | 'manual' | null): void {
         <div v-if="batteryId === 'victron'"><dt>Hartes Minimum</dt><dd>{{ percent(hardMinimum) }}</dd></div>
       </dl>
       <p v-if="state.shadow?.message" class="z-note">{{ state.shadow.message }}</p>
+      <SettingQuickFix v-if="state.shadow?.missingSettings?.length" :keys="state.shadow.missingSettings" @saved="data.refreshAll()" />
       <ZentraleSettingControl v-if="batteryId === 'victron'" setting-key="battery.minimumStateOfChargePercent" label="Hartes Minimum (Akkuschutz)" kind="slider" :min="0" :max="50" unit="%"
         hint="Sicherheitsrelevant: harte Untergrenze zum Schutz des Akkus."
         :validate="v => v > planningMinimum ? 'Das harte Minimum darf nicht über der Reserve liegen.' : null" />

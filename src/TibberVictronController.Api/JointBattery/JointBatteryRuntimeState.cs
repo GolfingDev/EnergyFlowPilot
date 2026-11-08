@@ -3,7 +3,11 @@ using TibberVictronController.Business.Models;
 namespace TibberVictronController.Api.JointBattery;
 
 public sealed record JointBatteryRuntimeSnapshot(string Status, string Message, DateTimeOffset UpdatedAtUtc,
-    E3dcLocalTelemetry? LocalTelemetry, JointBatteryPlan? Plan);
+    E3dcLocalTelemetry? LocalTelemetry, JointBatteryPlan? Plan)
+{
+    /// <summary>Settings the preview is missing; the page offers to enter them.</summary>
+    public IReadOnlyList<string> MissingSettings { get; init; } = [];
+}
 
 /// <summary>Immutable snapshots are shared across the polling worker and HTTP requests.</summary>
 public sealed class JointBatteryRuntimeState

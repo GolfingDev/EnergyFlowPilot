@@ -9,7 +9,11 @@ public sealed record JointBatteryCommand(int VictronWatts, int E3dcWatts, Batter
     DateTimeOffset ValidUntilUtc, string Reason);
 public sealed record JointBatteryExecutionSnapshot(string Status, string Message, DateTimeOffset UpdatedAtUtc,
     bool OwnsControl, int VictronTargetWatts = 0, int E3dcTargetWatts = 0,
-    int VictronMeasuredWatts = 0, int E3dcMeasuredWatts = 0, DateTimeOffset? ValidUntilUtc = null);
+    int VictronMeasuredWatts = 0, int E3dcMeasuredWatts = 0, DateTimeOffset? ValidUntilUtc = null)
+{
+    /// <summary>Settings a blocker is missing; the page offers to enter them.</summary>
+    public IReadOnlyList<string> MissingSettings { get; init; } = [];
+}
 
 /// <summary>Process-local state is shared between execution scopes; the recovery obligation is also persisted separately.</summary>
 public sealed class JointBatteryExecutionState

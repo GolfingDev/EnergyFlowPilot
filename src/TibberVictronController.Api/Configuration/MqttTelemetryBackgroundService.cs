@@ -52,7 +52,7 @@ public sealed class MqttTelemetryBackgroundService : BackgroundService
             }
             catch (Exception exception)
             {
-                runtimeStatus.MarkFailed($"MQTT-Geräteanbindung konnte nicht initialisiert werden: {exception.Message}");
+                runtimeStatus.MarkFailed($"MQTT-Geräteanbindung konnte nicht initialisiert werden: {exception.Message}", MissingSettingException.KeysOf(exception));
                 logger.LogError(exception, "MQTT-Geräteanbindung konnte nicht initialisiert oder betrieben werden.");
                 await Task.Delay(RetryDelay, stoppingToken);
             }

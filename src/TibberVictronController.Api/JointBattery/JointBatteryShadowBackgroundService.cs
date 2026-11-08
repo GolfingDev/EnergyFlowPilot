@@ -30,7 +30,8 @@ public sealed class JointBatteryShadowBackgroundService(IServiceScopeFactory sco
                 logger.LogWarning("Gemeinsame Akku-Vorschau fehlgeschlagen. Fehlertyp={ErrorType} Detail={Detail}",
                     exception.GetType().Name, detail ?? "-");
                 state.Set(new("Blocked", "Die gemeinsame Vorschau ist wegen fehlender oder ungueltiger Daten gesperrt (" + exception.GetType().Name + ")." +
-                    (detail is null ? "" : " " + detail), DateTimeOffset.UtcNow, state.Current.LocalTelemetry, null));
+                    (detail is null ? "" : " " + detail), DateTimeOffset.UtcNow, state.Current.LocalTelemetry, null)
+                { MissingSettings = MissingSettingException.KeysOf(exception) });
             }
             try { await Task.Delay(TimeSpan.FromSeconds(failures == 0 ? 30 : Math.Min(60, 15 * (1 << failures))), stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }

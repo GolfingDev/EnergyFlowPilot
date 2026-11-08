@@ -87,9 +87,8 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
         var clock = services.GetRequiredService<IUtcClock>();
         var settings = services.GetRequiredService<IControllerSettingStore>();
         var now = clock.UtcNow;
-        async Task<decimal> Setting(string key) => decimal.Parse(
-            (await settings.GetSettingAsync(key, token))?.Value ?? throw new InvalidOperationException("Eine Einstellung fuer die gemeinsame Vorschau fehlt."),
-            CultureInfo.InvariantCulture);
+        async Task<decimal> Setting(string key) => decimal.TryParse((await settings.GetSettingAsync(key, token))?.Value, NumberStyles.Number,
+            CultureInfo.InvariantCulture, out var value) ? value : throw new MissingSettingException("Eine Einstellung fuer die gemeinsame Vorschau fehlt.", key);
 
         // 1. Slow inputs without live battery data. Operator rule: a failing forecast or data source degrades the plan
         //    (substitute + visible warning) but never stops it - see JointPlanInputFallback.

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import SettingQuickFix from './SettingQuickFix.vue';
 
 interface PriceForecastAccuracyRowDto {
   leadDays: number;
@@ -17,6 +18,7 @@ interface PriceForecastAccuracyDto {
   problem: string | null;
   cheapestHours: number;
   rows: PriceForecastAccuracyRowDto[];
+  missingSettings?: string[];
 }
 
 const accuracy = ref<PriceForecastAccuracyDto | null>(null);
@@ -25,7 +27,7 @@ const dateTime = (value: string) => new Date(value).toLocaleString('de-DE', { ti
 const cent = (value: number) => `${value.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ct`;
 const lead = (days: number) => (days === 0 ? 'unter 1 Tag' : days === 1 ? '1 Tag' : `${days} Tage`);
 
-onMounted(async () => {
+async function load(): Promise<void> {
   try {
     const response = await fetch('/api/forecast/price-forecast-accuracy');
     if (!response.ok) throw new Error(`Preisprognose-Vergleich konnte nicht geladen werden (HTTP ${response.status}).`);
@@ -33,7 +35,8 @@ onMounted(async () => {
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : 'Preisprognose-Vergleich konnte nicht geladen werden.';
   }
-});
+}
+onMounted(() => void load());
 </script>
 
 <template>
@@ -49,6 +52,7 @@ onMounted(async () => {
         </template>
       </p>
       <v-alert v-if="accuracy.problem" class="mb-2" type="info" variant="tonal" density="compact">{{ accuracy.problem }}</v-alert>
+      <SettingQuickFix v-if="accuracy.missingSettings?.length" class="mb-2" :keys="accuracy.missingSettings" @saved="load" />
       <p v-if="accuracy.rows.length === 0" class="forecast-accuracy__meta">Noch kein Vergleich: Erst wenn prognostizierte Tage veröffentlicht sind, gibt es Werte (frühestens morgen).</p>
       <v-table v-else density="compact">
         <thead>

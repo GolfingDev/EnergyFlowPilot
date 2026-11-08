@@ -53,7 +53,8 @@ public static class SettingsDtoMapper
             victronMqttRuntimeStatus.LastSuccessfulMessageAtUtc)
         {
             ElectricityPriceProvider = status.ElectricityPriceProvider,
-            DecisionWorkerLastCompletedCycleStartedAtUtc = decisionWorkerRuntimeStatus?.LastCompletedCycleStartedAtUtc
+            DecisionWorkerLastCompletedCycleStartedAtUtc = decisionWorkerRuntimeStatus?.LastCompletedCycleStartedAtUtc,
+            VictronMqttMissingSettings = victronMqttRuntimeStatus.LastErrorMissingSettings
         };
     }
 }

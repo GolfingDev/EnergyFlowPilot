@@ -91,12 +91,21 @@ public sealed class VictronMqttRuntimeStatus
         }
     }
 
-    public void MarkFailed(string errorMessage)
+    public void MarkFailed(string errorMessage, IReadOnlyList<string>? missingSettings = null)
     {
         lock (syncRoot)
         {
             connectionState = "Failed";
             lastErrorMessage = errorMessage;
+            lastErrorMissingSettings = missingSettings ?? [];
         }
     }
+
+    /// <summary>Settings the last error names; the page offers to enter them.</summary>
+    public IReadOnlyList<string> LastErrorMissingSettings
+    {
+        get { lock (syncRoot) return lastErrorMessage is null ? [] : lastErrorMissingSettings; }
+    }
+
+    private IReadOnlyList<string> lastErrorMissingSettings = [];
 }

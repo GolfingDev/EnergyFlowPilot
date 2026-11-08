@@ -134,11 +134,11 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
             // All preconditions are checked before ownership is claimed. A claim creates a recovery obligation
             // whose release needs working hardware access; claiming with known-missing access would lock the
             // site (and the settings needed to repair it) until manual intervention.
-            var (command, blocker) = await PrepareAsync(services, settings, clock, cycle.Token);
+            var (command, blocker, missingSettings) = await PrepareAsync(services, settings, clock, cycle.Token);
             if (command is null)
             {
                 if (pending || ownership.JointControlActive) throw new InvalidOperationException(blocker);
-                state.Set(new("Blocked", blocker!, clock.UtcNow, false));
+                state.Set(new("Blocked", blocker!, clock.UtcNow, false) { MissingSettings = missingSettings });
                 await LogAsync(services, cycle.Token);
                 return;
             }
@@ -152,36 +152,38 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
     }
 
     /// <summary>Checks every start condition without touching hardware and derives the current command.</summary>
-    private async Task<(JointBatteryCommand? Command, string? Blocker)> PrepareAsync(IServiceProvider services,
+    private async Task<(JointBatteryCommand? Command, string? Blocker, IReadOnlyList<string> MissingSettings)> PrepareAsync(IServiceProvider services,
         IControllerSettingStore settings, IUtcClock clock, CancellationToken token)
     {
         async Task<string?> Value(string key) => (await settings.GetSettingAsync(key, token))?.Value;
 
         if (!watchdog.IsSupervised)
-            return (null, "Gemeinsame Hardwareausfuehrung benoetigt den installierten systemd-Watchdog und Ruecknahme-Helfer.");
+            return (null, "Gemeinsame Hardwareausfuehrung benoetigt den installierten systemd-Watchdog und Ruecknahme-Helfer.", []);
         if (!bool.TryParse(await Value(ControllerSettingDefaults.E3dcRscpEnabledKey), out var rscpEnabled) || !rscpEnabled)
-            return (null, "Lokaler E3/DC-Zugang ist deaktiviert.");
+            return (null, "Lokaler E3/DC-Zugang ist deaktiviert.", [ControllerSettingDefaults.E3dcRscpEnabledKey]);
+        var missingAccess = new List<string>();
         foreach (var key in new[] { ControllerSettingDefaults.E3dcRscpHostKey, ControllerSettingDefaults.E3dcRscpPortKey,
             ControllerSettingDefaults.E3dcRscpUserKey, ControllerSettingDefaults.E3dcRscpPasswordKey, ControllerSettingDefaults.E3dcRscpKeyKey })
         {
-            if (string.IsNullOrWhiteSpace(await Value(key)))
-                return (null, "Der lokale E3/DC-Zugang ist nicht vollstaendig konfiguriert.");
+            if (string.IsNullOrWhiteSpace(await Value(key))) missingAccess.Add(key);
         }
+        if (missingAccess.Count > 0) return (null, "Der lokale E3/DC-Zugang ist nicht vollstaendig konfiguriert.", missingAccess);
         if (!string.Equals((await Value(ControllerSettingDefaults.VictronControlModeKey))?.Trim(), "externalEss", StringComparison.OrdinalIgnoreCase))
-            return (null, "Gemeinsame Steuerung benoetigt den eingerichteten External-ESS-Modus.");
+            return (null, "Gemeinsame Steuerung benoetigt den eingerichteten External-ESS-Modus.", [ControllerSettingDefaults.VictronControlModeKey]);
+        var missingLimits = new List<string>();
         foreach (var key in new[] { ControllerSettingDefaults.JointBatteryPhase1LimitKey, ControllerSettingDefaults.JointBatteryPhase2LimitKey,
             ControllerSettingDefaults.JointBatteryPhase3LimitKey, ControllerSettingDefaults.JointBatteryVictronInputLimitKey })
         {
-            if (!decimal.TryParse(await Value(key), NumberStyles.Number, CultureInfo.InvariantCulture, out var limit) || limit <= 0)
-                return (null, "Bestaetigte Anschluss- und Phasengrenzen fehlen.");
+            if (!decimal.TryParse(await Value(key), NumberStyles.Number, CultureInfo.InvariantCulture, out var limit) || limit <= 0) missingLimits.Add(key);
         }
+        if (missingLimits.Count > 0) return (null, "Bestaetigte Anschluss- und Phasengrenzen fehlen.", missingLimits);
 
         // An operator's manual charge replaces the plan; when it ends, this same tick falls back to the plan.
         var manualStore = new JointManualChargeStore(settings, clock);
         if (await manualStore.ReadAsync(token) is { } manual)
         {
             var manualCommand = await PrepareManualChargeAsync(services, manualStore, manual, clock, token);
-            if (manualCommand is not null) return (manualCommand, null);
+            if (manualCommand is not null) return (manualCommand, null, []);
         }
 
         var runtime = services.GetService<JointBatteryRuntimeState>()?.Current;
@@ -195,14 +197,14 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
             if (JointBatterySlotCommitment.UpdatedTargets(committed, plan, now) is { } updated)
             {
                 state.CommittedSlot = updated;
-                return (CommandFrom(updated), null);
+                return (CommandFrom(updated), null, []);
             }
             if (JointBatterySlotCommitment.NetDemandReplacement(committed, plan, now) is { } replacement)
             {
                 state.CommittedSlot = replacement;
                 await SavePlanEventAsync(services, "PV-Annahme durch aktuellen Nettobedarf ersetzt; wirtschaftlich geplante Akku-Unterstuetzung freigegeben.",
                     new { committed.TimeSlot, Previous = committed.Targets, replacement.Targets, replacement.Reason }, token);
-                return (CommandFrom(replacement), null);
+                return (CommandFrom(replacement), null, []);
             }
             if (JointBatterySlotCommitment.PlanDeviates(committed, plan) && deviationLoggedFor != committed.TimeSlot.StartsAtUtc)
             {
@@ -211,7 +213,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
                 await SavePlanEventAsync(services, "Neuer Plan weicht fuer die laufende Viertelstunde ab; die festgeschriebene Grundaktion bleibt bestehen.",
                     new { committed.TimeSlot, Committed = committed.Targets, NewPlan = fresh.Targets, NewReason = fresh.Reason }, token);
             }
-            return (CommandFrom(committed), null);
+            return (CommandFrom(committed), null, []);
         }
 
         // Operator rule: missing forecasts or data must never leave the current quarter hour without an action. Without a
@@ -234,7 +236,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
                 await services.GetRequiredService<IOperationalEventRepository>().SaveEventAsync(new OperationalEvent(Guid.NewGuid(), clock.UtcNow,
                     "JointBatteryFallback", "Warning", "Notbetrieb Eigenverbrauch ohne gueltigen Plan.", JsonSerializer.Serialize(new { Cause = fallbackCause })), token);
             }
-            return (SelfConsumption(clock, fallbackCause), null);
+            return (SelfConsumption(clock, fallbackCause), null, []);
         }
         fallbackLoggedCause = null;
         var planned = slot!;
@@ -243,7 +245,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
         state.CommittedSlot = planned;
         await SavePlanEventAsync(services, "Planentscheidung fuer die Viertelstunde festgeschrieben.",
             new { planned.TimeSlot, planned.Targets, planned.ChargeSource, planned.PricePerKwh, planned.Reason }, token);
-        return (CommandFrom(planned), null);
+        return (CommandFrom(planned), null, []);
     }
 
     /// <summary>

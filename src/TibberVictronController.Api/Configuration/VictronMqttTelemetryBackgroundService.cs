@@ -1,3 +1,4 @@
+using TibberVictronController.Business.Models;
 using MQTTnet;
 using MQTTnet.Protocol;
 using TibberVictronController.Dal.Victron;
@@ -41,7 +42,7 @@ public sealed class VictronMqttTelemetryBackgroundService : BackgroundService
             }
             catch (Exception exception)
             {
-                runtimeStatus.MarkFailed($"Victron MQTT konnte nicht initialisiert werden: {exception.Message}");
+                runtimeStatus.MarkFailed($"Victron MQTT konnte nicht initialisiert werden: {exception.Message}", MissingSettingException.KeysOf(exception));
                 logger.LogError(exception, "Victron MQTT konnte nicht initialisiert oder betrieben werden.");
                 await Task.Delay(RetryDelay, stoppingToken);
             }

@@ -62,6 +62,19 @@ public sealed class AutomationStatusBuilderTests
     }
 
     [Fact]
+    public void MissingSettingsOfBatteryAndCarReachTheAutomationList()
+    {
+        // Operator 2026-11-08: a missing setting can be entered where the automation reports it.
+        var battery = new BatteryAutomationInput(null, false, true, "Blocked") { MissingSettings = ["victron.controlMode"] };
+        var ev = new EvAutomationInput(true, EvChargingMode.FullPowerFallback, null, "Kein Ladeplan.", null, null) { MissingSettings = ["ev.car.minimumSocPercent"] };
+
+        var list = AutomationStatusBuilder.Build(new AutomationStatusInput(NowUtc, battery, ev, null));
+
+        Assert.Equal(["victron.controlMode"], list[0].MissingSettings);
+        Assert.Equal(["ev.car.minimumSocPercent"], list[1].MissingSettings);
+    }
+
+    [Fact]
     public void HotWaterAnnouncesWindowStartOrEndDependingOnState()
     {
         var plan = new WeishauptHotWaterPricePlan(NowUtc.AddHours(6), NowUtc.AddHours(1), NowUtc.AddHours(2), 0.2m, 0.35m, 0.1m, 6m, 60, "Günstiges Fenster vor dem Abendbedarf.");

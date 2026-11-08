@@ -120,7 +120,7 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
             }
             catch (Exception exception)
             {
-                runtimeStatus.MarkFailed($"Victron MQTT konnte nicht betrieben werden: {exception.Message}");
+                runtimeStatus.MarkFailed($"Victron MQTT konnte nicht betrieben werden: {exception.Message}", MissingSettingException.KeysOf(exception));
                 logger.LogError(exception, "Victron MQTT konnte nicht initialisiert oder betrieben werden.");
                 await DisconnectClientAsync(CancellationToken.None);
                 await Task.Delay(RetryDelay, stoppingToken);

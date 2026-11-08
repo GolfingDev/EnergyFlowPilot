@@ -58,6 +58,11 @@ const jointBatteryShadow = ref<JointBatteryShadowDto | null>(null);
 const isJointRecoveryBusy = ref(false);
 const isJointManualChargeBusy = ref(false);
 const loadErrors = ref<DashboardLoadError[]>([]);
+// A Victron MQTT error that names missing settings is shown with the fields to enter them.
+const panelErrors = computed<DashboardLoadError[]>(() => status.value?.victronMqttLastError && status.value.victronMqttMissingSettings?.length
+  ? [...loadErrors.value, { source: 'Victron MQTT', message: status.value.victronMqttLastError, details: status.value.victronMqttLastError,
+      missingSettings: status.value.victronMqttMissingSettings }]
+  : loadErrors.value);
 const isLoading = ref(false);
 const isManualChargeBusy = ref(false);
 const manualChargeDurationMinutes = ref(30);
@@ -1033,7 +1038,7 @@ onBeforeUnmount(() => {
     <DashboardHeader v-if="!usesControlCenterDashboard && !usesMissionDashboard && !usesLeitstandDashboard && !usesOrbitDashboard && !usesWorkspaceDashboard && !usesHorizonDashboard" :status="status" :is-loading="isLoading" :auto-refresh-label="autoRefreshLabel"
       @refresh="loadDashboard" />
 
-    <DashboardErrorPanels :errors="loadErrors" @retry="loadDashboard" />
+    <DashboardErrorPanels :errors="panelErrors" @retry="loadDashboard" />
 
     <LeitstandDashboard
       v-if="usesLeitstandDashboard"

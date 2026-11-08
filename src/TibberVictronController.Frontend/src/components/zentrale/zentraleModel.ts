@@ -117,6 +117,7 @@ export interface AutomationItem {
   settingInverted: boolean;
   critical: boolean;
   problem?: string | null;
+  missingSettings?: string[];
 }
 
 const automationLook: Record<AutomationStatusDto['id'], { target: AutomationItem['id']; icon: string; color: string; settingLabel: string }> = {
@@ -134,7 +135,8 @@ export function automations(data: ZentraleData): AutomationItem[] {
     return {
       id: look.target, title: dto.title, icon: look.icon, color: look.color, enabled: dto.enabled, stateLabel: dto.state, action: dto.action,
       trigger: dto.trigger, devices: dto.devices, until: dto.nextChangeAtUtc ? `${dto.nextChange ?? 'Nächster Wechsel'}: ${when(dto.nextChangeAtUtc)}` : null,
-      ruleId: dto.ruleId, settingKey: dto.settingKey, settingLabel: look.settingLabel, settingInverted: dto.settingInverted, critical: true, problem: dto.problem
+      ruleId: dto.ruleId, settingKey: dto.settingKey, settingLabel: look.settingLabel, settingInverted: dto.settingInverted, critical: true, problem: dto.problem,
+      missingSettings: dto.missingSettings
     };
   });
 }

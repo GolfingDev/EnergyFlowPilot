@@ -37,7 +37,10 @@ public static class JointBatteryEndpoints
                 plan?.Slots.Select(ToDto).ToArray() ?? [],
                 new(execution.Status, execution.UpdatedAtUtc, execution.OwnsControl, execution.VictronTargetWatts, execution.E3dcTargetWatts,
                     execution.VictronMeasuredWatts, execution.E3dcMeasuredWatts, execution.ValidUntilUtc), recoveryPending, manualChargeStatus,
-                JointBatterySlotCommitment.Active(executionState.CommittedSlot, clock.UtcNow) is { } committed ? ToDto(committed) : null));
+                JointBatterySlotCommitment.Active(executionState.CommittedSlot, clock.UtcNow) is { } committed ? ToDto(committed) : null)
+            {
+                MissingSettings = executionStale || expired && !live ? [] : live ? execution.MissingSettings : current.MissingSettings
+            });
         }).WithTags("JointBattery");
 
         endpoints.MapPost("/api/joint-battery/manual-charge", async Task<Results<Ok<JointManualChargeDto>, Conflict<JointBatteryMessageDto>>> (
@@ -75,7 +78,11 @@ public static class JointBatteryEndpoints
 public sealed record JointBatteryShadowDto(bool IsShadow, string Status, string Message, DateTimeOffset UpdatedAtUtc,
     E3dcLocalDto? LocalTelemetry, DateTimeOffset? CalculatedAtUtc, int? MaximumGridImportWatts,
     IReadOnlyList<string> Warnings, IReadOnlyList<JointBatteryUnitDto> Batteries, IReadOnlyList<JointBatterySlotDto> Slots, JointBatteryExecutionDto Execution,
-    bool RecoveryPending, JointManualChargeDto ManualCharge, JointBatterySlotDto? CommittedSlot);
+    bool RecoveryPending, JointManualChargeDto ManualCharge, JointBatterySlotDto? CommittedSlot)
+{
+    /// <summary>Settings the preview or the execution is missing; the page offers to enter them.</summary>
+    public IReadOnlyList<string> MissingSettings { get; init; } = [];
+}
 public sealed record JointBatteryMessageDto(string Message);
 public sealed record JointBatteryExecutionDto(string Status, DateTimeOffset UpdatedAtUtc, bool OwnsControl,
     int VictronTargetWatts, int E3dcTargetWatts, int VictronMeasuredWatts, int E3dcMeasuredWatts, DateTimeOffset? ValidUntilUtc);

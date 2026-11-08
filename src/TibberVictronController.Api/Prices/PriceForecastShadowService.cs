@@ -8,6 +8,9 @@ namespace TibberVictronController.Api.Prices;
 public sealed record PriceForecastFetchStatus(DateTimeOffset? LastFetchAtUtc, DateTimeOffset? ForecastUntilUtc, int ForecastQuarters, string? Problem)
 {
     public static readonly PriceForecastFetchStatus None = new(null, null, 0, null);
+
+    /// <summary>Settings the problem names; the page offers to enter them.</summary>
+    public IReadOnlyList<string> MissingSettings { get; init; } = [];
 }
 
 public sealed class PriceForecastShadowState
@@ -28,16 +31,19 @@ public sealed class PriceForecastShadowService(IServiceScopeFactory scopes, Pric
     ILogger<PriceForecastShadowService> logger) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(3);
+    // Without a token the next look comes soon, so a token entered on the page is used without waiting three hours.
+    private static readonly TimeSpan WithoutTokenInterval = TimeSpan.FromMinutes(10);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Let the start-up (database, MQTT) settle first.
         await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
-        using var timer = new PeriodicTimer(Interval);
-        do
+        while (!stoppingToken.IsCancellationRequested)
         {
             await FetchAsync(stoppingToken);
-        } while (await timer.WaitForNextTickAsync(stoppingToken));
+            var withoutToken = state.Status.MissingSettings.Contains(ControllerSettingDefaults.PriceForecastTokenKey);
+            await Task.Delay(withoutToken ? WithoutTokenInterval : Interval, stoppingToken);
+        }
     }
 
     private async Task FetchAsync(CancellationToken cancellationToken)
@@ -49,7 +55,10 @@ public sealed class PriceForecastShadowService(IServiceScopeFactory scopes, Pric
             var points = await scope.ServiceProvider.GetRequiredService<IPriceForecastSource>().GetAsync(cancellationToken);
             if (points is null)
             {
-                state.Set(PriceForecastFetchStatus.None with { Problem = "Kein energyforecast.de-Token eingetragen." });
+                state.Set(PriceForecastFetchStatus.None with
+                {
+                    Problem = "Kein energyforecast.de-Token eingetragen.", MissingSettings = [ControllerSettingDefaults.PriceForecastTokenKey]
+                });
                 return;
             }
 
@@ -64,7 +73,7 @@ public sealed class PriceForecastShadowService(IServiceScopeFactory scopes, Pric
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.LogWarning("Preisprognose nicht abrufbar: {Reason}", exception.Message);
-            state.Set(state.Status with { Problem = exception.Message });
+            state.Set(state.Status with { Problem = exception.Message, MissingSettings = MissingSettingException.KeysOf(exception) });
         }
     }
 }

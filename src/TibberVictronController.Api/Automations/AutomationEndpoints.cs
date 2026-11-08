@@ -20,12 +20,15 @@ public static class AutomationEndpoints
     {
         var automations = await service.GetAsync(cancellationToken);
         return TypedResults.Ok(automations.Select(a => new AutomationStatusDto(a.Id, a.Title, a.Enabled, a.State, a.Action, a.Trigger,
-            a.Devices, a.NextChangeAtUtc, a.NextChange, a.RuleId, a.SettingKey, a.SettingInverted, a.Problem)).ToArray());
+            a.Devices, a.NextChangeAtUtc, a.NextChange, a.RuleId, a.SettingKey, a.SettingInverted, a.Problem) { MissingSettings = a.MissingSettings }).ToArray());
     }
 }
 
 public sealed record AutomationStatusDto(string Id, string Title, bool? Enabled, string State, string Action, string? Trigger,
-    string Devices, DateTimeOffset? NextChangeAtUtc, string? NextChange, string? RuleId, string SettingKey, bool SettingInverted, string? Problem);
+    string Devices, DateTimeOffset? NextChangeAtUtc, string? NextChange, string? RuleId, string SettingKey, bool SettingInverted, string? Problem)
+{
+    public IReadOnlyList<string> MissingSettings { get; init; } = [];
+}
 
 /// <summary>
 /// Collects the states the controller already holds for battery optimisation, car charging and hot water.
@@ -51,14 +54,14 @@ public sealed class AutomationStatusService(IServiceProvider services)
         var execution = services.GetRequiredService<JointBatteryExecutionState>().Current;
         var jointActive = execution.Status is not ("Disabled" or "Shadow");
         var battery = new BatteryAutomationInput(summary, await FlagAsync(settings, ControllerSettingDefaults.VictronDryRunKey, true, cancellationToken),
-            jointActive, jointActive ? execution.Status : null);
+            jointActive, jointActive ? execution.Status : null) { MissingSettings = jointActive ? execution.MissingSettings : [] };
 
         EvAutomationInput? ev = null;
         if (await FlagAsync(settings, ControllerSettingDefaults.EvOcppEnabledKey, false, cancellationToken))
         {
             var control = services.GetRequiredService<EvChargingControlState>().Current;
             ev = new EvAutomationInput(control.Enabled, control.Mode, control.Amps, control.Reason, control.CommandProblem,
-                services.GetRequiredService<EvChargeLoadForecast>().NextPlannedStartUtc(now));
+                services.GetRequiredService<EvChargeLoadForecast>().NextPlannedStartUtc(now)) { MissingSettings = control.MissingSettings };
         }
 
         HotWaterAutomationInput? hotWater = null;

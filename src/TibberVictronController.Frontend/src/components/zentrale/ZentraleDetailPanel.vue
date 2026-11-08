@@ -5,6 +5,7 @@ import { isAdmin } from '../../auth';
 import { expertMode } from '../../uiMode';
 import { leitstandCategoryLabels } from '../leitstand/leitstandTypes';
 import ZentraleBatteryControl from './ZentraleBatteryControl.vue';
+import SettingQuickFix from '../settings/SettingQuickFix.vue';
 import ZentraleEvControl from './ZentraleEvControl.vue';
 import ZentraleHeatPumpDetail from './ZentraleHeatPumpDetail.vue';
 import ZentraleSettingControl from './ZentraleSettingControl.vue';
@@ -115,6 +116,7 @@ const batterySegments = computed(() => plannedActions(data, 12).filter(a => a.ta
             <div v-if="expertMode && automation.ruleId"><dt>Regel</dt><dd><code>{{ automation.ruleId }}</code></dd></div>
             <div v-if="automation.problem"><dt>Problem</dt><dd class="z-note--warning">{{ automation.problem }}</dd></div>
           </dl>
+          <SettingQuickFix v-if="automation.missingSettings?.length" :keys="automation.missingSettings" @saved="data.refreshAll()" />
           <section class="z-block">
             <h3>Warum?</h3>
             <p class="z-note">{{ automation.trigger ?? 'Das Backend liefert für diesen Zustand keine Begründung.' }}</p>

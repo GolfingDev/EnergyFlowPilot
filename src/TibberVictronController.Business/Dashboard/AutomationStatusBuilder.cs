@@ -21,12 +21,21 @@ public sealed record AutomationStatus(
 {
     /// <summary>A command or device problem the user should see next to the automation.</summary>
     public string? Problem { get; init; }
+
+    /// <summary>Settings the automation is missing; the page offers to enter them.</summary>
+    public IReadOnlyList<string> MissingSettings { get; init; } = [];
 }
 
-public sealed record BatteryAutomationInput(DashboardSummary? Summary, bool DryRun, bool JointControlActive, string? JointStatus);
+public sealed record BatteryAutomationInput(DashboardSummary? Summary, bool DryRun, bool JointControlActive, string? JointStatus)
+{
+    public IReadOnlyList<string> MissingSettings { get; init; } = [];
+}
 
 public sealed record EvAutomationInput(bool Enabled, EvChargingMode Mode, double? Amps, string Reason, string? CommandProblem,
-    DateTimeOffset? NextPlannedChargeStartsAtUtc);
+    DateTimeOffset? NextPlannedChargeStartsAtUtc)
+{
+    public IReadOnlyList<string> MissingSettings { get; init; } = [];
+}
 
 public sealed record HotWaterAutomationInput(bool Enabled, bool IsRaised, bool IsSuspended, WeishauptHotWaterPricePlan? Plan);
 
@@ -70,7 +79,8 @@ public static class AutomationStatusBuilder
             overview?.Reason ?? current?.Reason,
             input.JointControlActive ? "Akku 1 (Victron) und Akku 2 (E3/DC)" : "Akku 1 (Victron)",
             overview?.Next?.StartsAtUtc, overview?.Next is { } next ? CategoryLabel(next.Category) : null,
-            current?.RuleId, ControllerSettingDefaults.VictronDryRunKey, SettingInverted: true);
+            current?.RuleId, ControllerSettingDefaults.VictronDryRunKey, SettingInverted: true)
+        { MissingSettings = input.MissingSettings };
     }
 
     private static AutomationStatus Ev(EvAutomationInput input)
@@ -82,7 +92,7 @@ public static class AutomationStatusBuilder
             input.Reason, "Wallbox und E-Auto",
             input.NextPlannedChargeStartsAtUtc, input.NextPlannedChargeStartsAtUtc is null ? null : "Geplante Ladung",
             null, ControllerSettingDefaults.EvChargingControlEnabledKey, SettingInverted: false)
-        { Problem = input.CommandProblem };
+        { Problem = input.CommandProblem, MissingSettings = input.MissingSettings };
     }
 
     private static AutomationStatus HotWater(HotWaterAutomationInput input, DateTimeOffset now)

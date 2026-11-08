@@ -25,6 +25,9 @@ public sealed record ControllerStatusResponseDto(
 
     /// <summary>Start of the last completed decision cycle; lets the UI confirm that a saved setting was used.</summary>
     public DateTimeOffset? DecisionWorkerLastCompletedCycleStartedAtUtc { get; init; }
+
+    /// <summary>Settings the last Victron MQTT error names; the page offers to enter them.</summary>
+    public IReadOnlyList<string> VictronMqttMissingSettings { get; init; } = [];
 }
 
 public sealed record SettingsErrorDto(string Message);

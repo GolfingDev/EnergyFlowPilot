@@ -9,6 +9,7 @@ export interface ControllerStatusResponseDto {
   victronMqttLastError: string | null;
   victronMqttLastSuccessfulMessageAtUtc: string | null;
   decisionWorkerLastCompletedCycleStartedAtUtc?: string | null;
+  victronMqttMissingSettings?: string[];
 }
 
 export interface CurrentBatteryDecisionReasonDto {
@@ -204,6 +205,8 @@ export interface JointBatteryShadowDto {
   committedSlot: JointBatterySlotDto | null;
   status: string;
   message: string;
+  /** Settings the preview or execution is missing (SettingQuickFix). */
+  missingSettings?: string[];
   updatedAtUtc: string;
   calculatedAtUtc: string | null;
   maximumGridImportWatts: number | null;

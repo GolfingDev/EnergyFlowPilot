@@ -4,6 +4,7 @@ import { expertMode } from '../uiMode';
 import DynamicTariffComparison from '../components/settings/DynamicTariffComparison.vue';
 import PvForecastCorrection from '../components/settings/PvForecastCorrection.vue';
 import PriceForecastAccuracy from '../components/settings/PriceForecastAccuracy.vue';
+import SettingQuickFix from '../components/settings/SettingQuickFix.vue';
 import SiteAddressCard from '../components/settings/SiteAddressCard.vue';
 import { useRoute } from 'vue-router';
 import { isEverydaySetting, usesCents, settingInputValue, settingStoredValue, secretPresentation, settingUpdatePayload, numericControlErrors } from './settingsPresentation';
@@ -16,6 +17,7 @@ interface ControllerStatusResponseDto {
   generatedAtUtc: string;
   victronMqttStatus: string | null;
   victronMqttLastError: string | null;
+  victronMqttMissingSettings?: string[];
   victronMqttLastSuccessfulMessageAtUtc: string | null;
 }
 
@@ -989,6 +991,7 @@ watch(showAdvanced, ensureActiveSection);
 
     <v-alert v-if="status?.victronMqttLastError" class="mb-4" type="warning" variant="tonal">
       {{ status.victronMqttLastError }}
+      <SettingQuickFix v-if="status.victronMqttMissingSettings?.length" :keys="status.victronMqttMissingSettings" @saved="loadPageData" />
     </v-alert>
 
     <v-alert v-if="saveSuccess" class="mb-4" type="success" variant="tonal">

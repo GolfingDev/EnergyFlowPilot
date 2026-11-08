@@ -89,6 +89,7 @@ export interface AutomationStatusDto {
   settingKey: string;
   settingInverted: boolean;
   problem: string | null;
+  missingSettings?: string[];
 }
 
 /** What a click in the flow, a KPI card or a list opens in the side panel. */

@@ -24,7 +24,10 @@ public static class PriceForecastEndpoints
         return TypedResults.Ok(new PriceForecastAccuracyDto(status.LastFetchAtUtc, status.ForecastUntilUtc, status.ForecastQuarters, status.Problem,
             PriceForecastAccuracy.CheapestQuarters / 4,
             rows.Select(row => new PriceForecastAccuracyRowDto(row.LeadDays, row.Quarters, row.Days, Math.Round(row.MeanAbsoluteErrorCent, 2),
-                Math.Round(row.BiasCent, 2), row.CheapestHoursExtraCostCent is { } extra ? Math.Round(extra, 2) : null)).ToArray()));
+                Math.Round(row.BiasCent, 2), row.CheapestHoursExtraCostCent is { } extra ? Math.Round(extra, 2) : null)).ToArray())
+        {
+            MissingSettings = status.MissingSettings
+        });
     }
 }
 
@@ -37,4 +40,7 @@ public sealed record PriceForecastAccuracyDto(
     int ForecastQuarters,
     string? Problem,
     int CheapestHours,
-    IReadOnlyList<PriceForecastAccuracyRowDto> Rows);
+    IReadOnlyList<PriceForecastAccuracyRowDto> Rows)
+{
+    public IReadOnlyList<string> MissingSettings { get; init; } = [];
+}
