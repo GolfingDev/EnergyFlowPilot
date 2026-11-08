@@ -1,6 +1,7 @@
 using TibberVictronController.Api.Automations;
 using TibberVictronController.Api.Push;
 using TibberVictronController.Api.Prices;
+using TibberVictronController.Api.Energy;
 using TibberVictronController.Api.Authentication;
 using TibberVictronController.Api.Configuration;
 using TibberVictronController.Api.Dashboard;
@@ -66,6 +67,7 @@ app.MapSiteEndpoints();
 app.MapPushEndpoints();
 app.MapPvForecastCorrectionEndpoints();
 app.MapPriceForecastEndpoints();
+app.MapEnergyCostEndpoints();
 
 app.Run();
 

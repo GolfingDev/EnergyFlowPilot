@@ -31,3 +31,38 @@ Every UTC quarter hour is stored permanently in `EnergyQuarterHours`, so evaluat
 - **Background job** (`EnergyHistoryBackgroundService`): once a backfill from the oldest decision log entry, one UTC
   day at a time with 5 s pauses (progress in `energyHistory.backfilledThroughUtc`), then every 15 minutes the last three
   hours and once per day the previous day.
+
+## Tariff periods (step 2)
+
+`electricityTariff.periods` (JSON list, edited on the page, admins only): valid from a local day until the next
+period, supplier, monthly base fee (everything billed per month: supplier, grid, metering) and feed-in compensation
+per kWh. A missing value means unknown and is shown as "nicht hinterlegt", never as 0 EUR; nothing is applied silently
+to earlier periods.
+
+- **Base fee:** the monthly fee spread evenly over the days of that month, and per day over its real length
+  (23 or 25 hours on daylight saving days); a running period gets the elapsed share.
+- **Feed-in:** measured export x the compensation of the period valid on the local day of the quarter hour.
+- **Total after compensation** = import cost + base fee - feed-in compensation; complete only when all parts are known.
+
+## Periods, key figures and comparison (step 3)
+
+`EnergyCostReportBuilder` (Business) builds the report; the endpoints only map DTOs.
+
+- **Periods:** day, week (Monday to Sunday), month, quarter, year and free (at most three years), in local calendar
+  days of Europe/Berlin; UTC bounds via the time zone, so DST days have 23 or 25 hours.
+- **Coverage:** shares of the evaluated time with measured grid (and balance). A day or window is "measured" from 95 %.
+  Import cost is complete only with sufficient grid coverage and a price for every imported kWh, otherwise it is
+  marked as partial cost.
+- **Daily averages** use only whole days: house consumption over days with 95 % balance coverage, import energy over
+  days with 95 % grid coverage, import cost over days with complete cost. Excluded days are listed with the reason.
+- **Weighted purchase price** = import cost / priced import energy.
+- **Comparison** with the previous period of the same kind; for a running period the same elapsed part (same local
+  wall-clock offset from the start, e.g. the 1st to the 8th, 16:00). A change is only shown when both sides are
+  sufficiently measured.
+- **Buckets:** time series per quarter hour (one day), hour (up to a week), day (up to 400 days) or month; cost bars
+  and table per hour (one day), day (up to 62 days), month (up to two years) or quarter.
+- **CSV:** the table rows plus a sum row, semicolon separated with decimal comma, units in the header, empty cells for
+  unknown values, coverage per row.
+- **API:** `GET /api/energy-costs/report?kind=day|week|month|quarter|year&date=YYYY-MM-DD` or
+  `kind=custom&from=...&to=...`, `GET /api/energy-costs/report.csv` (same parameters), `GET /api/energy-costs/day?date=...`
+  (quarter hours of one day), `GET/PUT /api/energy-costs/tariffs` (PUT admins only).

@@ -133,6 +133,9 @@ public static class ControllerServiceCollectionExtensions
             provider.GetRequiredService<IEnergyMeasurementReader>(), provider.GetRequiredService<IEnergyQuarterHourRepository>(),
             provider.GetRequiredService<IUtcClock>())));
         services.AddHostedService<EnergyHistoryBackgroundService>();
+        services.AddScoped(provider => new EnergyCostReportService(new EnergyCostReportDependencies(
+            provider.GetRequiredService<IEnergyQuarterHourRepository>(), provider.GetRequiredService<IControllerSettingStore>(),
+            provider.GetRequiredService<IUtcClock>())));
         services.AddSingleton<PvForecastLearning>();
         services.AddHttpClient<IRoutePlanner, OsmRoutePlanner>(client => client.Timeout = TimeSpan.FromSeconds(20));
         services.AddHttpClient<IPlaceSearch, PhotonPlaceSearch>(client => client.Timeout = TimeSpan.FromSeconds(8));

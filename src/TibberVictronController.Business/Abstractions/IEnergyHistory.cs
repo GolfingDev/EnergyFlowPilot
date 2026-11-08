@@ -18,6 +18,9 @@ public interface IEnergyQuarterHourRepository
 {
     Task<IReadOnlyList<EnergyQuarterHour>> GetAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken = default);
 
+    /// <summary>Start of the first quarter hour with a measured house balance; null before the first one.</summary>
+    Task<DateTimeOffset?> GetFirstBalanceSlotAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Inserts or replaces the given quarter hours (by slot start).</summary>
     Task SaveAsync(IReadOnlyCollection<EnergyQuarterHour> quarterHours, CancellationToken cancellationToken = default);
 }

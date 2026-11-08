@@ -57,6 +57,8 @@ public sealed class ControllerSettingsService : IControllerSettingsService
             throw new ArgumentException("Der Wiederherstellungsstatus wird ausschliesslich von der gemeinsamen Steuerung gesetzt.", nameof(key));
         if (definition.Key.StartsWith(ControllerSettingDefaults.JointManualChargePrefix, StringComparison.Ordinal))
             throw new ArgumentException("Die manuelle Ladung beider Akkus wird ueber das Dashboard gestartet und beendet.", nameof(key));
+        if (definition.Key == ControllerSettingDefaults.ElectricityTariffPeriodsKey)
+            throw new ArgumentException("Die Tarifzeitraeume werden auf der Seite Stromkosten & Verbrauch gepflegt.", nameof(key));
         if (definition.Key.StartsWith(ControllerSettingDefaults.EnergyHistoryPrefix, StringComparison.Ordinal))
             throw new ArgumentException("Der Fortschritt des Energieverlaufs wird vom Controller selbst gefuehrt.", nameof(key));
         if (definition.Key.StartsWith(ControllerSettingDefaults.BmwCarDataSessionPrefix, StringComparison.Ordinal))

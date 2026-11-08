@@ -69,6 +69,10 @@ public sealed class EfEnergyQuarterHourRepository(ControllerDbContext dbContext)
         return entities.Select(ToModel).ToArray();
     }
 
+    public async Task<DateTimeOffset?> GetFirstBalanceSlotAsync(CancellationToken cancellationToken = default) =>
+        await dbContext.EnergyQuarterHours.AsNoTracking().Where(entity => entity.BalanceCoveredSeconds > 0).OrderBy(entity => entity.SlotStartUtc)
+            .Select(entity => (DateTimeOffset?)entity.SlotStartUtc).FirstOrDefaultAsync(cancellationToken);
+
     public async Task SaveAsync(IReadOnlyCollection<EnergyQuarterHour> quarterHours, CancellationToken cancellationToken = default)
     {
         if (quarterHours.Count == 0) return;

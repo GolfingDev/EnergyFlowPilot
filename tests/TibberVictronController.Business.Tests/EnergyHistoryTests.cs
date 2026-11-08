@@ -151,6 +151,9 @@ public sealed class EnergyHistoryTests
         public Task<IReadOnlyList<EnergyQuarterHour>> GetAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<EnergyQuarterHour>>(Stored.Values.Where(slot => slot.SlotStartUtc >= fromUtc && slot.SlotStartUtc < toUtc).ToArray());
 
+        public Task<DateTimeOffset?> GetFirstBalanceSlotAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Stored.Values.Where(slot => slot.BalanceCoveredSeconds > 0).Select(slot => (DateTimeOffset?)slot.SlotStartUtc).Min());
+
         public Task SaveAsync(IReadOnlyCollection<EnergyQuarterHour> quarterHours, CancellationToken cancellationToken = default)
         {
             foreach (var slot in quarterHours) Stored[slot.SlotStartUtc] = slot;
