@@ -1,6 +1,8 @@
 using TibberVictronController.Dal.WebPush;
 using TibberVictronController.Api.Push;
 using TibberVictronController.Api.Prices;
+using TibberVictronController.Api.Energy;
+using TibberVictronController.Business.Energy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using TibberVictronController.Api.JointBattery;
@@ -125,6 +127,12 @@ public static class ControllerServiceCollectionExtensions
         services.AddHttpClient<IPriceForecastSource, EnergyForecastClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddSingleton<PriceForecastShadowState>();
         services.AddHostedService<PriceForecastShadowService>();
+        services.AddScoped<IEnergyMeasurementReader, EfEnergyMeasurementReader>();
+        services.AddScoped<IEnergyQuarterHourRepository, EfEnergyQuarterHourRepository>();
+        services.AddScoped(provider => new EnergyHistoryService(new EnergyHistoryDependencies(
+            provider.GetRequiredService<IEnergyMeasurementReader>(), provider.GetRequiredService<IEnergyQuarterHourRepository>(),
+            provider.GetRequiredService<IUtcClock>())));
+        services.AddHostedService<EnergyHistoryBackgroundService>();
         services.AddSingleton<PvForecastLearning>();
         services.AddHttpClient<IRoutePlanner, OsmRoutePlanner>(client => client.Timeout = TimeSpan.FromSeconds(20));
         services.AddHttpClient<IPlaceSearch, PhotonPlaceSearch>(client => client.Timeout = TimeSpan.FromSeconds(8));

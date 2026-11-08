@@ -145,6 +145,10 @@ public static class ControllerSettingDefaults
     public const string TibberAccessTokenKey = "tibber.accessToken";
     // energyforecast.de: exchange price forecast beyond the auction, for now only measured in the shadow (2026-11-06).
     public const string PriceForecastTokenKey = "priceForecast.energyForecast.token";
+    // Internal progress of the energy history backfill (UTC day up to which the history is calculated).
+    public const string EnergyHistoryPrefix = "energyHistory.";
+    public const string EnergyHistoryBackfilledThroughKey = EnergyHistoryPrefix + "backfilledThroughUtc";
+    public const string EnergyHistoryNotStarted = "none";
     public const string MqttHostKey = "mqtt.host";
     public const string MqttPortKey = "mqtt.port";
     public const string MqttUsernameKey = "mqtt.username";
@@ -320,6 +324,7 @@ public static class ControllerSettingDefaults
         new(TibberHomeSelectionKey, "first", ControllerSettingSensitivity.Normal),
         new(TibberAccessTokenKey, null, ControllerSettingSensitivity.Sensitive),
         new(PriceForecastTokenKey, null, ControllerSettingSensitivity.Sensitive),
+        new(EnergyHistoryBackfilledThroughKey, EnergyHistoryNotStarted, ControllerSettingSensitivity.Normal),
         new(MqttHostKey, "localhost", ControllerSettingSensitivity.Normal),
         new(MqttPortKey, "1883", ControllerSettingSensitivity.Normal),
         new(MqttUsernameKey, null, ControllerSettingSensitivity.Sensitive),

@@ -133,7 +133,7 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
     {
         var databaseCreator = dbContext.GetService<IRelationalDatabaseCreator>();
 
-        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions", "EvTrips", "PvForecastSnapshots", "CarSamples", "UserCalendars", "WebPushSubscriptions", "WebPushKeys", "PriceForecastSnapshots" })
+        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions", "EvTrips", "PvForecastSnapshots", "CarSamples", "UserCalendars", "WebPushSubscriptions", "WebPushKeys", "PriceForecastSnapshots", "EnergyQuarterHours" })
         {
             if (await databaseCreator.HasTablesAsync(cancellationToken) &&
                 await TableExistsAsync(tableName, cancellationToken))
@@ -295,6 +295,31 @@ CREATE TABLE IF NOT EXISTS "UserCalendars" (
 );
 """;
         }
+        if (tableName == "EnergyQuarterHours")
+        {
+            return """
+CREATE TABLE IF NOT EXISTS "EnergyQuarterHours" (
+    "SlotStartUtc" INTEGER NOT NULL CONSTRAINT "PK_EnergyQuarterHours" PRIMARY KEY,
+    "GridSource" TEXT NOT NULL,
+    "GridCoveredSeconds" INTEGER NOT NULL,
+    "GridImportKwh" REAL NOT NULL,
+    "GridExportKwh" REAL NOT NULL,
+    "BalanceCoveredSeconds" INTEGER NOT NULL,
+    "HouseConsumptionKwh" REAL NULL,
+    "PvProductionKwh" REAL NULL,
+    "PrimaryBatteryChargeKwh" REAL NULL,
+    "PrimaryBatteryDischargeKwh" REAL NULL,
+    "SupplementaryBatteryChargeKwh" REAL NULL,
+    "SupplementaryBatteryDischargeKwh" REAL NULL,
+    "EvCoveredSeconds" INTEGER NOT NULL,
+    "EvChargingKwh" REAL NULL,
+    "PriceCoveredSeconds" INTEGER NOT NULL,
+    "PricePerKwh" TEXT NULL,
+    "ComputedAtUtc" INTEGER NOT NULL
+);
+""";
+        }
+
         if (tableName == "PriceForecastSnapshots")
         {
             return """

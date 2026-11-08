@@ -50,6 +50,8 @@ public sealed class ControllerDbContext : DbContext
 
     public DbSet<PriceForecastSnapshotEntity> PriceForecastSnapshots => Set<PriceForecastSnapshotEntity>();
 
+    public DbSet<EnergyQuarterHourEntity> EnergyQuarterHours => Set<EnergyQuarterHourEntity>();
+
     public DbSet<UserCalendarEntity> UserCalendars => Set<UserCalendarEntity>();
 
     public DbSet<WebPushSubscriptionEntity> WebPushSubscriptions => Set<WebPushSubscriptionEntity>();
@@ -103,6 +105,14 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(calendar => calendar.Name).HasMaxLength(200);
             entity.Property(calendar => calendar.Mailbox).HasMaxLength(254);
             entity.Property(calendar => calendar.ConnectedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+        });
+        modelBuilder.Entity<EnergyQuarterHourEntity>(entity =>
+        {
+            entity.ToTable("EnergyQuarterHours");
+            entity.HasKey(slot => slot.SlotStartUtc);
+            entity.Property(slot => slot.SlotStartUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(slot => slot.ComputedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(slot => slot.GridSource).HasMaxLength(16);
         });
         modelBuilder.Entity<PriceForecastSnapshotEntity>(entity =>
         {
