@@ -42,6 +42,7 @@ await InitializeDatabaseAsync(app);
 
 app.UseOcppPortIsolation();
 app.UseControllerAuthentication();
+app.UseMiddleware<MissingSettingMiddleware>();
 app.MapAuthEndpoints();
 app.MapHealthEndpoints();
 app.MapSettingsEndpoints();

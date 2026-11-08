@@ -1,3 +1,4 @@
+using TibberVictronController.Business.Models;
 using Microsoft.AspNetCore.Mvc;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Dal.Weather;
@@ -61,7 +62,7 @@ public static class ForecastEndpoints
         }
         catch (InvalidOperationException exception)
         {
-            return TypedResults.BadRequest(new ForecastErrorDto(exception.Message));
+            return TypedResults.BadRequest(new ForecastErrorDto(exception.Message) { MissingSettings = MissingSettingException.KeysOf(exception) });
         }
         catch (ArgumentException exception)
         {

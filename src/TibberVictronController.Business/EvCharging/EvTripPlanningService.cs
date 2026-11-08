@@ -237,6 +237,6 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
         var value = (await dependencies.Settings.GetSettingAsync(key, cancellationToken))?.Value;
         return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
             ? number
-            : throw new InvalidOperationException($"Die Einstellung {key} fehlt oder ist keine Zahl.");
+            : throw new MissingSettingException($"Die Einstellung {key} fehlt oder ist keine Zahl.", key);
     }
 }

@@ -60,10 +60,11 @@ public sealed class BatteryForecastServiceTests
             new FakeBatteryConfigurationProvider(),
             new FakeControllerSettingStore());
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<MissingSettingException>(
             () => service.CalculateForecastAsync(ForecastStartsAtUtc, ForecastEndsAtUtc));
 
         Assert.Contains("Die Einspeiseverguetung ist nicht konfiguriert.", exception.Message);
+        Assert.Equal([ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey], exception.SettingKeys);
     }
 
     [Fact]
@@ -78,10 +79,11 @@ public sealed class BatteryForecastServiceTests
             new FakeBatteryConfigurationProvider(),
             settingsStore);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<MissingSettingException>(
             () => service.CalculateForecastAsync(ForecastStartsAtUtc, ForecastEndsAtUtc));
 
         Assert.Contains("Die Einspeiseverguetung muss als Dezimalzahl konfiguriert sein.", exception.Message);
+        Assert.Equal([ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey], exception.SettingKeys);
     }
 
     [Fact]

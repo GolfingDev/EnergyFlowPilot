@@ -205,12 +205,12 @@ public sealed class BatteryForecastService : IBatteryForecastService
 
         if (setting is null || !setting.IsConfigured)
         {
-            throw new InvalidOperationException("Die Einspeiseverguetung ist nicht konfiguriert.");
+            throw new MissingSettingException("Die Einspeiseverguetung ist nicht konfiguriert.", ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey);
         }
 
         if (!decimal.TryParse(setting.Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var feedInCompensationPricePerKwh))
         {
-            throw new InvalidOperationException("Die Einspeiseverguetung muss als Dezimalzahl konfiguriert sein.");
+            throw new MissingSettingException("Die Einspeiseverguetung muss als Dezimalzahl konfiguriert sein.", ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey);
         }
 
         if (feedInCompensationPricePerKwh < 0m)

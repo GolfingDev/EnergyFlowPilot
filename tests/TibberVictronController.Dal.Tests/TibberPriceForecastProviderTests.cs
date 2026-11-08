@@ -96,10 +96,11 @@ public sealed class TibberPriceForecastProviderTests
         var provider = new TibberPriceForecastProvider(httpClient, settingsStore);
         var startsAtUtc = new DateTimeOffset(2026, 5, 1, 8, 0, 0, TimeSpan.Zero);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<MissingSettingException>(
             () => provider.GetPriceForecastAsync(startsAtUtc, startsAtUtc.AddMinutes(15)));
 
         Assert.Contains("Der Tibber Access Token ist nicht konfiguriert.", exception.Message);
+        Assert.Equal([ControllerSettingDefaults.TibberAccessTokenKey], exception.SettingKeys);
     }
 
     [Fact]

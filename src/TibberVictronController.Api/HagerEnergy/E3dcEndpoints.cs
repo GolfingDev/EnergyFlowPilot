@@ -1,3 +1,4 @@
+using TibberVictronController.Api.Configuration;
 using TibberVictronController.Dal.HagerEnergy;
 
 namespace TibberVictronController.Api.HagerEnergy;
@@ -70,7 +71,7 @@ public static class E3dcEndpoints
         }
         catch (HagerEnergyApiException exception)
         {
-            return TypedResults.Problem(exception.Message, statusCode: 502);
+            return ApiErrors.From(exception, 502);
         }
     }
 }

@@ -44,7 +44,7 @@ public sealed class DatabaseHagerEnergySettingsProvider
 
         if (string.IsNullOrWhiteSpace(value))
         {
-            throw new InvalidOperationException(missingMessage);
+            throw new MissingSettingException(missingMessage, key);
         }
 
         return value;

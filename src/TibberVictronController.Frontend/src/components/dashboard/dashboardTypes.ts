@@ -156,9 +156,12 @@ export interface DashboardLoadError {
   source: string;
   message: string;
   details: string;
+  /** Setting keys that would fix the error; the error panel offers to enter them. */
+  missingSettings?: string[];
 }
 
 export interface ApiErrorDto {
+  missingSettings?: string[];
   message?: string;
   Message?: string;
   exceptionMessage?: string;

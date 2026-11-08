@@ -98,7 +98,7 @@ public sealed class DatabaseBatteryConfigurationProvider : IBatteryConfiguration
 
         if (!decimal.TryParse(settingValue, NumberStyles.Number, CultureInfo.InvariantCulture, out var value))
         {
-            throw new InvalidOperationException(invalidMessage);
+            throw new MissingSettingException(invalidMessage, settingKey);
         }
 
         return value;
@@ -114,7 +114,7 @@ public sealed class DatabaseBatteryConfigurationProvider : IBatteryConfiguration
 
         if (!int.TryParse(settingValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
         {
-            throw new InvalidOperationException(invalidMessage);
+            throw new MissingSettingException(invalidMessage, settingKey);
         }
 
         return value;
@@ -129,7 +129,7 @@ public sealed class DatabaseBatteryConfigurationProvider : IBatteryConfiguration
 
         if (setting is null || !setting.IsConfigured)
         {
-            throw new InvalidOperationException(missingMessage);
+            throw new MissingSettingException(missingMessage, settingKey);
         }
 
         return setting.Value!;

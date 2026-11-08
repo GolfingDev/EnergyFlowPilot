@@ -70,7 +70,8 @@ public sealed class EnergyChartsPriceTests
     {
         var handler = new RecordingHttpMessageHandler("{}", HttpStatusCode.ServiceUnavailable);
         var provider = new EnergyChartsPriceForecastProvider(new(handler), Settings(null), new Clock(), new());
-        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetPriceForecastAsync(Start, Start.AddHours(1)));
+        var missing = await Assert.ThrowsAsync<MissingSettingException>(() => provider.GetPriceForecastAsync(Start, Start.AddHours(1)));
+        Assert.Equal([ControllerSettingDefaults.EnergyChartsSurchargeKey], missing.SettingKeys);
         Assert.Equal(0, handler.RequestCount);
         var settings = Settings(); provider = new(new(handler), settings, new Clock(), new());
         await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetPriceForecastAsync(Start, Start.AddHours(1)));

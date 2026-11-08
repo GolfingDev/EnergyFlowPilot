@@ -1,6 +1,6 @@
 import { HubConnectionBuilder, HttpTransportType, LogLevel, type HubConnection } from '@microsoft/signalr';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { errorText, getJson, sendJson } from './zentraleApi';
+import { errorText, getJson, missingSettingsOf, sendJson } from './zentraleApi';
 import type {
   AutomationStatusDto, CarStatusDto, ControllerSettingResponseDto, ControllerStatusResponseDto, DashboardSummaryDto, EvBaseChoiceDto, EvChargePlanDto,
   EvControlDto, HotWaterReportDto, JointBatteryShadowDto, ManualChargeStatusResponseDto, WallboxStatusDto
@@ -43,6 +43,8 @@ const state = reactive({
   settings: {} as Record<string, ControllerSettingResponseDto>,
   automations: null as AutomationStatusDto[] | null,
   errors: {} as Record<string, string>,
+  /** Settings a source is missing, also for optional sources: entering them is what fixes it. */
+  missingSettings: {} as Record<string, string[]>,
   lastLoadedAtUtc: null as string | null,
   connection: 'connecting' as LiveConnectionState
 });
@@ -60,7 +62,11 @@ async function load<T>(source: string, url: string, assign: (value: T | null) =>
   try {
     assign(await getJson<T>(url));
     delete state.errors[source];
+    delete state.missingSettings[source];
   } catch (reason) {
+    const keys = missingSettingsOf(reason);
+    if (keys.length) state.missingSettings[source] = keys;
+    else delete state.missingSettings[source];
     // Optional devices (wallbox, car, heat pump) may simply not be set up; that is not an error to show.
     if (optional) assign(null);
     else state.errors[source] = errorText(reason, `${source}: Daten konnten nicht geladen werden.`);

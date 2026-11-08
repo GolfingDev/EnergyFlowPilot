@@ -164,3 +164,20 @@ One shared store (`useZentraleData.ts`) loads everything once and then follows t
 The watcher only reads the in-memory states the control services already publish; the control loops are not changed. A resync every 60 s covers sources without change notes (car, hot water, settings changed elsewhere). While the connection is down the store polls every 15 s; after a reconnect, and when a tab becomes visible again, it reloads everything once. The header status menu shows the connection state. The E3/DC values cannot be newer than the backend's E3/DC polling interval.
 
 The store runs only while a Zentrale view is open. The classic dashboard requests are skipped while the Zentrale design is active. Colours of energy kinds are defined once as `--z-*` tokens in `styles.css` and used by flow, key figures and charts.
+
+## Missing settings are entered where they are reported (2026-11-08)
+
+Operator decision: whenever the system reports that a setting is missing or unusable, the value can be entered right
+there, by users allowed to change settings (admins; the server enforces this in `AdminWriteGuardMiddleware`). Others
+see what is missing and that an admin can enter it.
+
+- **Backend:** a missing or unusable setting throws `MissingSettingException` (Business, derives from
+  `InvalidOperationException`) with the setting keys. Error answers carry them as `missingSettings`
+  (`ApiErrors.From`, `ForecastErrorDto`, status DTOs such as `EvChargingControlDto`); an unhandled one becomes HTTP 409
+  with `{ message, missingSettings }` (`MissingSettingMiddleware`).
+- **Frontend:** `ApiRequestError.missingSettings` (zentraleApi), `SettingQuickFix` (fields from `/api/gui/metadata`,
+  saved with `PUT /api/settings/{key}`; secrets are never shown, only replaced) and `ApiErrorNotice`. Used by the
+  classic dashboard error panels, the Zentrale dashboard (also for optional sources), the car page and the Zentrale car
+  card, and the electricity cost page; missing tariff periods open the tariff editor there.
+- **New code:** throw `MissingSettingException` with the key instead of a plain text, and show `SettingQuickFix` next to
+  the message.

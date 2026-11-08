@@ -96,5 +96,5 @@ public sealed class EvChargePlanService(
     private async Task<double> NumberAsync(string key, CancellationToken cancellationToken) =>
         double.TryParse((await settings.GetSettingAsync(key, cancellationToken))?.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
             ? value
-            : throw new InvalidOperationException($"Die Einstellung {key} fehlt oder ist keine Zahl.");
+            : throw new MissingSettingException($"Die Einstellung {key} fehlt oder ist keine Zahl.", key);
 }

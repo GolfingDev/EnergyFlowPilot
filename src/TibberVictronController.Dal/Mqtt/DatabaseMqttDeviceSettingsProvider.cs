@@ -40,7 +40,7 @@ public sealed class DatabaseMqttDeviceSettingsProvider
 
         if (setting is null || !setting.IsConfigured)
         {
-            throw new InvalidOperationException(missingMessage);
+            throw new MissingSettingException(missingMessage, key);
         }
 
         return setting.Value!;
@@ -52,7 +52,7 @@ public sealed class DatabaseMqttDeviceSettingsProvider
 
         if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedValue))
         {
-            throw new InvalidOperationException(invalidMessage);
+            throw new MissingSettingException(invalidMessage, key);
         }
 
         return parsedValue;
@@ -64,7 +64,7 @@ public sealed class DatabaseMqttDeviceSettingsProvider
 
         if (!bool.TryParse(value, out var parsedValue))
         {
-            throw new InvalidOperationException(invalidMessage);
+            throw new MissingSettingException(invalidMessage, key);
         }
 
         return parsedValue;

@@ -153,11 +153,12 @@ public sealed class OctopusPriceForecastProviderTests
     public async Task DefaultRemainsTibberAndOctopusWithoutCredentialsNeverCallsNetwork()
     {
         var fixture = new Fixture(Wrap(Entry));
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Selector().GetPriceForecastAsync(Start, Start.AddHours(1)));
+        var error = await Assert.ThrowsAsync<MissingSettingException>(() => fixture.Selector().GetPriceForecastAsync(Start, Start.AddHours(1)));
         Assert.Contains("Tibber", error.Message); // no Tibber token configured, and no Octopus fallback
         await fixture.Settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.OctopusApiKeyKey,
             null, ControllerSettingSensitivity.Sensitive, Start));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Provider.GetPriceForecastAsync(Start, Start.AddHours(1)));
+        var missing = await Assert.ThrowsAsync<MissingSettingException>(() => fixture.Provider.GetPriceForecastAsync(Start, Start.AddHours(1)));
+        Assert.Equal([ControllerSettingDefaults.OctopusEmailKey, ControllerSettingDefaults.OctopusPasswordKey], missing.SettingKeys);
         Assert.Empty(fixture.Handler.Bodies);
     }
 
@@ -214,9 +215,10 @@ public sealed class OctopusPriceForecastProviderTests
         var fixture = new Fixture(Wrap(Entry));
         await fixture.Settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.OctopusAccountNumberKey,
             account, ControllerSettingSensitivity.Normal, Start));
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAsync<MissingSettingException>(() =>
             fixture.Provider.GetPriceForecastAsync(Start, Start.AddHours(1)));
         Assert.Contains("Kundennummer", error.Message);
+        Assert.Equal([ControllerSettingDefaults.OctopusAccountNumberKey], error.SettingKeys);
         Assert.Empty(fixture.Handler.Bodies);
     }
 

@@ -6,12 +6,13 @@ import { centPerKwh, euro, localDate } from './energyFormat';
 import type { TariffPeriodDto } from './energyTypes';
 
 /** Contract periods for base fee and feed-in compensation; empty fields mean "not known", not zero. */
-const props = defineProps<{ tariffs: TariffPeriodDto[] }>();
+const props = defineProps<{ tariffs: TariffPeriodDto[]; startEditing?: boolean }>();
 const emit = defineEmits<{ saved: [] }>();
 
 interface Row { validFrom: string; supplier: string; baseFee: string; feedInCent: string }
 const rows = ref<Row[]>([]);
-const editing = ref(false);
+// Opened right away where the page reports missing tariff data (admins only).
+const editing = ref(!!props.startEditing && isAdmin.value);
 const saving = ref(false);
 const message = ref<{ type: 'error' | 'ok'; text: string } | null>(null);
 
@@ -22,6 +23,8 @@ function reset(): void {
   }));
 }
 watch(() => props.tariffs, reset, { immediate: true });
+// A new empty row to fill in, when nothing is stored yet.
+if (editing.value && rows.value.length === 0) rows.value.push({ validFrom: '', supplier: '', baseFee: '', feedInCent: '' });
 
 function parse(text: string): number | null {
   const trimmed = text.trim().replace(',', '.');

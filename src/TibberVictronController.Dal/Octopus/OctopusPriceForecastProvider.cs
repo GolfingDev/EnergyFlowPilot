@@ -60,7 +60,9 @@ public sealed class OctopusPriceForecastProvider(
         var credentials = email is not null && !string.IsNullOrEmpty(password) ? new OctopusCredentials(email, password, null)
             : key is not null ? new OctopusCredentials(null, null, key) : null;
         if (credentials is null || account is null || account == ControllerSettingDefaults.OctopusAccountNumberNotConfigured)
-            throw new InvalidOperationException("Octopus Deutschland benoetigt E-Mail und Passwort (oder einen API-Key) sowie die Kundennummer.");
+            throw new MissingSettingException("Octopus Deutschland benoetigt E-Mail und Passwort (oder einen API-Key) sowie die Kundennummer.",
+                [.. credentials is null ? new[] { ControllerSettingDefaults.OctopusEmailKey, ControllerSettingDefaults.OctopusPasswordKey } : [],
+                 .. account is null || account == ControllerSettingDefaults.OctopusAccountNumberNotConfigured ? new[] { ControllerSettingDefaults.OctopusAccountNumberKey } : []]);
         var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { credentials, account }))));
         await cache.Gate.WaitAsync(cancellationToken);
         try

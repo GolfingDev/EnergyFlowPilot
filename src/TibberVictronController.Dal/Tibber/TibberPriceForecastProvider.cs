@@ -106,7 +106,7 @@ public sealed class TibberPriceForecastProvider : ITibberPriceForecastProvider
 
         if (setting is null || !setting.IsConfigured)
         {
-            throw new InvalidOperationException(missingMessage);
+            throw new MissingSettingException(missingMessage, settingKey);
         }
 
         return setting.Value!;

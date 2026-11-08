@@ -81,6 +81,7 @@ export interface EnergyCostReportDto {
   costBuckets: EnergyBucketDto[];
   notes: string[];
   tariffs: TariffPeriodDto[];
+  tariffsIncomplete: boolean;
 }
 
 export interface EnergyQuarterHourDto {

@@ -10,7 +10,11 @@ public sealed record EvChargingControlSnapshot(
     double? Amps,
     string Reason,
     DateTimeOffset UpdatedAtUtc,
-    string? CommandProblem);
+    string? CommandProblem)
+{
+    /// <summary>Settings the plan is missing; the car page offers to enter them.</summary>
+    public IReadOnlyList<string> MissingSettings { get; init; } = [];
+}
 
 public sealed class EvChargingControlState
 {
@@ -69,6 +73,7 @@ public sealed class EvChargingControlService(
     private readonly Queue<double?> availableSamples = new();
     private EvChargePlan? plan;
     private string? planProblem;
+    private IReadOnlyList<string> planMissingSettings = [];
     private DateTimeOffset planCalculatedAtUtc = DateTimeOffset.MinValue;
     private bool limitActive;
     private double? appliedAmps;
@@ -148,7 +153,7 @@ public sealed class EvChargingControlService(
         var decision = EvChargingDecider.Decide(new EvChargingDecisionInput(now, plan, planProblem, AverageAvailable()) { PvGridAllowanceWatts = allowance });
         await ApplyAsync(decision, now, cancellationToken);
         LogChange(decision);
-        state.Set(new EvChargingControlSnapshot(true, decision.Mode, decision.Amps, decision.Reason, now, commandProblem));
+        state.Set(new EvChargingControlSnapshot(true, decision.Mode, decision.Amps, decision.Reason, now, commandProblem) { MissingSettings = planMissingSettings });
     }
 
     // Each change of the wallbox decision is logged with its reason, so a charging night can be explained afterwards
@@ -197,6 +202,7 @@ public sealed class EvChargingControlService(
         {
             plan = (await services.GetRequiredService<EvChargePlanService>().GetAsync(cancellationToken)).Plan;
             planProblem = null;
+            planMissingSettings = [];
             load.Set(plan);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -205,6 +211,7 @@ public sealed class EvChargingControlService(
             logger.LogWarning("Ladeplan konnte nicht berechnet werden: {Reason}", exception.Message);
             plan = null;
             planProblem = exception.Message;
+            planMissingSettings = MissingSettingException.KeysOf(exception);
             load.Clear();
         }
 

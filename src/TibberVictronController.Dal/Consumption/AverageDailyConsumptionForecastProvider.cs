@@ -169,12 +169,12 @@ public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsump
 
         if (setting is null || !setting.IsConfigured)
         {
-            throw new InvalidOperationException("Der durchschnittliche Tagesverbrauch ist nicht konfiguriert.");
+            throw new MissingSettingException("Der durchschnittliche Tagesverbrauch ist nicht konfiguriert.", ControllerSettingDefaults.ConsumptionForecastAverageDailyConsumptionKwhKey);
         }
 
         if (!decimal.TryParse(setting.Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var averageDailyConsumptionKwh))
         {
-            throw new InvalidOperationException("Der durchschnittliche Tagesverbrauch muss als Dezimalzahl konfiguriert sein.");
+            throw new MissingSettingException("Der durchschnittliche Tagesverbrauch muss als Dezimalzahl konfiguriert sein.", ControllerSettingDefaults.ConsumptionForecastAverageDailyConsumptionKwhKey);
         }
 
         if (averageDailyConsumptionKwh <= 0m)
@@ -193,7 +193,7 @@ public sealed class AverageDailyConsumptionForecastProvider : IHistoricalConsump
 
         if (setting is null || !setting.IsConfigured)
         {
-            throw new InvalidOperationException("Die Verbrauchsforecast-Zeitzone ist nicht konfiguriert.");
+            throw new MissingSettingException("Die Verbrauchsforecast-Zeitzone ist nicht konfiguriert.", ControllerSettingDefaults.ConsumptionForecastTimeZoneKey);
         }
 
         return ResolveTimeZone(setting.Value!);

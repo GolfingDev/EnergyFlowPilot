@@ -71,7 +71,11 @@ public sealed record EnergyCostReportDto(
     string CostSize,
     IReadOnlyList<EnergyBucketDto> CostBuckets,
     IReadOnlyList<string> Notes,
-    IReadOnlyList<TariffPeriodDto> Tariffs);
+    IReadOnlyList<TariffPeriodDto> Tariffs)
+{
+    /// <summary>Base fee or feed-in compensation is not known for the whole period: the page offers the tariff editor.</summary>
+    public bool TariffsIncomplete { get; init; }
+}
 
 public sealed record EnergyQuarterHourDto(
     DateTimeOffset StartUtc,
@@ -116,7 +120,10 @@ public static class EnergyCostDtoMapper
         report.CostSize.ToString(),
         report.CostBuckets.Select(bucket => Map(bucket, report.CostSize, zone)).ToArray(),
         report.Notes,
-        tariffs.Select(Map).ToArray());
+        tariffs.Select(Map).ToArray())
+    {
+        TariffsIncomplete = tariffs.Count == 0 || !report.Totals.BaseFeeComplete || !report.Totals.FeedInComplete
+    };
 
     public static string Label(EnergyPeriod period) => period.Kind switch
     {

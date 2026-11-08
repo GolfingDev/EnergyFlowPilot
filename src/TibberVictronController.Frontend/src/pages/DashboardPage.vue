@@ -3,6 +3,7 @@ import { HubConnectionBuilder, HttpTransportType, LogLevel, type HubConnection }
 import { computed, onBeforeUnmount, onMounted, provide, ref } from 'vue';
 import { useTheme } from 'vuetify';
 import DashboardErrorPanels from '../components/dashboard/DashboardErrorPanels.vue';
+import { ApiRequestError, missingSettingsOf } from '../components/zentrale/zentraleApi';
 import DashboardHeader from '../components/dashboard/DashboardHeader.vue';
 import DashboardMetricGrid from '../components/dashboard/DashboardMetricGrid.vue';
 import DecisionHistoryChartPanel from '../components/dashboard/DecisionHistoryChartPanel.vue';
@@ -450,7 +451,7 @@ async function fetchJson<TResponse>(url: string): Promise<TResponse> {
 
   if (!response.ok) {
     const error = await response.json().catch(() => null) as ApiErrorDto | null;
-    throw new Error(createApiErrorMessage(url, response.status, error));
+    throw new ApiRequestError(createApiErrorMessage(url, response.status, error), response.status, error?.missingSettings ?? []);
   }
 
   return await response.json() as TResponse;
@@ -480,7 +481,8 @@ function createLoadError(reason: unknown): Omit<DashboardLoadError, 'source'> {
 
   return {
     message,
-    details: detailLines.length > 0 ? detailLines.join('\n') : reason.message
+    details: detailLines.length > 0 ? detailLines.join('\n') : reason.message,
+    missingSettings: missingSettingsOf(reason)
   };
 }
 
@@ -506,7 +508,7 @@ async function postJson<TResponse>(url: string, body: unknown): Promise<TRespons
 
   if (!response.ok) {
     const error = await response.json().catch(() => null) as ApiErrorDto | null;
-    throw new Error(createApiErrorMessage(url, response.status, error));
+    throw new ApiRequestError(createApiErrorMessage(url, response.status, error), response.status, error?.missingSettings ?? []);
   }
 
   return await response.json() as TResponse;
@@ -517,7 +519,7 @@ async function deleteJson<TResponse>(url: string): Promise<TResponse> {
 
   if (!response.ok) {
     const error = await response.json().catch(() => null) as ApiErrorDto | null;
-    throw new Error(createApiErrorMessage(url, response.status, error));
+    throw new ApiRequestError(createApiErrorMessage(url, response.status, error), response.status, error?.missingSettings ?? []);
   }
 
   return await response.json() as TResponse;
@@ -1031,7 +1033,7 @@ onBeforeUnmount(() => {
     <DashboardHeader v-if="!usesControlCenterDashboard && !usesMissionDashboard && !usesLeitstandDashboard && !usesOrbitDashboard && !usesWorkspaceDashboard && !usesHorizonDashboard" :status="status" :is-loading="isLoading" :auto-refresh-label="autoRefreshLabel"
       @refresh="loadDashboard" />
 
-    <DashboardErrorPanels :errors="loadErrors" />
+    <DashboardErrorPanels :errors="loadErrors" @retry="loadDashboard" />
 
     <LeitstandDashboard
       v-if="usesLeitstandDashboard"

@@ -19,9 +19,9 @@ public sealed class EnergyChartsPriceForecastProvider(HttpClient http, IControll
             throw new ArgumentException("Der Strompreiszeitraum muss in UTC vorwaerts verlaufen.");
         async Task<string?> Setting(string key) => (await settings.GetSettingAsync(key, cancellationToken))?.Value;
         if (!decimal.TryParse(await Setting(ControllerSettingDefaults.EnergyChartsSurchargeKey), NumberStyles.Number, CultureInfo.InvariantCulture, out var surcharge) || surcharge is < 0 or > 5)
-            throw new InvalidOperationException("Fuer Energy-Charts muss der tarifliche Bruttoaufschlag in EUR/kWh eingerichtet sein; 0 ist eine ausdrueckliche Angabe.");
+            throw new MissingSettingException("Fuer Energy-Charts muss der tarifliche Bruttoaufschlag in EUR/kWh eingerichtet sein; 0 ist eine ausdrueckliche Angabe.", ControllerSettingDefaults.EnergyChartsSurchargeKey);
         if (!decimal.TryParse(await Setting(ControllerSettingDefaults.EnergyChartsVatKey), NumberStyles.Number, CultureInfo.InvariantCulture, out var vat) || vat is < 0 or > 100)
-            throw new InvalidOperationException("Der Mehrwertsteuersatz fuer Energy-Charts ist ungueltig.");
+            throw new MissingSettingException("Der Mehrwertsteuersatz fuer Energy-Charts ist ungueltig.", ControllerSettingDefaults.EnergyChartsVatKey);
         var slotTicks = TimeSpan.FromMinutes(15).Ticks;
         var first = new DateTimeOffset(start.UtcTicks - start.UtcTicks % slotTicks, TimeSpan.Zero);
         var last = new DateTimeOffset(end.UtcTicks + (slotTicks - end.UtcTicks % slotTicks) % slotTicks, TimeSpan.Zero);

@@ -116,7 +116,7 @@ public sealed class WorkerFailureEmailNotifier : IWorkerFailureNotifier
 
         if (setting is null || !setting.IsConfigured || string.IsNullOrWhiteSpace(setting.Value))
         {
-            throw new InvalidOperationException($"Die Worker-Mail-Einstellung '{key}' ist nicht konfiguriert.");
+            throw new MissingSettingException($"Die Worker-Mail-Einstellung '{key}' ist nicht konfiguriert.", key);
         }
 
         return setting.Value.Trim();
@@ -141,7 +141,7 @@ public sealed class WorkerFailureEmailNotifier : IWorkerFailureNotifier
 
         if (!int.TryParse(setting.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
         {
-            throw new InvalidOperationException($"Die Worker-Mail-Einstellung '{key}' muss als Ganzzahl konfiguriert sein.");
+            throw new MissingSettingException($"Die Worker-Mail-Einstellung '{key}' muss als Ganzzahl konfiguriert sein.", key);
         }
 
         return value;
@@ -158,7 +158,7 @@ public sealed class WorkerFailureEmailNotifier : IWorkerFailureNotifier
 
         if (!bool.TryParse(setting.Value, out var value))
         {
-            throw new InvalidOperationException($"Die Worker-Mail-Einstellung '{key}' muss true oder false sein.");
+            throw new MissingSettingException($"Die Worker-Mail-Einstellung '{key}' muss true oder false sein.", key);
         }
 
         return value;

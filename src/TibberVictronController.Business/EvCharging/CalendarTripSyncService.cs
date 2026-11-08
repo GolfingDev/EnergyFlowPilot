@@ -271,7 +271,7 @@ public sealed class CalendarTripSyncService(CalendarTripSyncDependencies depende
         async Task<double> Read(string key) =>
             double.TryParse((await dependencies.Settings.GetSettingAsync(key, cancellationToken))?.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
                 ? value
-                : throw new InvalidOperationException($"Die Einstellung {key} fehlt oder ist keine Zahl.");
+                : throw new MissingSettingException($"Die Einstellung {key} fehlt oder ist keine Zahl.", key);
         return new GeoPoint(await Read(ControllerSettingDefaults.PvForecastLatitudeKey), await Read(ControllerSettingDefaults.PvForecastLongitudeKey));
     }
 }

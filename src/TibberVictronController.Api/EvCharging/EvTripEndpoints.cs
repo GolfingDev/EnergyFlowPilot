@@ -1,3 +1,4 @@
+using TibberVictronController.Api.Configuration;
 using TibberVictronController.Api.Authentication;
 using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.EvCharging;
@@ -28,7 +29,7 @@ public static class EvTripEndpoints
         {
             var current = state.Current;
             return TypedResults.Ok(new EvChargingControlDto(current.Enabled, current.Mode.ToString(), current.Amps, current.Reason,
-                current.UpdatedAtUtc == DateTimeOffset.MinValue ? null : current.UpdatedAtUtc, current.CommandProblem));
+                current.UpdatedAtUtc == DateTimeOffset.MinValue ? null : current.UpdatedAtUtc, current.CommandProblem) { MissingSettings = current.MissingSettings });
         }).WithName("GetEvChargingControl").WithTags("EvCharging");
         endpoints.MapGet("/api/ev-charging/calendar", GetCalendarStatusAsync).WithName("GetCalendarSyncStatus").WithTags("EvCharging").RequireDriver();
         endpoints.MapPost("/api/ev-charging/calendar/sync", SyncCalendarAsync).WithName("SyncCalendar").WithTags("EvCharging").RequireDriver();
@@ -46,7 +47,7 @@ public static class EvTripEndpoints
         }
         catch (InvalidOperationException exception)
         {
-            return TypedResults.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+            return ApiErrors.From(exception, StatusCodes.Status500InternalServerError);
         }
     }
 
@@ -262,7 +263,7 @@ public static class EvTripEndpoints
         }
         catch (InvalidOperationException exception)
         {
-            return TypedResults.Problem(exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+            return ApiErrors.From(exception, StatusCodes.Status500InternalServerError);
         }
     }
 
@@ -301,7 +302,10 @@ public sealed record EvTripIgnoreRequestDto(bool Ignored);
 
 public sealed record EvTripSkipRequestDto(bool Skipped);
 
-public sealed record EvChargingControlDto(bool Enabled, string Mode, double? Amps, string Reason, DateTimeOffset? UpdatedAtUtc, string? CommandProblem);
+public sealed record EvChargingControlDto(bool Enabled, string Mode, double? Amps, string Reason, DateTimeOffset? UpdatedAtUtc, string? CommandProblem)
+{
+    public IReadOnlyList<string> MissingSettings { get; init; } = [];
+}
 
 public sealed record EvChargeSlotDto(
     DateTimeOffset StartsAtUtc,

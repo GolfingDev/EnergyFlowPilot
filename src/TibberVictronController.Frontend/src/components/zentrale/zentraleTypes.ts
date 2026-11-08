@@ -39,6 +39,7 @@ export interface EvControlDto {
   reason: string;
   updatedAtUtc: string | null;
   commandProblem: string | null;
+  missingSettings?: string[];
 }
 
 export type EvSlotReason = 'Trip' | 'PvSurplus' | 'BaseSoc' | 'CheapPrice' | 'ImmediateTarget';

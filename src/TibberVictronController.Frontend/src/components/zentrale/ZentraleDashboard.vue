@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import ZentraleAutomationsCard from './ZentraleAutomationsCard.vue';
 import ZentraleDetailPanel from './ZentraleDetailPanel.vue';
 import ZentraleEnergyFlow from './ZentraleEnergyFlow.vue';
@@ -8,6 +8,7 @@ import ZentraleKpiBar from './ZentraleKpiBar.vue';
 import ZentralePlannedActions from './ZentralePlannedActions.vue';
 import ZentraleStatusCard from './ZentraleStatusCard.vue';
 import { useZentraleData } from './useZentraleData';
+import SettingQuickFix from '../settings/SettingQuickFix.vue';
 import type { ZentraleTarget } from './zentraleTypes';
 
 /*
@@ -15,6 +16,8 @@ import type { ZentraleTarget } from './zentraleTypes';
  * forecast with planned actions below. Every element opens the same context panel, so control starts here.
  */
 const data = useZentraleData();
+// Missing settings of all sources, entered right on the dashboard (SettingQuickFix).
+const missingSettings = computed(() => [...new Set(Object.values(data.state.missingSettings).flat())]);
 const panelTarget = ref<ZentraleTarget | null>(null);
 const panelOpen = ref(false);
 
@@ -30,6 +33,7 @@ function open(target: ZentraleTarget): void {
       <v-icon icon="mdi-alert-outline" size="18" />
       <span v-for="(message, source) in data.state.errors" :key="source"><strong>{{ source }}:</strong> {{ message }}</span>
     </div>
+    <SettingQuickFix v-if="missingSettings.length" :keys="missingSettings" @saved="data.refreshAll()" />
 
     <ZentraleKpiBar @open="open" />
 

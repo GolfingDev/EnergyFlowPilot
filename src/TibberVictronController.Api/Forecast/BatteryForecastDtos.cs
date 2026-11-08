@@ -35,4 +35,8 @@ public sealed record BatteryDecisionReasonDto(string RuleName, string Message);
 /// <summary>
 /// Frontend DTO for forecast request validation errors.
 /// </summary>
-public sealed record ForecastErrorDto(string Message);
+public sealed record ForecastErrorDto(string Message)
+{
+    /// <summary>Setting keys that would fix the error (see MissingSettingException).</summary>
+    public IReadOnlyList<string> MissingSettings { get; init; } = [];
+}

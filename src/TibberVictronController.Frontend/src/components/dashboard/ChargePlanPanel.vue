@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { formatNumber } from './dashboardFormatters';
+import SettingQuickFix from '../settings/SettingQuickFix.vue';
 
 interface EvChargeSlotDto {
   startsAtUtc: string;
@@ -43,6 +44,7 @@ interface EvChargingControlDto {
   reason: string;
   updatedAtUtc: string | null;
   commandProblem: string | null;
+  missingSettings?: string[];
 }
 
 interface EvBaseChoiceDto {
@@ -73,6 +75,9 @@ const modeColor: Record<EvChargingControlDto['mode'], string | undefined> = {
   Off: undefined, Waiting: undefined, Plan: 'primary', PvSurplus: 'success', Paused: 'warning', FullPowerFallback: 'error'
 };
 const error = ref<string | null>(null);
+// Settings the plan is missing (from the error answer or the control state): entered right here (SettingQuickFix).
+const planMissingSettings = ref<string[]>([]);
+const missingSettings = computed(() => [...new Set([...planMissingSettings.value, ...(control.value?.missingSettings ?? [])])]);
 let timer: number | undefined;
 
 const dateTime = new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
@@ -112,10 +117,12 @@ async function load(): Promise<void> {
     if (controlResponse.ok) control.value = await controlResponse.json() as EvChargingControlDto;
     if (choiceResponse.ok) baseChoice.value = await choiceResponse.json() as EvBaseChoiceDto;
     if (!response.ok) {
-      const body = await response.json().catch(() => null) as { detail?: string } | null;
-      throw new Error(body?.detail ?? `Ladeplan konnte nicht geladen werden (HTTP ${response.status}).`);
+      const body = await response.json().catch(() => null) as { detail?: string; message?: string; missingSettings?: string[] } | null;
+      planMissingSettings.value = body?.missingSettings ?? [];
+      throw new Error(body?.message ?? body?.detail ?? `Ladeplan konnte nicht geladen werden (HTTP ${response.status}).`);
     }
     plan.value = await response.json() as EvChargePlanDto;
+    planMissingSettings.value = [];
     error.value = null;
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : 'Ladeplan konnte nicht geladen werden.';
@@ -200,6 +207,7 @@ onBeforeUnmount(() => window.clearInterval(timer));
         <template v-else>Vorschau: Die Automatik ist aus (Einstellungen, „Auto automatisch laden“).</template>
         Grundlage: {{ plan?.slotSource ?? '–' }}.
       </p>
+      <SettingQuickFix v-if="control && !control.enabled" :keys="['ev.charging.controlEnabled']" @saved="load" />
       <p v-if="plan?.cheapThreshold" class="plan__meta">
         <template v-if="plan.cheapThreshold.pricePerKwh !== null">
           Über den Bedarf hinaus aus dem Netz nur unter {{ formatNumber(plan.cheapThreshold.pricePerKwh * 100, 1) }} ct/kWh
@@ -249,6 +257,7 @@ onBeforeUnmount(() => window.clearInterval(timer));
     </div>
     <div class="px-4 pb-4">
       <v-alert v-if="error" class="mb-3" type="warning" variant="tonal" density="compact">{{ error }}</v-alert>
+      <SettingQuickFix v-if="missingSettings.length" class="mb-3" :keys="missingSettings" @saved="load" />
       <template v-if="plan">
         <v-alert v-for="warning in plan.warnings" :key="warning" class="mb-2" type="info" variant="tonal" density="compact">{{ warning }}</v-alert>
         <p v-if="blocks.length === 0" class="plan__meta">Im Planungszeitraum ist kein Laden nötig.</p>

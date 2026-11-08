@@ -985,12 +985,12 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
         if (setting is null || !setting.IsConfigured)
         {
-            throw new InvalidOperationException("Die Einspeiseverguetung ist nicht konfiguriert.");
+            throw new MissingSettingException("Die Einspeiseverguetung ist nicht konfiguriert.", ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey);
         }
 
         if (!decimal.TryParse(setting.Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var feedInCompensationPricePerKwh))
         {
-            throw new InvalidOperationException("Die Einspeiseverguetung muss als Dezimalzahl konfiguriert sein.");
+            throw new MissingSettingException("Die Einspeiseverguetung muss als Dezimalzahl konfiguriert sein.", ControllerSettingDefaults.GridFeedInCompensationPricePerKwhKey);
         }
 
         if (feedInCompensationPricePerKwh < 0m)
@@ -1009,12 +1009,12 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
 
         if (setting is null || !setting.IsConfigured)
         {
-            throw new InvalidOperationException("Der Netzleistungs-Puffer ist nicht konfiguriert.");
+            throw new MissingSettingException("Der Netzleistungs-Puffer ist nicht konfiguriert.", ControllerSettingDefaults.TelemetryGridPowerDeadbandWattsKey);
         }
 
         if (!int.TryParse(setting.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var deadbandWatts))
         {
-            throw new InvalidOperationException("Der Netzleistungs-Puffer muss als ganze Watt-Zahl konfiguriert sein.");
+            throw new MissingSettingException("Der Netzleistungs-Puffer muss als ganze Watt-Zahl konfiguriert sein.", ControllerSettingDefaults.TelemetryGridPowerDeadbandWattsKey);
         }
 
         if (deadbandWatts < 0)
@@ -1050,12 +1050,12 @@ public sealed class CurrentBatteryDecisionService : ICurrentBatteryDecisionServi
         var setting = await dependencies.ControllerSettingStore.GetSettingAsync(key, cancellationToken);
         if (setting is null || !setting.IsConfigured)
         {
-            throw new InvalidOperationException($"{displayName} sind nicht konfiguriert.");
+            throw new MissingSettingException($"{displayName} sind nicht konfiguriert.", key);
         }
 
         if (!int.TryParse(setting.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
         {
-            throw new InvalidOperationException($"{displayName} muessen als ganze Zahl konfiguriert sein.");
+            throw new MissingSettingException($"{displayName} muessen als ganze Zahl konfiguriert sein.", key);
         }
 
         if (value < 0)

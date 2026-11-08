@@ -4,9 +4,11 @@ import { useRoute, useRouter } from 'vue-router';
 import { useTheme } from 'vuetify';
 import EnergyChart from '../components/energy/EnergyChart.vue';
 import TariffPeriodsEditor from '../components/energy/TariffPeriodsEditor.vue';
+import ApiErrorNotice from '../components/settings/ApiErrorNotice.vue';
 import { addDays, berlinToday, centPerKwh, change, daysBetween, euro, kwh, localDate, missing, percent } from '../components/energy/energyFormat';
 import type { EnergyChartDataset, EnergyCostReportDto, EnergyDayDto, EnergyPeriodKind, EnergyTotalsDto } from '../components/energy/energyTypes';
 import { errorText, getJson } from '../components/zentrale/zentraleApi';
+import { isAdmin } from '../auth';
 import '../components/zentrale/zentrale.css';
 
 /** Electricity costs and consumption: what the house uses, what grid power really cost, and how both develop. */
@@ -23,7 +25,7 @@ const today = berlinToday();
 
 const report = ref<EnergyCostReportDto | null>(null);
 const loading = ref(false);
-const error = ref<string | null>(null);
+const error = ref<unknown>(null);
 const customFrom = ref(addDays(today, -6));
 const customTo = ref(today);
 const showBatteries = ref(false);
@@ -49,7 +51,7 @@ async function load(): Promise<void> {
     error.value = null;
     selectedDay.value = defaultDay(report.value);
   } catch (reason) {
-    error.value = errorText(reason, 'Auswertung konnte nicht geladen werden.');
+    error.value = reason instanceof Error ? reason : errorText(reason, 'Auswertung konnte nicht geladen werden.');
   } finally {
     loading.value = false;
   }
@@ -208,7 +210,7 @@ function costCell(totals: EnergyTotalsDto): string {
       </div>
     </section>
 
-    <p v-if="error" class="z-note z-note--error" role="alert">{{ error }}</p>
+    <ApiErrorNotice :error="error" fallback="Auswertung konnte nicht geladen werden." @retry="load" />
     <v-progress-linear v-if="loading" indeterminate color="primary" />
 
     <template v-if="report && totals">
@@ -243,6 +245,10 @@ function costCell(totals: EnergyTotalsDto): string {
       <ul v-if="report.notes.length" class="energy__notes">
         <li v-for="note in report.notes" :key="note" class="z-note">{{ note }}</li>
       </ul>
+      <section v-if="report.tariffsIncomplete && isAdmin" class="z-card" aria-label="Fehlende Tarifangaben">
+        <div class="z-card__head"><h2>Grundgebühr und Einspeisevergütung eintragen</h2></div>
+        <TariffPeriodsEditor :tariffs="report.tariffs" start-editing @saved="load" />
+      </section>
 
       <section class="z-card">
         <div class="z-card__head">

@@ -55,10 +55,11 @@ public sealed class BatterySettingsProviderTests : IDisposable
         await settingsStore.SaveSettingAsync(CreateNormalSetting(ControllerSettingDefaults.BatteryTotalCapacityKwhKey, "ungueltig"));
         var provider = new DatabaseBatteryConfigurationProvider(settingsStore);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<MissingSettingException>(
             () => provider.GetBatteryConfigurationAsync());
 
         Assert.Contains("Die Batteriekapazitaet muss als Dezimalzahl konfiguriert sein.", exception.Message);
+        Assert.Equal([ControllerSettingDefaults.BatteryTotalCapacityKwhKey], exception.SettingKeys);
     }
 
     [Fact]

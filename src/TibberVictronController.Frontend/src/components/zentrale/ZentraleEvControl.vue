@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { isAdmin, isDriver } from '../../auth';
 import ZentraleSettingControl from './ZentraleSettingControl.vue';
+import SettingQuickFix from '../settings/SettingQuickFix.vue';
 import { errorText } from './zentraleApi';
 import { age, kw, kwh, percent, when } from './zentraleFormat';
 import { evModeLabels } from './zentraleTypes';
@@ -55,6 +56,7 @@ async function act(path: 'base-choice' | 'base-choice/stopped' | 'base-choice/ta
       <h3 id="z-ev-auto">Automatik</h3>
       <p v-if="state.evControl" class="z-note"><strong>{{ evModeLabels[state.evControl.mode] }}{{ state.evControl.amps ? ` · ${state.evControl.amps} A` : '' }}</strong> – {{ state.evControl.reason }}</p>
       <p v-if="state.evControl?.commandProblem" class="z-note z-note--warning">{{ state.evControl.commandProblem }}</p>
+      <SettingQuickFix v-if="state.evControl?.missingSettings?.length" :keys="state.evControl.missingSettings" @saved="data.refreshAll()" />
       <ZentraleSettingControl setting-key="ev.charging.controlEnabled" label="Auto automatisch laden" kind="switch"
         confirm-text="Automatische Ladesteuerung der Wallbox umschalten?" />
     </section>

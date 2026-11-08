@@ -55,7 +55,7 @@ public sealed class CarDataService(
     {
         var settings = await ReadSettingsAsync(cancellationToken);
         if (settings.ClientId is null)
-            throw new InvalidOperationException("Zuerst die BMW CarData Client-ID in den Einstellungen eintragen.");
+            throw new MissingSettingException("Zuerst die BMW CarData Client-ID in den Einstellungen eintragen.", ControllerSettingDefaults.BmwCarDataClientIdKey);
         CarDataDeviceFlow flow;
         await using (var scope = scopes.CreateAsyncScope())
             flow = await scope.ServiceProvider.GetRequiredService<CarDataAuthClient>().StartAsync(settings.ClientId, clock.UtcNow, cancellationToken);
@@ -195,7 +195,7 @@ public sealed class CarDataService(
         store.UpdateStream(current => current with { Subscription = $"{(vin is null ? "alle Fahrzeuge" : "VIN " + vin)}: {granted}" });
         logger.LogInformation("BMW CarData: Abonnement {Scope} -> {Result}.", vin is null ? "alle Fahrzeuge" : "VIN", granted);
         if (!granted.StartsWith("Granted", StringComparison.Ordinal))
-            throw new InvalidOperationException($"BMW lehnt das Abonnement des Datenstroms ab ({granted}). VIN in den Einstellungen eintragen statt 'auto'.");
+            throw new MissingSettingException($"BMW lehnt das Abonnement des Datenstroms ab ({granted}). VIN in den Einstellungen eintragen statt 'auto'.", ControllerSettingDefaults.BmwCarDataVinKey);
         firstMessageLogged = false;
         store.SetConnection(new CarDataConnectionState(CarDataConnectionStatus.Connected,
             "Mit BMW CarData verbunden. Werte kommen, sobald das Auto Daten sendet.", ConnectedSinceUtc: clock.UtcNow));
