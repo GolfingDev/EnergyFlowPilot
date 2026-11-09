@@ -256,7 +256,7 @@ The basic strategy is:
 - hold battery energy or charge from the grid only when a later, clearly more expensive slot would otherwise run out of battery energy (see need-based forecast charging above)
 - always use negative Tibber price phases for grid charging when the battery is not full
 
-The earlier classification into cheap, neutral and expensive thirds (`TibberPriceDecisionRule`) is no longer used for control decisions. It charged in every "cheap" third regardless of expected PV yield and consumption and therefore bought energy that PV would have provided anyway.
+The earlier classification into cheap, neutral and expensive thirds (`TibberPriceDecisionRule`, removed together with `BatteryDecisionRuleEvaluator`) is no longer used for control decisions. It charged in every "cheap" third regardless of expected PV yield and consumption and therefore bought energy that PV would have provided anyway.
 
 The current or forecasted battery state of charge must influence the price strategy:
 
