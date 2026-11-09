@@ -4,7 +4,7 @@ using TibberVictronController.Dal.Victron;
 
 namespace TibberVictronController.Api.Tests;
 
-public sealed class MqttTelemetryBackgroundServiceTests
+public sealed class VictronMqttTelemetryTests
 {
     [Fact]
     public void InitialKeepAlivePayloadRequestsFullPublish()
@@ -38,36 +38,6 @@ public sealed class MqttTelemetryBackgroundServiceTests
         var changedSettings = CreateVictronMqttSettings(host: "192.168.69.93");
 
         Assert.True(VictronMqttClientService.RequiresReconnect(connectedSettings, changedSettings));
-    }
-
-    [Fact]
-    public void ApplyTelemetryValueUpdatesGridAndHouseConsumptionWhenBothUseSameTopic()
-    {
-        var measuredAtUtc = new DateTimeOffset(2026, 5, 3, 12, 0, 0, TimeSpan.Zero);
-        var snapshotStore = new MqttTelemetrySnapshotStore();
-        var topics = new MqttTelemetryTopics
-        {
-            GridPowerTopic = "N/c0619ab93165/grid/30/Ac/Power",
-            BatterySocTopic = "battery/soc",
-            BatteryPowerTopic = "battery/power",
-            HouseConsumptionTopic = "N/c0619ab93165/grid/30/Ac/Power",
-            ChargeDischargeSetpointTopic = "write/setpoint"
-        };
-
-        var shouldPersistConsumptionSample = MqttTelemetryBackgroundService.ApplyTelemetryValue(
-            "N/c0619ab93165/grid/30/Ac/Power",
-            1425.6m,
-            measuredAtUtc,
-            topics,
-            snapshotStore);
-
-        var snapshot = snapshotStore.GetSnapshot();
-
-        Assert.True(shouldPersistConsumptionSample);
-        Assert.Equal(1425.6m, snapshot.GridPowerWatts);
-        Assert.Equal(1425.6m, snapshot.HouseConsumptionWatts);
-        Assert.Equal(measuredAtUtc, snapshot.GridPowerMeasuredAtUtc);
-        Assert.Equal(measuredAtUtc, snapshot.HouseConsumptionMeasuredAtUtc);
     }
 
     [Fact]

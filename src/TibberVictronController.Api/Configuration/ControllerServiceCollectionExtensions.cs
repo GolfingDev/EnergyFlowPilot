@@ -86,7 +86,6 @@ public static class ControllerServiceCollectionExtensions
         services.AddSingleton<JointBatteryRuntimeState>();
         services.AddSingleton<JointBatteryInputCache>();
         services.AddHostedService<JointBatteryShadowBackgroundService>();
-        services.AddScoped<DatabaseMqttDeviceSettingsProvider>();
         services.AddScoped<DatabaseVictronMqttSettingsProvider>();
         services.AddScoped<DatabaseHagerEnergySettingsProvider>();
         services.AddScoped<DatabaseHomematicSettingsProvider>();
