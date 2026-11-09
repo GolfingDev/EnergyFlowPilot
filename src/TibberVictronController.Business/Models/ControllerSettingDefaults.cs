@@ -151,10 +151,6 @@ public static class ControllerSettingDefaults
     public const string EnergyHistoryNotStarted = "none";
     // Contract periods (base fee, feed-in compensation) for the electricity cost page; edited there, JSON list.
     public const string ElectricityTariffPeriodsKey = "electricityTariff.periods";
-    public const string MqttHostKey = "mqtt.host";
-    public const string MqttPortKey = "mqtt.port";
-    public const string MqttUsernameKey = "mqtt.username";
-    public const string MqttPasswordKey = "mqtt.password";
     public const string VictronHostKey = "victron.host";
     public const string VictronPortKey = "victron.port";
     public const string VictronPortalIdKey = "victron.portalId";
@@ -328,10 +324,6 @@ public static class ControllerSettingDefaults
         new(PriceForecastTokenKey, null, ControllerSettingSensitivity.Sensitive),
         new(EnergyHistoryBackfilledThroughKey, EnergyHistoryNotStarted, ControllerSettingSensitivity.Normal),
         new(ElectricityTariffPeriodsKey, "[]", ControllerSettingSensitivity.Normal),
-        new(MqttHostKey, "localhost", ControllerSettingSensitivity.Normal),
-        new(MqttPortKey, "1883", ControllerSettingSensitivity.Normal),
-        new(MqttUsernameKey, null, ControllerSettingSensitivity.Sensitive),
-        new(MqttPasswordKey, null, ControllerSettingSensitivity.Sensitive),
         new(VictronHostKey, "192.168.x.x", ControllerSettingSensitivity.Normal),
         new(VictronPortKey, "1883", ControllerSettingSensitivity.Normal),
         new(VictronPortalIdKey, "portal-id", ControllerSettingSensitivity.Normal),

@@ -172,10 +172,6 @@ public static class GuiMetadataCatalog
             ControllerSettingDefaults.HomematicApiTokenKey => CreateSetting(definition, "XML-API-Token", "Token aus tokenregister.cgi der XML-API. Wird nie im Klartext angezeigt.", "Homematic", "password", null),
             ControllerSettingDefaults.HomematicPollingIntervalSecondsKey => CreateSetting(definition, "Homematic Abfrageintervall", "Abstand zwischen zwei Abrufen. Minimum 60 Sekunden.", "Homematic", "number", "s"),
             ControllerSettingDefaults.HomematicSampleRetentionDaysKey => CreateSetting(definition, "Homematic-Aufbewahrung", "Anzahl Tage, fuer die Homematic-Klimadaten gespeichert bleiben. 400 Tage erlauben den Vergleich mit der Vorjahres-Heizperiode.", "Homematic", "number", "days"),
-            ControllerSettingDefaults.MqttHostKey => CreateSetting(definition, "Allgemeiner MQTT Host", "Allgemeine MQTT-Grundeinstellung des Controllers.", "Infrastructure", "text", null),
-            ControllerSettingDefaults.MqttPortKey => CreateSetting(definition, "Allgemeiner MQTT Port", "Allgemeine MQTT-Port-Einstellung des Controllers.", "Infrastructure", "number", null),
-            ControllerSettingDefaults.MqttUsernameKey => CreateSetting(definition, "Allgemeiner MQTT Benutzer", "Allgemeiner MQTT-Benutzername des Controllers.", "Infrastructure", "text", null),
-            ControllerSettingDefaults.MqttPasswordKey => CreateSetting(definition, "Allgemeines MQTT Passwort", "Allgemeines MQTT-Passwort des Controllers.", "Infrastructure", "password", null),
             _ => CreateSetting(definition, definition.Key, "Noch keine Endnutzerbeschreibung gepflegt.", "General", "text", null)
         };
     }
