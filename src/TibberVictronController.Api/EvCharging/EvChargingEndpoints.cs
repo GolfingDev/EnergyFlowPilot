@@ -89,8 +89,17 @@ public static class EvChargingEndpoints
 
     // The wallbox knows for sure whether a car is plugged in at home; BMW's own value is only used while the wallbox
     // is not connected (operator 2026-11-03: plugged in, but the page said otherwise).
-    private static IResult GetCar(HttpContext http, ICarStatusSource car, IEvChargerStatusSource wallbox, ControllerAuthenticationOptions authentication)
+    private static async Task<IResult> GetCar(HttpContext http, ICarStatusSource car, IEvChargerStatusSource wallbox, ControllerAuthenticationOptions authentication,
+        IControllerSettingStore settings, CancellationToken cancellationToken)
     {
+        // BMW reports the state of charge while charging only now and then (operator 2026-11-11: app 14 %, page 12 %);
+        // the planning adds what the wallbox charged since, and the page shows that estimate too.
+        var capacity = double.TryParse((await settings.GetSettingAsync(ControllerSettingDefaults.EvCarUsableCapacityKwhKey, cancellationToken))?.Value,
+            System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var kwh) ? kwh : 0;
+        var snapshot = car.Car;
+        double? estimate = capacity > 0 && snapshot.ChargedSinceSocKwh > 0.05 && snapshot.StateOfChargeEstimatePercent(capacity) is { } value
+            ? Math.Round(value, 1)
+            : null;
         var isAdmin = !authentication.IsEntra || http.User.IsInRole(AppRoles.Admin);
         var charger = wallbox.Current;
         var dto = CarStatusDtoMapper.Map(car.Car, car.Connection, car.Stream, isAdmin);
@@ -99,6 +108,7 @@ public static class EvChargingEndpoints
             IsPlugged = charger.IsConnected ? charger.IsVehiclePlugged : car.Car.IsPlugged,
             PlugSource = charger.IsConnected ? "Wallbox" : car.Car.IsPlugged is null ? null : "BMW",
             BmwPluggedRawValue = isAdmin ? car.Car.PluggedRawValue : null,
+            EstimatedStateOfChargePercent = estimate,
             AcChargingLimitAmps = car.Car.AcChargingLimitActive == false ? null : car.Car.AcChargingLimitAmps,
             AcousticChargingLimit = car.Car.AcousticChargingLimit,
             AcRestriction = car.Car.AcRestriction,
@@ -333,6 +343,9 @@ public sealed record CarStatusResponseDto(
     public string? PlugSource { get; init; }
 
     public string? BmwPluggedRawValue { get; init; }
+
+    /// <summary>BMW's state of charge plus what the wallbox charged since; null when nothing was charged since the report.</summary>
+    public double? EstimatedStateOfChargePercent { get; init; }
 
     /// <summary>AC current per phase the car is set to accept; null when the car reports no limit.</summary>
     public double? AcChargingLimitAmps { get; init; }

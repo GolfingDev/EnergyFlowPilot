@@ -20,6 +20,7 @@ interface CarStatusDto {
   plugSource?: string | null;
   bmwPluggedRawValue?: string | null;
   acChargingLimitAmps?: number | null;
+  estimatedStateOfChargePercent?: number | null;
   acousticChargingLimit?: string | null;
   acRestriction?: string | null;
   remainingRangeKm: number | null;
@@ -109,8 +110,15 @@ onBeforeUnmount(() => window.clearTimeout(timer));
 
       <div v-if="hasValues" class="car__metrics mb-3">
         <div class="car__metric">
-          <span class="car__label">Ladestand</span>
-          <span class="car__value car__value--large">{{ percent(car.stateOfChargePercent) }}</span>
+          <template v-if="car.estimatedStateOfChargePercent != null">
+            <span class="car__label">Ladestand (geschätzt)</span>
+            <span class="car__value car__value--large">{{ percent(car.estimatedStateOfChargePercent) }}</span>
+            <span class="car__meta">BMW meldete {{ percent(car.stateOfChargePercent) }}; dazu, was die Wallbox seitdem geladen hat</span>
+          </template>
+          <template v-else>
+            <span class="car__label">Ladestand</span>
+            <span class="car__value car__value--large">{{ percent(car.stateOfChargePercent) }}</span>
+          </template>
         </div>
         <div class="car__metric">
           <span class="car__label">Ladeziel im Auto</span>

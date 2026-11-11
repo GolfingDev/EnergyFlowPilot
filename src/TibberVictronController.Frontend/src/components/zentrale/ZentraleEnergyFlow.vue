@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { activeFlowWatts, useZentraleData } from './useZentraleData';
 import { batteryActivity, kw, percent, when } from './zentraleFormat';
-import type { ZentraleTarget } from './zentraleTypes';
+import { carSoc, type ZentraleTarget } from './zentraleTypes';
 
 /*
  * The house is the busbar: every line connects one component with the house, never two components with each other.
@@ -64,6 +64,7 @@ function batteryIcon(soc: number | null): string {
 const gridLabel = computed(() => gridWatts.value == null ? 'Keine Messung'
   : gridWatts.value > activeFlowWatts ? 'Bezug' : gridWatts.value < -activeFlowWatts ? 'Einspeisung' : 'Ausgeglichen');
 
+const evSoc = computed(() => carSoc(state.car));
 const evState = computed(() => {
   const wallbox = state.wallbox;
   if (!wallbox?.isConnected) return 'Wallbox offline';
@@ -91,7 +92,7 @@ const rows = computed(() => {
   }
   list.push({ id: 'grid', icon: 'mdi-transmission-tower', label: 'Netz', value: kw(gridWatts.value), detail: gridLabel.value, kind: (gridWatts.value ?? 0) < 0 ? 'grid-export' : 'grid-import',
     direction: gridLabel.value === 'Bezug' ? '→ Haus' : gridLabel.value === 'Einspeisung' ? 'Haus →' : '' });
-  if (showEv.value) list.push({ id: 'ev', icon: 'mdi-car-electric-outline', label: 'E-Auto', value: kw(evWatts.value), detail: `${evState.value}${state.car?.stateOfChargePercent != null ? ` · ${percent(state.car.stateOfChargePercent)}` : ''}`, kind: 'ev', direction: state.wallbox?.isCharging ? 'Haus →' : '' });
+  if (showEv.value) list.push({ id: 'ev', icon: 'mdi-car-electric-outline', label: 'E-Auto', value: kw(evWatts.value), detail: `${evState.value}${evSoc.value.value != null ? ` · ${evSoc.value.estimated ? 'ca. ' : ''}${percent(evSoc.value.value)}` : ''}`, kind: 'ev', direction: state.wallbox?.isCharging ? 'Haus →' : '' });
   if (showHeat.value) list.push({ id: 'heatpump', icon: 'mdi-heat-pump-outline', label: 'Wärmepumpe', value: hotWaterSample.value ? `${hotWaterSample.value.temperatureCelsius.toLocaleString('de-DE', { maximumFractionDigits: 0 })} °C` : '–', detail: heatState.value, kind: 'heat', direction: '' });
   return list;
 });
@@ -153,8 +154,8 @@ function open(target: ZentraleTarget): void {
         <span class="z-node__text">
           <span class="z-node__label">E-Auto</span>
           <strong>{{ state.wallbox?.isCharging ? kw(evWatts) : evState }}</strong>
-          <small>{{ state.car?.stateOfChargePercent != null ? `Akku ${percent(state.car.stateOfChargePercent)}` : state.evControl ? (state.evControl.enabled ? 'Automatik an' : 'Automatik aus') : '' }}</small>
-          <span v-if="state.car?.stateOfChargePercent != null" class="z-soc z-soc--ev"><span :style="{ width: `${state.car.stateOfChargePercent}%` }" /></span>
+          <small>{{ evSoc.value != null ? `Akku ${evSoc.estimated ? 'ca. ' : ''}${percent(evSoc.value)}` : state.evControl ? (state.evControl.enabled ? 'Automatik an' : 'Automatik aus') : '' }}</small>
+          <span v-if="evSoc.value != null" class="z-soc z-soc--ev"><span :style="{ width: `${evSoc.value}%` }" /></span>
         </span>
       </button>
 

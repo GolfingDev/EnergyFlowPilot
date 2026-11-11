@@ -5,7 +5,7 @@ import ZentraleSettingControl from './ZentraleSettingControl.vue';
 import SettingQuickFix from '../settings/SettingQuickFix.vue';
 import { errorText } from './zentraleApi';
 import { age, kw, kwh, percent, when } from './zentraleFormat';
-import { evModeLabels } from './zentraleTypes';
+import { carSoc, evModeLabels } from './zentraleTypes';
 import { plannedActions } from './zentraleModel';
 import { useZentraleData } from './useZentraleData';
 
@@ -43,7 +43,8 @@ async function act(path: 'base-choice' | 'base-choice/stopped' | 'base-choice/ta
   <div class="z-ev">
     <section class="z-block" aria-label="Fahrzeug und Wallbox">
       <dl class="z-facts">
-        <div><dt>Ladestand Auto</dt><dd>{{ percent(car?.stateOfChargePercent) }}<small v-if="car?.stateOfChargeAtUtc"> · {{ age(car.stateOfChargeAtUtc, data.now.value) }}</small></dd></div>
+        <div v-if="carSoc(car).estimated"><dt>Ladestand Auto (geschätzt)</dt><dd>{{ percent(carSoc(car).value) }}<small> · BMW {{ percent(car?.stateOfChargePercent) }} {{ age(car?.stateOfChargeAtUtc ?? null, data.now.value) }} + an der Wallbox geladen</small></dd></div>
+        <div v-else><dt>Ladestand Auto</dt><dd>{{ percent(car?.stateOfChargePercent) }}<small v-if="car?.stateOfChargeAtUtc"> · {{ age(car.stateOfChargeAtUtc, data.now.value) }}</small></dd></div>
         <div v-if="car?.remainingRangeKm != null"><dt>Reichweite</dt><dd>{{ car.remainingRangeKm.toLocaleString('de-DE') }} km</dd></div>
         <div><dt>Wallbox</dt><dd>{{ wallbox?.isConnected ? wallbox.connectorStatusLabel : 'Nicht verbunden' }}</dd></div>
         <div><dt>Ladeleistung{{ wallbox?.powerIsDerived ? ' (aus Zähler)' : '' }}</dt><dd>{{ kw(wallbox?.powerWatts) }}</dd></div>

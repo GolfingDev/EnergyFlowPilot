@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { activeFlowWatts, useZentraleData } from './useZentraleData';
 import { kw, percent, priceText } from './zentraleFormat';
-import type { ZentraleTarget } from './zentraleTypes';
+import { carSoc, type ZentraleTarget } from './zentraleTypes';
 
 /** The key figures, one card each; every card opens the same context panel as the flow. */
 const emit = defineEmits<{ open: [target: ZentraleTarget] }>();
@@ -40,8 +40,9 @@ const cards = computed(() => {
   ];
   if (data.evAvailable.value) {
     const wallbox = state.wallbox;
+    const soc = carSoc(state.car);
     list.push({ id: 'ev', icon: 'mdi-car-electric-outline', label: 'E-Auto', value: wallbox?.isCharging ? kw(wallbox.powerWatts) : wallbox?.vehiclePlugged ? 'Angesteckt' : 'Nicht angesteckt',
-      sub: state.car?.stateOfChargePercent != null ? `Akku ${percent(state.car.stateOfChargePercent)}` : wallbox?.isCharging ? 'lädt' : '', color: 'var(--z-ev)', bar: state.car?.stateOfChargePercent ?? null });
+      sub: soc.value != null ? `Akku ${soc.estimated ? 'ca. ' : ''}${percent(soc.value)}` : wallbox?.isCharging ? 'lädt' : '', color: 'var(--z-ev)', bar: soc.value });
   }
   if (data.heatPumpAvailable.value) {
     list.push({ id: 'heatpump', icon: 'mdi-heat-pump-outline', label: 'Wärmepumpe', value: hotWater.value ? `${hotWater.value.temperatureCelsius.toLocaleString('de-DE', { maximumFractionDigits: 0 })} °C` : '–',

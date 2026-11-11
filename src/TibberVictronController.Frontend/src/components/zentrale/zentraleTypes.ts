@@ -26,8 +26,16 @@ export interface CarStatusDto {
   connectionLabel: string;
   stateOfChargePercent: number | null;
   stateOfChargeAtUtc: string | null;
+  /** BMW value plus what the wallbox charged since; BMW reports seldom while charging. */
+  estimatedStateOfChargePercent?: number | null;
   isPlugged: boolean | null;
   remainingRangeKm: number | null;
+}
+
+/** The car's state of charge to show: the estimate while charging, else BMW's report. */
+export function carSoc(car: CarStatusDto | null | undefined): { value: number | null; estimated: boolean } {
+  if (car?.estimatedStateOfChargePercent != null) return { value: car.estimatedStateOfChargePercent, estimated: true };
+  return { value: car?.stateOfChargePercent ?? null, estimated: false };
 }
 
 export type EvControlMode = 'Off' | 'Waiting' | 'Plan' | 'PvSurplus' | 'Paused' | 'FullPowerFallback';
