@@ -85,6 +85,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddSingleton<JointBatteryPriceHistory>();
         services.AddSingleton<JointBatteryRuntimeState>();
         services.AddSingleton<JointBatteryInputCache>();
+        services.AddSingleton<JointConsumptionProfileCache>();
         services.AddHostedService<JointBatteryShadowBackgroundService>();
         services.AddScoped<DatabaseVictronMqttSettingsProvider>();
         services.AddScoped<DatabaseHagerEnergySettingsProvider>();

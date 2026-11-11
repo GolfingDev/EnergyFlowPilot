@@ -138,18 +138,32 @@ public sealed class JointBatteryShadowCalculation(IServiceProvider services)
                 (pvFromCache > 0 ? $"; {pvFromCache} Viertelstunden aus der Prognose vom {Local(cache.Pv.LoadedAtUtc)}" : "") +
                 (pvMissing > 0 ? $"; {pvMissing} Viertelstunden ohne PV angesetzt (realer Ueberschuss wird trotzdem gespeichert)" : "") + ".");
 
-        IReadOnlyList<LiveConsumptionSample> history = [];
-        try { history = await services.GetRequiredService<ILiveConsumptionRepository>().GetSamplesAsync(now.AddDays(-14), now, token); }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            inputWarnings.Add($"Verbrauchshistorie nicht lesbar ({exception.GetType().Name}); Ersatzprofil aus dem Tagesverbrauch verwendet.");
-        }
         var zone = TimeZoneInfo.FindSystemTimeZoneById((await settings.GetSettingAsync(ControllerSettingDefaults.ConsumptionForecastTimeZoneKey, token))?.Value ?? "Europe/Berlin");
-        pv = await LearnAndCorrectPvAsync(services, freshPv, pv, history, zone, inputWarnings, token);
+        var temperaturesUntil = end.AddHours(24);
         IReadOnlyList<HourlyTemperature>? temperatures = null;
-        try { temperatures = await services.GetRequiredService<ITemperatureProvider>().GetHourlyTemperaturesAsync(now.AddDays(-14), end.AddHours(24), token); }
+        // A failure is reported below as "Temperaturdaten fehlen"; it never blocks the plan.
+        try { temperatures = await services.GetRequiredService<ITemperatureProvider>().GetHourlyTemperaturesAsync(now.AddDays(-14), temperaturesUntil, token); }
         catch (Exception exception) when (exception is not OperationCanceledException) { }
-        var model = JointConsumptionProfile.Learn(history, zone, now, temperatures);
+
+        // The 14-day raw history is only read when the learned model is due (see JointConsumptionProfileCache).
+        var profileCache = services.GetService<JointConsumptionProfileCache>();
+        IReadOnlyList<LiveConsumptionSample> history = [];
+        var model = profileCache?.TryGet(now, zone, temperatures is not null, temperaturesUntil);
+        if (model is null)
+        {
+            var historyRead = true;
+            try { history = await services.GetRequiredService<ILiveConsumptionRepository>().GetSamplesAsync(now.AddDays(-14), now, token); }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                historyRead = false;
+                inputWarnings.Add($"Verbrauchshistorie nicht lesbar ({exception.GetType().Name}); Ersatzprofil aus dem Tagesverbrauch verwendet.");
+            }
+            model = JointConsumptionProfile.Learn(history, zone, now, temperatures);
+            // A substitute profile after a read failure is not kept: the next plan tries the history again.
+            if (historyRead) profileCache?.Store(model, now, zone, temperatures is not null, temperaturesUntil);
+        }
+        // Without a freshly read history the PV learning reads its own window when its hourly recalculation is due.
+        pv = await LearnAndCorrectPvAsync(services, freshPv, pv, history, zone, inputWarnings, token);
         var fallbackDaily = await Setting(ControllerSettingDefaults.ConsumptionForecastAverageDailyConsumptionKwhKey);
         // Planned car charging (only filled while the automatic car charging is on) is demand like any house load:
         // the planner then decides whether the home batteries cover it, which they do only when that is cheaper.
