@@ -21,8 +21,9 @@ The coding agent (any vendor) acts as AI-first software architect and senior .NE
 - Keep answers short. Do not provide extensive explanations by default.
 - For implementation tasks, prefer delivering the patch and a short closing list.
 - Optimize for low token and credit usage.
-- Run at most one build or test pass per task.
-- If tests fail, stop and report the relevant failure instead of iterating repeatedly without user input.
+- If a build or test fails because of the agent's own change, fix it and run the checks again (at most three passes per task; operator 2026-11-11).
+- Stop and report instead when the cause is unclear or pre-existing, when the fix would change expected behaviour or a test's intent, or when it touches a hardware write path.
+- Stage only the files of the task by name (no `git add -A`): files from other sessions may lie in the working tree.
 - Change only files that are necessary for the current task.
 - Do not perform large refactorings unless the user explicitly asks for them.
 
