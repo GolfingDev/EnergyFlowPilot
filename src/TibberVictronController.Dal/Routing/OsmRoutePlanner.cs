@@ -21,6 +21,10 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
     private const double LocalBoxLatitude = 0.5;
     private const double LocalBoxLongitude = 0.75;
     private const int LocalCandidates = 20;
+    // Each variant costs up to two searches at one per second; three cover "venue, street, town".
+    private const int MaximumQueryVariants = 3;
+    private static readonly HashSet<string> CountryNames = new(StringComparer.OrdinalIgnoreCase)
+        { "Deutschland", "Germany", "DE", "Österreich", "Austria", "Schweiz", "Switzerland" };
 
     public async Task<RouteEstimate> EstimateAsync(GeoPoint origin, string destination, bool placesOnly = false, CancellationToken cancellationToken = default)
     {
@@ -55,17 +59,37 @@ public sealed class OsmRoutePlanner(HttpClient httpClient) : IRoutePlanner
     /// </summary>
     private async Task<(GeoPoint Point, string Address)> GeocodeAsync(string destination, bool placesOnly, GeoPoint near, CancellationToken cancellationToken)
     {
-        // featureType=settlement restricts hits to cities, towns and villages, so "in Ruhe" does not become a street.
-        var baseUrl = $"{NominatimUrl}?format=jsonv2&accept-language=de&q={Uri.EscapeDataString(destination)}" +
-                      (placesOnly ? "&featureType=settlement" : string.Empty);
         var viewbox = string.Create(CultureInfo.InvariantCulture,
             $"&limit={LocalCandidates}&viewbox={near.Longitude - LocalBoxLongitude},{near.Latitude + LocalBoxLatitude},{near.Longitude + LocalBoxLongitude},{near.Latitude - LocalBoxLatitude}&bounded=1");
-        var hit = await SearchAsync(baseUrl + viewbox, near, cancellationToken);
-        if (hit is null) hit = await SearchAsync(baseUrl + "&limit=1", null, cancellationToken);
+        foreach (var query in QueryVariants(destination))
+        {
+            // featureType=settlement restricts hits to cities, towns and villages, so "in Ruhe" does not become a street.
+            var baseUrl = $"{NominatimUrl}?format=jsonv2&accept-language=de&q={Uri.EscapeDataString(query)}" +
+                          (placesOnly ? "&featureType=settlement" : string.Empty);
+            var hit = await SearchAsync(baseUrl + viewbox, near, cancellationToken) ?? await SearchAsync(baseUrl + "&limit=1", null, cancellationToken);
+            if (hit is { } found) return (found.Point, found.Address ?? destination);
+        }
 
-        if (hit is not { } found)
-            throw new InvalidOperationException($"Das Ziel '{destination}' wurde nicht gefunden. Bitte genauer angeben (Ort, Strasse).");
-        return (found.Point, found.Address ?? destination);
+        throw new InvalidOperationException($"Das Ziel '{destination}' wurde nicht gefunden. Bitte genauer angeben (Ort, Strasse).");
+    }
+
+    /// <summary>
+    /// The location as written, then without its leading parts: calendar locations often start with the name of the
+    /// venue ("Alte Schule Fulda, Jesuitenplatz 2, 36037 Fulda"), and Nominatim finds nothing for the whole text
+    /// (operator 2026-11-11), while the address alone is found. A country alone is never searched.
+    /// </summary>
+    public static IReadOnlyList<string> QueryVariants(string destination)
+    {
+        var parts = destination.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var variants = new List<string> { destination.Trim() };
+        for (var skip = 1; skip < parts.Length && variants.Count < MaximumQueryVariants; skip++)
+        {
+            var rest = parts[skip..];
+            if (rest.All(CountryNames.Contains)) break;
+            variants.Add(string.Join(", ", rest));
+        }
+
+        return variants;
     }
 
     private async Task<(GeoPoint Point, string? Address)?> SearchAsync(string url, GeoPoint? nearest, CancellationToken cancellationToken)

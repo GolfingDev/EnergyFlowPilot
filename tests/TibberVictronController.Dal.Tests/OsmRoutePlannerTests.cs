@@ -49,6 +49,42 @@ public sealed class OsmRoutePlannerTests
         Assert.Equal(2, handler.Requests.Count); // local search hit, then the route; no nationwide search
     }
 
+    [Fact]
+    public async Task AVenueNameBeforeTheAddressIsDroppedWhenNothingIsFound()
+    {
+        // Operator 2026-11-11: "Alte Schule Fulda, Jesuitenplatz 2, 36037 Fulda" found nothing, the address alone is found.
+        var handler = new AddressOnlyHandler();
+        var planner = new OsmRoutePlanner(new HttpClient(handler));
+
+        var route = await planner.EstimateAsync(new GeoPoint(50.55, 9.68), "Alte Schule Fulda, Jesuitenplatz 2, 36037 Fulda");
+
+        Assert.Equal("Jesuitenplatz 2, 36037 Fulda", route.ResolvedAddress);
+        Assert.Contains("q=Jesuitenplatz%202%2C%2036037%20Fulda", handler.Requests[2].RequestUri!.Query);
+    }
+
+    [Theory]
+    [InlineData("Jesuitenplatz 2, 36037 Fulda", new[] { "Jesuitenplatz 2, 36037 Fulda", "36037 Fulda" })]
+    [InlineData("Alte Schule, Jesuitenplatz 2, Fulda, Deutschland", new[] { "Alte Schule, Jesuitenplatz 2, Fulda, Deutschland", "Jesuitenplatz 2, Fulda, Deutschland", "Fulda, Deutschland" })]
+    [InlineData("Sporthalle, Deutschland", new[] { "Sporthalle, Deutschland" })]
+    [InlineData("Lidl", new[] { "Lidl" })]
+    public void LeadingPartsAreDroppedButACountryIsNeverSearchedAlone(string destination, string[] expected) =>
+        Assert.Equal(expected, OsmRoutePlanner.QueryVariants(destination));
+
+    private sealed class AddressOnlyHandler : HttpMessageHandler
+    {
+        public List<HttpRequestMessage> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            var query = Uri.UnescapeDataString(request.RequestUri!.Query);
+            var body = !request.RequestUri.Host.StartsWith("nominatim", StringComparison.Ordinal)
+                ? """{"code":"Ok","routes":[{"distance":3200.0,"duration":420.0}]}"""
+                : query.Contains("q=Jesuitenplatz") ? """[{"lat":"50.55","lon":"9.67","display_name":"Jesuitenplatz 2, 36037 Fulda"}]""" : "[]";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
+        }
+    }
+
     private sealed class LocalFirstHandler : HttpMessageHandler
     {
         public List<HttpRequestMessage> Requests { get; } = [];
