@@ -4,6 +4,7 @@ using TibberVictronController.Business.Abstractions;
 using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.EvCharging;
 using TibberVictronController.Business.Models;
+using TibberVictronController.Business.Services;
 
 namespace TibberVictronController.Api.EvCharging;
 
@@ -32,7 +33,6 @@ public sealed class EvChargePlanService(
 {
     private static readonly TimeSpan JointPlanMaximumAge = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan PriceHorizon = TimeSpan.FromHours(36);
-    private static readonly TimeSpan ForecastMaximumAge = TimeSpan.FromHours(12);
 
     public async Task<EvChargePlanView> GetAsync(CancellationToken cancellationToken)
     {
@@ -72,9 +72,7 @@ public sealed class EvChargePlanService(
         var horizonEnd = JointPlanInputFallback.QuarterStart(now) + PriceHorizon;
         try
         {
-            // A forecast from a stopped fetch is no longer a forecast worth waiting for (fetched every three hours).
-            var snapshots = (await repository.GetAsync(JointPlanInputFallback.QuarterStart(now), horizonEnd, cancellationToken))
-                .Where(snapshot => snapshot.LeadDays == PriceForecastSnapshot.Actual || now - snapshot.CapturedAtUtc <= ForecastMaximumAge).ToArray();
+            var snapshots = RetailPriceForecast.Fresh(await repository.GetAsync(JointPlanInputFallback.QuarterStart(now), horizonEnd, cancellationToken), now);
             return EvPriceForecastExtension.Extend(slots, snapshots, horizonEnd);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)

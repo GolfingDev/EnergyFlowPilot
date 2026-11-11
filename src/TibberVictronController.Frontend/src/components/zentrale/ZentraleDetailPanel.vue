@@ -8,6 +8,7 @@ import ZentraleBatteryControl from './ZentraleBatteryControl.vue';
 import SettingQuickFix from '../settings/SettingQuickFix.vue';
 import ZentraleEvControl from './ZentraleEvControl.vue';
 import ZentraleHeatPumpDetail from './ZentraleHeatPumpDetail.vue';
+import ZentralePriceTimeline from './ZentralePriceTimeline.vue';
 import ZentraleSettingControl from './ZentraleSettingControl.vue';
 import { automations, plannedActions } from './zentraleModel';
 import { clock, kw, kwh, priceText, when } from './zentraleFormat';
@@ -103,6 +104,7 @@ const batterySegments = computed(() => plannedActions(data, 12).filter(a => a.ta
             <div v-if="dearest"><dt>Teuerster Slot (24 h)</dt><dd>{{ when(dearest.startsAtUtc) }} · {{ priceText(dearest.pricePerKwh) }}{{ dearest.isPriceEstimated ? ' · geschätzt' : '' }}</dd></div>
             <div v-if="state.summary?.supplierName"><dt>Anbieter</dt><dd>{{ state.summary.supplierName }}</dd></div>
           </dl>
+          <ZentralePriceTimeline />
           <ZentraleSettingControl setting-key="decision.minimumSavingsPerKwh" label="Mindestvorteil für Netzladung" kind="slider" :min="0" :max="20" :step="0.5" :scale="100" unit="ct/kWh"
             hint="So viel günstiger muss Strom jetzt sein als später, damit die Akkus aus dem Netz laden oder Energie zurückhalten." />
         </template>

@@ -61,8 +61,8 @@ CI (`.github/workflows/ci.yml`) runs backend tests, type check and frontend unit
 ## Working agreement
 
 - Plan before coding; work in small steps; change only files the task needs; no large refactorings unless asked.
-- If tests fail, stop and report – do not iterate without user input.
-- Run at most one build or test pass per task.
+- If a build or test fails because of your own change, fix it and run the checks again (at most three passes per task).
+- Stop and report instead when the cause is unclear or pre-existing, when the fix would change expected behaviour or a test's intent, or when it touches a hardware write path.
 - Commit directly on `main`, only when asked. Push only when asked: the Raspberry Pi updates itself from Git.
 - Do not touch the running Pi (service restarts, database backups, settings) without explicit permission.
 

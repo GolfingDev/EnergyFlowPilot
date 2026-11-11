@@ -126,6 +126,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddHttpClient<IPriceForecastSource, EnergyForecastClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddSingleton<PriceForecastShadowState>();
         services.AddHostedService<PriceForecastShadowService>();
+        services.AddScoped<PriceTimelineService>();
         services.AddScoped<IEnergyMeasurementReader, EfEnergyMeasurementReader>();
         services.AddScoped<IEnergyQuarterHourRepository, EfEnergyQuarterHourRepository>();
         services.AddScoped(provider => new EnergyHistoryService(new EnergyHistoryDependencies(

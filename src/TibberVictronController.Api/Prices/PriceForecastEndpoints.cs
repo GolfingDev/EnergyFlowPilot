@@ -11,7 +11,15 @@ public static class PriceForecastEndpoints
     public static IEndpointRouteBuilder MapPriceForecastEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/forecast/price-forecast-accuracy", GetAsync).WithName("GetPriceForecastAccuracy").WithTags("Forecast");
+        endpoints.MapGet("/api/prices/timeline", GetTimelineAsync).WithName("GetPriceTimeline").WithTags("Forecast");
         return endpoints;
+    }
+
+    private static async Task<IResult> GetTimelineAsync(PriceTimelineService timeline, CancellationToken cancellationToken)
+    {
+        var view = await timeline.GetAsync(cancellationToken);
+        return TypedResults.Ok(new PriceTimelineDto(view.FromUtc, view.UntilUtc, "EUR", view.Timeline.ForecastFromUtc, view.Problem,
+            view.Timeline.Slots.Select(slot => new PriceTimelineSlotDto(slot.StartsAtUtc, slot.EndsAtUtc, Math.Round(slot.PricePerKwh, 4), slot.Kind.ToString())).ToArray()));
     }
 
     private static async Task<IResult> GetAsync(IPriceForecastSnapshotRepository repository, PriceForecastShadowState state, IControllerSettingStore settings,
@@ -30,6 +38,12 @@ public static class PriceForecastEndpoints
         });
     }
 }
+
+/// <summary>Kind: "Past", "Published", "Estimated" or "Forecast" (exchange forecast converted to the tariff).</summary>
+public sealed record PriceTimelineSlotDto(DateTimeOffset StartsAtUtc, DateTimeOffset EndsAtUtc, double PricePerKwh, string Kind);
+
+public sealed record PriceTimelineDto(DateTimeOffset FromUtc, DateTimeOffset UntilUtc, string Currency, DateTimeOffset? ForecastFromUtc, string? Problem,
+    IReadOnlyList<PriceTimelineSlotDto> Slots);
 
 public sealed record PriceForecastAccuracyRowDto(int LeadDays, int Quarters, int Days, double MeanAbsoluteErrorCent, double BiasCent,
     double? CheapestHoursExtraCostCent);
