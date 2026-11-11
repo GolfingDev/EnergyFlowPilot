@@ -129,6 +129,42 @@ public sealed class EnergyHistoryTests
         Assert.Equal(900, repository.Stored.Values.Single().GridCoveredSeconds);
     }
 
+    [Fact]
+    public async Task ArchivedPriceCoversTheWholeQuarterHourAlsoWithoutDecisionLog()
+    {
+        // Live samples only (e.g. joint execution blocked, so no decision was logged): the import has no price from
+        // the decision log, but the archive knows the published price of the quarter hour.
+        var reader = new FakeReader
+        {
+            Live = Enumerable.Range(0, 900).Select(second => new EnergyPowerPoint(Slot.AddSeconds(second))
+                { GridWatts = 1000, SupplementaryPvWatts = 0, PrimaryBatteryWatts = 0, SupplementaryBatteryWatts = 0 }).ToArray()
+        };
+        var repository = new FakeRepository();
+        var withoutArchive = new EnergyHistoryService(new EnergyHistoryDependencies(reader, repository, new FixedClock(Slot.AddHours(1))));
+        await withoutArchive.RecalculateAsync(Slot, Slot.AddMinutes(15));
+        Assert.Null(repository.Stored.Values.Single().ImportCost);
+
+        var archive = new FakeArchive([new(new(Slot, Slot.AddMinutes(15)), 0.28m, "EUR")]);
+        await new EnergyHistoryService(new EnergyHistoryDependencies(reader, repository, new FixedClock(Slot.AddHours(1)), archive))
+            .RecalculateAsync(Slot, Slot.AddMinutes(15));
+
+        var slot = repository.Stored.Values.Single();
+        Assert.Equal(0.28m, slot.PricePerKwh);
+        Assert.Equal(900, slot.PriceCoveredSeconds);
+        Assert.Equal(0.07m, Math.Round(slot.ImportCost!.Value, 6));
+    }
+
+    private sealed class FakeArchive(IReadOnlyList<TibberVictronController.Business.Models.TibberPriceForecastSlot> applied) : IPublishedPriceArchive
+    {
+        public Task SaveAsync(string source, IReadOnlyList<TibberVictronController.Business.Models.TibberPriceForecastSlot> publishedSlots,
+            DateTimeOffset recordedAtUtc, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<TibberVictronController.Business.Models.TibberPriceForecastSlot>> GetAsync(
+            TibberVictronController.Business.Models.HistoricalPriceRequest request, CancellationToken cancellationToken = default) => Task.FromResult(applied);
+        public Task<IReadOnlyList<TibberVictronController.Business.Models.TibberPriceForecastSlot>> GetAppliedAsync(DateTimeOffset fromUtc,
+            DateTimeOffset toUtc, string currency, CancellationToken cancellationToken = default) => Task.FromResult(applied);
+        public Task RemoveOtherSuppliersFromAsync(string source, DateTimeOffset fromUtc, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
     private sealed class FakeReader : IEnergyMeasurementReader
     {
         public IReadOnlyList<EnergyPowerPoint> Log { get; set; } = [];

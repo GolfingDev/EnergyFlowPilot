@@ -51,6 +51,24 @@ public sealed class EfPublishedPriceArchive(ControllerDbContext dbContext) : IPu
             .ToArray();
     }
 
+    public async Task<IReadOnlyList<TibberPriceForecastSlot>> GetAppliedAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc, string currency,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await dbContext.PublishedPriceSlots.AsNoTracking()
+            .Where(row => row.Currency == currency && row.SlotStartUtc >= fromUtc && row.SlotStartUtc < toUtc)
+            .ToListAsync(cancellationToken);
+        return rows.GroupBy(row => row.SlotStartUtc)
+            .Where(group => group.Count() == 1)
+            .Select(group => group.Single())
+            .OrderBy(row => row.SlotStartUtc)
+            .Select(row => new TibberPriceForecastSlot(new ForecastTimeSlot(row.SlotStartUtc, row.SlotEndUtc), row.PricePerKwh, row.Currency))
+            .ToArray();
+    }
+
+    public async Task RemoveOtherSuppliersFromAsync(string source, DateTimeOffset fromUtc, CancellationToken cancellationToken = default) =>
+        await dbContext.PublishedPriceSlots.Where(row => row.Source != source && row.SlotStartUtc >= fromUtc)
+            .ExecuteDeleteAsync(cancellationToken);
+
     /// <summary>Time of the oldest decision log entry, the start of the price import.</summary>
     public async Task<DateTimeOffset?> GetOldestDecisionAtUtcAsync(CancellationToken cancellationToken = default) =>
         await dbContext.DecisionLogEntries.AsNoTracking().OrderBy(entry => entry.DecidedAtUtc)

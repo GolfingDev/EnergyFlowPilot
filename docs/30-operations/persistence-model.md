@@ -54,22 +54,28 @@ The decision log also records the retail price that applied (`TibberPricePerKwh`
 supplier) and grid power. While joint control is active, the execution writes an entry about every 30 s and only in
 status `Active`. Price readers (state 2026-11-11):
 
-| Reader | Price source |
-|---|---|
-| Historical price query `EfDecisionLogRepository.GetHistoricalPricesAsync` (joint residual energy value, car cheap-price threshold) | `PublishedPriceSlots` first, decision log for quarter hours not archived |
-| Energy history (`EfEnergyHistoryRepositories`, energy costs) | decision log only |
-| Comparable-day estimate (`ComparableDayPriceEstimator`, single-battery path) | decision log only (`GetDecisionsAsync`) |
-| Price course (`PriceTimelineService`) | decision log only |
+| Reader | Price source | Decision log age needed |
+|---|---|---|
+| Historical price query `EfDecisionLogRepository.GetHistoricalPricesAsync` (joint residual energy value, car cheap-price threshold, price course) | `PublishedPriceSlots` of the supplier first, decision log for quarter hours not archived | 30 days (car), 14 days (joint), 12 hours (price course) |
+| Energy history (`EnergyHistoryService`, energy costs) | applied price from `PublishedPriceSlots` for the whole quarter hour, otherwise the time-weighted decision log price | recalculation: last 3 hours and the previous day; backfill: from the oldest entry until done |
+| Comparable-day estimate (`ComparableDayPriceEstimator`, single-battery path) | decision log only (`GetDecisionsAsync`) | 7 days |
+| Price archive backfill | decision log | from the oldest entry until done |
 
-`decisionLog.retentionDays` (default 90) is not applied yet: no cleanup runs while the last three readers still depend
-on old decision log entries (audit 2026-11-11, step D8: switch them to `PublishedPriceSlots`, then apply the retention).
+`decisionLog.retentionDays` (default 90) is not applied yet. No reader needs entries older than 30 days once the energy
+history backfill (`energyHistory.backfilledThroughUtc`) and the price archive backfill
+(`energyHistory.priceArchiveBackfilledThroughUtc`) are done; a cleanup must never delete entries those backfills have
+not processed yet. Applying the retention permanently deletes old decision logs and needs the operator's go-ahead
+(audit 2026-11-11, step D8).
 
 ### PublishedPriceSlots
 
 Published retail prices per supplier (`Source`: `tibber`, `octopusGermany`, `energyCharts`), currency and UTC quarter
 hour; never estimated prices. `PublishedPriceArchiveBackgroundService` records the selected supplier's prices of the
 last 12 and next 48 hours every 15 minutes (a later recording of the same slot replaces the earlier one, `Origin =
-provider`). Once, it imports the prices logged with decisions since the oldest decision log entry, one UTC day at a
+provider`), but none for quarter hours starting before `electricityPrices.providerChangedAtUtc`. Prices of other
+suppliers recorded in advance for quarter hours from that change on are removed, because they never applied. So the
+archive normally holds one applied price per quarter hour; `GetAppliedAsync` leaves out quarter hours with several
+suppliers (e.g. a supplier change within a quarter hour in older imported decision logs). Once, it imports the prices logged with decisions since the oldest decision log entry, one UTC day at a
 time with 5 s pauses (`Origin = decisionLog`, same rules as the historical price query; never overrides a recorded
 supplier price). Progress: `energyHistory.priceArchiveBackfilledThroughUtc`. Energy-Charts prices are stored as
 calculated with the tariff surcharge in force when they were recorded.

@@ -89,6 +89,31 @@ public sealed class PublishedPriceArchiveTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AppliedPriceIsTheOnlyArchivedSupplierAndAmbiguousQuarterHoursAreLeftOut()
+    {
+        var archive = new EfPublishedPriceArchive(db);
+        await archive.SaveAsync("tibber", [Price(0, .20m), Price(1, .21m)], Start);
+        await archive.SaveAsync("octopusGermany", [Price(1, .19m), Price(2, .18m)], Start);
+
+        var applied = await archive.GetAppliedAsync(Start, Start.AddHours(1), "EUR");
+
+        Assert.Equal([(Start, .20m), (Start.AddMinutes(30), .18m)], applied.Select(p => (p.TimeSlot.StartsAtUtc, p.TotalPricePerKwh)));
+    }
+
+    [Fact]
+    public async Task OtherSuppliersArePrunedOnlyFromTheChangeOn()
+    {
+        var archive = new EfPublishedPriceArchive(db);
+        await archive.SaveAsync("tibber", [Price(0, .20m), Price(1, .21m), Price(2, .22m)], Start);
+        await archive.SaveAsync("octopusGermany", [Price(1, .19m), Price(2, .18m)], Start);
+
+        await archive.RemoveOtherSuppliersFromAsync("octopusGermany", Start.AddMinutes(15));
+
+        Assert.Single(await archive.GetAsync(new(Start, Start.AddHours(1), "tibber", "EUR")));
+        Assert.Equal(2, (await archive.GetAsync(new(Start, Start.AddHours(1), "octopusGermany", "EUR"))).Count);
+    }
+
+    [Fact]
     public async Task HistoricalPricesPreferTheArchiveAndFillOlderQuarterHoursFromTheDecisionLog()
     {
         // Quarter hour 0 only in the decision log (before the archive existed), quarter hour 1 in both, 2 only archived

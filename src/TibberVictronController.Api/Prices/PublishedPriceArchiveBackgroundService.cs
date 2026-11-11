@@ -44,14 +44,26 @@ public sealed class PublishedPriceArchiveBackgroundService(IServiceScopeFactory 
         }
     }
 
-    /// <summary>Stores the currently published prices of the selected supplier.</summary>
+    /// <summary>
+    /// Stores the currently published prices of the selected supplier, but none from before the last change of supplier
+    /// (that supplier did not apply then). Prices of other suppliers recorded in advance for quarter hours after the
+    /// change are removed, so the archive keeps one applied price per quarter hour.
+    /// </summary>
     public async Task RecordAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
-        var provider = scope.ServiceProvider.GetRequiredService<IElectricityPriceForecastProvider>();
+        var services = scope.ServiceProvider;
+        var provider = services.GetRequiredService<IElectricityPriceForecastProvider>();
+        var archive = services.GetRequiredService<IPublishedPriceArchive>();
         var now = clock.UtcNow;
+        var from = now.AddHours(-12);
+        DateTimeOffset? changedAt = DateTimeOffset.TryParse(
+            (await services.GetRequiredService<IControllerSettingStore>().GetSettingAsync(ControllerSettingDefaults.ElectricityPriceProviderChangedAtKey, cancellationToken))?.Value,
+            CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed) ? parsed.ToUniversalTime() : null;
+        if (changedAt > from) from = changedAt.Value;
         var prices = await provider.GetPriceForecastAsync(now.AddHours(-12), now.AddHours(48), cancellationToken);
-        await scope.ServiceProvider.GetRequiredService<IPublishedPriceArchive>().SaveAsync(provider.Source, prices, now, cancellationToken);
+        await archive.SaveAsync(provider.Source, prices.Where(price => price.TimeSlot.StartsAtUtc >= from).ToArray(), now, cancellationToken);
+        if (changedAt is { } change) await archive.RemoveOtherSuppliersFromAsync(provider.Source, change, cancellationToken);
     }
 
     /// <summary>Imports logged prices of complete UTC days up to today, continuing where an earlier run stopped.</summary>

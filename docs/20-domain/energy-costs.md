@@ -14,7 +14,7 @@ Every UTC quarter hour is stored permanently in `EnergyQuarterHours`, so evaluat
 | Grid | import, export (kWh) | live samples (every second, since 2026-10-25) or decision log (about every 11 s, since 2026-05-05), whichever covers more of the quarter hour |
 | Balance | house consumption, PV, Victron and E3/DC battery charge/discharge (kWh) | live samples only |
 | Wallbox | car charging (kWh, part of the house consumption) | live samples only |
-| Price | retail work price valid in the quarter hour (EUR/kWh) | decision log (`TibberPricePerKwh`, the price of the selected supplier at that time) |
+| Price | retail work price valid in the quarter hour (EUR/kWh) | published price archive (`PublishedPriceSlots`, whole quarter hour, since 2026-11-11), otherwise decision log (`TibberPricePerKwh`, the price of the selected supplier at that time) |
 
 - **Integration:** a measured value holds until the next one, at most 10 s (live samples) or 2 minutes (decision
   log). Longer gaps are not interpolated; each group stores its coverage in seconds (0 to 900).

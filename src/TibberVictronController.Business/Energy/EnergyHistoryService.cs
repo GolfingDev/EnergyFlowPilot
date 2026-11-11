@@ -2,7 +2,9 @@ using TibberVictronController.Business.Abstractions;
 
 namespace TibberVictronController.Business.Energy;
 
-public sealed record EnergyHistoryDependencies(IEnergyMeasurementReader Reader, IEnergyQuarterHourRepository Repository, IUtcClock Clock);
+/// <param name="PriceArchive">Published prices; where it has the price that applied, it is used for the whole quarter hour.</param>
+public sealed record EnergyHistoryDependencies(IEnergyMeasurementReader Reader, IEnergyQuarterHourRepository Repository, IUtcClock Clock,
+    IPublishedPriceArchive? PriceArchive = null);
 
 /// <summary>
 /// Recalculates the stored quarter hours of a period from the raw measurements. Idempotent, and never replaces a more
@@ -26,12 +28,22 @@ public sealed class EnergyHistoryService(EnergyHistoryDependencies dependencies)
         var fromLive = EnergyQuarterHourCalculator.Calculate(livePoints, EnergySampleSource.LiveSamples,
             EnergyQuarterHourCalculator.LiveMaximumGap, from, to, now).ToDictionary(slot => slot.SlotStartUtc);
         var existing = (await dependencies.Repository.GetAsync(from, to, cancellationToken)).ToDictionary(slot => slot.SlotStartUtc);
+        // The decision log knows the price only while decisions are logged (not e.g. while the joint execution is
+        // blocked); the archive has the published price of the whole quarter hour. Energy costs are in EUR.
+        var applied = dependencies.PriceArchive is null ? new Dictionary<DateTimeOffset, decimal>()
+            : (await dependencies.PriceArchive.GetAppliedAsync(from, to, "EUR", cancellationToken))
+                .ToDictionary(price => price.TimeSlot.StartsAtUtc, price => price.TotalPricePerKwh);
 
         var results = fromLog.Keys.Union(fromLive.Keys)
-            .Select(slot => EnergyQuarterHourCalculator.Merge(existing.GetValueOrDefault(slot),
-                EnergyQuarterHourCalculator.Combine(fromLive.GetValueOrDefault(slot), fromLog.GetValueOrDefault(slot))))
+            .Select(slot => EnergyQuarterHourCalculator.Merge(existing.GetValueOrDefault(slot), WithAppliedPrice(
+                EnergyQuarterHourCalculator.Combine(fromLive.GetValueOrDefault(slot), fromLog.GetValueOrDefault(slot)), applied)))
             .ToArray();
         if (results.Length > 0) await dependencies.Repository.SaveAsync(results, cancellationToken);
         return results.Length;
     }
+
+    private static EnergyQuarterHour WithAppliedPrice(EnergyQuarterHour slot, IReadOnlyDictionary<DateTimeOffset, decimal> applied) =>
+        applied.TryGetValue(slot.SlotStartUtc, out var price)
+            ? slot with { PricePerKwh = price, PriceCoveredSeconds = EnergyQuarterHour.SlotSeconds }
+            : slot;
 }

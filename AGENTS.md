@@ -26,7 +26,7 @@ Api  →  Business  ←  Dal        (Business has no project or package referenc
 - The joint plan comes from `JointBatteryPlanningBackgroundService` / `JointBatteryPlanCalculation`; execution uses it on the real batteries. The route `/api/joint-battery/shadow`, the status `Shadow` and `isShadow` (= execution not live) keep their historical names.
 - Otherwise: `CurrentBatteryDecisionService` (live decision) and `BatteryForecastSimulator` (forecast). This path stays a supported fallback.
 - The two paths use different optimizers (`JointBatteryPlanner` vs `BatterySocOptimizer`) with different economic rules; see the table "Which planning rules apply to which path" in `docs/20-domain/battery-decision-engine.md`. A rule change states which path it applies to.
-- Every decision is persisted with rule ID and reason. Published supplier prices are archived in `PublishedPriceSlots`; the joint residual energy value and the car's cheap-price threshold read the archive first. Energy costs, comparable-day estimates and the price course still read prices from the decision log, so changing how often or what is logged changes those results (reader table in `docs/30-operations/persistence-model.md`).
+- Every decision is persisted with rule ID and reason. Published supplier prices are archived in `PublishedPriceSlots` (one applied price per quarter hour); energy costs, the joint residual energy value, the car's cheap-price threshold and the price course read the archive first and fall back to the decision log. The comparable-day estimate and both backfills still read decision logs: never delete decision logs a backfill has not processed (reader table in `docs/30-operations/persistence-model.md`).
 
 ## Commands (repository root)
 

@@ -137,7 +137,7 @@ public static class ControllerServiceCollectionExtensions
         services.AddScoped<IEnergyQuarterHourRepository, EfEnergyQuarterHourRepository>();
         services.AddScoped(provider => new EnergyHistoryService(new EnergyHistoryDependencies(
             provider.GetRequiredService<IEnergyMeasurementReader>(), provider.GetRequiredService<IEnergyQuarterHourRepository>(),
-            provider.GetRequiredService<IUtcClock>())));
+            provider.GetRequiredService<IUtcClock>(), provider.GetRequiredService<IPublishedPriceArchive>())));
         services.AddHostedService<EnergyHistoryBackgroundService>();
         services.AddScoped(provider => new EnergyCostReportService(new EnergyCostReportDependencies(
             provider.GetRequiredService<IEnergyQuarterHourRepository>(), provider.GetRequiredService<IControllerSettingStore>(),
