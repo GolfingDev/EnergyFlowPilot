@@ -8,8 +8,11 @@ using TibberVictronController.Dal.Victron;
 
 namespace TibberVictronController.Api.JointBattery;
 
-/// <summary>Loads independent live inputs for the shadow planner; sends only MQTT read requests, never device commands.</summary>
-public sealed class JointBatteryShadowCalculation(IServiceProvider services)
+/// <summary>
+/// Loads the inputs of the joint planner and calculates the plan that the joint execution runs on the real batteries.
+/// Sends only MQTT read requests, never device commands; all writes go through the execution and its live limits.
+/// </summary>
+public sealed class JointBatteryPlanCalculation(IServiceProvider services)
 {
     /// <summary>
     /// Records the fresh forecast for later comparison and, if switched on and learned from enough days, scales the

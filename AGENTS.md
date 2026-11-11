@@ -22,7 +22,7 @@ Api  →  Business  ←  Dal        (Business has no project or package referenc
 - Joint control (Victron + E3/DC) is active when `jointBattery.executionEnabled=true` or `jointBattery.recoveryPending=true`:
   `Business/Decisions/JointBattery*` and `Api/JointBattery/`. The `JointAware*` decorators then bypass `CurrentBatteryDecisionService`.
   **On the Raspberry Pi joint control is permanently active** (single source: `docs/30-operations/e3dc-rscp.md`, "Betriebszustand"); changes there reach real hardware.
-- `JointBatteryShadowBackgroundService` / `JointBatteryShadowCalculation` (`/api/joint-battery/shadow`) is the production planner despite its name: execution uses its plan.
+- The joint plan comes from `JointBatteryPlanningBackgroundService` / `JointBatteryPlanCalculation`; execution uses it on the real batteries. The route `/api/joint-battery/shadow`, the status `Shadow` and `isShadow` (= execution not live) keep their historical names.
 - Otherwise: `CurrentBatteryDecisionService` (live decision) and `BatteryForecastSimulator` (forecast). This path stays a supported fallback.
 - The two paths use different optimizers (`JointBatteryPlanner` vs `BatterySocOptimizer`) with different economic rules; see the table "Which planning rules apply to which path" in `docs/20-domain/battery-decision-engine.md`. A rule change states which path it applies to.
 - Every decision is persisted with rule ID and reason. The decision log is also the only durable price history: energy costs, comparable-day estimates, the joint residual energy value, the car's cheap-price threshold and the price course read prices from it. Changing how often or what is logged changes those results.

@@ -4,9 +4,15 @@ using TibberVictronController.Business.Models;
 
 namespace TibberVictronController.Api.JointBattery;
 
-/// <summary>Read-only shadow worker with bounded polling and reconnect backoff, isolated from production control.</summary>
-public sealed class JointBatteryShadowBackgroundService(IServiceScopeFactory scopes, JointBatteryRuntimeState state,
-    ILogger<JointBatteryShadowBackgroundService> logger) : BackgroundService
+/// <summary>
+/// Calculates the joint battery plan about every 30 s (bounded backoff after failures). It only reads devices. While
+/// joint execution is enabled, <see cref="JointBatteryExecutionBackgroundService"/> executes this plan on the real
+/// batteries; otherwise it is a preview. Formerly named "JointBatteryShadow…"; the API route
+/// <c>/api/joint-battery/shadow</c>, the status value <c>Shadow</c> and the event category <c>JointBatteryShadow</c>
+/// keep the old name for compatibility.
+/// </summary>
+public sealed class JointBatteryPlanningBackgroundService(IServiceScopeFactory scopes, JointBatteryRuntimeState state,
+    ILogger<JointBatteryPlanningBackgroundService> logger) : BackgroundService
 {
     private DateTimeOffset? lastLoggedSlot;
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -58,13 +64,13 @@ public sealed class JointBatteryShadowBackgroundService(IServiceScopeFactory sco
         }
         // Keep the previous, still time-bounded plan available while its replacement is calculated.
         // The calculation reads both batteries again right before planning; the read above only proves access.
-        var (plan, planTelemetry) = await services.GetRequiredService<JointBatteryShadowCalculation>().CalculateAsync(token);
+        var (plan, planTelemetry) = await services.GetRequiredService<JointBatteryPlanCalculation>().CalculateAsync(token);
         // Logging is required for review, but only once per price slot. No simulated decision enters the production log.
         var first = plan.Slots.FirstOrDefault();
         if (first is not null && first.TimeSlot.StartsAtUtc != lastLoggedSlot)
         {
             await services.GetRequiredService<IOperationalEventRepository>().SaveEventAsync(new OperationalEvent(
-                Guid.NewGuid(), clock.UtcNow, "JointBatteryShadow", "Information", "Gemeinsame Akku-Vorschau berechnet; keine Hardwarebefehle.",
+                Guid.NewGuid(), clock.UtcNow, "JointBatteryShadow", "Information", "Gemeinsamer Akku-Plan fuer die neue Viertelstunde berechnet.",
                 JsonSerializer.Serialize(new { first.TimeSlot, first.Targets, first.Reason, plan.MaximumGridImportWatts })), token);
             lastLoggedSlot = first.TimeSlot.StartsAtUtc;
         }

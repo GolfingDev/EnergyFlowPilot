@@ -443,8 +443,8 @@ public sealed class JointBatteryShadowTests
         using var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings)
             .AddSingleton<IUtcClock>(new Clock()).BuildServiceProvider();
         var state = new JointBatteryRuntimeState();
-        var worker = new JointBatteryShadowBackgroundService(services.GetRequiredService<IServiceScopeFactory>(), state,
-            NullLogger<JointBatteryShadowBackgroundService>.Instance);
+        var worker = new JointBatteryPlanningBackgroundService(services.GetRequiredService<IServiceScopeFactory>(), state,
+            NullLogger<JointBatteryPlanningBackgroundService>.Instance);
         await worker.PollAsync(CancellationToken.None);
         Assert.Equal("Disabled", state.Current.Status);
         Assert.Null(state.Current.Plan);
@@ -458,8 +458,8 @@ public sealed class JointBatteryShadowTests
         using var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings)
             .AddSingleton<IUtcClock>(new Clock()).AddSingleton<IE3dcTelemetrySource>(new ReadSource()).BuildServiceProvider();
         var state = new JointBatteryRuntimeState();
-        var worker = new JointBatteryShadowBackgroundService(services.GetRequiredService<IServiceScopeFactory>(), state,
-            NullLogger<JointBatteryShadowBackgroundService>.Instance);
+        var worker = new JointBatteryPlanningBackgroundService(services.GetRequiredService<IServiceScopeFactory>(), state,
+            NullLogger<JointBatteryPlanningBackgroundService>.Instance);
         await worker.PollAsync(CancellationToken.None);
         Assert.Equal("Monitoring", state.Current.Status);
         Assert.NotNull(state.Current.LocalTelemetry);

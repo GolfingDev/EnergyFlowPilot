@@ -9,6 +9,8 @@ public static class JointBatteryEndpoints
 {
     public static IEndpointRouteBuilder MapJointBatteryEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        // Historical route name: returns the current joint plan and the execution state, also while execution is live.
+        // IsShadow in the response means "execution is not live" (switched off or global dry run).
         endpoints.MapGet("/api/joint-battery/shadow", async (JointBatteryRuntimeState state, JointBatteryExecutionState executionState,
             IUtcClock clock, IControllerSettingStore settings, JointManualChargeService manualCharge, CancellationToken cancellationToken) =>
         {
