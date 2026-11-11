@@ -52,4 +52,23 @@ public sealed class WeishauptBiblockTelemetrySample
     /// Null when unavailable or outside 0–100 %.
     /// </summary>
     public ushort? PowerDemandPercent { get; init; }
+
+    // Flow temperatures in °C (signed tenths on the wire), read so the heating curve and COP can be judged
+    // against flow temperature. Source: community register list (hpconst.py); the circuit numbers match this
+    // installation (circuit 1 direct radiators, circuit 3 mixed underfloor). Null means unavailable or implausible.
+
+    /// <summary>Flow set point requested by heating circuit 1 (input register 31104).</summary>
+    public decimal? HeatingCircuit1FlowSetPointCelsius { get; init; }
+
+    /// <summary>Flow set point of heating circuit 3 (input register 31304).</summary>
+    public decimal? HeatingCircuit3FlowSetPointCelsius { get; init; }
+
+    /// <summary>Measured flow temperature behind the mixer of heating circuit 3 (input register 31305).</summary>
+    public decimal? HeatingCircuit3FlowTemperatureCelsius { get; init; }
+
+    /// <summary>Heat pump flow temperature (input register 33104).</summary>
+    public decimal? HeatPumpFlowTemperatureCelsius { get; init; }
+
+    /// <summary>Heat pump return temperature (input register 33105).</summary>
+    public decimal? HeatPumpReturnTemperatureCelsius { get; init; }
 }

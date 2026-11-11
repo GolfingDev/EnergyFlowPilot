@@ -26,4 +26,11 @@ public sealed class WeishauptBiblockTelemetrySampleEntity
     public ushort? ElectricalMonthKwh { get; set; }
     public ushort? ElectricalYearKwh { get; set; }
     public ushort? PowerDemandPercent { get; set; }
+
+    // Flow temperatures in °C; null means unavailable, never 0 °C.
+    public decimal? HeatingCircuit1FlowSetPointCelsius { get; set; }
+    public decimal? HeatingCircuit3FlowSetPointCelsius { get; set; }
+    public decimal? HeatingCircuit3FlowTemperatureCelsius { get; set; }
+    public decimal? HeatPumpFlowTemperatureCelsius { get; set; }
+    public decimal? HeatPumpReturnTemperatureCelsius { get; set; }
 }

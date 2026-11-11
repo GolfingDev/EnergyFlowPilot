@@ -152,6 +152,13 @@ public static class HomematicXmlParser
             return HomematicClimateSampleKind.WeatherStation;
         }
 
+        // HmIP-STH/-STHD (and later revisions) are indoor sensors; HmIP-STHO is the outdoor variant and no room.
+        if (deviceType.StartsWith("HmIP-STH", StringComparison.OrdinalIgnoreCase) &&
+            !deviceType.StartsWith("HmIP-STHO", StringComparison.OrdinalIgnoreCase))
+        {
+            return HomematicClimateSampleKind.RoomSensor;
+        }
+
         return null;
     }
 

@@ -5,7 +5,8 @@ export type HomematicSampleKind =
   | 'RadiatorThermostat'
   | 'WallThermostat'
   | 'UnderfloorHeatingZone'
-  | 'WeatherStation';
+  | 'WeatherStation'
+  | 'RoomSensor';
 
 export interface HomematicPointDto {
   bucketStartsAtUtc: string;

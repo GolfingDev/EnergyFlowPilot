@@ -15,6 +15,16 @@ public sealed class WeishauptBiblockModbusClient : IWeishauptBiblockTelemetrySou
     private const ushort OperatingStatusAddress = 33101;
     private const ushort HotWaterTemperatureAddress = 32102;
     private const ushort PowerDemandAddress = 33103;
+    private const ushort HeatingCircuit1FlowSetPointAddress = 31104;
+    private const ushort HeatingCircuit3FlowSetPointAddress = 31304;
+    private const ushort HeatingCircuit3FlowTemperatureAddress = 31305;
+    private const ushort HeatPumpFlowTemperatureAddress = 33104;
+    private const ushort HeatPumpReturnTemperatureAddress = 33105;
+
+    // The WBB answers 0x8000 for a sensor that is not present (e.g. flow sensor of a direct circuit).
+    private const short MissingTemperatureRaw = short.MinValue;
+    private const decimal MinimumPlausibleTemperatureCelsius = -50m;
+    private const decimal MaximumPlausibleTemperatureCelsius = 100m;
 
     private readonly DatabaseWeishauptBiblockModbusSettingsProvider settingsProvider;
 
@@ -69,7 +79,12 @@ public sealed class WeishauptBiblockModbusClient : IWeishauptBiblockTelemetrySou
             ElectricalYesterdayKwh = await ReadOptionalEnergyAsync(stream, settings.SlaveId, 36702, 17, cancellationToken),
             ElectricalMonthKwh = await ReadOptionalEnergyAsync(stream, settings.SlaveId, 36703, 18, cancellationToken),
             ElectricalYearKwh = await ReadOptionalEnergyAsync(stream, settings.SlaveId, 36704, 19, cancellationToken),
-            PowerDemandPercent = await ReadOptionalPercentAsync(stream, settings.SlaveId, PowerDemandAddress, 20, cancellationToken)
+            PowerDemandPercent = await ReadOptionalPercentAsync(stream, settings.SlaveId, PowerDemandAddress, 20, cancellationToken),
+            HeatingCircuit1FlowSetPointCelsius = await ReadOptionalTemperatureAsync(stream, settings.SlaveId, HeatingCircuit1FlowSetPointAddress, 21, cancellationToken),
+            HeatingCircuit3FlowSetPointCelsius = await ReadOptionalTemperatureAsync(stream, settings.SlaveId, HeatingCircuit3FlowSetPointAddress, 22, cancellationToken),
+            HeatingCircuit3FlowTemperatureCelsius = await ReadOptionalTemperatureAsync(stream, settings.SlaveId, HeatingCircuit3FlowTemperatureAddress, 23, cancellationToken),
+            HeatPumpFlowTemperatureCelsius = await ReadOptionalTemperatureAsync(stream, settings.SlaveId, HeatPumpFlowTemperatureAddress, 24, cancellationToken),
+            HeatPumpReturnTemperatureCelsius = await ReadOptionalTemperatureAsync(stream, settings.SlaveId, HeatPumpReturnTemperatureAddress, 25, cancellationToken)
         };
     }
 
@@ -92,6 +107,17 @@ public sealed class WeishauptBiblockModbusClient : IWeishauptBiblockTelemetrySou
     {
         var value = await ReadOptionalEnergyAsync(stream, slaveId, address, transactionId, ct);
         return value is <= 100 ? value : null;
+    }
+
+    // Signed tenths of °C. A missing sensor or an implausible value is stored as unknown, never as a temperature.
+    private static async Task<decimal?> ReadOptionalTemperatureAsync(NetworkStream stream, byte slaveId, ushort address, ushort transactionId, CancellationToken ct)
+    {
+        var raw = await ReadOptionalEnergyAsync(stream, slaveId, address, transactionId, ct);
+        if (raw is null || (short)raw.Value == MissingTemperatureRaw)
+            return null;
+
+        var celsius = (short)raw.Value / 10m;
+        return celsius is >= MinimumPlausibleTemperatureCelsius and <= MaximumPlausibleTemperatureCelsius ? celsius : null;
     }
 
     private static async Task<ushort> ReadInputRegisterAsync(NetworkStream stream, byte slaveId, ushort address, ushort transactionId, CancellationToken cancellationToken)

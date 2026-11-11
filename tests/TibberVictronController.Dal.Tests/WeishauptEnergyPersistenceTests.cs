@@ -56,7 +56,12 @@ public sealed class WeishauptEnergyPersistenceTests
                 ElectricalYesterdayKwh = 13,
                 ElectricalMonthKwh = 14,
                 ElectricalYearKwh = 65535,
-                PowerDemandPercent = 45
+                PowerDemandPercent = 45,
+                HeatingCircuit1FlowSetPointCelsius = 33.0m,
+                HeatingCircuit3FlowSetPointCelsius = 31.0m,
+                HeatingCircuit3FlowTemperatureCelsius = 30.5m,
+                HeatPumpFlowTemperatureCelsius = 34.5m,
+                HeatPumpReturnTemperatureCelsius = -1.5m
             });
         }
         await using var reloaded = new ControllerDbContext(options);
@@ -84,5 +89,16 @@ public sealed class WeishauptEnergyPersistenceTests
         Assert.Equal((ushort)14, rows[1].ElectricalMonthKwh);
         Assert.Equal((ushort)65535, rows[1].ElectricalYearKwh);
         Assert.Equal((ushort)45, rows[1].PowerDemandPercent);
+
+        // Legacy rows keep null flow temperatures; new rows round-trip signed tenths.
+        var temperatures = typeof(WeishauptBiblockTelemetrySample).GetProperties()
+            .Where(p => p.PropertyType == typeof(decimal?)).ToArray();
+        Assert.Equal(5, temperatures.Length);
+        Assert.All(temperatures, p => Assert.Null(p.GetValue(rows[0])));
+        Assert.Equal(33.0m, rows[1].HeatingCircuit1FlowSetPointCelsius);
+        Assert.Equal(31.0m, rows[1].HeatingCircuit3FlowSetPointCelsius);
+        Assert.Equal(30.5m, rows[1].HeatingCircuit3FlowTemperatureCelsius);
+        Assert.Equal(34.5m, rows[1].HeatPumpFlowTemperatureCelsius);
+        Assert.Equal(-1.5m, rows[1].HeatPumpReturnTemperatureCelsius);
     }
 }

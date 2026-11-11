@@ -39,7 +39,12 @@ public sealed class EfWeishauptBiblockTelemetryRepository : IWeishauptBiblockTel
             ElectricalYesterdayKwh = sample.ElectricalYesterdayKwh,
             ElectricalMonthKwh = sample.ElectricalMonthKwh,
             ElectricalYearKwh = sample.ElectricalYearKwh,
-            PowerDemandPercent = sample.PowerDemandPercent
+            PowerDemandPercent = sample.PowerDemandPercent,
+            HeatingCircuit1FlowSetPointCelsius = sample.HeatingCircuit1FlowSetPointCelsius,
+            HeatingCircuit3FlowSetPointCelsius = sample.HeatingCircuit3FlowSetPointCelsius,
+            HeatingCircuit3FlowTemperatureCelsius = sample.HeatingCircuit3FlowTemperatureCelsius,
+            HeatPumpFlowTemperatureCelsius = sample.HeatPumpFlowTemperatureCelsius,
+            HeatPumpReturnTemperatureCelsius = sample.HeatPumpReturnTemperatureCelsius
         });
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -83,7 +88,12 @@ public sealed class EfWeishauptBiblockTelemetryRepository : IWeishauptBiblockTel
                 ElectricalYesterdayKwh = s.ElectricalYesterdayKwh,
                 ElectricalMonthKwh = s.ElectricalMonthKwh,
                 ElectricalYearKwh = s.ElectricalYearKwh,
-                PowerDemandPercent = s.PowerDemandPercent
+                PowerDemandPercent = s.PowerDemandPercent,
+                HeatingCircuit1FlowSetPointCelsius = s.HeatingCircuit1FlowSetPointCelsius,
+                HeatingCircuit3FlowSetPointCelsius = s.HeatingCircuit3FlowSetPointCelsius,
+                HeatingCircuit3FlowTemperatureCelsius = s.HeatingCircuit3FlowTemperatureCelsius,
+                HeatPumpFlowTemperatureCelsius = s.HeatPumpFlowTemperatureCelsius,
+                HeatPumpReturnTemperatureCelsius = s.HeatPumpReturnTemperatureCelsius
             }).ToArrayAsync(cancellationToken);
     }
 }

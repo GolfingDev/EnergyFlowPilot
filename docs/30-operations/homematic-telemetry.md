@@ -43,6 +43,9 @@ Selection uses an allow-list of device types, because generic datapoint names ar
 | `HmIP-WTH*`, `HmIP-BWTH*`, `HM-TC-IT-WM-W-EU` | `WallThermostat` | – |
 | `HmIP-FAL*` (underfloor actuator) | `UnderfloorHeatingZone` | `LEVEL` × 100 |
 | `HmIP-SWO*` | `WeatherStation` | – |
+| `HmIP-STH*` except `HmIP-STHO*` (indoor temperature/humidity sensor) | `RoomSensor` | – |
+
+`HmIP-STHO` is the outdoor sensor and stays off the list, so it is never counted as a room. Room sensors exist so rooms without Homematic control (for example the upper floor on heating circuit 1) can be watched.
 
 Rules:
 
@@ -72,7 +75,7 @@ Each bucket holds the mean of the raw samples per channel. The response also con
 - a summary of the latest poll: outdoor temperature, mean valve opening of radiator thermostats (heating circuit 1) and underfloor zones (heating circuit 3), rooms more than 0.5 K below set point (set points ≤ 5 °C count as switched off)
 - per-bucket pairs of outdoor temperature and mean valve opening per circuit for the heating curve scatter chart
 
-Room rule: the XML-API exposes no group membership. HmIP heating groups and BidCos thermostats (`HM-*`, never part of HmIP groups) count as rooms. Single HmIP thermostats only count as rooms when no heating group exists, so a room is never shown or counted twice. Heating groups are excluded from the circuit valve means to avoid counting valves twice.
+Room rule: the XML-API exposes no group membership. HmIP heating groups and BidCos thermostats (`HM-*`, never part of HmIP groups) count as rooms. Single HmIP thermostats only count as rooms when no heating group exists, so a room is never shown or counted twice. Room sensors always count as rooms and have no set point line; if one also serves as the temperature source of a heating group, that room appears twice in the chart, but the room count (rooms with a set point above 5 °C) stays correct. Heating groups are excluded from the circuit valve means to avoid counting valves twice.
 
 ## Encoding
 

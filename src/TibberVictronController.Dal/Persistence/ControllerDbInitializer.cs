@@ -127,6 +127,20 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
             if (!existing.Contains(column))
                 await dbContext.Database.ExecuteSqlRawAsync(
                     $"ALTER TABLE \"WeishauptBiblockTelemetrySamples\" ADD COLUMN \"{column}\" INTEGER NULL;", cancellationToken);
+
+        // Flow temperatures (added 2026-11-11); older rows stay null, nothing is reconstructed.
+        string[] temperatureColumns =
+        [
+            "HeatingCircuit1FlowSetPointCelsius",
+            "HeatingCircuit3FlowSetPointCelsius",
+            "HeatingCircuit3FlowTemperatureCelsius",
+            "HeatPumpFlowTemperatureCelsius",
+            "HeatPumpReturnTemperatureCelsius"
+        ];
+        foreach (var column in temperatureColumns)
+            if (!existing.Contains(column))
+                await dbContext.Database.ExecuteSqlRawAsync(
+                    $"ALTER TABLE \"WeishauptBiblockTelemetrySamples\" ADD COLUMN \"{column}\" REAL NULL;", cancellationToken);
     }
 
     private async Task EnsureMissingTablesAsync(CancellationToken cancellationToken)

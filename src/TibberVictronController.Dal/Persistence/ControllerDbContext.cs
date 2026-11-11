@@ -350,6 +350,11 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(sample => sample.MeasuredAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
             entity.Property(sample => sample.OutdoorTemperatureCelsius).HasConversion<double>();
             entity.Property(sample => sample.HotWaterTemperatureCelsius).HasConversion<double>();
+            entity.Property(sample => sample.HeatingCircuit1FlowSetPointCelsius).HasConversion<double?>();
+            entity.Property(sample => sample.HeatingCircuit3FlowSetPointCelsius).HasConversion<double?>();
+            entity.Property(sample => sample.HeatingCircuit3FlowTemperatureCelsius).HasConversion<double?>();
+            entity.Property(sample => sample.HeatPumpFlowTemperatureCelsius).HasConversion<double?>();
+            entity.Property(sample => sample.HeatPumpReturnTemperatureCelsius).HasConversion<double?>();
             entity.HasIndex(sample => sample.MeasuredAtUtc);
         });
     }

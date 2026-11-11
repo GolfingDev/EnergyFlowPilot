@@ -10,5 +10,8 @@ public enum HomematicClimateSampleKind
     RadiatorThermostat,
     WallThermostat,
     UnderfloorHeatingZone,
-    WeatherStation
+    WeatherStation,
+
+    /// <summary>Indoor temperature/humidity sensor without own control (HmIP-STH, HmIP-STHD).</summary>
+    RoomSensor
 }

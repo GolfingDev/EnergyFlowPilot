@@ -59,12 +59,15 @@ public sealed partial class HomematicClimateHistoryService : IHomematicClimateHi
     /// Decides whether a channel stands for a room. The XML-API exposes no group membership, so the rule relies on
     /// a technical fact: HmIP heating groups only contain HmIP devices, BidCos thermostats ("HM-*") always regulate on
     /// their own. Single HmIP thermostats therefore only count as rooms when no heating group exists.
+    /// Room sensors always count: they are installed to watch rooms without own control (for example the upper floor).
+    /// If one also feeds a heating group, that room appears twice in the chart; it has no set point, so the room
+    /// count stays correct.
     /// </summary>
     public static bool IsRoom(HomematicClimateSampleKind kind, string deviceType, bool hasHeatingGroups)
     {
         return kind switch
         {
-            HomematicClimateSampleKind.HeatingGroup => true,
+            HomematicClimateSampleKind.HeatingGroup or HomematicClimateSampleKind.RoomSensor => true,
             HomematicClimateSampleKind.RadiatorThermostat or HomematicClimateSampleKind.WallThermostat =>
                 deviceType.StartsWith("HM-", StringComparison.OrdinalIgnoreCase) || !hasHeatingGroups,
             _ => false

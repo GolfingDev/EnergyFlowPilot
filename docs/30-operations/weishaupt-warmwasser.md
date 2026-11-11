@@ -90,6 +90,26 @@ Weboberflaeche des Geraets oder einen eigenen Zwischenzaehler). Die API liefert 
 neuesten Wert als `demand` im Warmwasserbericht; Werte aelter als 10 Minuten zeigt
 die Oberflaeche nicht als aktuell an. Die Steuerungslogik verwendet den Wert nicht.
 
+### Vorlauftemperaturen (Erweiterung vom 11.11.2026)
+
+Zusaetzlich werden per FC04 gelesen (vorzeichenbehaftet, 0,1 °C):
+
+| Register | Bedeutung |
+| --- | --- |
+| 31104 | Vorlaufsolltemperatur Heizkreis 1 (OG, Heizkoerper, direkter Kreis) |
+| 31304 | Vorlaufsolltemperatur Heizkreis 3 (Fussbodenheizung, Mischkreis) |
+| 31305 | Vorlauftemperatur Heizkreis 3 hinter dem Mischer |
+| 33104 | Vorlauftemperatur Waermepumpe |
+| 33105 | Ruecklauftemperatur Waermepumpe |
+
+Quelle ist die Community-Liste (hpconst.py). Am 11.11.2026 abends lieferte das Geraet
+bei 7 °C Ansaugluft plausible Werte (33,0 / 31,0 / 30,5 / 34,5 / 35,0 °C bei stehendem Verdichter).
+Die Heizkreisnummern entsprechen dieser Anlage; Heizkreis 2 ist nicht konfiguriert, Heizkreis 1
+hat keinen eigenen Vorlauffuehler (31105 liefert 0x8000). 0x8000 und Werte ausserhalb
+-50 bis 100 °C werden als unbekannt (null) gespeichert. Zweck: Heizkennlinie und COP
+gegen die Vorlauftemperatur auswerten. Die Werte werden nur gespeichert, nicht angezeigt
+und nicht zur Steuerung verwendet. Aeltere Zeilen bleiben null.
+
 Explizite Modbus-Ausnahmen 01/02 bei optionalen Energie-Registern ergeben null;
 andere Geraete-, Transport- und Protokollfehler bleiben Fehler des Pollings.
 Ein gesamter Modbus-Abruf ist auf 30 Sekunden begrenzt.

@@ -60,7 +60,8 @@ const temperatureSeries = computed<HeatingChartSeries[]>(() => {
 
     chartSeries.push(createChartSeries(series, isOutdoor ? 'Außen' : series.displayName, (point) => point.actualTemperatureCelsius, isOutdoor));
 
-    if (showSetPoints.value && !isOutdoor) {
+    // Room sensors have no set point; an empty "(Soll)" line would only clutter the legend.
+    if (showSetPoints.value && !isOutdoor && series.kind !== 'RoomSensor') {
       chartSeries.push(createChartSeries(series, `${series.displayName} (Soll)`, (point) => point.setPointTemperatureCelsius, true));
     }
   }

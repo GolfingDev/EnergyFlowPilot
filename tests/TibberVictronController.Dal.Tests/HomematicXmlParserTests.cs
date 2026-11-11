@@ -141,15 +141,36 @@ public sealed class HomematicXmlParserTests
     [Fact]
     public void ParseReportsUnsupportedClimateDeviceTypesInsteadOfStoringThem()
     {
+        // The outdoor sensor HmIP-STHO is deliberately not on the list: it must never count as a room.
         var deviceList = LoadDeviceList();
         deviceList.Root!.Elements("device")
             .Single(device => (string?)device.Attribute("name") == "Thermostat Bad")
-            .SetAttributeValue("device_type", "HmIP-STH");
+            .SetAttributeValue("device_type", "HmIP-STHO");
 
         var snapshot = HomematicXmlParser.Parse(LoadStateList(), deviceList, PolledAtUtc);
 
         Assert.Equal(12, snapshot.Samples.Count);
-        Assert.Equal(new[] { "HmIP-STH" }, snapshot.IgnoredClimateDeviceTypes);
+        Assert.Equal(new[] { "HmIP-STHO" }, snapshot.IgnoredClimateDeviceTypes);
+    }
+
+    [Theory]
+    [InlineData("HmIP-STH")]
+    [InlineData("HmIP-STHD")]
+    public void ParseReadsIndoorTemperatureSensorAsRoomSensor(string deviceType)
+    {
+        var deviceList = LoadDeviceList();
+        deviceList.Root!.Elements("device")
+            .Single(device => (string?)device.Attribute("name") == "Thermostat Bad")
+            .SetAttributeValue("device_type", deviceType);
+
+        var snapshot = HomematicXmlParser.Parse(LoadStateList(), deviceList, PolledAtUtc);
+
+        Assert.Equal(13, snapshot.Samples.Count);
+        Assert.Empty(snapshot.IgnoredClimateDeviceTypes);
+        var sensor = Assert.Single(snapshot.Samples, sample => sample.DeviceName == "Thermostat Bad");
+        Assert.Equal(HomematicClimateSampleKind.RoomSensor, sensor.Kind);
+        Assert.NotNull(sensor.ActualTemperatureCelsius);
+        Assert.Null(sensor.ValveOpeningPercent);
     }
 
     [Fact]

@@ -97,6 +97,14 @@ public sealed class HomematicClimateHistoryServiceTests
         Assert.False(HomematicClimateHistoryService.IsRoom(HomematicClimateSampleKind.UnderfloorHeatingZone, "HmIP-FALMOT-C12", hasHeatingGroups: false));
     }
 
+    [Fact]
+    public void IsRoomAlwaysCountsRoomSensorsEvenWithHeatingGroups()
+    {
+        // Sensors watch rooms without own control (e.g. the upper floor), so they must not hide behind groups.
+        Assert.True(HomematicClimateHistoryService.IsRoom(HomematicClimateSampleKind.RoomSensor, "HmIP-STHD", hasHeatingGroups: true));
+        Assert.True(HomematicClimateHistoryService.IsRoom(HomematicClimateSampleKind.RoomSensor, "HmIP-STH", hasHeatingGroups: false));
+    }
+
     private static IEnumerable<HomematicClimateSample> CreateInstallationSnapshot(DateTimeOffset polledAtUtc)
     {
         yield return Sample(HomematicClimateSampleKind.HeatingGroup, "INT0000003:1", "HmIP-HEATING", "Heizung Bad INT0000003", polledAtUtc, actual: 21.0m, setPoint: 22m, valve: 80m);
