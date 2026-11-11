@@ -67,9 +67,11 @@ public static class ControllerServiceCollectionExtensions
         if (GetDataProtectionKeyDirectory(connectionString) is { } keyDirectory)
             dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keyDirectory));
         services.AddScoped<EfControllerSettingStore>();
-        services.AddScoped<IControllerSettingStore>(provider => new ProtectedRscpSettingStore(
+        services.AddScoped<ScopedSettingReadCache>();
+        // The read cache is off unless a scope turns it on (the joint execution tick does).
+        services.AddScoped<IControllerSettingStore>(provider => new CachingControllerSettingStore(new ProtectedRscpSettingStore(
             provider.GetRequiredService<EfControllerSettingStore>(), provider.GetRequiredService<IDataProtectionProvider>(),
-            provider.GetService<ILogger<ProtectedRscpSettingStore>>()));
+            provider.GetService<ILogger<ProtectedRscpSettingStore>>()), provider.GetRequiredService<ScopedSettingReadCache>()));
         services.AddSingleton<E3dcRscpSession>();
         services.AddScoped<IE3dcTelemetrySource, E3dcRscpTelemetrySource>();
         services.AddScoped<IE3dcPowerControl, E3dcRscpPowerControl>();

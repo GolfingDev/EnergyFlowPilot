@@ -85,6 +85,8 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
         cycle.CancelAfter(CycleBudget);
         await using var scope = scopes.CreateAsyncScope();
         var services = scope.ServiceProvider;
+        // One read per setting and tick (device switches excepted), see CachingControllerSettingStore.
+        services.GetService<ScopedSettingReadCache>()?.Enable();
         var settings = services.GetRequiredService<IControllerSettingStore>();
         var clock = services.GetRequiredService<IUtcClock>();
         async Task<bool> Flag(string key) => bool.TryParse((await settings.GetSettingAsync(key, cycle.Token))?.Value, out var value) && value;
@@ -329,6 +331,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
         using var lease = await ownership.AcquirePublicationAsync(timeout.Token);
         await using var scope = scopes.CreateAsyncScope();
         var services = scope.ServiceProvider;
+        services.GetService<ScopedSettingReadCache>()?.Enable();
         var clock = services.GetRequiredService<IUtcClock>();
         state.BlockedUntilUtc = clock.UtcNow.AddSeconds(30);
         var restored = !ownership.JointControlActive;
