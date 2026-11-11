@@ -278,6 +278,121 @@ public sealed class JointBatteryShadowTests
         Assert.Contains("Vorschau-Testgrund.", fallback.Details);
     }
 
+    private static JointBatterySlot PlannedSlot(int victronWatts, int e3dcWatts, BatteryChargeSource? source, bool estimated = false) =>
+        new(new ForecastTimeSlot(Now.AddMinutes(-5), Now.AddMinutes(10)), 0.20m, "EUR", estimated, source,
+            [new("victron", victronWatts, 50, 52), new("e3dc", e3dcWatts, 50, 51)], "Testplan", false);
+
+    private static JointBatteryRuntimeState RuntimeWith(JointBatterySlot slot, TimeSpan planAge)
+    {
+        var runtime = new JointBatteryRuntimeState();
+        runtime.Set(new("Shadow", "Testplan", Now, null, new JointBatteryPlan(Now - planAge, [], [slot], 0, [])));
+        return runtime;
+    }
+
+    private static async Task<(JointBatteryExecutionState State, Events Events, JointBatteryExecutionBackgroundService Worker, ServiceProvider Services)>
+        ExecutionWithAsync(JointBatteryRuntimeState runtime, IJointBatteryHardware? hardware = null)
+    {
+        var settings = await ReadyForExecutionAsync();
+        var state = new JointBatteryExecutionState();
+        var events = new Events();
+        var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings).AddSingleton<IUtcClock>(new Clock())
+            .AddSingleton<IOperationalEventRepository>(events).AddSingleton(runtime).AddSingleton(state)
+            .AddSingleton(hardware ?? new RecoveryHardware(false)).AddScoped<JointBatteryExecutionCoordinator>().BuildServiceProvider();
+        var worker = new JointBatteryExecutionBackgroundService(services.GetRequiredService<IServiceScopeFactory>(), state,
+            new VictronSetpointRefreshState(), NullLogger<JointBatteryExecutionBackgroundService>.Instance, new Watchdog());
+        return (state, events, worker, services);
+    }
+
+    [Theory]
+    [InlineData(76, false, "Die gemeinsame Planung ist veraltet.")]
+    [InlineData(10, true, "Geschaetzte Preise erlauben keine Netzladung.")]
+    public async Task StalePlanOrEstimatedGridChargeRunsSelfConsumptionWithoutCommittingTheSlot(int planAgeSeconds, bool estimated, string cause)
+    {
+        var runtime = RuntimeWith(PlannedSlot(1000, 500, BatteryChargeSource.Grid, estimated), TimeSpan.FromSeconds(planAgeSeconds));
+        var (state, events, worker, services) = await ExecutionWithAsync(runtime);
+        using (services)
+        {
+            await worker.TickAsync(CancellationToken.None);
+
+            Assert.Null(state.CommittedSlot);
+            var fallback = Assert.Single(events.Saved, e => e.Category == "JointBatteryFallback");
+            Assert.Contains(cause, fallback.Details);
+        }
+    }
+
+    [Fact]
+    public async Task FreshPlanIsCommittedAndASameDirectionPlanUpdatesOnlyTheWatts()
+    {
+        // The batteries never report neutral, so the coordinator stays in its transition: this test is about which
+        // command the tick selects, not about executing it (see JointBatteryExecutionTests for that).
+        var runtime = RuntimeWith(PlannedSlot(1000, 500, BatteryChargeSource.Grid), TimeSpan.FromSeconds(10));
+        var (state, events, worker, services) = await ExecutionWithAsync(runtime, new NeverNeutralHardware());
+        using (services)
+        {
+            await worker.TickAsync(CancellationToken.None);
+            Assert.Equal("Transition", state.Current.Status);
+            Assert.Equal(1000, state.CommittedSlot!.Targets.Single(t => t.Id == "victron").SignedPowerWatts);
+            Assert.Contains(events.Saved, e => e.Category == "JointBatteryPlanCommitment");
+
+            // Same direction, same source: new watts and shares are taken over within the quarter hour.
+            runtime.Set(runtime.Current with { Plan = runtime.Current.Plan! with { Slots = [PlannedSlot(2000, 0, BatteryChargeSource.Grid)] } });
+            await worker.TickAsync(CancellationToken.None);
+            Assert.Equal(2000, state.CommittedSlot!.Targets.Single(t => t.Id == "victron").SignedPowerWatts);
+
+            // Opposite direction: the committed basic action stays; the deviation is only logged.
+            runtime.Set(runtime.Current with { Plan = runtime.Current.Plan! with { Slots = [PlannedSlot(-1500, -500, null)] } });
+            await worker.TickAsync(CancellationToken.None);
+            Assert.Equal(2000, state.CommittedSlot!.Targets.Single(t => t.Id == "victron").SignedPowerWatts);
+            Assert.Equal(BatteryChargeSource.Grid, state.CommittedSlot.ChargeSource);
+        }
+    }
+
+    [Fact]
+    public async Task VictronStopInhibitsBothDirectionsEvenWithoutAnAcOutReading()
+    {
+        var (victron, services, topics) = await VictronHardwareAsync();
+        using (services)
+        {
+            await new JointBatteryHardware(services).SetVictronAsync(0, CancellationToken.None);
+
+            Assert.Equal(1, victron.Written[topics.DisableChargeTopic]);
+            Assert.Equal(1, victron.Written[topics.DisableFeedInTopic]);
+            // No AC-out value was requested for a stop; the setpoint then carries no load share.
+            Assert.All(topics.ExternalEssAcPowerSetpointTopics, topic => Assert.Equal(0, victron.Written[topic]));
+        }
+    }
+
+    [Fact]
+    public async Task VictronChargeSetpointIsTheBatteryTargetPlusTheMeasuredAcOutLoad()
+    {
+        // External ESS: the Multi supplies AC-out loads in addition to the setpoint, so the load is added (216 W here).
+        var (victron, services, topics) = await VictronHardwareAsync();
+        using (services)
+        {
+            await new JointBatteryHardware(services).SetVictronAsync(1000, CancellationToken.None);
+
+            Assert.Equal(0, victron.Written[topics.DisableChargeTopic]);
+            Assert.Equal(1, victron.Written[topics.DisableFeedInTopic]);
+            var count = topics.ExternalEssAcPowerSetpointTopics.Count;
+            Assert.Equal(1000 + 216 * count, topics.ExternalEssAcPowerSetpointTopics.Sum(topic => victron.Written[topic]));
+        }
+    }
+
+    private static async Task<(LaggingVictron Victron, ServiceProvider Services, TibberVictronController.Dal.Victron.VictronMqttTopics Topics)> VictronHardwareAsync()
+    {
+        var settings = new Settings();
+        foreach (var setting in ControllerSettingDefaults.CreateDefaultSettings(Now))
+            await settings.SaveSettingAsync(setting);
+        await settings.SaveSettingAsync(new(ControllerSettingDefaults.VictronControlModeKey, "externalEss", ControllerSettingSensitivity.Normal, Now));
+        var victron = new LaggingVictron();
+        var services = new ServiceCollection().AddSingleton<IControllerSettingStore>(settings)
+            .AddSingleton<IUtcClock>(new SystemUtcClock()).AddSingleton<IVictronMqttControlClient>(victron)
+            .AddSingleton<TibberVictronController.Dal.Victron.DatabaseVictronMqttSettingsProvider>().BuildServiceProvider();
+        var topics = TibberVictronController.Dal.Victron.VictronMqttTopicFactory.Create(
+            await services.GetRequiredService<TibberVictronController.Dal.Victron.DatabaseVictronMqttSettingsProvider>().GetSettingsAsync(CancellationToken.None));
+        return (victron, services, topics);
+    }
+
     [Fact]
     public async Task ManualRecoveryConfirmationRequiresDisabledExecutionAndReleasesLegacyLock()
     {
@@ -429,6 +544,18 @@ public sealed class JointBatteryShadowTests
              new("e3dc", new BatteryConfiguration(new BatteryConfigurationValues { TotalCapacityKwh = 10 }), new(50, Now), 0)],
             [0, 0, 0], [0], 0, 0, new([10000, 10000, 10000], 5000, 1, 0)));
     }
+    /// <summary>Accepts every command but always measures 500 W on both batteries, so no neutral state is confirmed.</summary>
+    private sealed class NeverNeutralHardware : IJointBatteryHardware
+    {
+        public Task SetVictronAsync(int watts, CancellationToken token) => Task.CompletedTask;
+        public Task<E3dcPowerAcknowledgement> SetE3dcAsync(E3dcPowerCommand command, CancellationToken token) =>
+            Task.FromResult(new E3dcPowerAcknowledgement(0, 0, 0, Now));
+        public Task<JointBatteryLiveSnapshot> ReadAsync(CancellationToken token) => Task.FromResult(new JointBatteryLiveSnapshot(Now,
+            [new("victron", new BatteryConfiguration(new BatteryConfigurationValues { TotalCapacityKwh = 10 }), new(50, Now), 500),
+             new("e3dc", new BatteryConfiguration(new BatteryConfigurationValues { TotalCapacityKwh = 10 }), new(50, Now), 500)],
+            [0, 0, 0], [0], 0, 0, new([10000, 10000, 10000], 5000, 1, 0)));
+    }
+
     private sealed class ReadSource : IE3dcTelemetrySource
     {
         public Task<E3dcLocalTelemetry> ReadAsync(CancellationToken cancellationToken = default) =>
