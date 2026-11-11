@@ -50,6 +50,35 @@ public sealed class BatterySavingsAccountingServiceTests
     }
 
     [Fact]
+    public async Task RefreshAsyncKeepsAStoredDayWhenOnlyPartOfItsRawSamplesRemain()
+    {
+        // Raw samples are deleted after their retention period; a later month or year view recalculates the day from
+        // what is left. That must not replace the complete stored day with a smaller one.
+        static LiveConsumptionSample Discharge(int minutes) =>
+            CreateSample(minutes, houseConsumptionWatts: 2000m, gridPowerWatts: 0m, batteryPowerWatts: -2000m, pvProductionWatts: 0m);
+        var savingsRepository = new FakeBatterySavingsRepository();
+        var prices = new FakeTibberPriceForecastProvider(new[] { CreatePriceSlot(0, 30, 0.30m) });
+        var query = new BatterySavingsQuery { StartDate = new DateOnly(2026, 6, 4), EndDate = new DateOnly(2026, 6, 4), Currency = "EUR" };
+
+        await CreateService(new FakeLiveConsumptionRepository(new[] { Discharge(0), Discharge(5), Discharge(10), Discharge(15) }),
+            savingsRepository, prices).RefreshAsync(query);
+        var complete = Assert.Single(savingsRepository.Summaries, s => s.BatteryId == "victron");
+        Assert.Equal(900m, complete.MeasuredSeconds);
+
+        await CreateService(new FakeLiveConsumptionRepository(new[] { Discharge(10), Discharge(15) }),
+            savingsRepository, prices).RefreshAsync(query);
+        var afterPartial = Assert.Single(savingsRepository.Summaries, s => s.BatteryId == "victron");
+        Assert.Equal(complete, afterPartial);
+
+        // A recalculation with at least the same coverage still replaces the day (e.g. corrected prices).
+        await CreateService(new FakeLiveConsumptionRepository(new[] { Discharge(0), Discharge(5), Discharge(10), Discharge(15) }),
+            savingsRepository, new FakeTibberPriceForecastProvider(new[] { CreatePriceSlot(0, 30, 0.40m) })).RefreshAsync(query);
+        var recalculated = Assert.Single(savingsRepository.Summaries, s => s.BatteryId == "victron");
+        Assert.Equal(900m, recalculated.MeasuredSeconds);
+        Assert.True(recalculated.DischargeAvoidedCost > complete.DischargeAvoidedCost);
+    }
+
+    [Fact]
     public async Task RefreshAsyncAccountsForTransitionsThroughZeroBatteryPower()
     {
         // Battery charges from grid, then a telemetry sample arrives at exactly 0 W (idle
@@ -291,7 +320,12 @@ public sealed class BatterySavingsAccountingServiceTests
             BatterySavingsQuery query,
             CancellationToken cancellationToken = default)
         {
-            throw new NotSupportedException();
+            IReadOnlyList<BatterySavingsDailySummary> result = Summaries
+                .Where(summary => (query.BatteryId == null || summary.BatteryId == query.BatteryId) &&
+                    summary.Currency == query.Currency &&
+                    summary.AccountingDate >= query.StartDate && summary.AccountingDate <= query.EndDate)
+                .ToArray();
+            return Task.FromResult(result);
         }
 
         public Task<BatterySavingsAggregate> GetAggregateAsync(

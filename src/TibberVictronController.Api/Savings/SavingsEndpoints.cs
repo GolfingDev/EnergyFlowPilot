@@ -43,7 +43,9 @@ public static class SavingsEndpoints
         IBatterySavingsRepository batterySavingsRepository,
         [FromServices]
         IBatterySavingsAccountingService batterySavingsAccountingService,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromServices]
+        ILoggerFactory? loggerFactory = null)
     {
         if (!SupportedPeriods.Contains(period))
         {
@@ -74,9 +76,12 @@ public static class SavingsEndpoints
             {
                 await batterySavingsAccountingService.RefreshAsync(query, cancellationToken);
             }
-            catch
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
-                // Reporting must still return the latest persisted summaries when live accounting cannot refresh.
+                // Reporting must still return the latest persisted summaries when live accounting cannot refresh,
+                // but the failure has to stay visible in the server log.
+                loggerFactory?.CreateLogger(typeof(SavingsEndpoints).FullName!).LogWarning(exception,
+                    "Ersparnis konnte nicht neu berechnet werden; gespeicherte Tageswerte werden angezeigt. Zeitraum={Period}", period);
             }
         }
 

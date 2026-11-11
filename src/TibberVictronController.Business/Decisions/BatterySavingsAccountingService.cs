@@ -72,6 +72,10 @@ public sealed class BatterySavingsAccountingService : IBatterySavingsAccountingS
         }
 
         var feedInCompensationPricePerKwh = await GetFeedInCompensationPricePerKwhAsync(cancellationToken);
+        // Raw samples are deleted after their retention period, so an older day may only be partly visible here. Like the
+        // energy history, a stored day is replaced only by a result covering at least as much measured time.
+        var storedSeconds = (await batterySavingsRepository.GetDailySummariesAsync(query with { BatteryId = null }, cancellationToken))
+            .ToDictionary(stored => (stored.BatteryId, stored.AccountingDate), stored => stored.MeasuredSeconds);
         foreach (var batteryId in new[] { "victron", "e3dc" })
         {
             var movements = CreateMovements(samples, relevantPrices, feedInCompensationPricePerKwh, query.Currency, batteryId);
@@ -86,6 +90,7 @@ public sealed class BatterySavingsAccountingService : IBatterySavingsAccountingS
                 var seconds = movements.Select(m => m.TimeSlot).Distinct()
                     .Where(t => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(t.StartsAtUtc, reportingTimeZone).DateTime) == summary.AccountingDate)
                     .Sum(t => (decimal)t.Duration.TotalSeconds);
+                if (storedSeconds.TryGetValue((batteryId, summary.AccountingDate), out var stored) && seconds < stored) continue;
                 await batterySavingsRepository.SaveDailySummaryAsync(summary with { BatteryId = batteryId, MeasuredSeconds = seconds }, cancellationToken);
             }
         }
