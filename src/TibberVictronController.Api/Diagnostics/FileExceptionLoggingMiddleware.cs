@@ -148,11 +148,11 @@ public sealed class FileExceptionLoggingMiddleware
         Exception exception,
         string traceId)
     {
+        // Only a fixed text and the trace id reach the client: exception texts of sockets or HTTP clients can carry
+        // addresses or URLs. The details are in the file log under the same trace id.
         var response = new
         {
             message = "Es ist ein unerwarteter API-Fehler aufgetreten. Details wurden im Server-Log gespeichert.",
-            exceptionMessage = exception.Message,
-            exceptionType = exception.GetType().FullName,
             traceId
         };
 

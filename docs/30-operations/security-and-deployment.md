@@ -31,7 +31,12 @@ Planned deployment components:
 ## Operational Rules
 
 - Startup failures should be explicit.
-- Health information should be visible through API endpoints.
+- Health information should be visible through API endpoints. `GET /health` is anonymous (update check) and reports
+  MQTT, the decision worker and the joint execution with fixed texts and timestamps only, never exception messages.
+  The joint execution is `Degraded` while blocked or restoring and `Unhealthy` (HTTP 503) when it owns the batteries but
+  has not reported for more than 30 s.
+- Unexpected API errors return `{ "message": "<fixed German text>", "traceId": "..." }`; exception type and message
+  stay in the file log (`api-errors-*.log`) under the same trace id.
 - Background workers should log degraded states.
 - Worker processes, cron jobs or scheduled control loops should catch unexpected production exceptions and send a clearly formatted failure email with enough context to identify the failing component, time and error cause quickly.
 - Victron MQTT telemetry should be read as a live stream and not as a stale cache layer.
