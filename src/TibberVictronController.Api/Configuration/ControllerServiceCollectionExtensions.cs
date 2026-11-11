@@ -20,6 +20,7 @@ using TibberVictronController.Business.Decisions;
 using TibberVictronController.Business.Homematic;
 using TibberVictronController.Business.Services;
 using TibberVictronController.Api.Dashboard;
+using TibberVictronController.Api.Decision;
 using TibberVictronController.Dal.Battery;
 using TibberVictronController.Dal.Consumption;
 using TibberVictronController.Dal.HagerEnergy;
@@ -107,7 +108,9 @@ public static class ControllerServiceCollectionExtensions
         services.AddSingleton<VictronSetpointRefreshState>();
         services.AddSingleton<SupplementaryGridChargeGuard>();
         services.AddScoped<ISupplementaryGridChargeSafety, SupplementaryGridChargeSafety>();
-        services.AddScoped<IDecisionLogRepository, EfDecisionLogRepository>();
+        services.AddScoped<EfDecisionLogRepository>();
+        services.AddScoped<IDecisionLogRepository>(provider => provider.GetRequiredService<EfDecisionLogRepository>());
+        services.AddHostedService<DecisionLogRetentionBackgroundService>();
         services.AddScoped<EfPublishedPriceArchive>();
         services.AddScoped<IPublishedPriceArchive>(provider => provider.GetRequiredService<EfPublishedPriceArchive>());
         services.AddHostedService<PublishedPriceArchiveBackgroundService>();

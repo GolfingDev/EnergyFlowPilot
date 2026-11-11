@@ -98,6 +98,8 @@ public static class ControllerSettingDefaults
     public const string ConsumptionForecastAverageDailyConsumptionKwhKey = "consumptionForecast.averageDailyConsumptionKwh";
     public const string ConsumptionForecastTimeZoneKey = "consumptionForecast.timeZone";
     public const string DecisionLogRetentionDaysKey = "decisionLog.retentionDays";
+    // Off by default: the cleanup permanently deletes old decision logs; the operator switches it on after a backup.
+    public const string DecisionLogCleanupEnabledKey = "decisionLog.cleanupEnabled";
     public const string DecisionWorkerIntervalSecondsKey = "decisionWorker.intervalSeconds";
     public const string DecisionDirectionChangeHoldCyclesKey = "decision.directionChangeHoldCycles";
     public const string DecisionDirectionChangeMinimumPreviousPowerWattsKey = "decision.directionChangeMinimumPreviousPowerWatts";
@@ -282,6 +284,7 @@ public static class ControllerSettingDefaults
         new(ConsumptionForecastAverageDailyConsumptionKwhKey, "24", ControllerSettingSensitivity.Normal),
         new(ConsumptionForecastTimeZoneKey, "Europe/Berlin", ControllerSettingSensitivity.Normal),
         new(DecisionLogRetentionDaysKey, "90", ControllerSettingSensitivity.Normal),
+        new(DecisionLogCleanupEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(DecisionWorkerIntervalSecondsKey, "60", ControllerSettingSensitivity.Normal),
         new(DecisionDirectionChangeHoldCyclesKey, "2", ControllerSettingSensitivity.Normal),
         new(DecisionDirectionChangeMinimumPreviousPowerWattsKey, "1000", ControllerSettingSensitivity.Normal),

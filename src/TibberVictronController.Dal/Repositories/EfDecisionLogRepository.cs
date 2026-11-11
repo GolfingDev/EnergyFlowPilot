@@ -135,14 +135,34 @@ public sealed class EfDecisionLogRepository : IDecisionLogRepository
             throw new ArgumentException("Der Decision-Log-Aufraeumzeitpunkt muss in UTC angegeben sein.", nameof(cutoffUtc));
         }
 
-        var oldEntries = await dbContext.DecisionLogEntries
-            .Where(logEntry => logEntry.DecidedAtUtc < cutoffUtc)
-            .ToArrayAsync(cancellationToken);
+        // In batches without loading the entries: the production log has hundreds of thousands of rows.
+        var total = 0;
+        int deleted;
+        while ((deleted = await DeleteOldestBatchAsync(cutoffUtc, 1000, cancellationToken)) > 0) total += deleted;
+        return total;
+    }
 
-        dbContext.DecisionLogEntries.RemoveRange(oldEntries);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        return oldEntries.Length;
+    /// <summary>
+    /// Deletes at most <paramref name="batchSize"/> of the oldest decisions before the cutoff together with their
+    /// reasons, in one short transaction and without loading them, so other writers are blocked only briefly.
+    /// </summary>
+    /// <returns>Number of deleted decisions.</returns>
+    public async Task<int> DeleteOldestBatchAsync(DateTimeOffset cutoffUtc, int batchSize, CancellationToken cancellationToken = default)
+    {
+        if (cutoffUtc.Offset != TimeSpan.Zero)
+            throw new ArgumentException("Der Decision-Log-Aufraeumzeitpunkt muss in UTC angegeben sein.", nameof(cutoffUtc));
+        object[] parameters = [cutoffUtc.ToUnixTimeMilliseconds(), batchSize];
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await dbContext.Database.ExecuteSqlRawAsync("""
+            DELETE FROM "DecisionLogReasons" WHERE "DecisionLogEntryId" IN
+                (SELECT "Id" FROM "DecisionLogEntries" WHERE "DecidedAtUtc" < {0} ORDER BY "DecidedAtUtc" LIMIT {1});
+            """, parameters, cancellationToken);
+        var deleted = await dbContext.Database.ExecuteSqlRawAsync("""
+            DELETE FROM "DecisionLogEntries" WHERE "Id" IN
+                (SELECT "Id" FROM "DecisionLogEntries" WHERE "DecidedAtUtc" < {0} ORDER BY "DecidedAtUtc" LIMIT {1});
+            """, parameters, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return deleted;
     }
 
     private static DecisionLogEntryEntity MapToEntity(DecisionLogEntry decisionLogEntry)

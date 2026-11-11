@@ -61,11 +61,26 @@ status `Active`. Price readers (state 2026-11-11):
 | Comparable-day estimate (`ComparableDayPriceEstimator`, single-battery path) | decision log only (`GetDecisionsAsync`) | 7 days |
 | Price archive backfill | decision log | from the oldest entry until done |
 
-`decisionLog.retentionDays` (default 90) is not applied yet. No reader needs entries older than 30 days once the energy
-history backfill (`energyHistory.backfilledThroughUtc`) and the price archive backfill
-(`energyHistory.priceArchiveBackfilledThroughUtc`) are done; a cleanup must never delete entries those backfills have
-not processed yet. Applying the retention permanently deletes old decision logs and needs the operator's go-ahead
-(audit 2026-11-11, step D8).
+Cleanup (`DecisionLogRetentionBackgroundService`, every 6 hours): only while `decisionLog.cleanupEnabled=true`
+(default `false`, the deletion is permanent). It deletes decisions older than `decisionLog.retentionDays` (default 90,
+never fewer than 30 days, the longest reader window) together with their reasons, but never anything the energy history
+backfill (`energyHistory.backfilledThroughUtc`) or the price archive backfill
+(`energyHistory.priceArchiveBackfilledThroughUtc`) has not processed; while either is `none`, nothing is deleted. It
+deletes at most 100 batches of 1,000 decisions per run with 2 s pauses, so a large backlog is removed over several runs.
+SQLite reuses the freed pages; the file only shrinks with a `VACUUM`, which must not run on the live Pi.
+
+Before switching the cleanup on, the operator dumps the rows that will be deleted, table by table and with low I/O
+priority (no full backup of the running database, see the operations notes), for example:
+
+```bash
+CUT=$(( ($(date +%s) - 90*86400) * 1000 ))
+DB=/var/lib/energyflowpilot/tibber-victron-controller.db
+OUT=/var/lib/energyflowpilot/backups/decision-log-before-$(date +%Y%m%d)
+sudo nice -n 19 ionice -c3 sqlite3 -readonly -csv -header "$DB" "SELECT * FROM DecisionLogEntries WHERE DecidedAtUtc < $CUT" | gzip > "$OUT-entries.csv.gz"
+sudo nice -n 19 ionice -c3 sqlite3 -readonly -csv -header "$DB" "SELECT r.* FROM DecisionLogReasons r JOIN DecisionLogEntries e ON e.Id = r.DecisionLogEntryId WHERE e.DecidedAtUtc < $CUT" | gzip > "$OUT-reasons.csv.gz"
+```
+
+`OperationalEvents` have no retention yet.
 
 ### PublishedPriceSlots
 
