@@ -179,7 +179,7 @@ Negative grid import without battery action means the site is currently exportin
 The direct decision takes grid charging and holding from the forecast plan for the current slot, so forecast chart and real control follow the same rules:
 
 - planned grid charge: charge with the planned power, capped by settings and the planning maximum
-- planned hold (`HOLD_FOR_EXPENSIVE_SLOT`, `END_SOC_RESERVE`, waiting for a negative price window or a negative current price): stay idle
+- planned hold (`HOLD_FOR_EXPENSIVE_SLOT`, waiting for a negative price window or a negative current price): stay idle
 - partial hold: discharge, but at most with the planned power
 - otherwise: cover the live demand down to the planning minimum state of charge
 - if the forecast is unavailable, the battery covers the live demand and no grid charging is started
@@ -306,22 +306,18 @@ The forecast shape (`ConsumptionForecastModel`) uses every day of the last 14 da
 
 The heat pump makes consumption depend on the outside temperature. Hourly temperatures for the PV site (latitude and longitude from the PV forecast settings) come from Open-Meteo: 16 past days and 4 forecast days, without an API key, cached for one hour. Per local day the model calculates heating degrees, the mean of `max(0, 15 °C - T)`. It then regresses the measured daily energy of complete days against them. The fit needs at least 5 complete days and a correlation of at least 0.3. If the fit succeeds, each forecast day is scaled by `(base + slope × heating degrees of the day) / (base + slope × weighted heating degrees of the learned days)`, limited to 0.5 to 2.0. Without temperatures or without a clear dependency, the scale stays 1. A failing temperature request never breaks the plan.
 
-Raw samples are kept for 14 days only, and two autumn weeks barely differ in temperature. Every complete day is therefore also stored as a daily summary (`ConsumptionDailySummaries`: local date, energy, heating degrees, slot count) and kept for two years. The regression uses all stored days plus the recent days, so after one heating season it knows the demand at frost as well as the summer base load. The daily shape still comes from the last 14 days. Days before 2026-10-20 are not stored, because until 2026-10-19 the external E3/DC PV inverter was missing and the learned consumption was too low by its yield.
+Raw samples are kept for `telemetry.liveSampleRetentionDays` days (default 14; raised to 60 on site on 2026-11-08, see `energy-costs.md`), while the model only reads the last 14 days, and two autumn weeks barely differ in temperature. Every complete day is therefore also stored as a daily summary (`ConsumptionDailySummaries`: local date, energy, heating degrees, slot count) and kept for two years. The regression uses all stored days plus the recent days, so after one heating season it knows the demand at frost as well as the summer base load. The daily shape still comes from the last 14 days. Days before 2026-10-20 are not stored, because until 2026-10-19 the external E3/DC PV inverter was missing and the learned consumption was too low by its yield.
 
 ## Interfaces
 
-The engine should depend on abstractions, for example:
+The engine depends on these abstractions (all in `Business/Abstractions/` unless noted):
 
-- `IBatteryDecisionEngine`
-- `IBatteryForecastService`
-- `ITibberPriceClient`
-- `IBatteryStateProvider`
-- `IBatteryConfigurationProvider`
-- `IVictronTelemetryReader`
-- `IVictronCommandWriter`
-- `IClock`
-- `IDecisionLogRepository`
-- `IControllerConfigurationProvider`
+- `ICurrentBatteryDecisionService`, `IBatteryForecastService` (single-battery path; the `JointAware*` decorators in `Api/JointBattery/` replace them while joint control owns the site)
+- `IElectricityPriceForecastProvider` (selected supplier: Tibber, Octopus or Energy-Charts)
+- `IBatteryStateProvider`, `IBatteryConfigurationProvider`, `ICurrentSiteTelemetryProvider`
+- `IJointBatteryHardware`, `IE3dcPowerControl`, `IE3dcTelemetrySource` (joint execution)
+- `IVictronSetpointPublisher` (Victron writes of the single-battery path, `Api/Configuration/`)
+- `IUtcClock`, `IDecisionLogRepository`, `IControllerSettingStore`
 
 
 ### Planungshorizont und Preisqualität
@@ -334,7 +330,24 @@ Der E3/DC-Konfliktschutz bleibt unabhängig vom wirtschaftlichen Plan aktiv. Ein
 
 ### Gemeinsame Steuerung von Victron und E3/DC
 
-Implementiert ist eine gemeinsame wirtschaftliche Planung mit zwei getrennten Energiezustaenden sowie eine standardmaessig deaktivierte gemeinsame Ausfuehrung. Dynamische Programmierung mit interpolierten Folgekosten bildet getrennte Reserven, Wirkungsgrade und Leistungsgrenzen ab; sie ist eine numerische Naeherung. Shadow-Modus bleibt rein lesend. Ohne gemeinsame Ausfuehrung gilt die bisherige Victron-Regelung; bei aktivierter Ausfuehrung oder ausstehender Wiederherstellung ist sie als Hardware-Schreiber gesperrt. Die reale Hardwareabnahme und Inbetriebnahme stehen noch aus.
+Implementiert ist eine gemeinsame wirtschaftliche Planung mit zwei getrennten Energiezustaenden sowie eine gemeinsame Ausfuehrung. Die Ausfuehrung ist im Code standardmaessig deaktiviert, auf der Anlage aber dauerhaft aktiv (Betriebszustand: `docs/30-operations/e3dc-rscp.md`, Abschnitt „Betriebszustand“). Dynamische Programmierung mit interpolierten Folgekosten bildet getrennte Reserven, Wirkungsgrade und Leistungsgrenzen ab; sie ist eine numerische Naeherung. Der Planer heisst im Code noch `JointBatteryShadow*` (Endpoint `/api/joint-battery/shadow`); bei aktiver Ausfuehrung ist sein Plan die Grundlage der realen Befehle. Rein lesend ist er nur bei deaktivierter Ausfuehrung oder globalem Dry-run. Ohne gemeinsame Ausfuehrung gilt die bisherige Victron-Regelung als unterstuetzter Rueckfall; bei aktivierter Ausfuehrung oder ausstehender Wiederherstellung ist sie als Hardware-Schreiber gesperrt.
+
+#### Which planning rules apply to which path
+
+Two optimizers exist. The rules in the sections "Forecast Calculation", "Direct Decision Calculation" and "Tibber Price Strategy" above were written for the single-battery path (`BatterySocOptimizer`, `BatteryForecastSimulator`, `CurrentBatteryDecisionService`). While joint control is active, `JointBatteryPlanner` decides instead, and it differs (state 2026-11-11):
+
+| Rule | Single-battery path | Joint path |
+|---|---|---|
+| Grid charging only on published prices | yes | yes |
+| Minimum savings hurdle on grid purchases | per input kWh, wear cost weighted with efficiency | per grid-charged kWh, highest hurdle plus wear of both batteries, not weighted |
+| Hurdle on holding energy for later | yes, once per newly deferred kWh | no; holding wins on equal cost |
+| Negative prices: full charge of the cheapest negative slots | yes (separate rule) | no separate rule; the price enters the cost directly |
+| Grid charging above the planning maximum when the price is below the feed-in compensation | allowed | never |
+| Value of energy left at the horizon end | none | historical price value, capped by the next day's net demand |
+| Missing PV forecast | 0 kWh | last forecast, otherwise 0 kWh with a plan warning |
+| E3/DC wear cost and hurdle | – | taken from the Victron settings |
+
+The single-battery path stays a supported fallback (operator decision 2026-11-11). Aligning the joint rules is a separate, documented behaviour change (audit 2026-11-11, step D7); until then a rule change must state which path it applies to.
 
 Betreiberwunsch vom 23.10.2026: volle verfuegbare Geraeteleistung bei Bedarf, ohne zusaetzliche pauschale Gesamtleistungsgrenze (`jointBattery.maximumGridImportWatts=0`). Bestaetigte Anschlussgrenzen je Phase und fuer den Victron-Eingang bleiben Voraussetzung fuer reale Steuerung. Die Ausfuehrung begrenzt jeden Plan an frischen Phasenmessungen, AC-out-Last, Hausbedarf und aktuellen Einzelakku-Grenzen. Unbekannte elektrische Grenzen werden nicht als unbegrenzt interpretiert.
 

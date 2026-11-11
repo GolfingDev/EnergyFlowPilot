@@ -7,7 +7,7 @@ delivery step.
 ## Measured quarter hours (step 1)
 
 Every UTC quarter hour is stored permanently in `EnergyQuarterHours`, so evaluations survive the deletion of raw data
-(live samples are kept 60 days since 2026-11-08, before that 14 days).
+(raw live samples are kept `telemetry.liveSampleRetentionDays` days: default 14, raised to 60 on site on 2026-11-08).
 
 | Group | Values | Source |
 |---|---|---|

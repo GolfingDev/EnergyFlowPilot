@@ -1,6 +1,6 @@
 # Auswaehlbare Strompreisquellen
 
-Stand: 25.10.2026. Preisquellen: Tibber, dynamicOctopus Deutschland und Energy-Charts mit eigenem Tarifaufschlag.
+Stand: 25.10.2026, Anmeldung aktualisiert 07.11.2026. Preisquellen: Tibber, dynamicOctopus Deutschland und Energy-Charts mit eigenem Tarifaufschlag.
 In dieser Cloud-Pruefung waren keine Octopus-Zugangsdaten verfuegbar: simulierte HTTP-Antworten, kein echter
 Login oder Preisabgleich. Bestehende Installationen werden nicht automatisch auf eine andere Quelle umgeschaltet.
 
@@ -104,9 +104,12 @@ Quellen:
 - [Authentifizierung und APIKey](https://developer.oeg-kraken.energy/graphql/reference/input-objects/obtainjsonwebtokeninput/)
 - [Brutto-Preiseinheit](https://developer.oeg-kraken.energy/graphql/reference/objects/timeofusetimeslotunitrate/)
 
-Die einfache Preisanleitung beschreibt noch E-Mail/Passwort. Die aktuelle
-Referenz markiert diese Felder als deprecated; fuer die Implementierung gilt
-deshalb der dokumentierte APIKey-Weg. Keine Live-Verifikation ohne Kundenkonto.
+Die einfache Preisanleitung beschreibt E-Mail/Passwort; die aktuelle Referenz
+markiert diese Felder als deprecated. Weil Octopus Deutschland keinen API-Key
+ausgibt (Betreiber 2026-11-07), meldet sich der Adapter mit E-Mail/Passwort an,
+sobald beide eingetragen sind; der APIKey-Weg bleibt Alternative
+(`OctopusPriceForecastProvider`). Der Wechsel auf Octopus ist fuer den
+2026-11-12 geplant; bis dahin keine Live-Verifikation.
 
 
 ## Beliebiger Anbieter mit Energy-Charts

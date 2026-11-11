@@ -62,7 +62,8 @@ Anforderung: `docs/20-domain/battery-decision-engine.md`, Abschnitt „Gemeinsam
 3. Implementiert: gemeinsames Rohdaten-Verbrauchsmodell mit Temperaturkorrektur. Offen: langfristige gemeinsame Tagessummen und gemeinsame Energie-/Ersparnisabrechnung.
 4. Implementiert: koordinierte Ausfuehrung, Richtungswechsel, Befehlsruecklesung, Rampen, Last-/Phasengrenzen, Schutz vor konkurrierenden Schreibern, persistierte Wiederherstellung und Linux-Prozesswatchdog (15 s, budgetierte Zyklen) mit separatem Stop-Helfer. Uebernahme erst nach erfuellten Startbedingungen; manuelle Ruecknahme-Bestaetigung als Notausgang.
 5. Implementiert: Dashboard fuer beide Speicher, gemeinsame Projektion fuer bestehenden Forecast und Live-Entscheidung, getrennte Betriebsereignisse fuer Planung und Ausfuehrung.
-6. Offen vor Aktivierung: bestaetigte elektrische Anschlussgrenzen, Deployment auf dem Raspberry Pi und kontrollierte Hardwareabnahme inklusive PV-/Entlademodus, Kommunikationsverlust, Prozessabbruch und Neustart. Default bleibt deaktiviert. Ein vollstaendiger Netzwerkverlust ist nicht als physisch abgesichert nachgewiesen.
+6. In Betrieb: auf dem Raspberry Pi dauerhaft aktiv (Betreiberbestaetigung 2026-11-11, Betriebszustand in `docs/30-operations/e3dc-rscp.md`). Default im Code bleibt deaktiviert. Offen: dokumentierte Pruefung von Kommunikationsverlust, Prozessabbruch und Neustart; ein vollstaendiger Netzwerkverlust ist nicht als physisch abgesichert nachgewiesen.
+7. Offen: Wirtschaftsregeln des gemeinsamen Planers an den Einzelakku-Pfad angleichen oder bewusst abweichen lassen (Tabelle „Which planning rules apply to which path“ in `battery-decision-engine.md`; Audit 2026-11-11, Schritt D7).
 
 ## EV charging (Charge Amps Halo, BMW i4)
 

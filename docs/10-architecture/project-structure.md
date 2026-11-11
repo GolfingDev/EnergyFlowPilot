@@ -18,7 +18,7 @@
   - EF Core SQLite database context
   - persistence entities
   - repository implementations
-  - migrations
+  - schema creation and additive upgrades in `Persistence/ControllerDbInitializer.cs` (no EF migrations)
 
 ## Frontend Project
 

@@ -21,8 +21,11 @@ Api  →  Business  ←  Dal        (Business has no project or package referenc
 
 - Joint control (Victron + E3/DC) is active when `jointBattery.executionEnabled=true` or `jointBattery.recoveryPending=true`:
   `Business/Decisions/JointBattery*` and `Api/JointBattery/`. The `JointAware*` decorators then bypass `CurrentBatteryDecisionService`.
-- Otherwise: `CurrentBatteryDecisionService` (live decision) and `BatteryForecastSimulator` (forecast).
-- Every decision is persisted with rule ID and reason.
+  **On the Raspberry Pi joint control is permanently active** (single source: `docs/30-operations/e3dc-rscp.md`, "Betriebszustand"); changes there reach real hardware.
+- `JointBatteryShadowBackgroundService` / `JointBatteryShadowCalculation` (`/api/joint-battery/shadow`) is the production planner despite its name: execution uses its plan.
+- Otherwise: `CurrentBatteryDecisionService` (live decision) and `BatteryForecastSimulator` (forecast). This path stays a supported fallback.
+- The two paths use different optimizers (`JointBatteryPlanner` vs `BatterySocOptimizer`) with different economic rules; see the table "Which planning rules apply to which path" in `docs/20-domain/battery-decision-engine.md`. A rule change states which path it applies to.
+- Every decision is persisted with rule ID and reason. The decision log is also the only durable price history: energy costs, comparable-day estimates, the joint residual energy value, the car's cheap-price threshold and the price course read prices from it. Changing how often or what is logged changes those results.
 
 ## Commands (repository root)
 
@@ -30,6 +33,9 @@ Always name the solution: ignored legacy project files in a local root make a ba
 
 - Backend tests: `dotnet test TibberVictronController.slnx`
 - One test class: `dotnet test TibberVictronController.slnx --filter "FullyQualifiedName~<ClassName>"`
+- Quick checks while working (full run before hand-over, about 20 s): joint control `--filter "FullyQualifiedName~JointBattery"`,
+  savings and energy costs `--filter "FullyQualifiedName~Savings|FullyQualifiedName~EnergyHistory|FullyQualifiedName~EnergyCost"`,
+  persistence `--filter "FullyQualifiedName~Sqlite|FullyQualifiedName~Persistence"`.
 - Live tests against the real Tibber API run only with `RUN_LIVE_TESTS=1` and `TIBBER_ACCESS_TOKEN` set.
 - Frontend (in `src/TibberVictronController.Frontend`): `npm ci`, then
   - type check: `npx vue-tsc --noEmit`
@@ -45,7 +51,8 @@ CI (`.github/workflows/ci.yml`) runs backend tests, type check and frontend unit
 - C# code: backend tests. Frontend code: type check and frontend unit tests.
 - New or changed setting: `ControllerSettingDefaults` (key, default, sensitivity), `ControllerSettingValueValidation`, `GuiMetadataCatalog`, and for numeric inputs the bounds in `Frontend/src/pages/settingsPresentation.ts`.
 - Database: additive changes only. Put every new table or column into the EF model **and** into `Dal/Persistence/ControllerDbInitializer.cs` (existing databases are upgraded there). The project uses `EnsureCreated`, not EF migrations: do not run `dotnet ef migrations`.
-- Hardware writes: every write path must honour its device switch – `victron.dryRun` (default `true`), `jointBattery.executionEnabled`, `evCharging.controlEnabled`, `weishauptHotWater.enabled` (all default off). The switch is checked by the caller, not by the adapter; `MqttVictronSetpointPublisher.PublishAsync` does not check `victron.dryRun` itself. Add a test with a fake adapter. Tests on real devices are done by the operator only.
+- Recalculated history (energy quarter hours, savings days) must never replace a stored value with a less complete one: raw samples are deleted after `telemetry.liveSampleRetentionDays`.
+- Hardware writes: every write path must honour its device switch – `victron.dryRun` (default `true`), `jointBattery.executionEnabled`, `evCharging.controlEnabled`, `weishauptHotWater.enabled` (all default off). The switch is checked by the caller, not by the adapter; `MqttVictronSetpointPublisher.PublishAsync` does not check `victron.dryRun` itself (`E3dcRscpPowerControl` additionally checks `jointBattery.executionEnabled`). Known exception, not yet decided: the manual wallbox limit (`POST /api/ev-charging/wallbox/limit`, admin only) writes without `evCharging.controlEnabled`. Add a test with a fake adapter. Tests on real devices are done by the operator only.
 
 ## Rules
 

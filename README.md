@@ -36,9 +36,9 @@
 
 ## Features
 
-- **Price-aware battery control** — charges during cheap Tibber slots, discharges during expensive ones
+- **Price-aware battery control** — plans Victron and E3/DC batteries together against dynamic prices; charges from the grid only when it pays off
 - **Explainable decisions** — every action is logged with a structured rule ID and human-readable reason
-- **15-minute forecast simulation** — state-of-charge projection over 24 hours, aligned with the live decision rules
+- **15-minute forecast simulation** — state-of-charge projection over up to 48 hours, from the same plan the execution uses
 - **Live Victron telemetry** — real-time grid, battery and PV data via MQTT (Cerbo GX)
 - **Grid export protection** — never discharges more than the current measured import
 - **Savings accounting** — daily, weekly, monthly and yearly savings tracked against a baseline
@@ -51,21 +51,20 @@
 
 ## How It Works
 
-EnergyFlowPilot runs a decision loop on a configurable interval. Each cycle it:
+EnergyFlowPilot plans both home batteries (Victron and E3/DC) together over up to 48 hours of quarter-hour prices
+(Tibber, Octopus or Energy-Charts) and executes the plan with live safety limits:
 
-1. Reads live battery state and site telemetry from Victron via MQTT
-2. Fetches the current Tibber price forecast (cached, quarter-hourly resolution)
-3. Evaluates the price rule against configurable cheap/expensive thresholds
-4. Issues a `Charge`, `Discharge` or `Idle` command — with a structured reason
-5. Logs the full decision for the history view and savings accounting
+1. A planner reads prices, the PV forecast, the learned consumption profile and both batteries, and computes a
+   cost-optimal plan by dynamic programming (`JointBatteryPlanner`, about every 30 s).
+2. The execution loop (every second) fixes the basic action of the running quarter hour, limits it against fresh
+   measurements (reserve, house demand, phase and inverter limits, no battery export) and confirms every command
+   by readback. Direction changes pass two neutral measurements; missing or stale data stops the batteries.
+3. Without a valid plan both batteries cover the house demand and store PV surplus; grid charging needs a plan
+   based on published prices.
+4. Every decision is logged with a structured reason for the history view, energy costs and savings accounting.
 
-The same rule set drives the 24-hour forecast chart, so what the dashboard predicts matches what the engine actually does.
-
-```
-Cheap slot  →  Charge from grid
-Expensive slot + battery has energy  →  Discharge to cover house load
-No clear signal / stale data  →  Idle (safe default)
-```
+When joint control is switched off, the single-battery Victron path (`CurrentBatteryDecisionService`) takes over.
+Details: `docs/20-domain/battery-decision-engine.md`.
 
 ---
 
@@ -117,7 +116,7 @@ Designed around a Victron/Pylontech residential installation:
 
 Telemetry is read from the Cerbo GX over MQTT. No direct hardware access or Victron API keys are required — only local network MQTT access to the Cerbo GX.
 
-> A planned E3/DC integration will add reliable live PV production values in a later stage.
+An E3/DC storage system with its own PV is controlled jointly over local RSCP (see `docs/30-operations/e3dc-rscp.md`).
 
 ---
 
@@ -127,7 +126,7 @@ The Vue dashboard provides:
 
 - **Live status bar** — controller state, MQTT connection, Tibber price, last telemetry timestamp (updates live via SignalR)
 - **Current decision panel** — active state (Charge / Discharge / Idle), reason, Tibber price, battery SoC
-- **Forecast chart** — 24-hour price forecast colored by planned decision, with expected SoC curve
+- **Forecast chart** — price forecast of up to 48 hours colored by planned decision, with expected SoC curve
 - **Decision history** — aggregated time series with filtering by time range
 - **Live energy flow** — animated grid / battery / PV / house schematic (light and dark scene)
 - **Savings overview** — daily, weekly, monthly and yearly savings breakdown
@@ -179,7 +178,7 @@ dotnet test tests/TibberVictronController.Business.Tests   # single project
 
 ## Deployment
 
-The intended production setup is a Raspberry Pi running the backend as a systemd service with the frontend served as static files from the ASP.NET Core host.
+The production setup is a Raspberry Pi running the backend as the systemd service `energyflowpilot-api.service`; nginx serves the built frontend and proxies `/api`, `/hubs` and `/health` to port 5094. The Pi updates itself from Git (`scripts/deploy/auto-update-linux.sh`).
 
 ```powershell
 # Build frontend assets into the API publish output

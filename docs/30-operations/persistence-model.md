@@ -50,6 +50,14 @@ Important columns:
 
 The input summary must contain enough context to explain why the decision was made, without storing secrets.
 
+The decision log is also the only durable record of the retail price that applied (`TibberPricePerKwh` holds the price
+of the selected supplier) and a source of grid power. It is read by the energy history (`EfEnergyHistoryRepositories`),
+the historical price query (`EfDecisionLogRepository.GetHistoricalPricesAsync`, used by the comparable-day estimate,
+the joint residual energy value and the car's cheap-price threshold) and the price course (`PriceTimelineService`).
+While joint control is active, the execution writes an entry about every 30 s and only in status `Active`.
+`decisionLog.retentionDays` (default 90) is not applied yet: no cleanup runs, because deleting entries would also delete
+this price history.
+
 ### DecisionLogReasons
 
 Stores structured reasons for a Battery Decision Engine decision.
@@ -76,12 +84,17 @@ Important columns:
 
 Operational events are used for visible, diagnosable failures instead of silent fallbacks.
 
-### BatterySavingsDailySummaries
+### BatterySavingsByBattery
 
-Stores daily monetary accounting for battery charging and discharging.
+Stores daily monetary accounting for battery charging and discharging, one row per battery (`victron`, `e3dc`), date
+and currency. In EF the entity is exposed as `DbSet BatterySavingsDailySummaries` but mapped to this table. The older
+table `BatterySavingsDailySummaries` (Victron only, without `BatteryId`) is still created and only serves the one-time,
+idempotent import of old rows as `victron` (`ControllerDbInitializer.EnsurePerBatterySavingsAsync`).
 
 Important columns:
 
+- `BatteryId`
+- `MeasuredSeconds` (seconds of the day covered by measurements; 0 for imported rows without known coverage)
 - `AccountingDate`
 - `Currency`
 - `GridChargedEnergyKwh`
