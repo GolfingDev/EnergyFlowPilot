@@ -51,6 +51,7 @@ public sealed class ControllerDbContext : DbContext
     public DbSet<PriceForecastSnapshotEntity> PriceForecastSnapshots => Set<PriceForecastSnapshotEntity>();
 
     public DbSet<EnergyQuarterHourEntity> EnergyQuarterHours => Set<EnergyQuarterHourEntity>();
+    public DbSet<PublishedPriceSlotEntity> PublishedPriceSlots => Set<PublishedPriceSlotEntity>();
 
     public DbSet<UserCalendarEntity> UserCalendars => Set<UserCalendarEntity>();
 
@@ -113,6 +114,19 @@ public sealed class ControllerDbContext : DbContext
             entity.Property(slot => slot.SlotStartUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
             entity.Property(slot => slot.ComputedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
             entity.Property(slot => slot.GridSource).HasMaxLength(16);
+        });
+        modelBuilder.Entity<PublishedPriceSlotEntity>(entity =>
+        {
+            entity.ToTable("PublishedPriceSlots");
+            entity.HasKey(slot => new { slot.Source, slot.Currency, slot.SlotStartUtc });
+            entity.Property(slot => slot.Source).HasMaxLength(32);
+            entity.Property(slot => slot.Currency).HasMaxLength(8);
+            entity.Property(slot => slot.Origin).HasMaxLength(16);
+            entity.Property(slot => slot.SlotStartUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(slot => slot.SlotEndUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            entity.Property(slot => slot.RecordedAtUtc).HasConversion(DateTimeOffsetToUnixMillisecondsConverter);
+            // REAL keeps the column numeric so the archive can be analysed directly with SQL.
+            entity.Property(slot => slot.PricePerKwh).HasConversion<double>();
         });
         modelBuilder.Entity<PriceForecastSnapshotEntity>(entity =>
         {

@@ -108,6 +108,9 @@ public static class ControllerServiceCollectionExtensions
         services.AddSingleton<SupplementaryGridChargeGuard>();
         services.AddScoped<ISupplementaryGridChargeSafety, SupplementaryGridChargeSafety>();
         services.AddScoped<IDecisionLogRepository, EfDecisionLogRepository>();
+        services.AddScoped<EfPublishedPriceArchive>();
+        services.AddScoped<IPublishedPriceArchive>(provider => provider.GetRequiredService<EfPublishedPriceArchive>());
+        services.AddHostedService<PublishedPriceArchiveBackgroundService>();
         services.AddScoped<IBatterySavingsRepository, EfBatterySavingsRepository>();
         services.AddScoped<IBatterySavingsAccountingService, BatterySavingsAccountingService>();
         services.AddScoped<IOperationalEventRepository, EfOperationalEventRepository>();

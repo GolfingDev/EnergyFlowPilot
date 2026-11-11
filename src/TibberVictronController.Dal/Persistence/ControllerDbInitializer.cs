@@ -133,7 +133,7 @@ SELECT 'victron', '0', "AccountingDate", "Currency", "GridChargedEnergyKwh", "Gr
     {
         var databaseCreator = dbContext.GetService<IRelationalDatabaseCreator>();
 
-        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions", "EvTrips", "PvForecastSnapshots", "CarSamples", "UserCalendars", "WebPushSubscriptions", "WebPushKeys", "PriceForecastSnapshots", "EnergyQuarterHours" })
+        foreach (var tableName in new[] { "BatterySavingsDailySummaries", "LiveConsumptionSamples", "ConsumptionDayProfiles", "HomematicClimateSamples", "WeishauptBiblockTelemetrySamples", "WeishauptHotWaterControlStates", "ConsumptionDailySummaries", "EvChargingSessions", "EvTrips", "PvForecastSnapshots", "CarSamples", "UserCalendars", "WebPushSubscriptions", "WebPushKeys", "PriceForecastSnapshots", "EnergyQuarterHours", "PublishedPriceSlots" })
         {
             if (await databaseCreator.HasTablesAsync(cancellationToken) &&
                 await TableExistsAsync(tableName, cancellationToken))
@@ -316,6 +316,23 @@ CREATE TABLE IF NOT EXISTS "EnergyQuarterHours" (
     "PriceCoveredSeconds" INTEGER NOT NULL,
     "PricePerKwh" TEXT NULL,
     "ComputedAtUtc" INTEGER NOT NULL
+);
+""";
+        }
+
+        // Additive (2026-11-11): published retail prices, so price history no longer depends on the decision log.
+        if (tableName == "PublishedPriceSlots")
+        {
+            return """
+CREATE TABLE IF NOT EXISTS "PublishedPriceSlots" (
+    "Source" TEXT NOT NULL,
+    "Currency" TEXT NOT NULL,
+    "SlotStartUtc" INTEGER NOT NULL,
+    "SlotEndUtc" INTEGER NOT NULL,
+    "PricePerKwh" REAL NOT NULL,
+    "RecordedAtUtc" INTEGER NOT NULL,
+    "Origin" TEXT NOT NULL,
+    CONSTRAINT "PK_PublishedPriceSlots" PRIMARY KEY ("Source", "Currency", "SlotStartUtc")
 );
 """;
         }

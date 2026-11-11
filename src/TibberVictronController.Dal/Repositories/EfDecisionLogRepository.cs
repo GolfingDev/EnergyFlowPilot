@@ -20,6 +20,19 @@ public sealed class EfDecisionLogRepository : IDecisionLogRepository
     {
         if (request.FromUtc.Offset != TimeSpan.Zero || request.ToUtc.Offset != TimeSpan.Zero || request.ToUtc <= request.FromUtc)
             throw new ArgumentException("Der historische Preiszeitraum muss ein gueltiger UTC-Zeitraum sein.");
+        var logged = await GetLoggedPricesAsync(request, cancellationToken);
+        // Published supplier prices from the archive win; the decision log fills quarter hours from before the archive
+        // existed. The archive also covers times without decision logs (e.g. joint execution blocked).
+        var archived = await new EfPublishedPriceArchive(dbContext).GetAsync(request, cancellationToken);
+        if (archived.Count == 0) return logged;
+        var bySlot = logged.ToDictionary(price => price.TimeSlot.StartsAtUtc);
+        foreach (var price in archived) bySlot[price.TimeSlot.StartsAtUtc] = price;
+        return bySlot.Values.OrderBy(price => price.TimeSlot.StartsAtUtc).ToArray();
+    }
+
+    private async Task<IReadOnlyList<TibberPriceForecastSlot>> GetLoggedPricesAsync(
+        HistoricalPriceRequest request, CancellationToken cancellationToken)
+    {
         // Aggregate in SQLite: reading every controller tick (and its JSON/reasons) for 14 days would be very expensive.
         // Source and currency are filtered before aggregation; untagged legacy logs belong exclusively to Tibber.
         var connection = dbContext.Database.GetDbConnection();

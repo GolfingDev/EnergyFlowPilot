@@ -50,13 +50,32 @@ Important columns:
 
 The input summary must contain enough context to explain why the decision was made, without storing secrets.
 
-The decision log is also the only durable record of the retail price that applied (`TibberPricePerKwh` holds the price
-of the selected supplier) and a source of grid power. It is read by the energy history (`EfEnergyHistoryRepositories`),
-the historical price query (`EfDecisionLogRepository.GetHistoricalPricesAsync`, used by the comparable-day estimate,
-the joint residual energy value and the car's cheap-price threshold) and the price course (`PriceTimelineService`).
-While joint control is active, the execution writes an entry about every 30 s and only in status `Active`.
-`decisionLog.retentionDays` (default 90) is not applied yet: no cleanup runs, because deleting entries would also delete
-this price history.
+The decision log also records the retail price that applied (`TibberPricePerKwh` holds the price of the selected
+supplier) and grid power. While joint control is active, the execution writes an entry about every 30 s and only in
+status `Active`. Price readers (state 2026-11-11):
+
+| Reader | Price source |
+|---|---|
+| Historical price query `EfDecisionLogRepository.GetHistoricalPricesAsync` (joint residual energy value, car cheap-price threshold) | `PublishedPriceSlots` first, decision log for quarter hours not archived |
+| Energy history (`EfEnergyHistoryRepositories`, energy costs) | decision log only |
+| Comparable-day estimate (`ComparableDayPriceEstimator`, single-battery path) | decision log only (`GetDecisionsAsync`) |
+| Price course (`PriceTimelineService`) | decision log only |
+
+`decisionLog.retentionDays` (default 90) is not applied yet: no cleanup runs while the last three readers still depend
+on old decision log entries (audit 2026-11-11, step D8: switch them to `PublishedPriceSlots`, then apply the retention).
+
+### PublishedPriceSlots
+
+Published retail prices per supplier (`Source`: `tibber`, `octopusGermany`, `energyCharts`), currency and UTC quarter
+hour; never estimated prices. `PublishedPriceArchiveBackgroundService` records the selected supplier's prices of the
+last 12 and next 48 hours every 15 minutes (a later recording of the same slot replaces the earlier one, `Origin =
+provider`). Once, it imports the prices logged with decisions since the oldest decision log entry, one UTC day at a
+time with 5 s pauses (`Origin = decisionLog`, same rules as the historical price query; never overrides a recorded
+supplier price). Progress: `energyHistory.priceArchiveBackfilledThroughUtc`. Energy-Charts prices are stored as
+calculated with the tariff surcharge in force when they were recorded.
+
+Important columns: `Source`, `Currency`, `SlotStartUtc` (key), `SlotEndUtc`, `PricePerKwh` (REAL), `RecordedAtUtc`,
+`Origin`. No retention: about 35,000 rows per year.
 
 ### DecisionLogReasons
 

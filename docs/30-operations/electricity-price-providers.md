@@ -66,6 +66,10 @@ HTTP-Timeout 20 Sekunden, kuerzere Aufrufer-Cancellation bleibt wirksam.
 
 ## Integration und Historie
 
+Seit 2026-11-11 werden die veroeffentlichten Preise des ausgewaehlten Anbieters alle 15 Minuten in
+`PublishedPriceSlots` archiviert, getrennt nach Anbieter und Waehrung; aeltere Preise werden einmalig aus dem
+Entscheidungslog uebernommen (Details: `docs/30-operations/persistence-model.md`).
+
 `IElectricityPriceForecastProvider` ist die gemeinsame Business-Schnittstelle.
 Die zentrale scoped Auswahl wird von Batterieentscheidungen, Batterieprognose,
 Dashboard, Ersparnisrechnung und Warmwasserautomatik verwendet.

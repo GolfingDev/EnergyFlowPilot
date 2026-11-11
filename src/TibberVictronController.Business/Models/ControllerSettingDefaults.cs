@@ -149,6 +149,8 @@ public static class ControllerSettingDefaults
     public const string EnergyHistoryPrefix = "energyHistory.";
     public const string EnergyHistoryBackfilledThroughKey = EnergyHistoryPrefix + "backfilledThroughUtc";
     public const string EnergyHistoryNotStarted = "none";
+    // Internal progress of the one-time import of logged prices into the published price archive (UTC day).
+    public const string PriceArchiveBackfilledThroughKey = EnergyHistoryPrefix + "priceArchiveBackfilledThroughUtc";
     // Contract periods (base fee, feed-in compensation) for the electricity cost page; edited there, JSON list.
     public const string ElectricityTariffPeriodsKey = "electricityTariff.periods";
     public const string VictronHostKey = "victron.host";
@@ -323,6 +325,7 @@ public static class ControllerSettingDefaults
         new(TibberAccessTokenKey, null, ControllerSettingSensitivity.Sensitive),
         new(PriceForecastTokenKey, null, ControllerSettingSensitivity.Sensitive),
         new(EnergyHistoryBackfilledThroughKey, EnergyHistoryNotStarted, ControllerSettingSensitivity.Normal),
+        new(PriceArchiveBackfilledThroughKey, EnergyHistoryNotStarted, ControllerSettingSensitivity.Normal),
         new(ElectricityTariffPeriodsKey, "[]", ControllerSettingSensitivity.Normal),
         new(VictronHostKey, "192.168.x.x", ControllerSettingSensitivity.Normal),
         new(VictronPortKey, "1883", ControllerSettingSensitivity.Normal),
