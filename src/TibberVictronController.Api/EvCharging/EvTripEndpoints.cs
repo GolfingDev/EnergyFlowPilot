@@ -247,7 +247,8 @@ public static class EvTripEndpoints
             var plan = view.Plan;
             // Viewers see the charging plan, but not where the trips go.
             var destinations = view.Trips.Plan.Trips.Select(trip => trip.Trip.Destination).Where(name => name.Length > 0).Distinct().ToArray();
-            var warnings = AdminOnlyEndpoints.IsAdmin(http)
+            var isAdmin = AdminOnlyEndpoints.IsAdmin(http);
+            var warnings = isAdmin
                 ? plan.Warnings
                 : plan.Warnings.Select(warning => destinations.Aggregate(warning, (text, name) => text.Replace("nach " + name, "zu einer Fahrt"))).ToArray();
             return TypedResults.Ok(new EvChargePlanResponseDto(plan.CalculatedAtUtc, view.SlotSource, Math.Round(plan.GridKwh, 1), Math.Round(plan.PvKwh, 1),
@@ -258,7 +259,10 @@ public static class EvTripEndpoints
             {
                 CheapThreshold = view.CheapThreshold is { } cheap
                     ? new EvCheapThresholdDto(cheap.PricePerKwh, cheap.Percentile, cheap.HistoryDays, cheap.Problem)
-                    : null
+                    : null,
+                ForecastFromUtc = view.ForecastFromUtc,
+                Goals = plan.Goals.Select(goal => new EvChargeGoalDto(goal.Kind.ToString(), Math.Round(goal.TargetSocPercent, 1), goal.DueAtUtc,
+                    isAdmin ? goal.Destination : null, goal.ReachedAtUtc, goal.WaitsForPrices)).ToArray()
             });
         }
         catch (InvalidOperationException exception)
@@ -331,7 +335,16 @@ public sealed record EvChargePlanResponseDto(
 {
     /// <summary>Grid price below which the car fills up beyond its need; null: only with PV surplus (see the problem).</summary>
     public EvCheapThresholdDto? CheapThreshold { get; init; }
+
+    /// <summary>From here on the plan uses forecast exchange prices converted to the tariff; null without forecast.</summary>
+    public DateTimeOffset? ForecastFromUtc { get; init; }
+
+    public IReadOnlyList<EvChargeGoalDto> Goals { get; init; } = [];
 }
+
+/// <summary>A charging goal ("BaseSoc" or "Trip"); the destination only for admins, like the warnings.</summary>
+public sealed record EvChargeGoalDto(string Kind, double TargetSocPercent, DateTimeOffset? DueAtUtc, string? Destination, DateTimeOffset? ReachedAtUtc,
+    bool WaitsForPrices);
 
 public sealed record EvCheapThresholdDto(double? PricePerKwh, double Percentile, int HistoryDays, string? Problem);
 
@@ -369,7 +382,11 @@ public static class EvTripPlanDtoMapper
         plan.CurrentSocPercent,
         plan.CurrentSocIsAssumed,
         new EvCarParametersDto(car.UsableCapacityKwh, car.ConsumptionKwhPer100Km, car.MinimumSocPercent, car.MarginPercent, car.ChargePowerWatts,
-            view.UsesLearnedConsumption, view.LearnedConsumption is { } learned ? new LearnedConsumptionDto(learned.KwhPer100Km, learned.Drives, learned.TotalKm) : null),
+            view.UsesLearnedConsumption, view.LearnedConsumption is { } learned ? new LearnedConsumptionDto(learned.KwhPer100Km, learned.Drives, learned.TotalKm) : null)
+        {
+            WallboxMaximumPowerWatts = car.WallboxMaximumPowerWatts,
+            CarAcLimitAmps = car.CarAcLimitAmps
+        },
         plan.Trips.Select(requirement => new EvTripDto(
             requirement.Trip.Id,
             Destination(requirement.Trip),
@@ -405,7 +422,11 @@ public static class EvTripPlanDtoMapper
 }
 
 public sealed record EvCarParametersDto(double UsableCapacityKwh, double ConsumptionKwhPer100Km, double MinimumSocPercent, double MarginPercent, double ChargePowerWatts,
-    bool UsesLearnedConsumption, LearnedConsumptionDto? LearnedConsumption);
+    bool UsesLearnedConsumption, LearnedConsumptionDto? LearnedConsumption)
+{
+    public double? WallboxMaximumPowerWatts { get; init; }
+    public double? CarAcLimitAmps { get; init; }
+}
 
 public sealed record LearnedConsumptionDto(double KwhPer100Km, int Drives, double TotalKm);
 

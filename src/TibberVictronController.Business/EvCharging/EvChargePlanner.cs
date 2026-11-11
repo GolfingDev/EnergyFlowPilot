@@ -56,6 +56,16 @@ public sealed record EvPlannedChargeSlot(
     bool IsPriceEstimated,
     EvChargeReason Reason);
 
+/// <summary>
+/// A charging goal and when the plan reaches it (operator 2026-11-11: the page did not say when the base state of charge
+/// would be charged, and claimed nothing was needed before a trip). ReachedAtUtc null: not inside the planned prices.
+/// </summary>
+public sealed record EvChargeGoal(EvChargeReason Kind, double TargetSocPercent, DateTimeOffset? DueAtUtc, string? Destination, DateTimeOffset? ReachedAtUtc)
+{
+    /// <summary>Left for prices not known yet: the plan charges it once they are published.</summary>
+    public bool WaitsForPrices { get; init; }
+}
+
 /// <summary>Grid energy and cost of the chosen plan if the PV turns out lower or higher than forecast.</summary>
 public sealed record EvChargeScenario(string Name, double PvFactor, double GridKwh, double GridCost);
 
@@ -69,6 +79,8 @@ public sealed record EvChargePlan(
     bool HasInputSlots = true)
 {
     public IReadOnlyList<EvChargeScenario> Scenarios { get; init; } = [];
+
+    public IReadOnlyList<EvChargeGoal> Goals { get; init; } = [];
 }
 
 /// <summary>
@@ -86,7 +98,7 @@ public static class EvChargePlanner
 {
     // Halo: 6 A x 230 V x 3 phases, no single-phase switching.
     public const double MinimumChargePowerWatts = 4140;
-    private const double WattsPerAmp = 690;
+    public const double WattsPerAmp = 690;
     // Missing energy at a departure must never be "cheaper" than any charging; below the base state of charge is
     // strongly, but not absolutely, avoided.
     private const double TripShortfallPenaltyPerKwh = 10;
@@ -97,6 +109,8 @@ public static class EvChargePlanner
     // "By price": the base state of charge should be reached within a day, not necessarily before the published prices end.
     private static readonly TimeSpan BaseSocDeadline = TimeSpan.FromHours(24);
     private const double EstimatedPriceHurdlePerKwh = 0.02;
+    // A forecast gets less reliable the further ahead it is, so waiting for it must pay off by more.
+    private const double EstimatedPriceHurdlePerDayPerKwh = 0.01;
     // Bonus per kWh of PV surplus in the optimiser, so it is always charged (up to the car's limit).
     private const double PvFillMarginPerKwh = 0.01;
     private static readonly (string Name, double Factor)[] ScenarioFactors = [("wenig PV", 0.5), ("erwartete PV", 1.0), ("viel PV", 1.3)];
@@ -162,7 +176,9 @@ public static class EvChargePlanner
         (double Cost, double GridKwh, double PvKwh) SlotCost(int i, double wallboxKwh, double pvFactor)
         {
             var slot = slots[i];
-            var gridPrice = slot.PricePerKwh + (slot.IsPriceEstimated ? EstimatedPriceHurdlePerKwh : 0);
+            var gridPrice = slot.PricePerKwh + (slot.IsPriceEstimated
+                ? EstimatedPriceHurdlePerKwh + EstimatedPriceHurdlePerDayPerKwh * Math.Max(0, (slot.StartsAtUtc - input.NowUtc).TotalDays)
+                : 0);
             var sources = new[]
             {
                 // Unknown state of charge: no filling up, so PV surplus keeps its feed-in price and serves only trips.
@@ -267,7 +283,47 @@ public static class EvChargePlanner
                 costs.Sum(pair => pair.Cost.GridKwh * slots[pair.Entry.Index].PricePerKwh));
         }).ToArray();
         return new EvChargePlan(input.NowUtc, plannedSlots, plannedSlots.Sum(slot => slot.GridKwh), plannedSlots.Sum(slot => slot.PvKwh),
-            plannedSlots.Sum(slot => slot.GridKwh * slot.PricePerKwh), warnings) { Scenarios = scenarios };
+            plannedSlots.Sum(slot => slot.GridKwh * slot.PricePerKwh), warnings)
+        {
+            Scenarios = scenarios,
+            Goals = Goals(new GoalContext(input, slots, trace, start, baseEnergy, baseDeferable > 0))
+        };
+    }
+
+    private sealed record GoalContext(EvChargePlanInput Input, EvChargeSlotInput[] Slots, double[] Trace, double Start, double BaseEnergy, bool BaseMayWait);
+
+    // The base state of charge (when below it) and the next trip, each with the time the planned course reaches it.
+    private static IReadOnlyList<EvChargeGoal> Goals(GoalContext context)
+    {
+        var (input, slots, trace) = (context.Input, context.Slots, context.Trace);
+        var capacity = input.Car.UsableCapacityKwh;
+        DateTimeOffset? ReachedAt(double target, int endIndex)
+        {
+            if (context.Start >= target - 0.05) return input.NowUtc;
+            for (var i = 0; i < endIndex; i++)
+                if (trace[i + 1] >= target - 0.05) return slots[i].EndsAtUtc;
+            return null;
+        }
+
+        var goals = new List<EvChargeGoal>();
+        if (input.CurrentSocPercent is not null && context.BaseEnergy > context.Start + 0.05)
+        {
+            var reached = ReachedAt(context.BaseEnergy, slots.Length);
+            goals.Add(new EvChargeGoal(EvChargeReason.BaseSoc, input.BaseSocPercent, null, null, reached) { WaitsForPrices = reached is null && context.BaseMayWait });
+        }
+
+        var trip = input.Trips.Where(trip => trip.Trip.DepartureAtUtc > input.NowUtc).MinBy(trip => trip.Trip.DepartureAtUtc);
+        if (trip is not null)
+        {
+            var departure = Array.FindIndex(slots, slot => slot.StartsAtUtc >= trip.Trip.DepartureAtUtc);
+            var reached = ReachedAt(Math.Min(trip.RequiredSocPercent, 100) / 100d * capacity, departure >= 0 ? departure : slots.Length);
+            goals.Add(new EvChargeGoal(EvChargeReason.Trip, trip.RequiredSocPercent, trip.Trip.DepartureAtUtc, trip.Trip.Destination, reached)
+            {
+                WaitsForPrices = reached is null && departure < 0
+            });
+        }
+
+        return goals;
     }
 
     // Energy the car needs for its next trip: reserve plus trip energy at the first departure in the horizon, else

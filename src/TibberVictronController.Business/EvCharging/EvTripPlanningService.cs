@@ -220,12 +220,26 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
         }
     }
 
-    private async Task<EvCarParameters> ReadCarParametersAsync(CancellationToken cancellationToken) => new(
-        await NumberAsync(ControllerSettingDefaults.EvCarUsableCapacityKwhKey, cancellationToken),
-        await NumberAsync(ControllerSettingDefaults.EvCarConsumptionKey, cancellationToken),
-        await NumberAsync(ControllerSettingDefaults.EvCarMinimumSocKey, cancellationToken),
-        await NumberAsync(ControllerSettingDefaults.EvTripMarginKey, cancellationToken),
-        await NumberAsync(ControllerSettingDefaults.EvWallboxMaximumPowerKey, cancellationToken));
+    private async Task<EvCarParameters> ReadCarParametersAsync(CancellationToken cancellationToken)
+    {
+        var wallbox = await NumberAsync(ControllerSettingDefaults.EvWallboxMaximumPowerKey, cancellationToken);
+        // The car's own AC limit decides what it takes now (operator 2026-11-11): past sessions do not show a limit set
+        // today. The planner knows no power below the wallbox minimum of 6 A, so a lower limit is planned with that.
+        var snapshot = dependencies.Car.Car;
+        var power = snapshot.ChargePowerLimitWatts(EvChargePlanner.WattsPerAmp) is { } limit
+            ? Math.Min(wallbox, Math.Max(EvChargePlanner.MinimumChargePowerWatts, limit))
+            : wallbox;
+        return new EvCarParameters(
+            await NumberAsync(ControllerSettingDefaults.EvCarUsableCapacityKwhKey, cancellationToken),
+            await NumberAsync(ControllerSettingDefaults.EvCarConsumptionKey, cancellationToken),
+            await NumberAsync(ControllerSettingDefaults.EvCarMinimumSocKey, cancellationToken),
+            await NumberAsync(ControllerSettingDefaults.EvTripMarginKey, cancellationToken),
+            power)
+        {
+            WallboxMaximumPowerWatts = wallbox,
+            CarAcLimitAmps = snapshot.AcChargingLimitActive == false ? null : snapshot.AcChargingLimitAmps
+        };
+    }
 
     // Home is the installation location already maintained for the PV forecast.
     private async Task<GeoPoint> ReadHomeAsync(CancellationToken cancellationToken) => new(

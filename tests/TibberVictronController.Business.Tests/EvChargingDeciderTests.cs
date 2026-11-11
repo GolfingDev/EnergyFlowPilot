@@ -26,6 +26,21 @@ public sealed class EvChargingDeciderTests
     }
 
     [Fact]
+    public void PauseWhileWaitingForPricesSaysSo()
+    {
+        // Operator 2026-11-11: "no charging needed" was wrong while the plan only waited for the night's prices.
+        var waiting = new EvChargePlan(Now, [], 0, 0, 0, [])
+        {
+            Goals = [new EvChargeGoal(EvChargeReason.BaseSoc, 30, null, null, null) { WaitsForPrices = true }]
+        };
+
+        var decision = EvChargingDecider.Decide(new EvChargingDecisionInput(Now, waiting, null, null));
+
+        Assert.Equal(EvChargingMode.Paused, decision.Mode);
+        Assert.Contains("wartet auf die Preise", decision.Reason);
+    }
+
+    [Fact]
     public void PlannedQuarterHourSetsItsCurrent()
     {
         var decision = EvChargingDecider.Decide(new EvChargingDecisionInput(Now, Plan(gridKwh: 2.75, powerWatts: 11000), null, null));

@@ -24,6 +24,17 @@ interface EvChargePlanDto {
   scenarios: { name: string; pvFactor: number; gridKwh: number; gridCost: number }[];
   slots: EvChargeSlotDto[];
   cheapThreshold: { pricePerKwh: number | null; percentile: number; historyDays: number; problem: string | null } | null;
+  forecastFromUtc?: string | null;
+  goals?: EvChargeGoalDto[];
+}
+
+interface EvChargeGoalDto {
+  kind: 'BaseSoc' | 'Trip';
+  targetSocPercent: number;
+  dueAtUtc: string | null;
+  destination: string | null;
+  reachedAtUtc: string | null;
+  waitsForPrices: boolean;
 }
 
 interface ChargeBlock {
@@ -34,6 +45,7 @@ interface ChargeBlock {
   pvKwh: number;
   averagePrice: number;
   estimated: boolean;
+  forecast: boolean;
   reason: EvChargeSlotDto['reason'];
 }
 
@@ -87,6 +99,9 @@ const reasonLabel: Record<EvChargeSlotDto['reason'], string> = {
 };
 const cents = (euro: number) => `${formatNumber(euro * 100, 1)} ct/kWh`;
 
+// Slots from here on are priced by the exchange price forecast, not by the tariff's published prices.
+const isForecast = (start: string) => !!plan.value?.forecastFromUtc && Date.parse(start) >= Date.parse(plan.value.forecastFromUtc);
+
 // Adjacent quarter hours with the same reason read better as one charging block.
 const blocks = computed<ChargeBlock[]>(() => {
   const result: ChargeBlock[] = [];
@@ -102,9 +117,10 @@ const blocks = computed<ChargeBlock[]>(() => {
       last.end = slot.endsAtUtc;
       last.averageKw = (lastEnergy + energy) / hours;
       last.estimated ||= slot.isPriceEstimated;
+      last.forecast ||= isForecast(slot.startsAtUtc);
     } else {
       result.push({ start: slot.startsAtUtc, end: slot.endsAtUtc, averageKw: slot.powerWatts / 1000, gridKwh: slot.gridKwh, pvKwh: slot.pvKwh,
-        averagePrice: slot.gridKwh > 0 ? slot.pricePerKwh : 0, estimated: slot.isPriceEstimated, reason: slot.reason });
+        averagePrice: slot.gridKwh > 0 ? slot.pricePerKwh : 0, estimated: slot.isPriceEstimated, forecast: isForecast(slot.startsAtUtc), reason: slot.reason });
     }
   }
   return result;
@@ -189,6 +205,24 @@ async function setTarget(target: number | null): Promise<void> {
   }
 }
 
+const goals = computed(() => plan.value?.goals ?? []);
+const waitsForPrices = computed(() => goals.value.some(goal => goal.waitsForPrices));
+const nextBlock = computed(() => blocks.value.find(block => Date.parse(block.end) > Date.now()) ?? null);
+const percent = (value: number) => `${formatNumber(value, 0)} %`;
+
+function goalLabel(goal: EvChargeGoalDto): string {
+  if (goal.kind === 'BaseSoc') return `Grund-Ladestand ${percent(goal.targetSocPercent)}`;
+  const when = goal.dueAtUtc ? dateTime.format(new Date(goal.dueAtUtc)) : '';
+  return `Fahrt ${when}${goal.destination ? ` nach ${goal.destination}` : ''} braucht ${percent(goal.targetSocPercent)}`;
+}
+
+function goalState(goal: EvChargeGoalDto): string {
+  if (goal.reachedAtUtc) {
+    return Date.parse(goal.reachedAtUtc) <= Date.now() + 60_000 ? 'reicht bereits' : `erreicht voraussichtlich ${dateTime.format(new Date(goal.reachedAtUtc))}`;
+  }
+  return goal.waitsForPrices ? 'wird geplant, sobald die nächsten Preise bekannt sind' : 'im Planungszeitraum nicht erreichbar';
+}
+
 const showBaseChoice = computed(() => !!baseChoice.value?.transactionId && (baseChoice.value.isBelowBase || baseChoice.value.isDecided));
 
 onMounted(() => { void load(); timer = window.setInterval(() => void load(), 30_000); });
@@ -260,7 +294,20 @@ onBeforeUnmount(() => window.clearInterval(timer));
       <SettingQuickFix v-if="missingSettings.length" class="mb-3" :keys="missingSettings" @saved="load" />
       <template v-if="plan">
         <v-alert v-for="warning in plan.warnings" :key="warning" class="mb-2" type="info" variant="tonal" density="compact">{{ warning }}</v-alert>
-        <p v-if="blocks.length === 0" class="plan__meta">Im Planungszeitraum ist kein Laden nötig.</p>
+        <ul v-if="goals.length" class="plan__goals mb-2">
+          <li v-for="goal in goals" :key="goal.kind + (goal.dueAtUtc ?? '')">
+            {{ goalLabel(goal) }}: <strong>{{ goalState(goal) }}</strong>
+          </li>
+        </ul>
+        <p v-if="nextBlock" class="mb-2">
+          Nächster Ladeblock: <strong>{{ dateTime.format(new Date(nextBlock.start)) }} – {{ timeOnly.format(new Date(nextBlock.end)) }}</strong>
+          ({{ reasonLabel[nextBlock.reason] }}<template v-if="nextBlock.forecast">, Preis laut Prognose</template>)
+        </p>
+        <p v-if="blocks.length === 0" class="plan__meta">
+          <template v-if="waitsForPrices">Noch kein Ladeblock: Der Plan wartet auf die Preise der kommenden Nacht (meist ab etwa 13 Uhr veröffentlicht).</template>
+          <template v-else-if="goals.length">Für diese Ziele ist im Planungszeitraum kein Laden nötig.</template>
+          <template v-else>Im Planungszeitraum ist kein Laden nötig.</template>
+        </p>
         <template v-else>
           <p class="mb-2">
             Geplant: <strong>{{ formatNumber(plan.gridKwh, 1) }} kWh aus dem Netz</strong> (≈ {{ formatNumber(plan.gridCost, 2) }} €)
@@ -274,7 +321,7 @@ onBeforeUnmount(() => window.clearInterval(timer));
                 <td class="text-right">{{ formatNumber(block.averageKw, 1) }} kW</td>
                 <td class="text-right">{{ formatNumber(block.gridKwh, 1) }} kWh</td>
                 <td class="text-right">{{ formatNumber(block.pvKwh, 1) }} kWh</td>
-                <td class="text-right">{{ block.gridKwh > 0 ? cents(block.averagePrice) : '–' }}<span v-if="block.estimated" title="Preis geschätzt">*</span></td>
+                <td class="text-right">{{ block.gridKwh > 0 ? cents(block.averagePrice) : '–' }}<span v-if="block.forecast" title="Preis laut Börsenpreis-Prognose">**</span><span v-else-if="block.estimated" title="Preis geschätzt">*</span></td>
                 <td>{{ reasonLabel[block.reason] }}</td>
               </tr>
             </tbody>
@@ -284,7 +331,11 @@ onBeforeUnmount(() => window.clearInterval(timer));
             <template v-for="(scenario, index) in plan.scenarios" :key="scenario.name">{{ index ? ' · ' : '' }}{{ scenario.name }} {{ formatNumber(scenario.gridKwh, 1) }} kWh ≈ {{ formatNumber(scenario.gridCost, 2) }} €</template>.
             Für Fahrten rechnet der Plan nur mit 70 % der PV-Prognose; mehr Sonne nutzt die Steuerung live.
           </p>
-          <p class="plan__meta mt-2">* geschätzter Preis. Energie an der Wallbox gemessen; rund 10 % Ladeverluste sind eingerechnet.</p>
+          <p class="plan__meta mt-2">
+            * geschätzter Preis.<template v-if="plan.forecastFromUtc"> ** ab {{ dateTime.format(new Date(plan.forecastFromUtc)) }} Börsenpreis-Prognose
+            (energyforecast.de), auf den Tarif umgerechnet; der Plan wartet darauf nur, wenn es sich trotz Sicherheitsaufschlag lohnt, und rechnet neu, sobald die Preise feststehen.</template>
+            Energie an der Wallbox gemessen; rund 10 % Ladeverluste sind eingerechnet.
+          </p>
         </template>
       </template>
     </div>
@@ -301,6 +352,10 @@ onBeforeUnmount(() => window.clearInterval(timer));
 
 .plan__target-input {
   max-width: 110px;
+}
+
+.plan__goals {
+  padding-left: 1.2rem;
 }
 
 .plan__meta {

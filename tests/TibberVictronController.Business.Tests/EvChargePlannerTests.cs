@@ -185,6 +185,49 @@ public sealed class EvChargePlannerTests
     }
 
     [Fact]
+    public void BaseGoalSaysItWaitsForPricesInsteadOfNothingNeeded()
+    {
+        // Operator 2026-11-11: the page said "no charging needed" while the plan only waited for the night's prices.
+        var plan = EvChargePlanner.Plan(Input(Slots(16, _ => 0.30), [], currentSoc: 40) with { BaseSocPercent = 50, FutureValuePerKwh = 0.10 });
+
+        var goal = Assert.Single(plan.Goals);
+        Assert.Equal((EvChargeReason.BaseSoc, 50d, (DateTimeOffset?)null, true), (goal.Kind, goal.TargetSocPercent, goal.ReachedAtUtc, goal.WaitsForPrices));
+    }
+
+    [Fact]
+    public void ACheaperForecastNightIsWaitedForAndTheTripGoalNamesWhenItIsReached()
+    {
+        // Operator 2026-11-11: 12 % at noon, work trip at 07:00; published prices end at midnight, the forecast covers the night.
+        var departure = Now.AddHours(19);
+        var slots = Slots(48, _ => 0.30).Concat(Forecast(48, 48, _ => 0.15)).ToList();
+
+        var plan = EvChargePlanner.Plan(Input(slots, [Requirement(departure, energyKwh: 10)], currentSoc: 12));
+
+        Assert.NotEmpty(plan.Slots);
+        Assert.All(plan.Slots, slot => Assert.True(slot.StartsAtUtc >= Now.AddHours(12) && slot.EndsAtUtc <= departure));
+        Assert.All(plan.Slots, slot => Assert.True(slot.IsPriceEstimated));
+        var goal = Assert.Single(plan.Goals);
+        Assert.Equal(EvChargeReason.Trip, goal.Kind);
+        Assert.Equal(departure, goal.DueAtUtc);
+        Assert.NotNull(goal.ReachedAtUtc);
+        Assert.True(goal.ReachedAtUtc <= departure);
+        Assert.False(goal.WaitsForPrices);
+    }
+
+    [Fact]
+    public void AForecastOnlySlightlyCheaperIsNotWaitedFor()
+    {
+        // Waiting must beat the safety hurdle of a forecast price (2 ct plus 1 ct per day ahead).
+        var departure = Now.AddHours(19);
+        var slots = Slots(48, _ => 0.30).Concat(Forecast(48, 48, _ => 0.29)).ToList();
+
+        var plan = EvChargePlanner.Plan(Input(slots, [Requirement(departure, energyKwh: 10)], currentSoc: 12));
+
+        Assert.NotEmpty(plan.Slots);
+        Assert.All(plan.Slots, slot => Assert.False(slot.IsPriceEstimated));
+    }
+
+    [Fact]
     public void ImmediateTargetChargesAtOnce()
     {
         // Operator 2026-11-03: "charge now up to 60 %", although the later hours are cheaper.
@@ -261,6 +304,10 @@ public sealed class EvChargePlannerTests
         Enumerable.Range(0, quarterHours)
             .Select(index => new EvChargeSlotInput(Now.AddMinutes(15 * index), Now.AddMinutes(15 * (index + 1)), price(index), false, 0))
             .ToList();
+
+    private static IEnumerable<EvChargeSlotInput> Forecast(int firstQuarter, int quarterHours, Func<int, double> price) =>
+        Enumerable.Range(firstQuarter, quarterHours)
+            .Select(index => new EvChargeSlotInput(Now.AddMinutes(15 * index), Now.AddMinutes(15 * (index + 1)), price(index), true, 0));
 
     private static EvTripRequirement Requirement(DateTimeOffset departure, double energyKwh, DateTimeOffset? returnAt = null)
     {

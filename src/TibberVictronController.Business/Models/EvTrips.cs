@@ -145,7 +145,14 @@ public sealed record EvCarParameters(
     double ConsumptionKwhPer100Km,
     double MinimumSocPercent,
     double MarginPercent,
-    double ChargePowerWatts);
+    double ChargePowerWatts)
+{
+    /// <summary>The wallbox maximum from the settings; <see cref="ChargePowerWatts"/> is lower when the car limits.</summary>
+    public double? WallboxMaximumPowerWatts { get; init; }
+
+    /// <summary>AC current per phase the car reports as its limit, or null when it reports none.</summary>
+    public double? CarAcLimitAmps { get; init; }
+}
 
 /// <summary>Requirement for one trip: the state of charge the car needs when it leaves.</summary>
 public sealed record EvTripRequirement(

@@ -12,6 +12,9 @@ public sealed record EvChargePlanView(EvChargePlan Plan, string SlotSource, EvTr
     public EvBaseChargeChoiceState? BaseChoice { get; init; }
 
     public EvCheapPriceThreshold? CheapThreshold { get; init; }
+
+    /// <summary>From here on the plan works with forecast exchange prices (energyforecast.de); null without forecast.</summary>
+    public DateTimeOffset? ForecastFromUtc { get; init; }
 }
 
 /// <summary>
@@ -29,12 +32,16 @@ public sealed class EvChargePlanService(
 {
     private static readonly TimeSpan JointPlanMaximumAge = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan PriceHorizon = TimeSpan.FromHours(36);
+    private static readonly TimeSpan ForecastMaximumAge = TimeSpan.FromHours(12);
 
     public async Task<EvChargePlanView> GetAsync(CancellationToken cancellationToken)
     {
         var now = clock.UtcNow;
         var tripView = await trips.GetPlanAsync(cancellationToken);
-        var (slots, source) = await SlotsAsync(now, cancellationToken);
+        var (published, source) = await SlotsAsync(now, cancellationToken);
+        var extension = await ExtendWithForecastAsync(published, now, cancellationToken);
+        var slots = extension.Slots;
+        if (extension.ForecastFromUtc is not null) source += " + Preisprognose (energyforecast.de)";
         var car = services.GetRequiredService<ICarStatusSource>().Car;
         var choice = await services.GetRequiredService<EvBaseChargeChoiceService>().GetAsync(cancellationToken);
         var cheap = await services.GetRequiredService<EvCheapPriceThresholdCache>().GetAsync(services, cancellationToken);
@@ -52,7 +59,28 @@ public sealed class EvChargePlanService(
             ImmediateTargetSocPercent = choice.ImmediateTargetPercent,
             FutureValuePerKwh = cheap.PricePerKwh
         });
-        return new EvChargePlanView(plan, source, tripView) { BaseChoice = choice, CheapThreshold = cheap };
+        return new EvChargePlanView(plan, source, tripView) { BaseChoice = choice, CheapThreshold = cheap, ForecastFromUtc = extension.ForecastFromUtc };
+    }
+
+    // Before the next day's prices are published (about 13:00) the known prices end at midnight. The stored price forecast
+    // fills the rest of the usual horizon, so a cheap night is planned for and an expensive one is not waited for.
+    // A failing forecast only means planning on published prices as before.
+    private async Task<EvForecastExtension> ExtendWithForecastAsync(IReadOnlyList<EvChargeSlotInput> slots, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (services.GetService<IPriceForecastSnapshotRepository>() is not { } repository) return new(slots, null);
+        var horizonEnd = JointPlanInputFallback.QuarterStart(now) + PriceHorizon;
+        try
+        {
+            // A forecast from a stopped fetch is no longer a forecast worth waiting for (fetched every three hours).
+            var snapshots = (await repository.GetAsync(JointPlanInputFallback.QuarterStart(now), horizonEnd, cancellationToken))
+                .Where(snapshot => snapshot.LeadDays == PriceForecastSnapshot.Actual || now - snapshot.CapturedAtUtc <= ForecastMaximumAge).ToArray();
+            return EvPriceForecastExtension.Extend(slots, snapshots, horizonEnd);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return new(slots, null);
+        }
     }
 
     private async Task<(IReadOnlyList<EvChargeSlotInput> Slots, string Source)> SlotsAsync(DateTimeOffset now, CancellationToken cancellationToken)

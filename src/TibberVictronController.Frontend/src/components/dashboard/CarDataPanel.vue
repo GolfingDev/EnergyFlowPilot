@@ -19,6 +19,9 @@ interface CarStatusDto {
   isPlugged: boolean | null;
   plugSource?: string | null;
   bmwPluggedRawValue?: string | null;
+  acChargingLimitAmps?: number | null;
+  acousticChargingLimit?: string | null;
+  acRestriction?: string | null;
   remainingRangeKm: number | null;
   odometerKm: number | null;
   lastMessageAtUtc: string | null;
@@ -125,6 +128,15 @@ onBeforeUnmount(() => window.clearTimeout(timer));
         <div v-if="car.chargingStatus" class="car__metric">
           <span class="car__label">Ladestatus laut Auto</span>
           <span class="car__value">{{ car.chargingStatus }}</span>
+        </div>
+        <div v-if="car.acChargingLimitAmps != null" class="car__metric">
+          <span class="car__label">AC-Ladestrom im Auto</span>
+          <span class="car__value">{{ formatNumber(car.acChargingLimitAmps, 0) }} A</span>
+          <span v-if="car.acousticChargingLimit || car.acRestriction" class="car__meta">
+            <template v-if="car.acousticChargingLimit">Leises Laden: {{ car.acousticChargingLimit }}</template>
+            <template v-if="car.acousticChargingLimit && car.acRestriction"> · </template>
+            <template v-if="car.acRestriction">AC-Begrenzung: {{ car.acRestriction }}</template>
+          </span>
         </div>
         <div v-if="car.odometerKm !== null" class="car__metric">
           <span class="car__label">Kilometerstand</span>

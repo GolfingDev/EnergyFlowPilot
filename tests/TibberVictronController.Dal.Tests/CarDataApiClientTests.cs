@@ -11,7 +11,7 @@ public sealed class CarDataApiClientTests
     public async Task ExistingContainerIsReusedOtherwiseCreated()
     {
         var reuse = new RoutingHandler(request => request.Method == HttpMethod.Get
-            ? """{"containers":[{"containerId":"c-1","name":"EnergyFlowPilot v2"}]}""" : "{}");
+            ? $$"""{"containers":[{"containerId":"c-1","name":"{{CarDataApiClient.ContainerName}}"}]}""" : "{}");
         Assert.Equal("c-1", await new CarDataApiClient(new HttpClient(reuse)).EnsureContainerAsync("token", ["a"], CancellationToken.None));
         Assert.Single(reuse.Requests);
 

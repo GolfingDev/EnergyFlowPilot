@@ -63,9 +63,12 @@ public static class EvChargingDecider
         if (planAmps is null && surplusAmps is null)
         {
             var next = plan.Slots.FirstOrDefault(candidate => candidate.StartsAtUtc > input.NowUtc && candidate.GridKwh > 0);
-            return new EvChargingDecision(EvChargingMode.Paused, 0, next is null
-                ? "Pause: kein Ladebedarf im Plan und kein PV-Überschuss."
-                : $"Pause bis zum nächsten geplanten Ladeblock ({next.StartsAtUtc:yyyy-MM-dd HH:mm} UTC).");
+            // Waiting for unpublished prices must not read as "nothing needed" (operator 2026-11-11).
+            return new EvChargingDecision(EvChargingMode.Paused, 0, next is not null
+                ? $"Pause bis zum nächsten geplanten Ladeblock ({next.StartsAtUtc:yyyy-MM-dd HH:mm} UTC{(next.IsPriceEstimated ? ", Preis geschätzt" : string.Empty)})."
+                : plan.Goals.Any(goal => goal.WaitsForPrices)
+                    ? "Pause: wartet auf die Preise der kommenden Nacht, um den Bedarf günstig zu laden."
+                    : "Pause: kein Ladebedarf im Plan und kein PV-Überschuss.");
         }
 
         if ((surplusAmps ?? 0) > (planAmps ?? 0))

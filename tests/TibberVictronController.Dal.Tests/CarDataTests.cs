@@ -54,6 +54,31 @@ public sealed class CarDataTests
     }
 
     [Fact]
+    public void AcChargingLimitOfTheCarLimitsThePlannedPower()
+    {
+        // Operator 2026-11-11: with a limit set in the car it charged at about 4 kW; BMW sent "28" with unit "A" after the change.
+        const string message = """
+            {"vin":"WBA00000000000001","data":{
+              "vehicle.powertrain.electric.battery.charging.acLimit.selected":{"value":6,"unit":"A","timestamp":"2026-11-01T08:55:00Z"},
+              "vehicle.powertrain.electric.battery.charging.acLimit.isActive":{"value":true,"timestamp":"2026-11-01T08:55:00Z"},
+              "vehicle.powertrain.electric.battery.charging.acousticLimit":{"value":"AUTOMATIC","timestamp":"2026-11-01T08:55:00Z"},
+              "vehicle.drivetrain.electricEngine.charging.acRestriction.isChosen":{"value":null}}}
+            """;
+
+        var limited = CarDataMessageParser.Apply(CarSnapshot.Empty, message, null, Now)!;
+
+        Assert.Equal(6, limited.AcChargingLimitAmps);
+        Assert.True(limited.AcChargingLimitActive);
+        Assert.Equal("AUTOMATIC", limited.AcousticChargingLimit);
+        Assert.Null(limited.AcRestriction);
+        Assert.Equal(4140, limited.ChargePowerLimitWatts(690));
+        Assert.True(CarDataMessageParser.IsEvaluated("vehicle.powertrain.electric.battery.charging.acLimit.selected"));
+        Assert.Contains("vehicle.powertrain.electric.battery.charging.acLimit.selected", CarDataMessageParser.RequiredDescriptors);
+        // A limit switched off in the car limits nothing.
+        Assert.Null((limited with { AcChargingLimitActive = false }).ChargePowerLimitWatts(690));
+    }
+
+    [Fact]
     public void MessagesForOtherCarsAndInvalidValuesAreIgnored()
     {
         const string otherCar = """{"vin":"WBA99999999999999","data":{"vehicle.drivetrain.batteryManagement.header":{"value":50}}}""";

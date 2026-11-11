@@ -27,6 +27,10 @@ public static class CarDataMessageParser
     private const string PluggedField = "plugged";
     private const string RangeField = "range";
     private const string OdometerField = "odometer";
+    private const string AcLimitField = "acLimit";
+    private const string AcLimitActiveField = "acLimitActive";
+    private const string AcousticLimitField = "acousticLimit";
+    private const string AcRestrictionField = "acRestriction";
     // Position data stays out of the diagnostic log: it is personal and not needed for charge planning.
     private static readonly string[] LocationMarkers = ["location", "latitude", "longitude", "gps", "heading", "altitude"];
     private const string TargetDescriptor = "vehicle.powertrain.electric.battery.stateOfCharge.target";
@@ -37,6 +41,11 @@ public static class CarDataMessageParser
     private const string PluggedDescriptor = "vehicle.powertrain.tractionBattery.charging.port.anyPosition.isPlugged";
     private const string RangeDescriptor = "vehicle.drivetrain.electricEngine.remainingElectricRange";
     private const string OdometerDescriptor = "vehicle.vehicle.travelledDistance";
+    // AC charging limit set in the car (seen 2026-11-11: selected "28" with unit "A", isActive true).
+    private const string AcLimitDescriptor = "vehicle.powertrain.electric.battery.charging.acLimit.selected";
+    private const string AcLimitActiveDescriptor = "vehicle.powertrain.electric.battery.charging.acLimit.isActive";
+    private const string AcousticLimitDescriptor = "vehicle.powertrain.electric.battery.charging.acousticLimit";
+    private const string AcRestrictionDescriptor = "vehicle.drivetrain.electricEngine.charging.acRestriction.isChosen";
 
     /// <summary>Descriptors to select in the BMW portal stream configuration.</summary>
     public static IReadOnlyList<string> RequiredDescriptors { get; } =
@@ -48,7 +57,11 @@ public static class CarDataMessageParser
         ChargingPortDescriptor,
         PluggedDescriptor,
         RangeDescriptor,
-        OdometerDescriptor
+        OdometerDescriptor,
+        AcLimitDescriptor,
+        AcLimitActiveDescriptor,
+        AcousticLimitDescriptor,
+        AcRestrictionDescriptor
     ];
 
     /// <summary>VIN and descriptor names of a message, for diagnostics only (no values).</summary>
@@ -175,6 +188,10 @@ public static class CarDataMessageParser
         ChargingPortDescriptor or PluggedDescriptor => PluggedField,
         RangeDescriptor => RangeField,
         OdometerDescriptor => OdometerField,
+        AcLimitDescriptor => AcLimitField,
+        AcLimitActiveDescriptor => AcLimitActiveField,
+        AcousticLimitDescriptor => AcousticLimitField,
+        AcRestrictionDescriptor => AcRestrictionField,
         _ => null
     };
 
@@ -191,6 +208,14 @@ public static class CarDataMessageParser
                 return next with { RemainingRangeKm = range };
             case OdometerDescriptor when Number(value) is { } odometer and >= 0:
                 return next with { OdometerKm = odometer };
+            case AcLimitDescriptor when Number(value) is { } amps and > 0 and <= 64:
+                return next with { AcChargingLimitAmps = amps };
+            case AcLimitActiveDescriptor when Flag(value) is { } active:
+                return next with { AcChargingLimitActive = active };
+            case AcousticLimitDescriptor when RawText(value) is { Length: > 0 } acoustic:
+                return next with { AcousticChargingLimit = acoustic };
+            case AcRestrictionDescriptor when RawText(value) is { Length: > 0 } restriction:
+                return next with { AcRestriction = restriction };
             default:
                 return null;
         }
@@ -206,6 +231,20 @@ public static class CarDataMessageParser
     {
         JsonValueKind.Number when value.TryGetDouble(out var number) => number,
         JsonValueKind.String when double.TryParse(value.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) => parsed,
+        _ => null
+    };
+
+    private static string RawText(JsonElement value)
+    {
+        var text = value.ValueKind switch { JsonValueKind.String => value.GetString() ?? string.Empty, JsonValueKind.Null => string.Empty, _ => value.GetRawText() };
+        return text.Length <= 40 ? text : text[..40];
+    }
+
+    private static bool? Flag(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.String => value.GetString()?.Trim().ToUpperInvariant() switch { "TRUE" or "1" => true, "FALSE" or "0" => false, _ => null },
         _ => null
     };
 

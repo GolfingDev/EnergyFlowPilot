@@ -16,7 +16,7 @@ public sealed class CarDataApiClient(HttpClient httpClient)
 {
     public const string BaseUrl = "https://api-cardata.bmwgroup.com";
     // A new name when the descriptor list changes makes the controller create a fitting new container.
-    public const string ContainerName = "EnergyFlowPilot v2";
+    public const string ContainerName = "EnergyFlowPilot v3";
     private const string ContainerPurpose = "Ladeplanung des Autos";
 
     /// <summary>VIN of the car the account is primary user of (CarData data access needs that role).</summary>

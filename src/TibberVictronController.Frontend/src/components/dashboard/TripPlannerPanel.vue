@@ -58,7 +58,8 @@ interface EvTripPlanDto {
   currentSocPercent: number | null;
   currentSocIsAssumed: boolean;
   car: { usableCapacityKwh: number; consumptionKwhPer100Km: number; minimumSocPercent: number; marginPercent: number; chargePowerWatts: number;
-    usesLearnedConsumption: boolean; learnedConsumption: { kwhPer100Km: number; drives: number; totalKm: number } | null };
+    usesLearnedConsumption: boolean; learnedConsumption: { kwhPer100Km: number; drives: number; totalKm: number } | null;
+    wallboxMaximumPowerWatts?: number | null; carAcLimitAmps?: number | null };
   trips: EvTripDto[];
   course: { atUtc: string; socPercent: number }[];
   warnings: string[];
@@ -334,7 +335,8 @@ onBeforeUnmount(() => {
         ({{ plan.car.usesLearnedConsumption && plan.car.learnedConsumption
           ? `gelernt aus ${plan.car.learnedConsumption.drives} Fahrten, ${formatNumber(plan.car.learnedConsumption.totalKm, 0)} km`
           : 'Einstellung; gelernt wird aus den BMW-Daten' }}) + {{ formatNumber(plan.car.marginPercent, 0) }} %.
-        Bei der Rückkehr bleiben mindestens {{ percent(plan.car.minimumSocPercent) }}. Laden mit bis zu {{ formatNumber(plan.car.chargePowerWatts / 1000, 1) }} kW.
+        Bei der Rückkehr bleiben mindestens {{ percent(plan.car.minimumSocPercent) }}. Laden mit bis zu {{ formatNumber(plan.car.chargePowerWatts / 1000, 1) }} kW<template
+          v-if="plan.car.carAcLimitAmps != null && plan.car.wallboxMaximumPowerWatts != null && plan.car.chargePowerWatts < plan.car.wallboxMaximumPowerWatts - 1"> (im Auto auf {{ formatNumber(plan.car.carAcLimitAmps, 0) }} A begrenzt, Wallbox {{ formatNumber(plan.car.wallboxMaximumPowerWatts / 1000, 1) }} kW)</template>.
       </p>
     </div>
     <div class="px-4 pb-4">

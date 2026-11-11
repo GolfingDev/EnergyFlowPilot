@@ -99,6 +99,9 @@ public static class EvChargingEndpoints
             IsPlugged = charger.IsConnected ? charger.IsVehiclePlugged : car.Car.IsPlugged,
             PlugSource = charger.IsConnected ? "Wallbox" : car.Car.IsPlugged is null ? null : "BMW",
             BmwPluggedRawValue = isAdmin ? car.Car.PluggedRawValue : null,
+            AcChargingLimitAmps = car.Car.AcChargingLimitActive == false ? null : car.Car.AcChargingLimitAmps,
+            AcousticChargingLimit = car.Car.AcousticChargingLimit,
+            AcRestriction = car.Car.AcRestriction,
             Poll = new CarPollDiagnosticsDto(car.Poll.LastPollAtUtc, car.Poll.PollsToday, car.Poll.DailyLimit, car.Poll.LastProblem, car.Poll.LastTrigger)
         });
     }
@@ -330,6 +333,13 @@ public sealed record CarStatusResponseDto(
     public string? PlugSource { get; init; }
 
     public string? BmwPluggedRawValue { get; init; }
+
+    /// <summary>AC current per phase the car is set to accept; null when the car reports no limit.</summary>
+    public double? AcChargingLimitAmps { get; init; }
+
+    public string? AcousticChargingLimit { get; init; }
+
+    public string? AcRestriction { get; init; }
 }
 
 public sealed record CarPollDiagnosticsDto(DateTimeOffset? LastPollAtUtc, int PollsToday, int DailyLimit, string? LastProblem, string? LastTrigger);
