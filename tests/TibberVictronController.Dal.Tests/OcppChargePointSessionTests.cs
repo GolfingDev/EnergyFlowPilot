@@ -237,6 +237,54 @@ public sealed class OcppChargePointSessionTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ConnectionLostWhileACommandWaitsIsAResultNotAnException()
+    {
+        // The Halo drops its socket now and then; a cancelled pending call must not reach the control loop as an
+        // exception (it stopped the whole host).
+        var limit = session.SetCurrentLimitAsync(6, TimeSpan.FromMinutes(15), CancellationToken.None);
+        await ReadSentAsync();
+        session.FailPendingCalls();
+        var limited = await limit;
+
+        Assert.False(limited.Accepted);
+        Assert.Equal("VerbindungGetrennt", limited.Status);
+        Assert.Contains("getrennt", limited.Description);
+        // Connector 0 is not tried on a dead connection.
+        Assert.False(sent.Reader.TryRead(out _));
+
+        var clear = session.ClearCurrentLimitAsync(CancellationToken.None);
+        await ReadSentAsync();
+        session.FailPendingCalls();
+        var cleared = await clear;
+
+        Assert.False(cleared.Accepted);
+        Assert.Equal("VerbindungGetrennt", cleared.Status);
+    }
+
+    [Fact]
+    public async Task FailedSendIsAResultNotAnException()
+    {
+        var broken = new OcppChargePointSession(new OcppConnectionContext(ChargePointId, store.Connect(ChargePointId, clock.UtcNow),
+            (_, _) => throw new System.Net.WebSockets.WebSocketException("Socket geschlossen"), store, clock, NullLogger.Instance));
+
+        var result = await broken.SetCurrentLimitAsync(6, TimeSpan.FromMinutes(15), CancellationToken.None);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("VerbindungGetrennt", result.Status);
+    }
+
+    [Fact]
+    public async Task CancellationByTheCallerIsStillPassedOn()
+    {
+        using var caller = new CancellationTokenSource();
+        var command = session.SetCurrentLimitAsync(6, TimeSpan.FromMinutes(15), caller.Token);
+        await ReadSentAsync();
+        caller.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => command);
+    }
+
+    [Fact]
     public void ClosingAnOldConnectionDoesNotOverwriteTheNewOne()
     {
         var oldGeneration = store.Connect(ChargePointId, clock.UtcNow);

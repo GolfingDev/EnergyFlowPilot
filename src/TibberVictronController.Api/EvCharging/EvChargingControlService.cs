@@ -51,6 +51,8 @@ public sealed class EvChargeLoadForecast
 /// Automatic wallbox control (stage 4c). Every 30 seconds: follow the planned quarter hour or live PV surplus, else
 /// pause; without a plan, no limit at all. Limits are sent only on change and renewed before they expire; because
 /// every limit expires after 15 minutes, a stopped controller leaves the wallbox charging at full power.
+/// The rules live in Business (<see cref="EvChargingDecider"/>, <see cref="EvSurplusChargingTracker"/>,
+/// <see cref="EvChargerLimitKeeper"/>); this service only collects the inputs and runs the cycle.
 /// </summary>
 public sealed class EvChargingControlService(
     IServiceScopeFactory scopes,
@@ -63,23 +65,15 @@ public sealed class EvChargingControlService(
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PlanRefresh = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan LimitValidity = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan RenewBefore = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan RetryAfterRejection = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan TelemetryMaximumAge = TimeSpan.FromMinutes(2);
-    // Six samples at 30 s: clouds passing for a minute do not toggle the charging.
-    private const int SurplusSamples = 6;
 
-    private readonly Queue<double?> availableSamples = new();
+    // Surplus readings of the last three minutes, and since when surplus charging runs or pauses.
+    private readonly EvSurplusChargingTracker surplus = new();
+    private readonly EvChargerLimitKeeper limits = new(control, clock);
     private EvChargePlan? plan;
     private string? planProblem;
     private IReadOnlyList<string> planMissingSettings = [];
     private DateTimeOffset planCalculatedAtUtc = DateTimeOffset.MinValue;
-    private bool limitActive;
-    private double? appliedAmps;
-    private DateTimeOffset appliedUntilUtc;
-    private DateTimeOffset retryAtUtc = DateTimeOffset.MinValue;
-    private string? commandProblem;
+    private string? loggedProblem;
     private (EvBaseChargeMode Mode, double? Target) planChoice;
     private (EvChargingMode Mode, double? Amps)? loggedDecision;
 
@@ -89,16 +83,35 @@ public sealed class EvChargingControlService(
         using var timer = new PeriodicTimer(Interval);
         do
         {
-            try
-            {
-                await TickAsync(stoppingToken);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                logger.LogError(exception, "Automatische Wallbox-Steuerung: Zyklus fehlgeschlagen.");
-            }
+            await RunCycleAsync(stoppingToken);
         } while (await timer.WaitForNextTickAsync(stoppingToken));
     }
+
+    /// <summary>
+    /// One control cycle that never fails: only the host stopping ends the loop. Every other error is logged and the
+    /// next cycle tries again. This includes cancellations that are not ours (a wallbox dropping its connection during
+    /// a command, an HTTP timeout while the plan is calculated): an exception leaving the loop would stop the whole
+    /// host, and with it the battery control.
+    /// </summary>
+    public async Task RunCycleAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            await TickAsync(stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Automatische Wallbox-Steuerung: Zyklus fehlgeschlagen.");
+        }
+    }
+
+    // Cancellation counts as "stop" only when it is our own token; see RunCycleAsync.
+    private static bool IsFailure(Exception exception, CancellationToken cancellationToken) =>
+        exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested;
 
     private async Task TickAsync(CancellationToken cancellationToken)
     {
@@ -112,18 +125,21 @@ public sealed class EvChargingControlService(
         {
             var stop = new EvChargingDecision(EvChargingMode.Paused, 0,
                 $"Laden von Hand gestoppt{(choice.StoppedBy is null ? string.Empty : $" ({choice.StoppedBy})")}; weiter mit \u201eFortsetzen\u201c oder neu anstecken.");
-            await ApplyAsync(stop, now, cancellationToken);
+            // A stop by hand is immediate; minimum run time and pause of the surplus rules do not apply to it.
+            surplus.Reset();
+            await ApplyAsync(stop.Amps, cancellationToken);
             LogChange(stop);
-            state.Set(new EvChargingControlSnapshot(enabled, stop.Mode, stop.Amps, stop.Reason, now, commandProblem));
+            state.Set(new EvChargingControlSnapshot(enabled, stop.Mode, stop.Amps, stop.Reason, now, limits.CommandProblem));
             return;
         }
 
         if (!enabled)
         {
-            if (limitActive) await ReleaseAsync(cancellationToken);
+            surplus.Reset();
+            await ApplyAsync(null, cancellationToken);
             load.Clear();
             plan = null;
-            state.Set(new EvChargingControlSnapshot(false, EvChargingMode.Off, null, "Automatik ausgeschaltet; die Wallbox lädt nach eigener Einstellung.", now, commandProblem));
+            state.Set(new EvChargingControlSnapshot(false, EvChargingMode.Off, null, "Automatik ausgeschaltet; die Wallbox lädt nach eigener Einstellung.", now, limits.CommandProblem));
             return;
         }
 
@@ -134,8 +150,11 @@ public sealed class EvChargingControlService(
         await SampleSurplusAsync(scope.ServiceProvider, wallbox, now, cancellationToken);
         if (!wallbox.IsConnected || !wallbox.IsVehiclePlugged)
         {
+            // Unplugged: the next car starts without run time or pause. A wallbox that merely lost its connection
+            // keeps charging at its last limit, so the surplus state stays as it is.
+            if (wallbox.IsConnected) surplus.Reset();
             state.Set(new EvChargingControlSnapshot(true, EvChargingMode.Waiting, null,
-                wallbox.IsConnected ? "Kein Auto angesteckt." : "Wallbox nicht verbunden.", now, commandProblem));
+                wallbox.IsConnected ? "Kein Auto angesteckt." : "Wallbox nicht verbunden.", now, limits.CommandProblem));
             return;
         }
 
@@ -150,10 +169,15 @@ public sealed class EvChargingControlService(
 
         var allowance = double.TryParse((await settings.GetSettingAsync(ControllerSettingDefaults.EvChargingPvGridAllowanceKey, cancellationToken))?.Value,
             System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var watts) ? watts : 0;
-        var decision = EvChargingDecider.Decide(new EvChargingDecisionInput(now, plan, planProblem, AverageAvailable()) { PvGridAllowanceWatts = allowance });
-        await ApplyAsync(decision, now, cancellationToken);
+        var decision = EvChargingDecider.Decide(new EvChargingDecisionInput(now, plan, planProblem, surplus.AverageAvailableWatts(now))
+        {
+            PvGridAllowanceWatts = allowance,
+            Surplus = surplus.State
+        });
+        surplus.Observe(decision, now);
+        await ApplyAsync(decision.Amps, cancellationToken);
         LogChange(decision);
-        state.Set(new EvChargingControlSnapshot(true, decision.Mode, decision.Amps, decision.Reason, now, commandProblem) { MissingSettings = planMissingSettings });
+        state.Set(new EvChargingControlSnapshot(true, decision.Mode, decision.Amps, decision.Reason, now, limits.CommandProblem) { MissingSettings = planMissingSettings });
     }
 
     // Each change of the wallbox decision is logged with its reason, so a charging night can be explained afterwards
@@ -188,7 +212,7 @@ public sealed class EvChargingControlService(
             else
                 logger.LogInformation("Frage zum Grund-Ladestand per Push: {Delivered} zugestellt, {Failed} fehlgeschlagen.", delivered, failed);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception) when (IsFailure(exception, cancellationToken))
         {
             logger.LogWarning(exception, "Frage zum Grund-Ladestand konnte nicht per Push gesendet werden.");
         }
@@ -205,12 +229,14 @@ public sealed class EvChargingControlService(
             planMissingSettings = [];
             load.Set(plan);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception) when (IsFailure(exception, cancellationToken))
         {
-            // Missing inputs must not stop charging; the decider then releases the wallbox to full power.
-            logger.LogWarning("Ladeplan konnte nicht berechnet werden: {Reason}", exception.Message);
+            // Missing inputs must not stop charging; the decider then releases the wallbox to full power. A timeout of
+            // a price or forecast request arrives as a cancellation and is such a missing input too.
+            var reason = exception is OperationCanceledException ? "Zeitüberschreitung bei der Berechnung des Ladeplans." : exception.Message;
+            logger.LogWarning("Ladeplan konnte nicht berechnet werden: {Reason}", reason);
             plan = null;
-            planProblem = exception.Message;
+            planProblem = reason;
             planMissingSettings = MissingSettingException.KeysOf(exception);
             load.Clear();
         }
@@ -224,66 +250,23 @@ public sealed class EvChargingControlService(
         try
         {
             var telemetry = await services.GetRequiredService<ICurrentSiteTelemetryProvider>().GetCurrentSiteTelemetryAsync(cancellationToken);
-            if (now - telemetry.MeasuredAtUtc <= TelemetryMaximumAge)
-                available = -telemetry.CurrentGridImportWatts + (wallbox.IsConnected ? wallbox.PowerWatts ?? 0 : 0);
+            available = EvSurplusSample.AvailableWatts(telemetry, wallbox.IsConnected ? wallbox.PowerWatts ?? 0 : 0, now);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception) when (IsFailure(exception, cancellationToken))
         {
             // No live surplus this cycle; the plan still applies.
         }
 
-        availableSamples.Enqueue(available);
-        while (availableSamples.Count > SurplusSamples) availableSamples.Dequeue();
+        surplus.AddSample(now, available);
     }
 
-    // Only a full window of valid samples counts; one missing value means no surplus decision.
-    private double? AverageAvailable() =>
-        availableSamples.Count == SurplusSamples && availableSamples.All(sample => sample is not null) ? availableSamples.Average() : null;
-
-    private async Task ApplyAsync(EvChargingDecision decision, DateTimeOffset now, CancellationToken cancellationToken)
+    // Null releases the limit. The keeper never throws for a failed command; it reports the problem instead.
+    private async Task ApplyAsync(double? amps, CancellationToken cancellationToken)
     {
-        if (decision.Amps is null)
-        {
-            if (limitActive) await ReleaseAsync(cancellationToken);
-            return;
-        }
-
-        var unchanged = limitActive && appliedAmps == decision.Amps && appliedUntilUtc - now > RenewBefore;
-        if (unchanged || now < retryAtUtc) return;
-        try
-        {
-            var result = await control.LimitCurrentAsync(decision.Amps.Value, LimitValidity, cancellationToken);
-            if (result.Accepted)
-            {
-                (limitActive, appliedAmps, appliedUntilUtc, commandProblem) = (true, decision.Amps, result.ValidUntilUtc ?? now + LimitValidity, null);
-                return;
-            }
-
-            commandProblem = result.Description;
-        }
-        catch (InvalidOperationException exception)
-        {
-            commandProblem = exception.Message;
-        }
-
-        // The wallbox refuses: try again later instead of every cycle.
-        retryAtUtc = now + RetryAfterRejection;
-        logger.LogWarning("Automatische Wallbox-Steuerung: {Problem}", commandProblem);
-    }
-
-    private async Task ReleaseAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var result = await control.ClearLimitAsync(cancellationToken);
-            commandProblem = result.Accepted ? null : result.Description;
-        }
-        catch (InvalidOperationException exception)
-        {
-            commandProblem = exception.Message;
-        }
-
-        // Either way the controller's limit expires by itself within 15 minutes.
-        (limitActive, appliedAmps) = (false, null);
+        await limits.ApplyAsync(amps, cancellationToken);
+        // A repeated command (every cycle after a lost answer) must not repeat its warning every 30 seconds.
+        if (limits.CommandProblem is { } problem && problem != loggedProblem)
+            logger.LogWarning("Automatische Wallbox-Steuerung: {Problem}", problem);
+        loggedProblem = limits.CommandProblem;
     }
 }

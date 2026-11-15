@@ -73,7 +73,21 @@ public static class EvChargingEndpoints
         {
             return TypedResults.BadRequest(new { message = exception.Message });
         }
+        catch (Exception exception) when (IsLostConnection(exception, cancellationToken))
+        {
+            return ConnectionLost();
+        }
     }
+
+    // The session reports a lost connection as a command result; this is the net below it, so that a wallbox dropping
+    // its socket during a manual command never surfaces as a 500. A request the browser aborted is not answered.
+    private static bool IsLostConnection(Exception exception, CancellationToken cancellationToken) =>
+        exception is System.Net.WebSockets.WebSocketException or IOException ||
+        (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested);
+
+    private static IResult ConnectionLost() => TypedResults.Json(
+        new { message = "Die Verbindung zur Wallbox wurde während des Befehls getrennt." },
+        statusCode: StatusCodes.Status503ServiceUnavailable);
 
     private static async Task<IResult> ClearLimitAsync(IEvChargerControl control, CancellationToken cancellationToken)
     {
@@ -84,6 +98,10 @@ public static class EvChargingEndpoints
         catch (InvalidOperationException exception)
         {
             return TypedResults.BadRequest(new { message = exception.Message });
+        }
+        catch (Exception exception) when (IsLostConnection(exception, cancellationToken))
+        {
+            return ConnectionLost();
         }
     }
 

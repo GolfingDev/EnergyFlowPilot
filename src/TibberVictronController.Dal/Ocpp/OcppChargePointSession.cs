@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Net.WebSockets;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using TibberVictronController.Business.Abstractions;
+using TibberVictronController.Business.EvCharging;
 using TibberVictronController.Business.Models;
 
 namespace TibberVictronController.Dal.Ocpp;
@@ -218,10 +220,16 @@ public sealed class OcppChargePointSession
             if (status == "Accepted")
                 return Record(new EvChargerCommandResult(true, status,
                     $"Ladestrom auf {amps:0.#} A begrenzt bis {validTo:HH:mm} UTC ({string.Join(", ", attempts)}).", now, validTo));
+            // Without a connection the other connector cannot answer either.
+            if (status == EvChargerCommandStatus.Disconnected)
+                return Record(new EvChargerCommandResult(false, status,
+                    $"Begrenzung auf {amps:0.#} A nicht bestätigt: die Verbindung zur Wallbox wurde getrennt.", now, null));
         }
 
-        return Record(new EvChargerCommandResult(false, attempts.Count > 0 ? attempts[^1].Split(": ")[1] : "Unbekannt",
-            $"Wallbox lehnt die Begrenzung auf {amps:0.#} A ab ({string.Join(", ", attempts)}).", now, null));
+        var last = attempts.Count > 0 ? attempts[^1].Split(": ")[1] : "Unbekannt";
+        return Record(new EvChargerCommandResult(false, last, EvChargerCommandStatus.IsUnanswered(last)
+            ? $"Wallbox beantwortet die Begrenzung auf {amps:0.#} A nicht ({string.Join(", ", attempts)})."
+            : $"Wallbox lehnt die Begrenzung auf {amps:0.#} A ab ({string.Join(", ", attempts)}).", now, null));
     }
 
     public async Task<EvChargerCommandResult> ClearCurrentLimitAsync(CancellationToken cancellationToken)
@@ -231,10 +239,17 @@ public sealed class OcppChargePointSession
         // "Unknown" means there was no such profile any more, which is the wanted state too.
         var accepted = status is "Accepted" or "Unknown";
         return Record(new EvChargerCommandResult(accepted, status,
-            accepted ? "Begrenzung aufgehoben; die Wallbox lädt wieder nach ihrer eigenen Einstellung." : $"Wallbox hebt die Begrenzung nicht auf ({status}).",
+            accepted ? "Begrenzung aufgehoben; die Wallbox lädt wieder nach ihrer eigenen Einstellung."
+                : status == EvChargerCommandStatus.Disconnected ? "Aufheben der Begrenzung nicht bestätigt: die Verbindung zur Wallbox wurde getrennt."
+                : $"Wallbox hebt die Begrenzung nicht auf ({status}).",
             now, null));
     }
 
+    /// <summary>
+    /// Sends a command and returns the wallbox's status. A lost connection is an ordinary outcome, not an exception:
+    /// the wallbox drops its socket now and then, and the callers (control loop, manual endpoints) must keep running.
+    /// Only the caller's own cancellation is passed on.
+    /// </summary>
     private async Task<string> StatusOfAsync(string action, object payload, CancellationToken cancellationToken)
     {
         try
@@ -246,7 +261,17 @@ public sealed class OcppChargePointSession
         }
         catch (TimeoutException)
         {
-            return "KeineAntwort";
+            return EvChargerCommandStatus.NoAnswer;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // FailPendingCalls: the connection ended while the command waited for its answer.
+            return EvChargerCommandStatus.Disconnected;
+        }
+        catch (Exception exception) when (exception is WebSocketException or ObjectDisposedException or IOException)
+        {
+            // The socket was already closing when the command was sent.
+            return EvChargerCommandStatus.Disconnected;
         }
     }
 
