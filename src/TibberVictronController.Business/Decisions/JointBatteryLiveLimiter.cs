@@ -8,10 +8,29 @@ public static class JointBatteryLiveLimiter
     // Below this, measurement noise and short PV spikes are not worth switching the batteries into charging.
     private const int SurplusThresholdWatts = 200;
 
-    public static JointBatteryCommand Limit(JointBatteryCommand desired, JointBatteryLiveSnapshot live, DateTimeOffset now)
+    /// <summary>
+    /// Longest time a selected command may wait for its measurements. Above the 6 s cycle budget of one execution
+    /// tick, so it never triggers in a healthy tick; it only keeps a command from being reused by a later tick.
+    /// </summary>
+    public static readonly TimeSpan CommandMaximumSelectionAge = TimeSpan.FromSeconds(10);
+
+    public static JointBatteryCommand Limit(JointBatteryCommand desired, JointBatteryLiveSnapshot live, DateTimeOffset now) =>
+        Limit(desired, live, now, now);
+
+    /// <param name="now">Current time; measurement freshness is always judged against it.</param>
+    /// <param name="commandSelectedAtUtc">
+    /// Instant at which the tick selected <paramref name="desired"/>. The command's validity is judged against this
+    /// instant, not against <paramref name="now"/>: reading both devices takes hundreds of milliseconds, and a quarter
+    /// hour that ends during that read is no fault (in the field every such tick at hh:00/15/30/45 stopped both
+    /// batteries for 30 s). The next tick selects the new quarter hour.
+    /// </param>
+    public static JointBatteryCommand Limit(JointBatteryCommand desired, JointBatteryLiveSnapshot live, DateTimeOffset now,
+        DateTimeOffset commandSelectedAtUtc)
     {
         var limits = live.Limits;
-        if (live.Batteries.Count != 2 || now >= desired.ValidUntilUtc || now - live.MeasuredAtUtc > TimeSpan.FromSeconds(5) || live.MeasuredAtUtc > now.AddSeconds(2) ||
+        var commandExpired = commandSelectedAtUtc >= desired.ValidUntilUtc || commandSelectedAtUtc > now.AddSeconds(2) ||
+            now - commandSelectedAtUtc > CommandMaximumSelectionAge;
+        if (live.Batteries.Count != 2 || commandExpired || now - live.MeasuredAtUtc > TimeSpan.FromSeconds(5) || live.MeasuredAtUtc > now.AddSeconds(2) ||
             live.Batteries.Any(b => now - b.State.MeasuredAtUtc > TimeSpan.FromSeconds(5) || b.State.MeasuredAtUtc > now.AddSeconds(2)))
             throw new InvalidOperationException("Gemeinsamer Sollwert oder Messwerte sind abgelaufen.");
         if (limits.PhaseImportWatts.Count != 3 || limits.PhaseImportWatts.Any(p => p <= 0) || limits.VictronAcInputWatts <= 0 ||

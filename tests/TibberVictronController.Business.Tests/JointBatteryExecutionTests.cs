@@ -223,7 +223,125 @@ public sealed class JointBatteryExecutionTests
         Assert.Throws<InvalidOperationException>(() => JointBatteryLiveLimiter.Limit(Command() with { ValidUntilUtc = Now }, Live(), Now));
     }
 
+    [Fact]
+    public void CommandValidityIsJudgedAtSelectionButMeasurementsAgainstTheCurrentTime()
+    {
+        // Selected 200 ms before the quarter hour ends, limited 400 ms later after reading both devices.
+        var command = Command() with { ValidUntilUtc = Now.AddMilliseconds(200) };
+        var later = Now.AddMilliseconds(400);
+        Assert.Equal(500, JointBatteryLiveLimiter.Limit(command, Live(), later, Now).VictronWatts);
+
+        // A command that was already over when it was selected still fails closed.
+        Assert.Throws<InvalidOperationException>(() => JointBatteryLiveLimiter.Limit(command, Live(), later, later));
+        // A selection must not be carried into later ticks, even inside the command's validity.
+        var stalled = Now.AddSeconds(11);
+        var freshLive = Live() with { MeasuredAtUtc = stalled, Batteries = [Unit("victron") with { State = new(50, stalled) }, Unit("e3dc") with { State = new(50, stalled) }] };
+        Assert.Throws<InvalidOperationException>(() => JointBatteryLiveLimiter.Limit(Command(), freshLive, stalled, Now));
+        // Measurement freshness is unchanged: 5 s against the current time, whatever the selection instant.
+        Assert.Throws<InvalidOperationException>(() => JointBatteryLiveLimiter.Limit(Command(), Live(), Now.AddSeconds(6), Now.AddSeconds(6)));
+        Assert.Throws<InvalidOperationException>(() => JointBatteryLiveLimiter.Limit(Command(), Live(), Now.AddSeconds(6), Now));
+    }
+
+    [Fact]
+    public async Task SlotEndingDuringTheDeviceReadDoesNotFailTheStep()
+    {
+        var clock = new MovingClock();
+        var hardware = new Hardware { BeforeRead = () => clock.UtcNow = Now.AddMilliseconds(400) };
+        var state = new JointBatteryExecutionState { NeutralSamples = 2, Direction = 1 };
+        var command = Command() with { ValidUntilUtc = Now.AddMilliseconds(200) };
+
+        var outcome = await new JointBatteryExecutionCoordinator(hardware, state, clock).StepAsync(command, Now, CancellationToken.None);
+
+        Assert.Equal(JointBatteryStepOutcome.Executed, outcome);
+        Assert.Equal("Active", state.Current.Status);
+    }
+
+    private static async Task<(Hardware Hardware, JointBatteryExecutionState State, MovingClock Clock, JointBatteryExecutionCoordinator Coordinator)> ActiveChargeAsync()
+    {
+        var hardware = new Hardware(); var state = new JointBatteryExecutionState(); var clock = new MovingClock();
+        var coordinator = new JointBatteryExecutionCoordinator(hardware, state, clock);
+        for (var i = 0; i < 3; i++) await coordinator.StepAsync(Command(), CancellationToken.None);
+        Assert.Equal("Active", state.Current.Status);
+        hardware.Commands.Clear();
+        return (hardware, state, clock, coordinator);
+    }
+
+    [Fact]
+    public async Task OneMissedReadLeavesConfirmedSetpointsInPlaceAndTheNextStepContinues()
+    {
+        var (hardware, state, _, coordinator) = await ActiveChargeAsync();
+        var before = state.Current;
+
+        hardware.MissReads = 1;
+        Assert.Equal(JointBatteryStepOutcome.ReadMissTolerated, await coordinator.StepAsync(Command(), CancellationToken.None));
+        Assert.Empty(hardware.Commands);
+        Assert.Same(before, state.Current);
+
+        Assert.Equal(JointBatteryStepOutcome.Executed, await coordinator.StepAsync(Command(), CancellationToken.None));
+        Assert.Equal("Active", state.Current.Status);
+        Assert.Equal(500, state.Current.VictronTargetWatts);
+        Assert.DoesNotContain("Victron:0", hardware.Commands);
+        Assert.Equal(0, state.ConsecutiveReadMisses);
+    }
+
+    [Fact]
+    public async Task SecondConsecutiveMissedReadIsAFault()
+    {
+        var (hardware, _, _, coordinator) = await ActiveChargeAsync();
+        hardware.MissReads = 2;
+        await coordinator.StepAsync(Command(), CancellationToken.None);
+        await Assert.ThrowsAsync<JointBatteryReadMissException>(() => coordinator.StepAsync(Command(), CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("aged")]
+    [InlineData("expired")]
+    [InlineData("direction")]
+    [InlineData("hold")]
+    [InlineData("starting")]
+    public async Task MissedReadIsAFaultWheneverTheSetpointsInPlaceAreNotClearlyStillWanted(string situation)
+    {
+        var (hardware, state, clock, coordinator) = await ActiveChargeAsync();
+        var command = Command();
+        switch (situation)
+        {
+            // Older than one cycle budget: nobody has looked at the site for too long.
+            case "aged": clock.UtcNow = Now.AddSeconds(6.1); break;
+            // The command behind the setpoints is over (end of its quarter hour or manual charge).
+            case "expired": clock.UtcNow = Now.AddSeconds(2); state.Set(state.Current with { ValidUntilUtc = Now.AddSeconds(1) }); break;
+            // The new command wants the other direction or a stop: that must not wait for the next read.
+            case "direction": command = Command(-500, -500); break;
+            case "hold": command = Command(0, 0); break;
+            // E3/DC start-up: its mode is not confirmed yet.
+            case "starting": state.Set(state.Current with { Status = "Starting" }); break;
+        }
+        hardware.MissReads = 1;
+        await Assert.ThrowsAsync<JointBatteryReadMissException>(() => coordinator.StepAsync(command, CancellationToken.None));
+        Assert.Empty(hardware.Commands);
+    }
+
+    [Fact]
+    public async Task MissedReadIsNeverToleratedInTransitionReleaseOrAfterAWrite()
+    {
+        // Neutral transition before the first action.
+        var transition = new Hardware { MissReads = 1 };
+        await Assert.ThrowsAsync<JointBatteryReadMissException>(() =>
+            new JointBatteryExecutionCoordinator(transition, new(), new Clock()).StepAsync(Command(), CancellationToken.None));
+
+        // Release reads after its stop commands.
+        var (hardware, _, _, coordinator) = await ActiveChargeAsync();
+        hardware.MissReads = 1;
+        await Assert.ThrowsAsync<JointBatteryReadMissException>(() => coordinator.ReleaseAsync(CancellationToken.None));
+
+        // The same signal from a write path, after the E3/DC has been commanded in this step.
+        (hardware, _, _, coordinator) = await ActiveChargeAsync();
+        hardware.FailVictronWrite = new JointBatteryReadMissException("Victron beantwortet Leseanfragen nicht: Testpfad.");
+        await Assert.ThrowsAsync<JointBatteryReadMissException>(() => coordinator.StepAsync(Command(), CancellationToken.None));
+        Assert.Contains(hardware.Commands, c => c.StartsWith("E3dc:ChargeGrid", StringComparison.Ordinal));
+    }
+
     private sealed class Clock : IUtcClock { public DateTimeOffset UtcNow => Now; }
+    private sealed class MovingClock : IUtcClock { public DateTimeOffset UtcNow { get; set; } = Now; }
     private sealed class Hardware : IJointBatteryHardware
     {
         internal readonly List<string> Commands = [];
@@ -231,12 +349,20 @@ public sealed class JointBatteryExecutionTests
         internal bool BadEcho; internal bool DelayMode; internal bool Follow = true; internal bool FailE3dc;
         internal Func<JointBatteryLiveSnapshot, JointBatteryLiveSnapshot>? Adjust;
         internal int? Grant;
+        internal int MissReads; internal Action? BeforeRead; internal Exception? FailVictronWrite;
         public Task<JointBatteryLiveSnapshot> ReadAsync(CancellationToken token)
         {
+            BeforeRead?.Invoke();
+            if (MissReads > 0) { MissReads--; throw new JointBatteryReadMissException("Victron beantwortet Leseanfragen nicht: Testpfad."); }
             var live = Live(Primary, Secondary);
             return Task.FromResult(Adjust is null ? live : Adjust(live));
         }
-        public Task SetVictronAsync(int watts, CancellationToken token) { Commands.Add("Victron:" + watts); if (Follow) Primary = watts; return Task.CompletedTask; }
+        public Task SetVictronAsync(int watts, CancellationToken token)
+        {
+            Commands.Add("Victron:" + watts);
+            if (FailVictronWrite is not null) throw FailVictronWrite;
+            if (Follow) Primary = watts; return Task.CompletedTask;
+        }
         public Task<E3dcPowerAcknowledgement> SetE3dcAsync(E3dcPowerCommand command, CancellationToken token)
         {
             Commands.Add($"E3dc:{command.Mode}:{command.PowerWatts}");

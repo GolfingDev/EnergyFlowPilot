@@ -23,22 +23,18 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
     private DateTimeOffset? deviationLoggedFor;
     private string? fallbackLoggedCause;
 
+    // A persistent fault fails every second (e.g. an unconfirmed release). One event row per iteration was on the order
+    // of a thousand rows per hour on the SD card; the stop behaviour itself is not throttled, only its event rows.
+    private readonly RepeatedEventThrottle repeatedEvents = new(TimeSpan.FromMinutes(5));
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                try { await TickAsync(stoppingToken); }
+                try { await RunOnceAsync(stoppingToken); }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-                catch (Exception error)
-                {
-                    logger.LogWarning("Gemeinsame Ausfuehrung gestoppt. Fehlertyp={ErrorType} Detail={Detail}", error.GetType().Name, Detail(error) ?? "-");
-                    // The loop is alive; pulse before the separately budgeted failure handling.
-                    await PulseAsync(stoppingToken);
-                    try { await HandleFailureAsync(error); }
-                    catch (Exception cleanup) { logger.LogWarning("Gemeinsame Ruecknahme bleibt ausstehend. Fehlertyp={ErrorType}", cleanup.GetType().Name); }
-                }
                 await PulseAsync(stoppingToken);
                 await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
             }
@@ -75,6 +71,21 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
         catch (Exception error) when (error is not OperationCanceledException)
         {
             logger.LogWarning("Watchdog-Impuls konnte nicht gesendet werden. Fehlertyp={ErrorType}", error.GetType().Name);
+        }
+    }
+
+    /// <summary>One loop iteration without the pause: the tick and, when it fails, the stop of both batteries.</summary>
+    public async Task RunOnceAsync(CancellationToken stoppingToken)
+    {
+        try { await TickAsync(stoppingToken); }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
+        catch (Exception error)
+        {
+            logger.LogWarning("Gemeinsame Ausfuehrung gestoppt. Fehlertyp={ErrorType} Detail={Detail}", error.GetType().Name, Detail(error) ?? "-");
+            // The loop is alive; pulse before the separately budgeted failure handling.
+            await PulseAsync(stoppingToken);
+            try { await HandleFailureAsync(error); }
+            catch (Exception cleanup) { logger.LogWarning("Gemeinsame Ruecknahme bleibt ausstehend. Fehlertyp={ErrorType}", cleanup.GetType().Name); }
         }
     }
 
@@ -135,7 +146,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
             // All preconditions are checked before ownership is claimed. A claim creates a recovery obligation
             // whose release needs working hardware access; claiming with known-missing access would lock the
             // site (and the settings needed to repair it) until manual intervention.
-            var (command, blocker, missingSettings) = await PrepareAsync(services, settings, clock, cycle.Token);
+            var (command, selectedAt, blocker, missingSettings) = await PrepareAsync(services, settings, clock, cycle.Token);
             if (command is null)
             {
                 if (pending || ownership.JointControlActive) throw new InvalidOperationException(blocker);
@@ -147,48 +158,84 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
             if (!pending) await SaveRecoveryAsync(settings, clock, true, cycle.Token);
             ownership.JointControlActive = true;
             ownership.Clear();
-            await services.GetRequiredService<JointBatteryExecutionCoordinator>().StepAsync(command, cycle.Token);
+            // The command is judged against the instant it was selected: a quarter hour ending while the devices are
+            // being read is no fault. Measurements are still judged against the current time.
+            var outcome = await services.GetRequiredService<JointBatteryExecutionCoordinator>().StepAsync(command, selectedAt, cycle.Token);
+            if (outcome == JointBatteryStepOutcome.ReadMissTolerated)
+            {
+                await ReportToleratedReadMissAsync(services, clock, cycle.Token);
+                return;
+            }
             await LogAsync(services, cycle.Token);
         }
     }
 
+    /// <summary>Nothing was written and the execution status is unchanged; the skipped tick is only made visible.</summary>
+    private async Task ReportToleratedReadMissAsync(IServiceProvider services, IUtcClock clock, CancellationToken token)
+    {
+        var detail = state.LastReadMissDetail ?? "-";
+        logger.LogWarning("Messwerte fuer einen Takt nicht rechtzeitig erhalten; bestaetigte Sollwerte bleiben bestehen. Detail={Detail}", detail);
+        if (!repeatedEvents.ShouldWrite("ReadMissTolerated", clock.UtcNow, out var suppressed)) return;
+        try
+        {
+            await services.GetRequiredService<IOperationalEventRepository>().SaveEventAsync(new OperationalEvent(Guid.NewGuid(), clock.UtcNow,
+                "JointBatteryExecution", "Warning",
+                "Messwerte fuer einen Takt nicht rechtzeitig erhalten; die zuletzt bestaetigten Sollwerte bleiben fuer diesen Takt bestehen." +
+                RepeatNote(suppressed), JsonSerializer.Serialize(new { Detail = detail, SuppressedRepeats = suppressed })), token);
+        }
+        // The note is optional. Failing the tick over it would stop both batteries although nothing is wrong with them.
+        catch (Exception error)
+        {
+            logger.LogWarning("Hinweis auf ausgelassenen Takt konnte nicht gespeichert werden. Fehlertyp={ErrorType}", error.GetType().Name);
+        }
+    }
+
+    private static string RepeatNote(int suppressed) => suppressed == 0 ? "" :
+        $" ({suppressed} gleichartige Meldungen seit der letzten wurden nicht einzeln protokolliert.)";
+
     /// <summary>Checks every start condition without touching hardware and derives the current command.</summary>
-    private async Task<(JointBatteryCommand? Command, string? Blocker, IReadOnlyList<string> MissingSettings)> PrepareAsync(IServiceProvider services,
-        IControllerSettingStore settings, IUtcClock clock, CancellationToken token)
+    /// <returns>With a command also the instant it was selected at; the command's validity refers to that instant.</returns>
+    private async Task<(JointBatteryCommand? Command, DateTimeOffset SelectedAtUtc, string? Blocker, IReadOnlyList<string> MissingSettings)> PrepareAsync(
+        IServiceProvider services, IControllerSettingStore settings, IUtcClock clock, CancellationToken token)
     {
         async Task<string?> Value(string key) => (await settings.GetSettingAsync(key, token))?.Value;
 
         if (!watchdog.IsSupervised)
-            return (null, "Gemeinsame Hardwareausfuehrung benoetigt den installierten systemd-Watchdog und Ruecknahme-Helfer.", []);
+            return (null, default, "Gemeinsame Hardwareausfuehrung benoetigt den installierten systemd-Watchdog und Ruecknahme-Helfer.", []);
         if (!bool.TryParse(await Value(ControllerSettingDefaults.E3dcRscpEnabledKey), out var rscpEnabled) || !rscpEnabled)
-            return (null, "Lokaler E3/DC-Zugang ist deaktiviert.", [ControllerSettingDefaults.E3dcRscpEnabledKey]);
+            return (null, default, "Lokaler E3/DC-Zugang ist deaktiviert.", [ControllerSettingDefaults.E3dcRscpEnabledKey]);
         var missingAccess = new List<string>();
         foreach (var key in new[] { ControllerSettingDefaults.E3dcRscpHostKey, ControllerSettingDefaults.E3dcRscpPortKey,
             ControllerSettingDefaults.E3dcRscpUserKey, ControllerSettingDefaults.E3dcRscpPasswordKey, ControllerSettingDefaults.E3dcRscpKeyKey })
         {
             if (string.IsNullOrWhiteSpace(await Value(key))) missingAccess.Add(key);
         }
-        if (missingAccess.Count > 0) return (null, "Der lokale E3/DC-Zugang ist nicht vollstaendig konfiguriert.", missingAccess);
+        if (missingAccess.Count > 0) return (null, default, "Der lokale E3/DC-Zugang ist nicht vollstaendig konfiguriert.", missingAccess);
         if (!string.Equals((await Value(ControllerSettingDefaults.VictronControlModeKey))?.Trim(), "externalEss", StringComparison.OrdinalIgnoreCase))
-            return (null, "Gemeinsame Steuerung benoetigt den eingerichteten External-ESS-Modus.", [ControllerSettingDefaults.VictronControlModeKey]);
+            return (null, default, "Gemeinsame Steuerung benoetigt den eingerichteten External-ESS-Modus.", [ControllerSettingDefaults.VictronControlModeKey]);
         var missingLimits = new List<string>();
         foreach (var key in new[] { ControllerSettingDefaults.JointBatteryPhase1LimitKey, ControllerSettingDefaults.JointBatteryPhase2LimitKey,
             ControllerSettingDefaults.JointBatteryPhase3LimitKey, ControllerSettingDefaults.JointBatteryVictronInputLimitKey })
         {
             if (!decimal.TryParse(await Value(key), NumberStyles.Number, CultureInfo.InvariantCulture, out var limit) || limit <= 0) missingLimits.Add(key);
         }
-        if (missingLimits.Count > 0) return (null, "Bestaetigte Anschluss- und Phasengrenzen fehlen.", missingLimits);
+        if (missingLimits.Count > 0) return (null, default, "Bestaetigte Anschluss- und Phasengrenzen fehlen.", missingLimits);
 
         // An operator's manual charge replaces the plan; when it ends, this same tick falls back to the plan.
         var manualStore = new JointManualChargeStore(settings, clock);
         if (await manualStore.ReadAsync(token) is { } manual)
         {
+            // Taken before the manual step, which may read the devices first: earlier is the stricter side for the
+            // maximum selection age, and the manual command is valid for 15 s from its own later timestamp.
+            var manualSelectedAt = clock.UtcNow;
             var manualCommand = await PrepareManualChargeAsync(services, manualStore, manual, clock, token);
-            if (manualCommand is not null) return (manualCommand, null, []);
+            if (manualCommand is not null) return (manualCommand, manualSelectedAt, null, []);
         }
 
         var runtime = services.GetService<JointBatteryRuntimeState>()?.Current;
-        var selection = JointBatteryTickSelector.Select(new(clock.UtcNow, state.CommittedSlot, runtime?.Plan,
+        // One timestamp for selecting the command and for judging its validity later in this tick.
+        var selectedAt = clock.UtcNow;
+        var selection = JointBatteryTickSelector.Select(new(selectedAt, state.CommittedSlot, runtime?.Plan,
             runtime is { Status: "Blocked" } ? runtime.Message : null));
         state.CommittedSlot = selection.CommittedSlot;
         switch (selection.Outcome)
@@ -218,7 +265,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
                     new { planned.TimeSlot, planned.Targets, planned.ChargeSource, planned.PricePerKwh, planned.Reason }, token);
                 break;
         }
-        return (selection.Command, null, []);
+        return (selection.Command, selectedAt, null, []);
     }
 
     private static Task SavePlanEventAsync(IServiceProvider services, string message, object details, CancellationToken token) =>
@@ -303,11 +350,16 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
             "Gemeinsame Ruecknahme noch nicht bestaetigt; Einzelakku-Steuerung bleibt gesperrt. Ist ein Geraet dauerhaft nicht erreichbar, " +
             "gemeinsame Steuerung deaktivieren und die Ruecknahme nach Pruefung vor Ort im Dashboard manuell bestaetigen." + cause,
             clock.UtcNow, ownership.JointControlActive));
-        try { await LogAsync(services, timeout.Token, error.GetType().Name); }
+        // Same status, error type and text (numbers ignored: measured watts differ from tick to tick) is the same
+        // cause: written at once the first time, then once per interval with the number of repeats left out. A
+        // different cause is written immediately.
+        var eventKey = $"{state.Current.Status}|{error.GetType().Name}|{RepeatedEventThrottle.WithoutNumbers(Detail(error))}";
+        if (!repeatedEvents.ShouldWrite(eventKey, clock.UtcNow, out var suppressed)) return;
+        try { await LogAsync(services, timeout.Token, error.GetType().Name, suppressed); }
         catch (Exception logError) { logger.LogWarning("Gemeinsamer Fehlerstatus konnte nicht gespeichert werden. Fehlertyp={ErrorType}", logError.GetType().Name); }
     }
 
-    private async Task LogAsync(IServiceProvider services, CancellationToken token, string? errorType = null)
+    private async Task LogAsync(IServiceProvider services, CancellationToken token, string? errorType = null, int suppressedRepeats = 0)
     {
         var current = state.Current;
         if (errorType is null && current.Status == lastLoggedStatus)
@@ -319,8 +371,9 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
             if (unchanged) return;
         }
         await services.GetRequiredService<IOperationalEventRepository>().SaveEventAsync(new OperationalEvent(Guid.NewGuid(),
-            current.UpdatedAtUtc, "JointBatteryExecution", errorType is null ? "Information" : "Error", current.Message,
-            JsonSerializer.Serialize(new { Execution = current, ErrorType = errorType })), token);
+            current.UpdatedAtUtc, "JointBatteryExecution", errorType is null ? "Information" : "Error", current.Message + RepeatNote(suppressedRepeats),
+            JsonSerializer.Serialize(errorType is null ? new { Execution = current, ErrorType = errorType }
+                : (object)new { Execution = current, ErrorType = errorType, SuppressedRepeats = suppressedRepeats })), token);
         // Keep the existing Victron history/accounting tied to executed joint targets, not to a separate old plan.
         if (current.Status == "Active")
         {
@@ -331,5 +384,38 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
                 Math.Max(0, -projection.SiteTelemetry.CurrentGridImportWatts), projection.InputSummaryJson, projection.Reasons), token);
         }
         lastLoggedStatus = current.Status; lastLoggedAt = current.UpdatedAtUtc; lastLoggedMessage = current.Message;
+    }
+}
+
+/// <summary>
+/// Limits repeated identical events: the first occurrence of a cause is written at once, afterwards one per interval
+/// that carries the number of repeats left out in between. In-memory only; after a restart every cause is new again.
+/// </summary>
+public sealed class RepeatedEventThrottle(TimeSpan interval, int capacity = 32)
+{
+    private readonly Dictionary<string, (DateTimeOffset WrittenAtUtc, int Suppressed)> causes = [];
+
+    /// <summary>Numbers (measured watts, counters) vary between repeats of the same cause and are not part of it.</summary>
+    public static string WithoutNumbers(string? text) =>
+        text is null ? "" : System.Text.RegularExpressions.Regex.Replace(text, @"-?\d+([.,]\d+)?", "#");
+
+    public bool ShouldWrite(string cause, DateTimeOffset nowUtc, out int suppressedRepeats)
+    {
+        suppressedRepeats = 0;
+        if (causes.TryGetValue(cause, out var known))
+        {
+            // A clock set back must not silence a cause for longer than the interval.
+            var elapsed = nowUtc - known.WrittenAtUtc;
+            if (elapsed >= TimeSpan.Zero && elapsed < interval)
+            {
+                causes[cause] = (known.WrittenAtUtc, known.Suppressed + 1);
+                return false;
+            }
+            suppressedRepeats = known.Suppressed;
+        }
+        // Bounded memory: ever-changing texts must not grow the table; the longest-silent cause is forgotten first.
+        else if (causes.Count >= capacity) causes.Remove(causes.MinBy(c => c.Value.WrittenAtUtc).Key);
+        causes[cause] = (nowUtc, 0);
+        return true;
     }
 }

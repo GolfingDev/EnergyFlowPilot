@@ -3,14 +3,48 @@ using TibberVictronController.Business.Models;
 
 namespace TibberVictronController.Business.Decisions;
 
+public enum JointBatteryStepOutcome
+{
+    /// <summary>Both devices were read and commanded (action, start-up or neutral transition).</summary>
+    Executed,
+    /// <summary>The measurements did not arrive in time; nothing was written and the confirmed setpoints stay in place.</summary>
+    ReadMissTolerated
+}
+
 /// <summary>One coordinator owns both devices. Direction changes require two neutral observations before energizing.</summary>
 public sealed class JointBatteryExecutionCoordinator(IJointBatteryHardware hardware, JointBatteryExecutionState state, IUtcClock clock)
 {
-    public async Task StepAsync(JointBatteryCommand desired, CancellationToken token)
+    /// <summary>
+    /// One missed read in a row may be skipped. The age limit below makes a second one impossible in practice anyway:
+    /// a miss costs at least the 2.5 s read timeout plus the 1 s pause between ticks.
+    /// </summary>
+    public const int MaximumConsecutiveReadMisses = 1;
+
+    /// <summary>
+    /// Confirmed setpoints may stay in place without fresh measurements only while they are at most this old. 6 s is the
+    /// cycle budget of one tick: a slow but successful tick already leaves the previous setpoints untouched that long.
+    /// </summary>
+    public static readonly TimeSpan MaximumUnrefreshedSetpointAge = TimeSpan.FromSeconds(6);
+
+    public Task<JointBatteryStepOutcome> StepAsync(JointBatteryCommand desired, CancellationToken token) =>
+        StepAsync(desired, clock.UtcNow, token);
+
+    /// <param name="selectedAtUtc">Instant at which the tick selected the command; its validity is judged against it.</param>
+    public async Task<JointBatteryStepOutcome> StepAsync(JointBatteryCommand desired, DateTimeOffset selectedAtUtc, CancellationToken token)
     {
-        var live = await hardware.ReadAsync(token);
+        JointBatteryLiveSnapshot live;
+        // Only this read may be tolerated: it precedes every write of the step. Reads elsewhere (release, manual
+        // charge) and every failure after a write keep stopping both batteries.
+        try { live = await hardware.ReadAsync(token); }
+        catch (JointBatteryReadMissException miss) when (MayKeepSetpoints(desired))
+        {
+            state.ConsecutiveReadMisses++;
+            state.LastReadMissDetail = miss.Message;
+            return JointBatteryStepOutcome.ReadMissTolerated;
+        }
+        state.ConsecutiveReadMisses = 0;
         state.LastLive = live;
-        var command = JointBatteryLiveLimiter.Limit(desired, live, clock.UtcNow);
+        var command = JointBatteryLiveLimiter.Limit(desired, live, clock.UtcNow, selectedAtUtc);
         var direction = Math.Sign(command.VictronWatts + command.E3dcWatts);
         if (state.Direction != direction)
         { state.NeutralSamples = 0; state.SettlingSinceUtc = clock.UtcNow; }
@@ -27,7 +61,7 @@ public sealed class JointBatteryExecutionCoordinator(IJointBatteryHardware hardw
             state.Set(new("Transition", "Beide Akkus werden vor der gemeinsamen Aktion neutral geschaltet.", clock.UtcNow, true,
                 VictronMeasuredWatts: live.Batteries[0].MeasuredPowerWatts, E3dcMeasuredWatts: live.Batteries[1].MeasuredPowerWatts));
             if (state.NeutralSamples == 2) state.SettlingSinceUtc = clock.UtcNow;
-            return;
+            return JointBatteryStepOutcome.Executed;
         }
         var previous = state.Current;
         // Ramp increases only. A budget reduction or stop is immediate, not delayed by the ramp.
@@ -67,7 +101,7 @@ public sealed class JointBatteryExecutionCoordinator(IJointBatteryHardware hardw
             await hardware.SetVictronAsync(0, token);
             state.Set(new("Starting", "E3/DC-Betriebsmodus wird zurueckgelesen; Victron bleibt bis zur Bestaetigung neutral." + grantNote,
                 clock.UtcNow, true, 0, grantedE3dc, live.Batteries[0].MeasuredPowerWatts, ack.MeasuredPowerWatts, command.ValidUntilUtc));
-            return;
+            return JointBatteryStepOutcome.Executed;
         }
         await hardware.SetVictronAsync(command.VictronWatts, token);
         var measured = new[] { live.Batteries[0].MeasuredPowerWatts, live.Batteries[1].MeasuredPowerWatts };
@@ -103,6 +137,38 @@ public sealed class JointBatteryExecutionCoordinator(IJointBatteryHardware hardw
         }
         state.Set(new("Active", command.Reason + grantNote + followNote, clock.UtcNow, true, command.VictronWatts, grantedE3dc,
             measured[0], measured[1], command.ValidUntilUtc));
+        return JointBatteryStepOutcome.Executed;
+    }
+
+    /// <summary>
+    /// Whether a tick without measurements may leave the setpoints of the previous step in place instead of stopping
+    /// both batteries. Deliberately narrow; when in doubt the answer is no and the tick fails as it always did.
+    /// <list type="bullet">
+    /// <item>The previous step ended "Active": both setpoints were written and confirmed by readback. Never during a
+    /// neutral transition, the E3/DC start-up, a release or after a fault.</item>
+    /// <item>Those setpoints are at most <see cref="MaximumUnrefreshedSetpointAge"/> old and the command they came from
+    /// has not expired, so nothing outlives its quarter hour or manual charge.</item>
+    /// <item>The new command asks for the same direction, so the miss cannot postpone a direction change.</item>
+    /// <item>It is the first miss since the last successful read.</item>
+    /// </list>
+    /// Worst case: the skipped tick returns within its 6 s budget without waiting for anything, so watchdog pulses stay
+    /// at most about 7 s apart (limit 15 s). The next tick must read successfully or fails as before, so new setpoints
+    /// or the start of the stop follow at most 6 s + 1 s pause + 6 s = 13 s after the last confirmed write (typically
+    /// 5-8 s). That is the time the existing design already allows until a failed tick has stopped both batteries
+    /// (1 s pause + 6 s cycle + 6 s failure budget), and well inside the about 30 s after which the E3/DC drops an
+    /// unrefreshed power command by itself. Until then the batteries follow setpoints computed from the measurements of
+    /// the previous tick: a load change in that window can cause a few seconds of grid export or additional import,
+    /// as a slow tick already can.
+    /// </summary>
+    private bool MayKeepSetpoints(JointBatteryCommand desired)
+    {
+        var now = clock.UtcNow;
+        var previous = state.Current;
+        var age = now - previous.UpdatedAtUtc;
+        return state.ConsecutiveReadMisses < MaximumConsecutiveReadMisses &&
+            previous is { Status: "Active", OwnsControl: true, ValidUntilUtc: { } validUntil } && now < validUntil &&
+            state.NeutralSamples >= 2 && age >= TimeSpan.Zero && age <= MaximumUnrefreshedSetpointAge &&
+            Math.Sign(desired.VictronWatts + desired.E3dcWatts) == state.Direction;
     }
 
     private async Task NeutralAsync(CancellationToken token)

@@ -26,6 +26,11 @@ public sealed class JointBatteryExecutionState
     public DateTimeOffset? SettlingSinceUtc { get; set; }
     public DateTimeOffset? BlockedUntilUtc { get; set; }
 
+    /// <summary>Tolerated read misses since the last successful read; see JointBatteryExecutionCoordinator.MayKeepSetpoints.</summary>
+    public int ConsecutiveReadMisses { get; set; }
+    /// <summary>Device message of the last tolerated read miss, for the operational event.</summary>
+    public string? LastReadMissDetail { get; set; }
+
     /// <summary>Outcome of the last finished manual charge, shown on the dashboard until the next one starts.</summary>
     public string? ManualChargeResult { get; set; }
 

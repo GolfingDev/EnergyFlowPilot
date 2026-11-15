@@ -90,7 +90,11 @@ public sealed class JointBatteryHardware(IServiceProvider services) : IJointBatt
             topics.BatteryPowerTopic, topics.BatterySocTopic, topics.Hub4ModeReadTopic, topics.VebusMaxChargeCurrentTopic, topics.BatteryVoltageTopic]).ToArray();
         var at = Clock.UtcNow;
         var local = await services.GetRequiredService<IE3dcTelemetrySource>().ReadAsync(token);
-        await RefreshAsync(requested, token);
+        // Only this timeout is the benign "no measurements in time" case the coordinator may skip once: nothing has been
+        // written, and a silent dbus-mqtt says nothing about the devices. E3/DC read errors, missing or implausible
+        // values and a refresh that fails before a setpoint write (SetVictronAsync) remain ordinary failures.
+        try { await RefreshAsync(requested, token); }
+        catch (TimeoutException timeout) { throw new JointBatteryReadMissException(timeout.Message, timeout); }
         if (Value(topics.Hub4ModeReadTopic) != 3) throw new InvalidOperationException("Victron bestaetigt External ESS nicht.");
         var chargeLimit = Math.Max(0, (int)(RawValue(topics.VebusMaxChargeCurrentTopic) * RawValue(topics.BatteryVoltageTopic) * .97m));
         var secondary = new BatteryConfiguration(new BatteryConfigurationValues {
@@ -144,6 +148,15 @@ public sealed class JointBatteryHardware(IServiceProvider services) : IJointBatt
         }
     }
 
-    public Task<E3dcPowerAcknowledgement> SetE3dcAsync(E3dcPowerCommand command, CancellationToken token) =>
-        services.GetRequiredService<IE3dcPowerControl>().ApplyAsync(command, token);
+    public async Task<E3dcPowerAcknowledgement> SetE3dcAsync(E3dcPowerCommand command, CancellationToken token)
+    {
+        try { return await services.GetRequiredService<IE3dcPowerControl>().ApplyAsync(command, token); }
+        catch (InvalidDataException error)
+        {
+            // Same exception type, so the failure is handled as before. The command is added because a rejection such as
+            // "Fehler 8 ALREADY_IN_USE" (seen in bursts in the field) cannot be analysed without knowing which mode
+            // the E3/DC refused.
+            throw new InvalidDataException($"{error.Message} Gesendeter E3/DC-Befehl: Modus {command.Mode}, {command.PowerWatts} W.", error);
+        }
+    }
 }
