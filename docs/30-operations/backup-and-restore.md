@@ -10,9 +10,8 @@ restored completely.
   `HomematicClimateSamples`, 151,740 rows), integrity check passed; settings, savings days, price archive, energy
   quarter hours, trips and the schema compared equal to the live database. Not yet done: starting the application on
   a restored database.
-- The scripts on the Pi currently lie in `/usr/local/lib/energyflowpilot-backup/` (copied by hand before they were
-  committed; the timer points there). After the scripts have reached the Pi's checkout through Git, run the installer
-  from the checkout once so the timer follows updates, and remove that directory.
+- The timer runs the script from the Pi's Git checkout (`/home/torsten/src/EnergyFlowPilot/scripts/backup/`), so it
+  follows updates.
 
 ## Why
 
