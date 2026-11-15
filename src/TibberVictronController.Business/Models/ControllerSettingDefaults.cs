@@ -107,6 +107,8 @@ public static class ControllerSettingDefaults
     public const string ManualChargePowerWattsKey = "manualCharge.powerWatts";
     public const string ManualChargeExpiresAtUtcKey = "manualCharge.expiresAtUtc";
     public const string WorkerFailureEmailEnabledKey = "notifications.workerFailureEmail.enabled";
+    /// <summary>Push messages when control, measurements, disk space or the backup fail; notifications write nothing to hardware.</summary>
+    public const string OperationsAlertsEnabledKey = "operations.alerts.enabled";
     public const string WorkerFailureEmailSmtpHostKey = "notifications.workerFailureEmail.smtpHost";
     public const string WorkerFailureEmailSmtpPortKey = "notifications.workerFailureEmail.smtpPort";
     public const string WorkerFailureEmailSmtpUsernameKey = "notifications.workerFailureEmail.smtpUsername";
@@ -291,6 +293,7 @@ public static class ControllerSettingDefaults
         new(DecisionDirectionChangeMaximumNewPowerWattsKey, "500", ControllerSettingSensitivity.Normal),
         new(ManualChargePowerWattsKey, "0", ControllerSettingSensitivity.Normal),
         new(ManualChargeExpiresAtUtcKey, "1970-01-01T00:00:00.0000000+00:00", ControllerSettingSensitivity.Normal),
+        new(OperationsAlertsEnabledKey, "true", ControllerSettingSensitivity.Normal),
         new(WorkerFailureEmailEnabledKey, "false", ControllerSettingSensitivity.Normal),
         new(WorkerFailureEmailSmtpHostKey, "localhost", ControllerSettingSensitivity.Normal),
         new(WorkerFailureEmailSmtpPortKey, "25", ControllerSettingSensitivity.Normal),

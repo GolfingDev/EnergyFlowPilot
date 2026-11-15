@@ -87,7 +87,13 @@ Then:
 
 - `journalctl -u energyflowpilot-backup.service`: every run logs start, archive size, upload target and end.
 - `/var/lib/energyflowpilot/backups/offsite/last-success`: time and name of the last complete run.
-- A failed run leaves the systemd unit in state `failed` (`systemctl --failed`). There is no push or mail alert yet.
+- `/var/lib/energyflowpilot/backup-last-success`: the same line, mode `0644`, next to the database so the API's
+  service user can read it (the `backups/offsite` directory is root-only). The API pushes the alert
+  "Datensicherung überfällig" when this file is older than 36 hours; without the file (backup not installed, or no
+  complete run since this file was introduced) there is no alert. See "Operations Alerts" in
+  `docs/20-domain/time-and-observability.md`.
+- A failed run leaves the systemd unit in state `failed` (`systemctl --failed`). The failure itself is not pushed;
+  the alert follows once the last complete run is older than 36 hours.
 
 ## Restore
 

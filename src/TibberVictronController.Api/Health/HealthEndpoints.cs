@@ -79,9 +79,9 @@ public static class HealthEndpoints
     /// While joint control is active, the legacy decision worker only projects the joint state, so its health says
     /// nothing about whether the batteries are actually controlled. A blocked or restoring execution is degraded (it can
     /// wait for a setting for days, and right after a restart it may still be restoring); only an execution that owns
-    /// the batteries but stopped reporting is unhealthy.
+    /// the batteries but stopped reporting is unhealthy. Public: the operations alerts use the same derivation.
     /// </summary>
-    private static HealthComponentDto BuildJointExecutionComponent(JointBatteryExecutionSnapshot? execution, DateTimeOffset nowUtc)
+    public static HealthComponentDto BuildJointExecutionComponent(JointBatteryExecutionSnapshot? execution, DateTimeOffset nowUtc)
     {
         if (execution is null) return new HealthComponentDto("Healthy", "Gemeinsame Ausführung ist nicht eingerichtet.", null);
         DateTimeOffset? updatedAt = execution.UpdatedAtUtc == DateTimeOffset.MinValue ? null : execution.UpdatedAtUtc;

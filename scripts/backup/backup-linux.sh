@@ -203,7 +203,13 @@ main() {
   upload_archive "${archive}"
 
   find "${LOCAL_DIR}" -maxdepth 1 -type f -name "${APP_NAME}-backup-*.tar.gpg" -mtime "+${LOCAL_KEEP_DAYS}" -delete
-  printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "${name}.tar.gpg" > "${LOCAL_DIR}/last-success"
+  local marker
+  marker="$(date -u '+%Y-%m-%dT%H:%M:%SZ') ${name}.tar.gpg"
+  printf '%s\n' "${marker}" > "${LOCAL_DIR}/last-success"
+  # The same line where the API's service user can read it (LOCAL_DIR is root-only): the API alerts when this
+  # file is older than 36 hours.
+  printf '%s\n' "${marker}" > "${DATA_DIR}/backup-last-success"
+  chmod 644 "${DATA_DIR}/backup-last-success"
   log "Sicherung ${name} abgeschlossen."
 }
 

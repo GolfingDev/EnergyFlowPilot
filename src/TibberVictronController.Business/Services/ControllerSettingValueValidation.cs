@@ -22,6 +22,8 @@ internal static class ControllerSettingValueValidation
             throw new ArgumentException("Der Schalter fuer lokalen E3/DC-Zugriff oder gemeinsame Vorschau muss true oder false sein.");
         if (key == ControllerSettingDefaults.DecisionLogCleanupEnabledKey && !bool.TryParse(value, out _))
             throw new ArgumentException("Der Schalter fuer das Aufraeumen des Entscheidungslogs muss true oder false sein.");
+        if (key == ControllerSettingDefaults.OperationsAlertsEnabledKey && !bool.TryParse(value, out _))
+            throw new ArgumentException("Der Schalter fuer die Betriebswarnungen muss true oder false sein.");
         if (key == ControllerSettingDefaults.EvOcppEnabledKey && !bool.TryParse(value, out _))
             throw new ArgumentException("Der Schalter fuer die Wallbox-Anbindung muss true oder false sein.");
         // The id becomes part of the WebSocket URL; restricting it keeps logs and URLs unambiguous.

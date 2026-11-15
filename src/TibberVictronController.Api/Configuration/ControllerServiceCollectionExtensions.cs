@@ -1,4 +1,5 @@
 using TibberVictronController.Dal.WebPush;
+using TibberVictronController.Api.Operations;
 using TibberVictronController.Api.Push;
 using TibberVictronController.Api.Prices;
 using TibberVictronController.Api.Energy;
@@ -175,6 +176,10 @@ public static class ControllerServiceCollectionExtensions
         services.AddHttpClient<WebPushClient>(client => client.Timeout = TimeSpan.FromSeconds(15));
         services.AddScoped<WebPushService>();
         services.AddSingleton<BaseChoiceAnswerToken>();
+        services.AddSingleton(OperationsAlertPaths.FromConnectionString(connectionString));
+        services.AddSingleton<OperationsSnapshotReader>();
+        services.AddScoped<IOperationsAlertSender, WebPushOperationsAlertSender>();
+        services.AddHostedService<OperationsAlertBackgroundService>();
         services.AddSingleton<EvChargingControlState>();
         services.AddSingleton<EvChargeLoadForecast>();
         services.AddScoped<TibberVictronController.Api.Automations.AutomationStatusService>();
