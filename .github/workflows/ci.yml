@@ -44,4 +44,4 @@ jobs:
       - name: Type check
         run: npx vue-tsc --noEmit
       - name: Unit tests
-        run: node --experimental-strip-types --test tests/settingsPresentation.test.mjs
+        run: node --experimental-strip-types --test tests/settingsPresentation.test.mjs tests/appUpdate.test.mjs

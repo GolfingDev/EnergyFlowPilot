@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { isAdmin } from '../../auth';
+import { holdAppUpdate } from '../../appUpdate';
 import { errorText } from './zentraleApi';
 import { clock } from './zentraleFormat';
 import { useZentraleData } from './useZentraleData';
@@ -43,6 +44,10 @@ watch(storedNumber, (value) => { if (phase.value !== 'sending') draft.value = va
 const sliderMax = computed(() => Math.max(props.max, draft.value ?? props.min));
 const dirty = computed(() => props.kind === 'slider' && draft.value != null && storedNumber.value != null
   && Math.abs(draft.value - storedNumber.value * props.scale) > props.step / 1000);
+// A slider moved but not yet saved holds back the automatic reload after a deployment.
+const updateHoldKey = `zentrale-setting-${Math.random().toString(36).slice(2)}`;
+watch(dirty, (changed) => holdAppUpdate(updateHoldKey, changed), { immediate: true });
+onBeforeUnmount(() => holdAppUpdate(updateHoldKey, false));
 const validationError = computed(() => dirty.value && draft.value != null && props.validate ? props.validate(toStored(draft.value)) : null);
 /*
  * The decision worker reads all settings at the start of a cycle. A completed cycle that started after the save

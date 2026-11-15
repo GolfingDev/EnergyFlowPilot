@@ -169,6 +169,24 @@ The watcher only reads the in-memory states the control services already publish
 
 The store runs only while a Zentrale view is open. The classic dashboard requests are skipped while the Zentrale design is active. Colours of energy kinds are defined once as `--z-*` tokens in `styles.css` and used by flow, key figures and charts.
 
+## Automatic reload after a deployment (2026-11-15)
+
+Operator request: an open page (or the installed app) kept running the old frontend after the Pi had updated itself,
+until someone reloaded by hand.
+
+- The build writes its identity (Git revision and build time) into the bundle (`__APP_BUILD__`) and into
+  `/version.json`. `src/appUpdate.ts` reads `/version.json` every minute, when the tab becomes visible again and when
+  the network returns; a different identity means a newer frontend lies on the server, and the page reloads itself.
+- The reload waits while the user is typing, a dialog or menu is open, or settings are changed but not saved
+  (`holdAppUpdate`, used by the settings page and the Zentrale setting controls); it then checks again every 10 seconds.
+  A hidden tab reloads at once.
+- The reload also waits until `/health` answers: a deployment replaces the frontend first and restarts the backend
+  seconds later, and a page loaded in between would stay empty.
+- Each offered version is reloaded for only once per browser session, so a cache that still delivers the old page
+  cannot cause a reload loop.
+- Nothing happens in development (`npm run dev` has no build time).
+- The version that introduces this needs one last manual reload: pages loaded before it do not check.
+
 ## Missing settings are entered where they are reported (2026-11-08)
 
 Operator decision: whenever the system reports that a setting is missing or unusable, the value can be entered right

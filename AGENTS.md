@@ -40,7 +40,7 @@ Always name the solution: ignored legacy project files in a local root make a ba
 - Live tests against the real Tibber API run only with `RUN_LIVE_TESTS=1` and `TIBBER_ACCESS_TOKEN` set.
 - Frontend (in `src/TibberVictronController.Frontend`): `npm ci`, then
   - type check: `npx vue-tsc --noEmit`
-  - unit tests: `node --experimental-strip-types --test tests/settingsPresentation.test.mjs`
+  - unit tests: `node --experimental-strip-types --test tests/settingsPresentation.test.mjs tests/appUpdate.test.mjs`
   - build (writes `dist/`): `npm run build`
 - Run locally: `dotnet run --project src/TibberVictronController.Api` (port 5094; Vite dev server `npm run dev` on 5173 proxies `/api`).
   This connects to the devices configured in the local database. Check `victron.dryRun=true` first.

@@ -1,5 +1,6 @@
 import { createApp } from 'vue';
 import App from './App.vue';
+import { startAppUpdateWatcher } from './appUpdate';
 import { installSessionGuard, loadCurrentUser } from './auth';
 import { registerServiceWorker, syncPush } from './push';
 import { router } from './router';
@@ -8,6 +9,7 @@ import './styles.css';
 
 installSessionGuard();
 registerServiceWorker();
+startAppUpdateWatcher();
 
 // Mount only after the user is known, so role-dependent controls never flash up for a viewer.
 void loadCurrentUser().then((signedIn) => {

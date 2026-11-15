@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { holdAppUpdate } from '../appUpdate';
 import { expertMode } from '../uiMode';
 import DynamicTariffComparison from '../components/settings/DynamicTariffComparison.vue';
 import PvForecastCorrection from '../components/settings/PvForecastCorrection.vue';
@@ -341,6 +342,9 @@ const activeSubgroups = computed(() => {
 });
 
 const hasUnsavedChanges = computed(() => Object.keys(draftValues.value).some((key) => draftValues.value[key] !== initialValues.value[key]));
+// An automatic reload after a deployment must not throw away what was typed but not saved.
+watch(hasUnsavedChanges, (unsaved) => holdAppUpdate('settings-page', unsaved), { immediate: true });
+onBeforeUnmount(() => holdAppUpdate('settings-page', false));
 
 const validationErrors = computed(() => availableFields.value.flatMap(field =>
   getFieldErrors(field.key).map(error => `${getFieldLabel(field)}: ${error}`)));
