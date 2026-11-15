@@ -28,6 +28,7 @@ When a requirement in this folder changes, future code changes must follow the u
 20. `30-operations/e3dc-rscp.md`
 21. `30-operations/electricity-price-providers.md`
 22. `30-operations/homematic-telemetry.md`
+23. `30-operations/backup-and-restore.md`
 
 Audit reports are in `audits/`. They describe a past state and are not requirements.
 

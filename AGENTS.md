@@ -85,3 +85,4 @@ CI (`.github/workflows/ci.yml`) runs backend tests, type check and frontend unit
 
 The Raspberry Pi runs the API as systemd service `energyflowpilot-api.service`; nginx serves the built frontend and proxies `/api`, `/hubs` and `/health` to port 5094.
 Scripts: `scripts/deploy/` (`update-linux.sh` publishes and restarts, `auto-update-linux.sh` runs it from cron when the tracked branch has new commits).
+Backup: `scripts/backup/` (`docs/30-operations/backup-and-restore.md`). Never copy the running database file (`sqlite3 .backup`, `VACUUM INTO`): that caused watchdog restarts.

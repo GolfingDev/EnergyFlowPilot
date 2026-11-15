@@ -14,6 +14,11 @@ After creation, the application must seed all known default settings.
 
 If a later application version adds new settings, startup initialization must add the missing defaults without overwriting existing user values.
 
+## Backup
+
+Nightly off-site backup of settings, key ring and permanent history without copying the database file:
+`backup-and-restore.md`. A new table of raw data with its own retention must be added to the backup's exclusion list.
+
 ## Tables
 
 ### ControllerSettings
