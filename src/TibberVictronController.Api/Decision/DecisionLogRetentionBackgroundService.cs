@@ -17,8 +17,13 @@ public sealed class DecisionLogRetentionBackgroundService(IServiceScopeFactory s
 {
     public const int MinimumRetentionDays = 30;
     public const int DefaultRetentionDays = 90;
-    private static readonly TimeSpan Interval = TimeSpan.FromHours(6);
     private string? lastWaitReason;
+
+    /// <summary>Wait before the first run, so the start-up is not slowed down by deletions.</summary>
+    public TimeSpan StartupDelay { get; init; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>Pause between two runs; also kept after a failed run.</summary>
+    public TimeSpan Interval { get; init; } = TimeSpan.FromHours(6);
 
     public int BatchSize { get; init; } = 1000;
     public int MaximumBatchesPerRun { get; init; } = 100;
@@ -26,11 +31,14 @@ public sealed class DecisionLogRetentionBackgroundService(IServiceScopeFactory s
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
+        await Task.Delay(StartupDelay, stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Only a cancelled stopping token ends the loop: any other cancellation (a timeout) leaving ExecuteAsync
+            // would make the host stop the whole process, including the battery control.
             try { await RunOnceAsync(stoppingToken); }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception exception)
             {
                 logger.LogWarning(exception, "Entscheidungslog konnte nicht aufgeraeumt werden.");
             }

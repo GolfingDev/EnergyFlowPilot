@@ -39,7 +39,15 @@ public sealed class FileExceptionLoggingMiddleware
             var traceId = Activity.Current?.Id ?? httpContext.TraceIdentifier;
             logger.LogError(exception, "Unhandled API exception. TraceId: {TraceId}", traceId);
 
-            await WriteExceptionLogAsync(httpContext, exception, traceId);
+            try
+            {
+                await WriteExceptionLogAsync(httpContext, exception, traceId);
+            }
+            catch (Exception logException)
+            {
+                // A full disk or a missing permission must not replace the original error and its German response.
+                logger.LogError(logException, "API-Fehler konnte nicht in die Protokolldatei geschrieben werden. TraceId: {TraceId}", traceId);
+            }
 
             if (httpContext.Response.HasStarted)
             {
@@ -57,12 +65,13 @@ public sealed class FileExceptionLoggingMiddleware
         var logFilePath = Path.Combine(logDirectory, $"api-errors-{utcNow:yyyy-MM-dd}.log");
         var logEntry = CreateLogEntry(httpContext, exception, traceId, utcNow);
 
-        await FileWriteLock.WaitAsync(httpContext.RequestAborted);
+        // Not the request-aborted token: the error of a request the client gave up on is still worth logging.
+        await FileWriteLock.WaitAsync(CancellationToken.None);
 
         try
         {
             Directory.CreateDirectory(logDirectory);
-            await File.AppendAllTextAsync(logFilePath, logEntry, Encoding.UTF8, httpContext.RequestAborted);
+            await File.AppendAllTextAsync(logFilePath, logEntry, Encoding.UTF8, CancellationToken.None);
             DeleteExpiredLogFiles(logDirectory, utcNow);
         }
         finally

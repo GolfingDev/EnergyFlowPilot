@@ -119,6 +119,33 @@ public sealed class HealthEndpointTests
         }
     }
 
+    [Fact]
+    public async Task UnwritableErrorLogDoesNotReplaceTheErrorResponse()
+    {
+        // The log directory cannot be created below a file, as with a full disk or a missing permission.
+        var blockingFile = Path.GetTempFileName();
+        try
+        {
+            var middleware = new TibberVictronController.Api.Diagnostics.FileExceptionLoggingMiddleware(
+                _ => throw new InvalidOperationException("Ursprünglicher Fehler"),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<TibberVictronController.Api.Diagnostics.FileExceptionLoggingMiddleware>.Instance,
+                Microsoft.Extensions.Options.Options.Create(new TibberVictronController.Api.Diagnostics.FileExceptionLogOptions { LogDirectory = Path.Combine(blockingFile, "logs") }));
+            var context = new DefaultHttpContext();
+            context.Response.Body = new MemoryStream();
+
+            await middleware.InvokeAsync(context);
+
+            context.Response.Body.Position = 0;
+            var body = await new StreamReader(context.Response.Body).ReadToEndAsync();
+            Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+            Assert.Contains("unerwarteter API-Fehler", body);
+        }
+        finally
+        {
+            File.Delete(blockingFile);
+        }
+    }
+
     private sealed class FakeUtcClock : IUtcClock
     {
         public FakeUtcClock(DateTimeOffset utcNow)

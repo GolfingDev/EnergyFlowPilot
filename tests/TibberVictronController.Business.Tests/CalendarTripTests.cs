@@ -225,6 +225,62 @@ public sealed class CalendarTripTests
     private static CalendarEvent Event(string id, string subject, string? location, DateTimeOffset? start = null, DateTimeOffset? end = null) =>
         new(id, subject, location, start ?? Now.AddDays(1), end ?? Now.AddDays(1).AddHours(1), false, false, false);
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RouteRecalculationEndsQuietlyWhenTheRouteServiceTimesOutOrIsUnreachable(bool timeout)
+    {
+        var trips = new FakeTrips();
+        trips.Trips.Add(new EvTrip(1, Now.AddDays(1), null, "Ziel A", "Adresse A", 10, 10, Now, Target: new GeoPoint(51.1, 13.1)));
+        trips.Trips.Add(new EvTrip(2, Now.AddDays(2), null, "Ziel B", "Adresse B", 10, 10, Now, Target: new GeoPoint(51.2, 13.2)));
+        var settings = new FakeControllerSettingStore();
+        await settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.PvForecastLatitudeKey, "51.0", ControllerSettingSensitivity.Normal, Now));
+        await settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.PvForecastLongitudeKey, "13.0", ControllerSettingSensitivity.Normal, Now));
+        var routes = new FailingRoutes(timeout ? new TaskCanceledException("Zeitüberschreitung im Test.") : new HttpRequestException("Nicht erreichbar."));
+        var service = new EvTripPlanningService(new EvTripPlanningDependencies(trips, routes, settings, null!, new Clock()));
+
+        // The caller's token is not cancelled: the timeout is a failed lookup, not a cancellation for the calling loop.
+        var updated = await service.RecalculateRoutesAsync(CancellationToken.None, outdatedOnly: true);
+
+        Assert.Equal(0, updated);
+        // The remaining trips are not tried: each would wait for the same timeout.
+        Assert.Equal(1, routes.Calls);
+    }
+
+    [Fact]
+    public async Task RouteRecalculationStillEndsWithACancellationWhenTheCallerCancels()
+    {
+        var trips = new FakeTrips();
+        trips.Trips.Add(new EvTrip(1, Now.AddDays(1), null, "Ziel A", "Adresse A", 10, 10, Now, Target: new GeoPoint(51.1, 13.1)));
+        var settings = new FakeControllerSettingStore();
+        await settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.PvForecastLatitudeKey, "51.0", ControllerSettingSensitivity.Normal, Now));
+        await settings.SaveSettingAsync(new ControllerSetting(ControllerSettingDefaults.PvForecastLongitudeKey, "13.0", ControllerSettingSensitivity.Normal, Now));
+        using var cancellation = new CancellationTokenSource();
+        var routes = new FailingRoutes(new OperationCanceledException(cancellation.Token)) { BeforeFailing = cancellation.Cancel };
+        var service = new EvTripPlanningService(new EvTripPlanningDependencies(trips, routes, settings, null!, new Clock()));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.RecalculateRoutesAsync(cancellation.Token, outdatedOnly: true));
+    }
+
+    private sealed class FailingRoutes(Exception failure) : IRoutePlanner
+    {
+        public int Calls { get; private set; }
+        public Action? BeforeFailing { get; init; }
+
+        public Task<GeoPoint?> FindSettlementNearAsync(string name, GeoPoint near, double maximumKm, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<RouteEstimate> RouteToAsync(GeoPoint origin, GeoPoint destination, string label, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            BeforeFailing?.Invoke();
+            return Task.FromException<RouteEstimate>(failure);
+        }
+
+        public Task<RouteEstimate> EstimateAsync(GeoPoint origin, string destination, bool placesOnly = false, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
     private sealed class SyncContext
     {
         public FakeCalendar Calendar { get; } = new();

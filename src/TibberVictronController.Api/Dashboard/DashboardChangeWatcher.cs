@@ -69,8 +69,9 @@ public sealed class DashboardChangeWatcherBackgroundService(
                         await publisher.PublishChangedAsync(area, stoppingToken);
                     }
                 }
-                catch (Exception exception) when (exception is not OperationCanceledException)
+                catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
                 {
+                    // A cancellation that is not the shutdown must not leave ExecuteAsync: the host would stop the process.
                     // Dashboards fall back to their periodic resync; nothing in the control depends on this message.
                     logger.LogDebug(exception, "Änderungsmeldung an die Dashboards fehlgeschlagen.");
                 }

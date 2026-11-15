@@ -13,14 +13,19 @@ namespace TibberVictronController.Api.Energy;
 public sealed class EnergyHistoryBackgroundService(IServiceScopeFactory scopes, IUtcClock clock, ILogger<EnergyHistoryBackgroundService> logger)
     : BackgroundService
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan RecentWindow = TimeSpan.FromHours(3);
     private static readonly TimeSpan BackfillPause = TimeSpan.FromSeconds(5);
     private DateOnly finalizedDay;
 
+    /// <summary>Wait before the first run, so the start-up (database, MQTT) settles first.</summary>
+    public TimeSpan StartupDelay { get; init; } = TimeSpan.FromMinutes(3);
+
+    /// <summary>Pause between two runs; also kept after a failed run.</summary>
+    public TimeSpan Interval { get; init; } = TimeSpan.FromMinutes(15);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(TimeSpan.FromMinutes(3), stoppingToken);
+        await Task.Delay(StartupDelay, stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -36,8 +41,14 @@ public sealed class EnergyHistoryBackgroundService(IServiceScopeFactory scopes, 
                     finalizedDay = today;
                 }
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
+                break;
+            }
+            catch (Exception exception)
+            {
+                // Includes cancellations that are not the shutdown (timeouts): leaving ExecuteAsync with them would
+                // make the host stop the whole process, including the battery control.
                 logger.LogWarning(exception, "Energieverlauf konnte nicht berechnet werden.");
             }
 

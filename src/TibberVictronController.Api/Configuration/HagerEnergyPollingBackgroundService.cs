@@ -52,9 +52,9 @@ public sealed class HagerEnergyPollingBackgroundService : BackgroundService
             // Secondary battery changes are safety inputs, not merely dashboard information.
             scope.ServiceProvider.GetService<DecisionCalculationTrigger>()?.Signal();
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Normal shutdown
+            // Normal shutdown; a cloud timeout is logged below like any other failed poll.
         }
         catch (Exception exception)
         {

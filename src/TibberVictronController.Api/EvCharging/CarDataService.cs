@@ -95,6 +95,8 @@ public sealed class CarDataService(
         {
             using var round = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
             Volatile.Write(ref currentRound, round);
+            // Whether a sign-in or sign-out ended the round; read before the round is cancelled for cleanup.
+            var interrupted = false;
             try
             {
                 var settings = await ReadSettingsAsync(stoppingToken);
@@ -126,6 +128,7 @@ public sealed class CarDataService(
                 }
                 finally
                 {
+                    interrupted = round.IsCancellationRequested;
                     round.Cancel();
                     await polling;
                 }
@@ -134,27 +137,47 @@ public sealed class CarDataService(
             catch (CarDataSignInRequiredException exception)
             {
                 logger.LogWarning("BMW CarData: {Reason}", exception.Message);
-                await SaveAsync(ControllerSettingDefaults.BmwCarDataRefreshTokenKey, null, ControllerSettingSensitivity.Sensitive, stoppingToken);
-                await SaveAsync(ControllerSettingDefaults.BmwCarDataSignInProblemKey, exception.Message, ControllerSettingSensitivity.Normal, stoppingToken);
-                store.SetConnection(new CarDataConnectionState(CarDataConnectionStatus.SignInRequired, exception.Message));
+                try
+                {
+                    await SaveAsync(ControllerSettingDefaults.BmwCarDataRefreshTokenKey, null, ControllerSettingSensitivity.Sensitive, stoppingToken);
+                    await SaveAsync(ControllerSettingDefaults.BmwCarDataSignInProblemKey, exception.Message, ControllerSettingSensitivity.Normal, stoppingToken);
+                    store.SetConnection(new CarDataConnectionState(CarDataConnectionStatus.SignInRequired, exception.Message));
+                }
+                catch (Exception saveError) when (!stoppingToken.IsCancellationRequested)
+                {
+                    // The rejected token is still stored, so the next round would ask BMW again at once; wait first.
+                    // An exception leaving ExecuteAsync here would make the host stop the whole process.
+                    logger.LogWarning(saveError, "BMW CarData: Abmeldung konnte nicht gespeichert werden.");
+                    backoff = await WaitAfterFailureAsync(backoff, stoppingToken);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (interrupted)
             {
                 // Sign-in or sign-out ended this round; the next round uses the new state right away.
             }
             catch (Exception exception)
             {
-                logger.LogWarning("BMW CarData nicht verbunden: {Reason}", exception.Message);
+                // Also a cancellation that nobody asked for (HTTP timeout at BMW): retried with backoff like any other
+                // failure instead of at once.
+                var reason = exception is OperationCanceledException ? "Zeitüberschreitung bei BMW CarData." : exception.Message;
+                logger.LogWarning("BMW CarData nicht verbunden: {Reason}", reason);
                 store.SetConnection(new CarDataConnectionState(CarDataConnectionStatus.Error,
-                    $"{exception.Message} Neuer Versuch in {backoff.TotalMinutes:0.#} min."));
-                await WaitAsync(backoff, stoppingToken);
-                backoff = TimeSpan.FromTicks(Math.Min(backoff.Ticks * 2, MaximumBackoff.Ticks));
+                    $"{reason} Neuer Versuch in {backoff.TotalMinutes:0.#} min."));
+                backoff = await WaitAfterFailureAsync(backoff, stoppingToken);
             }
         }
+    }
+
+    /// <summary>Waits the backoff (ended early by a sign-in, a sign-out or shutdown) and returns the next, longer one.</summary>
+    private async Task<TimeSpan> WaitAfterFailureAsync(TimeSpan backoff, CancellationToken stoppingToken)
+    {
+        // The loop condition ends the service on shutdown; no cancellation needs to leave ExecuteAsync for that.
+        await WaitAsync(backoff, stoppingToken).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        return TimeSpan.FromTicks(Math.Min(backoff.Ticks * 2, MaximumBackoff.Ticks));
     }
 
     private async Task StreamUntilRenewalAsync(string gcid, CarDataTokens tokens, string? vin, CancellationToken cancellationToken)
@@ -353,6 +376,13 @@ public sealed class CarDataService(
             logger.LogWarning("BMW CarData: Abfrage fehlgeschlagen: {Reason}", exception.Message);
             SetPoll(exception.Message, trigger);
         }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            // HTTP timeout, not the end of the round: without this the poll loop would end silently until the next
+            // token renewal.
+            logger.LogWarning("BMW CarData: Abfrage fehlgeschlagen: Zeitüberschreitung.");
+            SetPoll("Zeitüberschreitung bei der Abfrage.", trigger);
+        }
         finally
         {
             pollGate.Release();
@@ -459,8 +489,10 @@ public sealed class CarDataService(
             if (value is null || value == ControllerSettingDefaults.BmwCarDataNoSnapshot) return;
             if (JsonSerializer.Deserialize<CarSnapshot>(value) is { } snapshot) store.UpdateCar(_ => snapshot);
         }
-        catch (Exception exception) when (exception is JsonException or InvalidOperationException)
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
+            // Runs before the service loop: anything escaping here (also a database error) would end ExecuteAsync and
+            // make the host stop the whole process. The stream delivers fresh values anyway.
             logger.LogWarning("Gespeicherte Fahrzeugwerte sind unlesbar und werden ignoriert: {Reason}", exception.Message);
         }
     }

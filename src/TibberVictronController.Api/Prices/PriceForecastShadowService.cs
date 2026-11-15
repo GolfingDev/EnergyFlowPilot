@@ -30,14 +30,18 @@ public sealed class PriceForecastShadowState
 public sealed class PriceForecastShadowService(IServiceScopeFactory scopes, PriceForecastShadowState state, IUtcClock clock,
     ILogger<PriceForecastShadowService> logger) : BackgroundService
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromHours(3);
     // Without a token the next look comes soon, so a token entered on the page is used without waiting three hours.
     private static readonly TimeSpan WithoutTokenInterval = TimeSpan.FromMinutes(10);
 
+    /// <summary>Wait before the first fetch, so the start-up (database, MQTT) settles first.</summary>
+    public TimeSpan StartupDelay { get; init; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>Pause between two fetches; also kept after a failed fetch.</summary>
+    public TimeSpan Interval { get; init; } = TimeSpan.FromHours(3);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Let the start-up (database, MQTT) settle first.
-        await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
+        await Task.Delay(StartupDelay, stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
             await FetchAsync(stoppingToken);
@@ -70,10 +74,13 @@ public sealed class PriceForecastShadowService(IServiceScopeFactory scopes, Pric
             logger.LogInformation("Preisprognose gespeichert: {Forecast} Prognose-Viertelstunden bis {Until:yyyy-MM-dd HH:mm} UTC, {Market} Börsenpreise.",
                 forecast.Length, until, points.Count - forecast.Length);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            logger.LogWarning("Preisprognose nicht abrufbar: {Reason}", exception.Message);
-            state.Set(state.Status with { Problem = exception.Message, MissingSettings = MissingSettingException.KeysOf(exception) });
+            // A timeout of the forecast API is a cancellation without shutdown: it is a failed fetch like any other.
+            // Leaving ExecuteAsync with it would make the host stop the whole process, including the battery control.
+            var reason = exception is OperationCanceledException ? "Zeitüberschreitung beim Abruf der Preisprognose." : exception.Message;
+            logger.LogWarning("Preisprognose nicht abrufbar: {Reason}", reason);
+            state.Set(state.Status with { Problem = reason, MissingSettings = MissingSettingException.KeysOf(exception) });
         }
     }
 }

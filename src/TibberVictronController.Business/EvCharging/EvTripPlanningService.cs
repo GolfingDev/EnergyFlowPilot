@@ -148,6 +148,14 @@ public sealed class EvTripPlanningService(EvTripPlanningDependencies dependencie
             {
                 // Keeps the old distance; the next calendar sync or a new entry corrects it.
             }
+            catch (Exception exception) when (exception is HttpRequestException ||
+                exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                // Route service unreachable or timed out: the remaining trips would fail the same way and each wait for
+                // the timeout. They keep their old route version, so the next run tries them again. A timeout must not
+                // reach the calling background loop as a cancellation.
+                break;
+            }
         }
 
         return updated;

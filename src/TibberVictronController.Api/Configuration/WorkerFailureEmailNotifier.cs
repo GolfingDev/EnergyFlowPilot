@@ -28,12 +28,19 @@ public sealed class WorkerFailureEmailNotifier : IWorkerFailureNotifier
 
     public async Task NotifyAsync(Exception exception, CancellationToken cancellationToken)
     {
-        var settings = await LoadSettingsAsync(cancellationToken);
+        // Checked before the other settings are loaded: they are required only when mails are switched on, and a
+        // switched-off notifier must not report missing SMTP settings with every worker failure.
+        var enabled = await GetBooleanSettingAsync(
+            ControllerSettingDefaults.WorkerFailureEmailEnabledKey,
+            defaultValue: false,
+            cancellationToken);
 
-        if (!settings.Enabled)
+        if (!enabled)
         {
             return;
         }
+
+        var settings = await LoadSettingsAsync(cancellationToken);
 
         using var message = new MailMessage(settings.FromAddress, settings.ToAddress)
         {
@@ -64,11 +71,6 @@ public sealed class WorkerFailureEmailNotifier : IWorkerFailureNotifier
 
     private async Task<WorkerFailureEmailSettings> LoadSettingsAsync(CancellationToken cancellationToken)
     {
-        var enabled = await GetBooleanSettingAsync(
-            ControllerSettingDefaults.WorkerFailureEmailEnabledKey,
-            defaultValue: false,
-            cancellationToken);
-
         var smtpHost = await GetRequiredStringSettingAsync(
             ControllerSettingDefaults.WorkerFailureEmailSmtpHostKey,
             cancellationToken);
@@ -98,7 +100,6 @@ public sealed class WorkerFailureEmailNotifier : IWorkerFailureNotifier
 
         return new WorkerFailureEmailSettings
         {
-            Enabled = enabled,
             SmtpHost = smtpHost,
             SmtpPort = smtpPort,
             SmtpUsername = smtpUsername,
@@ -182,8 +183,6 @@ public sealed class WorkerFailureEmailNotifier : IWorkerFailureNotifier
 
     private sealed class WorkerFailureEmailSettings
     {
-        public bool Enabled { get; init; }
-
         public string SmtpHost { get; init; } = string.Empty;
 
         public int SmtpPort { get; init; }

@@ -84,26 +84,39 @@ public sealed class CalendarSyncRunner(CalendarTripSyncService sync, CalendarSyn
 public sealed class CalendarSyncBackgroundService(IServiceScopeFactory scopes, ILogger<CalendarSyncBackgroundService> logger) : BackgroundService
 {
     // Appointments rarely change by the minute; 15 minutes keeps Graph and OpenStreetMap load small.
-    private static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
+    public TimeSpan Interval { get; init; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>Wait before the first run: the database initialisation and the other services start first.</summary>
+    public TimeSpan StartupDelay { get; init; } = TimeSpan.FromSeconds(30);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Let the database initialisation and the other services start first.
-        await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+        await Task.Delay(StartupDelay, stoppingToken);
         using var timer = new PeriodicTimer(Interval);
         do
         {
-            try
+            // Two separate steps: a failing route service must not keep the calendar from being read.
+            await RunStepAsync("Routen-Neuberechnung", async services =>
             {
-                await using var scope = scopes.CreateAsyncScope();
-                var rerouted = await scope.ServiceProvider.GetRequiredService<EvTripPlanningService>().RecalculateRoutesAsync(stoppingToken, outdatedOnly: true);
+                var rerouted = await services.GetRequiredService<EvTripPlanningService>().RecalculateRoutesAsync(stoppingToken, outdatedOnly: true);
                 if (rerouted > 0) logger.LogInformation("{Count} Fahrten mit der aktuellen Routenwahl neu berechnet.", rerouted);
-                await scope.ServiceProvider.GetRequiredService<CalendarSyncRunner>().RunAsync(stoppingToken);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                logger.LogError(exception, "Kalenderabgleich unerwartet fehlgeschlagen.");
-            }
+            }, stoppingToken);
+            await RunStepAsync("Kalenderabgleich", services => services.GetRequiredService<CalendarSyncRunner>().RunAsync(stoppingToken), stoppingToken);
         } while (await timer.WaitForNextTickAsync(stoppingToken));
+    }
+
+    private async Task RunStepAsync(string name, Func<IServiceProvider, Task> step, CancellationToken stoppingToken)
+    {
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            await step(scope.ServiceProvider);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+        {
+            // Also catches cancellations that are not the shutdown (HTTP timeouts): leaving ExecuteAsync with them
+            // would make the host stop the whole process, including the battery control.
+            logger.LogError(exception, "{Step} unerwartet fehlgeschlagen.", name);
+        }
     }
 }

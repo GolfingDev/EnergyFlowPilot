@@ -14,20 +14,27 @@ namespace TibberVictronController.Api.Prices;
 public sealed class PublishedPriceArchiveBackgroundService(IServiceScopeFactory scopes, IUtcClock clock,
     ILogger<PublishedPriceArchiveBackgroundService> logger) : BackgroundService
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
     private bool backfillDone;
+
+    /// <summary>Wait before the first run: the controller and its first plans start before database work is added.</summary>
+    public TimeSpan StartupDelay { get; init; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>Pause between two runs; also kept after a failed run.</summary>
+    public TimeSpan Interval { get; init; } = TimeSpan.FromMinutes(15);
 
     /// <summary>Pause between two imported days of the backfill.</summary>
     public TimeSpan BackfillPause { get; init; } = TimeSpan.FromSeconds(5);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Let the controller and its first plans start before adding database work.
-        await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
+        await Task.Delay(StartupDelay, stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Only a cancelled stopping token ends the loop. A supplier timeout is an OperationCanceledException too;
+            // if it left ExecuteAsync, the host would stop the whole process, including the battery control.
             try { await RecordAsync(stoppingToken); }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception exception)
             {
                 // Supplier texts may contain URLs; the type is enough to see that recording failed.
                 logger.LogWarning("Veroeffentlichte Preise konnten nicht archiviert werden. Fehlertyp={ErrorType}", exception.GetType().Name);
@@ -35,7 +42,8 @@ public sealed class PublishedPriceArchiveBackgroundService(IServiceScopeFactory 
             if (!backfillDone)
             {
                 try { await BackfillAsync(stoppingToken); backfillDone = true; }
-                catch (Exception exception) when (exception is not OperationCanceledException)
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+                catch (Exception exception)
                 {
                     logger.LogWarning(exception, "Preise aus dem Entscheidungslog konnten nicht ins Preisarchiv uebernommen werden.");
                 }
