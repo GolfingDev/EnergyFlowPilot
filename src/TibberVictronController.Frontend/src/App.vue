@@ -5,6 +5,7 @@ import { useTheme } from 'vuetify';
 import GeneralOverlay from './components/GeneralOverlay.vue'
 import ThemeMenuPanel from './components/ThemeMenuPanel.vue';
 import BuildInfo from './components/BuildInfo.vue';
+import { consumeUpdateNotice } from './appUpdate';
 import ZentraleShell from './components/zentrale/ZentraleShell.vue';
 import { currentUser, isAdmin, isDriver, logout, roleLabel } from './auth';
 import {
@@ -131,6 +132,10 @@ function toggleExecutiveSidebar(): void {
   isExecutiveSidebarCollapsed.value = !isExecutiveSidebarCollapsed.value;
   localStorage.setItem('energyFlowPilotExecutiveSidebarCollapsed', String(isExecutiveSidebarCollapsed.value));
 }
+// Set once after the page reloaded itself for a new version; shown as a short notice.
+const updatedToRevision = ref(consumeUpdateNotice());
+const showUpdateNotice = ref(updatedToRevision.value !== null);
+if (showUpdateNotice.value) window.setTimeout(() => { showUpdateNotice.value = false; }, 10_000);
 </script>
 
 <template>
@@ -339,6 +344,18 @@ function toggleExecutiveSidebar(): void {
       <router-view />
     </v-main>
   </v-app>
+  <div v-if="showUpdateNotice" class="update-notice" role="status" @click="showUpdateNotice = false">
+    Neue Version geladen (Build {{ updatedToRevision }})
+  </div>
 </template>
 
 <style scoped src="./App.css"></style>
+
+<style>
+/* Shown for ten seconds after the page reloaded itself for a new version; above both shells. */
+.update-notice {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 5000;
+  padding: 10px 16px; border-radius: 8px; background: #1f2933; color: #fff; font-size: 0.9rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); cursor: pointer;
+}
+</style>

@@ -77,6 +77,24 @@ async function backendHealthy(): Promise<boolean> {
   }
 }
 
+const noticeKey = 'efp.update.noticeShownFor';
+
+/**
+ * Short revision of the running build when this page was loaded by an automatic reload and the notice was not shown
+ * yet; otherwise null. Lets the user see that the page updated itself (operator question 2026-11-15: a silent reload
+ * cannot be told from no reload).
+ */
+export function consumeUpdateNotice(): string | null {
+  const currentBuildId = buildIdOf(__APP_BUILD__);
+  try {
+    if (!currentBuildId || attempted() !== currentBuildId || window.sessionStorage.getItem(noticeKey) === currentBuildId) return null;
+    window.sessionStorage.setItem(noticeKey, currentBuildId);
+  } catch {
+    return null;
+  }
+  return __APP_BUILD__.revision?.slice(0, 7) ?? 'unbekannt';
+}
+
 export function startAppUpdateWatcher(): void {
   const currentBuildId = buildIdOf(__APP_BUILD__);
   if (!currentBuildId) return;

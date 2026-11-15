@@ -184,6 +184,8 @@ until someone reloaded by hand.
   seconds later, and a page loaded in between would stay empty.
 - Each offered version is reloaded for only once per browser session, so a cache that still delivers the old page
   cannot cause a reload loop.
+- After such a reload the page shows "Neue Version geladen (Build …)" for ten seconds, so a reload that happened by
+  itself can be told from none. The build shown in the header changes as well.
 - Nothing happens in development (`npm run dev` has no build time).
 - The version that introduces this needs one last manual reload: pages loaded before it do not check.
 
