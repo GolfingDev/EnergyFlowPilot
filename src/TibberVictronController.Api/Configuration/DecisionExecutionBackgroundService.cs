@@ -48,9 +48,25 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
         this.setpointRefreshState = setpointRefreshState;
     }
 
+    /// <summary>
+    /// Time after the start in which a failed cycle is only logged. Right after a start the first Victron values have
+    /// not arrived yet, so the first cycle regularly fails with "Messwerte fehlen"; with a working mail server that
+    /// was one alarm mail per restart (operator report 2026-11-15, every deployment restarts the service).
+    /// </summary>
+    public TimeSpan StartupGrace { get; init; } = TimeSpan.FromSeconds(90);
+
+    /// <summary>The same failure is mailed at most this often; the event log and the status still show every cycle.</summary>
+    public TimeSpan NotificationRepeatInterval { get; init; } = TimeSpan.FromHours(1);
+
+    private DateTimeOffset? startedAtUtc;
+    private string? lastNotifiedFailure;
+    private DateTimeOffset lastNotifiedAtUtc = DateTimeOffset.MinValue;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         runtimeStatus.MarkStarting();
+        using (var scope = serviceProvider.CreateScope())
+            startedAtUtc = scope.ServiceProvider.GetRequiredService<IUtcClock>().UtcNow;
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -120,9 +136,19 @@ public sealed class DecisionExecutionBackgroundService : BackgroundService
         using var scope = serviceProvider.CreateScope();
         var utcClock = scope.ServiceProvider.GetRequiredService<IUtcClock>();
 
-        runtimeStatus.MarkFailed(exception.Message, utcClock.UtcNow);
+        var now = utcClock.UtcNow;
+        runtimeStatus.MarkFailed(exception.Message, now);
+        if (startedAtUtc is { } started && now - started < StartupGrace)
+        {
+            logger.LogWarning("Decision-Worker-Zyklus kurz nach dem Start fehlgeschlagen (noch keine Meldung): {Reason}", exception.Message);
+            return;
+        }
+
         logger.LogError(exception, "Der Decision-Worker ist im Zyklus fehlgeschlagen.");
-        await TrySaveFailureEventAsync(exception, utcClock.UtcNow, cancellationToken);
+        await TrySaveFailureEventAsync(exception, now, cancellationToken);
+        var failure = exception.GetType().FullName + ": " + exception.Message;
+        if (failure == lastNotifiedFailure && now - lastNotifiedAtUtc < NotificationRepeatInterval) return;
+        (lastNotifiedFailure, lastNotifiedAtUtc) = (failure, now);
         await TrySendFailureNotificationAsync(exception, cancellationToken);
     }
 

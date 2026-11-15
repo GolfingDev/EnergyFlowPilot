@@ -165,6 +165,57 @@ public sealed class DecisionExecutionBackgroundServiceTests
     }
 
     [Fact]
+    public async Task TheSameFailureIsMailedOnlyOnceWithinTheRepeatIntervalButLoggedEveryTime()
+    {
+        var serviceProvider = CreateServiceProvider(
+            new RecordingCurrentBatteryDecisionService(),
+            new InMemoryControllerSettingStore(),
+            new RecordingOperationalEventRepository(),
+            new RecordingWorkerFailureNotifier(),
+            new RecordingVictronSetpointPublisher());
+        var backgroundService = new DecisionExecutionBackgroundService(
+            serviceProvider,
+            NullLogger<DecisionExecutionBackgroundService>.Instance,
+            new DecisionWorkerRuntimeStatus());
+        var events = (RecordingOperationalEventRepository)serviceProvider.GetRequiredService<IOperationalEventRepository>();
+        var notifier = (RecordingWorkerFailureNotifier)serviceProvider.GetRequiredService<IWorkerFailureNotifier>();
+
+        await backgroundService.HandleCycleFailureAsync(new InvalidOperationException("Testfehler"), CancellationToken.None);
+        await backgroundService.HandleCycleFailureAsync(new InvalidOperationException("Testfehler"), CancellationToken.None);
+        await backgroundService.HandleCycleFailureAsync(new InvalidOperationException("Anderer Fehler"), CancellationToken.None);
+
+        Assert.Equal(3, events.Events.Count);
+        Assert.Equal(["Testfehler", "Anderer Fehler"], notifier.SentExceptions.Select(e => e.Message));
+    }
+
+    [Fact]
+    public async Task AFailureRightAfterTheStartIsNeitherMailedNorStoredAsEvent()
+    {
+        var serviceProvider = CreateServiceProvider(
+            new RecordingCurrentBatteryDecisionService(),
+            new InMemoryControllerSettingStore(),
+            new RecordingOperationalEventRepository(),
+            new RecordingWorkerFailureNotifier(),
+            new RecordingVictronSetpointPublisher());
+        var status = new DecisionWorkerRuntimeStatus();
+        var backgroundService = new DecisionExecutionBackgroundService(
+            serviceProvider,
+            NullLogger<DecisionExecutionBackgroundService>.Instance,
+            status);
+        var events = (RecordingOperationalEventRepository)serviceProvider.GetRequiredService<IOperationalEventRepository>();
+        var notifier = (RecordingWorkerFailureNotifier)serviceProvider.GetRequiredService<IWorkerFailureNotifier>();
+
+        // Starting records the start time; the test clock does not advance, so the failure falls into the grace period.
+        await backgroundService.StartAsync(CancellationToken.None);
+        await backgroundService.StopAsync(CancellationToken.None);
+        var eventsBefore = events.Events.Count;
+        await backgroundService.HandleCycleFailureAsync(new InvalidOperationException("Aktuelle Messwerte fehlen."), CancellationToken.None);
+
+        Assert.Equal(eventsBefore, events.Events.Count);
+        Assert.Empty(notifier.SentExceptions);
+    }
+
+    [Fact]
     public void CalculateGridSetpointWattsStopsCurrentBatteryChargeWhenDecisionIsIdle()
     {
         var decisionResult = CreateDecisionResult(

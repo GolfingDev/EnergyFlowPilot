@@ -67,3 +67,16 @@ messages. The rules are pure Business code (`Business/Operations/`).
 - Not covered: a dead Raspberry Pi, a dead or hanging process, lost network or a failing push service cannot alert
   about themselves. That needs a check from outside (not built). The alerts also do not judge wallbox, heat pump or
   price sources.
+
+## Failure mail of the decision worker (2026-11-15)
+
+`DecisionExecutionBackgroundService` mails a failed cycle through `WorkerFailureEmailNotifier` (settings
+`notifications.email.*`). Two limits apply since the mail server accepted the sender address:
+
+- A cycle that fails within 90 seconds after the service started is only logged as a warning: the first Victron values
+  have not arrived yet, so the first cycle regularly fails, and every deployment restarts the service.
+- The same failure (type and message) is mailed at most once per hour. The status and the operational events still
+  record every failed cycle.
+
+While joint control is active the decision worker only projects the joint execution for the dashboard; problems of the
+joint control itself are reported by the operations alerts above, not by this mail.
