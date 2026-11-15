@@ -1,7 +1,11 @@
 namespace TibberVictronController.Business.Models;
 
 /// <summary>Last PV forecast made for one quarter hour before it started.</summary>
-public sealed record PvForecastSnapshot(DateTimeOffset SlotStartUtc, decimal ForecastKwh);
+public sealed record PvForecastSnapshot(DateTimeOffset SlotStartUtc, decimal ForecastKwh)
+{
+    /// <summary>When this forecast was received; null when the source does not know. Bounds the age of a substitute forecast.</summary>
+    public DateTimeOffset? CapturedAtUtc { get; init; }
+}
 
 /// <summary>
 /// Learned ratio of measured to forecast PV per local hour of day (and overall). Ready only with enough days of data;

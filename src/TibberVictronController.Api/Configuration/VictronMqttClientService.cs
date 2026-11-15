@@ -459,13 +459,25 @@ public sealed class VictronMqttClientService : BackgroundService, IVictronMqttCo
     }
 
     // The car is not house demand: storing its power lets the consumption model leave it out (stage 4d).
-    private decimal? CurrentWallboxWatts(DateTimeOffset measuredAtUtc)
+    private decimal? CurrentWallboxWatts(DateTimeOffset measuredAtUtc) =>
+        WallboxWattsForSample(serviceProvider.GetService<IEvChargerStatusSource>()?.Current, measuredAtUtc);
+
+    /// <summary>
+    /// Wallbox power to store with a live sample: a number when it is known (0 while no car charges), null when it is
+    /// unknown. The joint consumption profile skips samples with an unknown value once a wallbox reports
+    /// (<c>JointConsumptionProfile.WithoutUnknownWallboxPower</c>), so null must stay limited to real uncertainty:
+    /// an offline wallbox (it may keep charging), or a charge without a current meter reading. A car that is plugged
+    /// in but, by the wallbox's own status, not charging is a known 0; before 2026-11-15 this was stored as null as
+    /// soon as the last meter reading was older than two minutes.
+    /// </summary>
+    public static decimal? WallboxWattsForSample(EvChargerSnapshot? wallbox, DateTimeOffset measuredAtUtc)
     {
-        var wallbox = serviceProvider.GetService<IEvChargerStatusSource>()?.Current;
         if (wallbox is null || !wallbox.IsConnected) return null;
-        if (wallbox.PowerWatts is not { } watts || wallbox.MeasuredAtUtc is not { } at || (measuredAtUtc - at).Duration() > TimeSpan.FromMinutes(2))
-            return wallbox.IsVehiclePlugged ? null : 0;
-        return (decimal)Math.Max(0, watts);
+        if (wallbox.PowerWatts is { } watts && wallbox.MeasuredAtUtc is { } at && (measuredAtUtc - at).Duration() <= TimeSpan.FromMinutes(2))
+            return (decimal)Math.Max(0, watts);
+        if (!wallbox.IsVehiclePlugged) return 0;
+        return wallbox.ConnectorStatus is EvConnectorStatus.Preparing or EvConnectorStatus.SuspendedEv
+            or EvConnectorStatus.SuspendedEvse or EvConnectorStatus.Finishing ? 0 : null;
     }
 
     private async Task CleanupOldLiveSamplesIfDueAsync(

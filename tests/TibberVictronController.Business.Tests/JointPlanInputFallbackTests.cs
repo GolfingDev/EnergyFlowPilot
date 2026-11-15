@@ -64,4 +64,43 @@ public sealed class JointPlanInputFallbackTests
     [Fact]
     public void QuarterStartFollowsTheRunningQuarterHour() =>
         Assert.Equal(Start.AddMinutes(15), JointPlanInputFallback.QuarterStart(Start.AddMinutes(29).AddSeconds(59)));
+
+    [Fact]
+    public void StoredForecastFillsSlotsThatNeitherTheProviderNorTheProcessCacheCovers()
+    {
+        // Restart at night while Forecast.Solar fails: without the stored forecast the PV of the next day would be
+        // 0 kWh and the planner could buy grid energy for a day the PV covers.
+        var prices = Enumerable.Range(0, 4).Select(Price).ToArray();
+        var cached = new[] { new PvYieldForecastSlot(Slot(0), 0.4m) };
+        var persisted = new[] { new PvYieldForecastSlot(Slot(0), 0.9m), new PvYieldForecastSlot(Slot(1), 0.3m), new PvYieldForecastSlot(Slot(2), 0m) };
+
+        var (pv, fromCache, fromPersisted, missing) = JointPlanInputFallback.CompletePv(prices, null, cached, persisted);
+
+        Assert.Equal(0.4m, pv[0].ExpectedPvYieldKwh);
+        Assert.Equal(0.3m, pv[1].ExpectedPvYieldKwh);
+        Assert.True(pv[1].IsForecastAvailable);
+        Assert.True(pv[2].IsForecastAvailable);
+        Assert.False(pv[3].IsForecastAvailable);
+        Assert.Equal((1, 2, 1), (fromCache, fromPersisted, missing));
+    }
+
+    [Fact]
+    public void StoredForecastIsOnlyAcceptedWithABoundedAge()
+    {
+        var now = Start;
+        var snapshots = new[]
+        {
+            new PvForecastSnapshot(Slot(0).StartsAtUtc, 0.5m) { CapturedAtUtc = now.AddHours(-3) },
+            new PvForecastSnapshot(Slot(1).StartsAtUtc, 0.6m) { CapturedAtUtc = now - JointPlanInputFallback.MaximumPersistedPvAge },
+            new PvForecastSnapshot(Slot(2).StartsAtUtc, 0.7m) { CapturedAtUtc = now - JointPlanInputFallback.MaximumPersistedPvAge - TimeSpan.FromMinutes(1) },
+            new PvForecastSnapshot(Slot(3).StartsAtUtc, 0.8m),                                        // age unknown
+            new PvForecastSnapshot(Slot(4).StartsAtUtc, 0.9m) { CapturedAtUtc = now.AddHours(2) }     // captured "in the future"
+        };
+
+        var usable = JointPlanInputFallback.UsablePersistedPv(snapshots, now);
+
+        Assert.Equal([Slot(0), Slot(1)], usable.Select(p => p.TimeSlot));
+        Assert.Equal(0.5m, usable[0].ExpectedPvYieldKwh);
+        Assert.Empty(JointPlanInputFallback.UsablePersistedPv(null, now));
+    }
 }

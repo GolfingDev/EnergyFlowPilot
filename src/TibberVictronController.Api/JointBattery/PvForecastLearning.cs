@@ -12,7 +12,10 @@ public sealed class PvForecastLearning(IUtcClock clock)
 {
     private static readonly TimeSpan SnapshotInterval = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan RecalculationInterval = TimeSpan.FromHours(1);
-    private static readonly TimeSpan SnapshotAhead = TimeSpan.FromHours(26);
+    // The whole planning horizon: the snapshots also replace a missing forecast after a restart
+    // (JointPlanInputFallback.CompletePv). For the correction only the last forecast before a quarter hour counts,
+    // which newer snapshots overwrite, so the longer range (26 h until 2026-11-15) does not change what is learned.
+    private static readonly TimeSpan SnapshotAhead = TimeSpan.FromHours(48);
     private static readonly TimeSpan LearningWindow = TimeSpan.FromDays(14);
     private readonly SemaphoreSlim gate = new(1, 1);
     private DateTimeOffset snapshotWrittenAtUtc = DateTimeOffset.MinValue;

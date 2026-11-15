@@ -39,7 +39,7 @@ public sealed class EfPvForecastSnapshotRepository(ControllerDbContext dbContext
         var entities = await dbContext.PvForecastSnapshots.AsNoTracking()
             .Where(entity => entity.SlotStartUtc >= fromUtc && entity.SlotStartUtc < toUtc)
             .ToListAsync(cancellationToken);
-        return entities.Select(entity => new PvForecastSnapshot(entity.SlotStartUtc, (decimal)entity.ForecastKwh)).ToArray();
+        return entities.Select(entity => new PvForecastSnapshot(entity.SlotStartUtc, (decimal)entity.ForecastKwh) { CapturedAtUtc = entity.CapturedAtUtc }).ToArray();
     }
 }
 

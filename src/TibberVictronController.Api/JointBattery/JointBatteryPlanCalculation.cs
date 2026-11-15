@@ -41,6 +41,18 @@ public sealed class JointBatteryPlanCalculation(IServiceProvider services)
         }
     }
 
+    /// <summary>
+    /// Stored PV forecasts for the planning range that are recent enough to stand in for a missing forecast. One
+    /// primary-key range read of at most 192 rows; a read failure only means the last resort (0 kWh) applies.
+    /// </summary>
+    private static async Task<IReadOnlyList<PvYieldForecastSlot>> ReadStoredPvAsync(IServiceProvider services,
+        DateTimeOffset fromUtc, DateTimeOffset toUtc, DateTimeOffset now, CancellationToken token)
+    {
+        if (services.GetService<IPvForecastSnapshotRepository>() is not { } repository) return [];
+        try { return JointPlanInputFallback.UsablePersistedPv(await repository.GetAsync(fromUtc, toUtc, token), now); }
+        catch (Exception exception) when (exception is not OperationCanceledException) { return []; }
+    }
+
     private static string Local(DateTimeOffset? utc) => utc is { } value
         ? TimeZoneInfo.ConvertTime(value, TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin")).ToString("dd.MM. HH:mm", CultureInfo.InvariantCulture)
         : "unbekannt";
@@ -135,10 +147,19 @@ public sealed class JointBatteryPlanCalculation(IServiceProvider services)
             pvFailure = exception is TibberVictronController.Dal.Weather.ForecastSolarApiException ? exception.Message : exception.GetType().Name;
         }
         if (freshPv is not null) cache.StorePv(freshPv, now);
-        var (pv, pvFromCache, pvMissing) = JointPlanInputFallback.CompletePv(prices, freshPv, cache.Pv.Items);
-        if (pvFailure is not null || pvFromCache > 0 || pvMissing > 0)
+        var (pv, pvFromCache, pvFromStore, pvMissing) = JointPlanInputFallback.CompletePv(prices, freshPv, cache.Pv.Items, persisted: null);
+        if (pvMissing > 0)
+        {
+            // Only when quarter hours are still without a forecast (typically after a restart while the provider
+            // fails): the forecasts stored for the PV correction replace "no PV", which could justify grid charging.
+            var stored = await ReadStoredPvAsync(services, start, end, now, token);
+            if (stored.Count > 0)
+                (pv, pvFromCache, pvFromStore, pvMissing) = JointPlanInputFallback.CompletePv(prices, freshPv, cache.Pv.Items, stored);
+        }
+        if (pvFailure is not null || pvFromCache > 0 || pvFromStore > 0 || pvMissing > 0)
             inputWarnings.Add("PV-Prognose " + (pvFailure is null ? "unvollstaendig" : $"nicht verfuegbar ({pvFailure})") +
                 (pvFromCache > 0 ? $"; {pvFromCache} Viertelstunden aus der Prognose vom {Local(cache.Pv.LoadedAtUtc)}" : "") +
+                (pvFromStore > 0 ? $"; {pvFromStore} Viertelstunden aus der gespeicherten Prognose (hoechstens {JointPlanInputFallback.MaximumPersistedPvAge.TotalHours:F0} Stunden alt)" : "") +
                 (pvMissing > 0 ? $"; {pvMissing} Viertelstunden ohne PV angesetzt (realer Ueberschuss wird trotzdem gespeichert)" : "") + ".");
 
         var zone = TimeZoneInfo.FindSystemTimeZoneById((await settings.GetSettingAsync(ControllerSettingDefaults.ConsumptionForecastTimeZoneKey, token))?.Value ?? "Europe/Berlin");
@@ -161,7 +182,8 @@ public sealed class JointBatteryPlanCalculation(IServiceProvider services)
                 historyRead = false;
                 inputWarnings.Add($"Verbrauchshistorie nicht lesbar ({exception.GetType().Name}); Ersatzprofil aus dem Tagesverbrauch verwendet.");
             }
-            model = JointConsumptionProfile.Learn(history, zone, now, temperatures);
+            model = JointConsumptionProfile.Learn(history, zone, now, temperatures,
+                new JointProfileEfficiencies(primary.RoundTripEfficiencyPercent, e3dcEfficiency));
             // A substitute profile after a read failure is not kept: the next plan tries the history again.
             if (historyRead) profileCache?.Store(model, now, zone, temperatures is not null, temperaturesUntil);
         }
@@ -240,7 +262,11 @@ public sealed class JointBatteryPlanCalculation(IServiceProvider services)
             RoundTripEfficiencyPercent = e3dcEfficiency,
             MinimumSavingsPerKwh = primary.MinimumSavingsPerKwh, WearCostPerKwh = primary.WearCostPerKwh
         });
-        var grossNetLoadWatts = mqtt.GridPowerWatts.Value - mqtt.BatteryPowerWatts.Value - e3dc.BatteryPowerWatts;
+        // Both battery powers are DC-side readings; the site balance needs what they exchange on the AC side, as the
+        // live limiter calculates it. Otherwise conversion losses count as house demand of the current quarter hour.
+        var grossNetLoadWatts = mqtt.GridPowerWatts.Value
+            - BatteryAcPower.FromDcSide(mqtt.BatteryPowerWatts.Value, primary.RoundTripEfficiencyPercent)
+            - BatteryAcPower.FromDcSide(e3dc.BatteryPowerWatts, e3dcEfficiency);
         // Loading the inputs takes 25-30 s on the Pi and can cross a quarter-hour boundary (33 discarded plans on
         // 28./29.10.2026). The inputs are still valid, so the plan simply starts at the quarter hour that is now running.
         var planStart = JointPlanInputFallback.QuarterStart(clock.UtcNow);

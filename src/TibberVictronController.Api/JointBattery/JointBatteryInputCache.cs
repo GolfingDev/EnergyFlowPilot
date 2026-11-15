@@ -5,7 +5,8 @@ namespace TibberVictronController.Api.JointBattery;
 /// <summary>
 /// Last successfully loaded planning inputs. When a provider fails, planning continues with these instead of stopping
 /// (day-ahead prices do not change; a PV forecast of a few hours ago is still far better than none).
-/// Process-local on purpose: after a restart the providers are asked first anyway.
+/// Process-local: after a restart the providers are asked first. If the PV provider fails then, the forecasts stored
+/// for the PV correction (<c>PvForecastSnapshots</c>) stand in, see <c>JointPlanInputFallback.CompletePv</c>.
 /// </summary>
 public sealed class JointBatteryInputCache
 {

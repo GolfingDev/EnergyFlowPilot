@@ -1,4 +1,5 @@
 using TibberVictronController.Api.Configuration;
+using TibberVictronController.Business.Models;
 using TibberVictronController.Dal.Mqtt;
 using TibberVictronController.Dal.Victron;
 
@@ -6,6 +7,28 @@ namespace TibberVictronController.Api.Tests;
 
 public sealed class VictronMqttTelemetryTests
 {
+    private static readonly DateTimeOffset SampleAt = new(2026, 11, 15, 12, 0, 0, TimeSpan.Zero);
+
+    private static EvChargerSnapshot Wallbox(EvConnectorStatus status, double? watts = null, int ageMinutes = 0, bool connected = true, int? transaction = null) =>
+        new() { IsConnected = connected, ConnectorStatus = status, PowerWatts = watts, MeasuredAtUtc = watts is null ? null : SampleAt.AddMinutes(-ageMinutes), ActiveTransactionId = transaction };
+
+    [Fact]
+    public void WallboxPowerIsStoredAsZeroWhenKnownIdleAndAsNullOnlyWhenUnknown()
+    {
+        // Known: a current reading, no car, or a car that the wallbox itself reports as not charging.
+        Assert.Equal(7400m, VictronMqttClientService.WallboxWattsForSample(Wallbox(EvConnectorStatus.Charging, 7400, 1, transaction: 5), SampleAt));
+        Assert.Equal(0m, VictronMqttClientService.WallboxWattsForSample(Wallbox(EvConnectorStatus.Available), SampleAt));
+        Assert.Equal(0m, VictronMqttClientService.WallboxWattsForSample(Wallbox(EvConnectorStatus.SuspendedEv, 0, 30, transaction: 5), SampleAt));
+        Assert.Equal(0m, VictronMqttClientService.WallboxWattsForSample(Wallbox(EvConnectorStatus.Finishing), SampleAt));
+        Assert.Equal(0m, VictronMqttClientService.WallboxWattsForSample(Wallbox(EvConnectorStatus.Preparing), SampleAt));
+
+        // Unknown: no wallbox connection, a charge without a current reading, an open transaction with an outdated status.
+        Assert.Null(VictronMqttClientService.WallboxWattsForSample(null, SampleAt));
+        Assert.Null(VictronMqttClientService.WallboxWattsForSample(Wallbox(EvConnectorStatus.Available, connected: false), SampleAt));
+        Assert.Null(VictronMqttClientService.WallboxWattsForSample(Wallbox(EvConnectorStatus.Charging, 7400, 5, transaction: 5), SampleAt));
+        Assert.Null(VictronMqttClientService.WallboxWattsForSample(Wallbox(EvConnectorStatus.Available, transaction: 5), SampleAt));
+    }
+
     [Fact]
     public void InitialKeepAlivePayloadRequestsFullPublish()
     {
