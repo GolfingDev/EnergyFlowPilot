@@ -8,6 +8,9 @@ public static class JointBatteryLiveLimiter
     // Below this, measurement noise and short PV spikes are not worth switching the batteries into charging.
     private const int SurplusThresholdWatts = 200;
 
+    // Above any battery's limit on purpose; only used to read a battery's present discharge limit from the allocator.
+    private const int FollowDemandRequestWatts = 100_000;
+
     /// <summary>
     /// Longest time a selected command may wait for its measurements. Above the 6 s cycle budget of one execution
     /// tick, so it never triggers in a healthy tick; it only keeps a command from being reused by a later tick.
@@ -87,8 +90,36 @@ public static class JointBatteryLiveLimiter
             if (limits.TotalImportWatts > 0 && acAddition > 0) scale = Math.Min(scale, Math.Max(0, limits.TotalImportWatts - baseTotal - 150) / acAddition);
             if (desired.ChargeSource == BatteryChargeSource.PV && acAddition > 0) scale = Math.Min(scale, Math.Max(0, -baseTotal - 100) / acAddition);
         }
-        else if (total < 0) scale = Math.Min(scale, Math.Max(0, baseTotal - 100) / -total);
+        else if (total < 0)
+        {
+            var demandScale = Math.Max(0, baseTotal - 100) / -total;
+            if (desired.FollowsDemand && demandScale > 1 && targets.All(t => t <= 0))
+                return FollowDemand(desired, live, targets, demandScale);
+            scale = Math.Min(scale, demandScale);
+        }
         scale = Math.Clamp(scale, 0, 1);
         return desired with { VictronWatts = (int)(targets[0] * scale), E3dcWatts = (int)(targets[1] * scale) };
+    }
+
+    /// <summary>
+    /// The measured demand is above the planned discharge of a slot whose decision is "cover the house demand" (the
+    /// plan saw a smaller load up to a plan interval ago). The shares are the planned watts after each battery's own
+    /// bound, exactly as when a discharge is scaled down. Each battery is raised in that proportion, so the sum never
+    /// exceeds base load minus the 100 W margin - the same bound as for every discharge - and each battery stays
+    /// within its own power limit, active device limit and energy above its reserve. What a raised battery cannot
+    /// deliver beyond that limit is not moved to the other one: the next plan redistributes with full knowledge. A
+    /// battery the plan left at 0 W (or that is at its reserve) has no share and stays at 0 W.
+    /// </summary>
+    private static JointBatteryCommand FollowDemand(JointBatteryCommand desired, JointBatteryLiveSnapshot live, int[] targets, decimal demandScale)
+    {
+        var raised = new int[2];
+        for (var i = 0; i < 2; i++)
+        {
+            if (targets[i] == 0) continue;
+            // Same per-battery bound as above, asked for more than any battery can deliver: its discharge limit now.
+            var limit = JointBatteryAllocator.Allocate([live.Batteries[i]], -FollowDemandRequestWatts, TimeSpan.FromSeconds(10))[0].SignedPowerWatts;
+            raised[i] = (int)Math.Max(limit, targets[i] * demandScale);
+        }
+        return desired with { VictronWatts = raised[0], E3dcWatts = raised[1] };
     }
 }

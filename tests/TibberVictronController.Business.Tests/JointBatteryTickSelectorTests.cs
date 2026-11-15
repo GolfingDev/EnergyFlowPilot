@@ -82,6 +82,121 @@ public sealed class JointBatteryTickSelectorTests
         Assert.Same(committed, withoutPlan.CommittedSlot);
     }
 
+    private static JointBatterySlot Following(int victron, int e3dc) => Slot(victron, e3dc, null) with { FollowsDemand = true };
+
+    [Fact]
+    public void NewCommitmentOfADemandFollowingSlotKeepsThePlannedWattsAsSharesAndSaysSo()
+    {
+        var selection = JointBatteryTickSelector.Select(new(Now, null, Plan(Following(-200, -100)), null));
+
+        Assert.Equal(JointBatteryTickOutcome.NewCommitment, selection.Outcome);
+        Assert.True(selection.Command.FollowsDemand);
+        Assert.Equal((-200, -100), (selection.Command.VictronWatts, selection.Command.E3dcWatts));
+        Assert.Null(selection.Command.ChargeSource);
+        Assert.Contains("folgen dabei dem gemessenen Hausbedarf", selection.Command.Reason);
+        Assert.True(selection.CommittedSlot!.FollowsDemand);
+    }
+
+    [Theory]
+    [InlineData(-200, -100, null)]
+    [InlineData(-300, 0, null)]
+    [InlineData(0, 0, null)]
+    [InlineData(1000, 500, BatteryChargeSource.Grid)]
+    [InlineData(400, 300, BatteryChargeSource.PV)]
+    public void SlotsThatAreNotMarkedProduceExactlyThePreviousCommand(int victron, int e3dc, BatteryChargeSource? source)
+    {
+        var slot = Slot(victron, e3dc, source);
+        var expected = new JointBatteryCommand(victron, e3dc, source, Current.EndsAtUtc, "Plan");
+
+        Assert.Equal(expected, JointBatteryTickSelector.Select(new(Now, null, Plan(slot), null)).Command);
+        Assert.Equal(expected, JointBatteryTickSelector.Select(new(Now, slot, null, null)).Command);
+        Assert.Equal(expected, JointBatteryTickSelector.Select(new(Now, slot, Plan(slot), null)).Command);
+    }
+
+    [Theory]
+    [InlineData(1000, 500, BatteryChargeSource.Grid)]
+    [InlineData(0, 0, null)]
+    public void AMarkOnASlotThatDoesNotDischargeIsIgnored(int victron, int e3dc, BatteryChargeSource? source)
+    {
+        var slot = Slot(victron, e3dc, source) with { FollowsDemand = true };
+
+        var command = JointBatteryTickSelector.Select(new(Now, null, Plan(slot), null)).Command;
+
+        Assert.Equal(new JointBatteryCommand(victron, e3dc, source, Current.EndsAtUtc, "Plan"), command);
+    }
+
+    [Fact]
+    public void CommittedDemandFollowingSlotKeepsFollowingWithoutAUsablePlan()
+    {
+        var committed = Following(-200, -100);
+        var later = new ForecastTimeSlot(Current.EndsAtUtc, Current.EndsAtUtc.AddMinutes(15));
+
+        var withoutPlan = JointBatteryTickSelector.Select(new(Now, committed, null, null));
+        var stalePlan = JointBatteryTickSelector.Select(new(Now, committed, Plan(Slot(0, 0, null), ageSeconds: 76), null));
+        var otherQuarterHour = JointBatteryTickSelector.Select(new(Now, committed, Plan(Slot(0, 0, null, time: later)), null));
+
+        Assert.All(new[] { withoutPlan, stalePlan, otherQuarterHour }, selection =>
+        {
+            Assert.True(selection.Command.FollowsDemand);
+            Assert.Equal((-200, -100), (selection.Command.VictronWatts, selection.Command.E3dcWatts));
+            Assert.Same(committed, selection.CommittedSlot);
+        });
+        Assert.Equal(JointBatteryTickOutcome.Committed, withoutPlan.Outcome);
+    }
+
+    [Fact]
+    public void FreshSameActionPlanDecidesWhetherTheCommittedQuarterHourFollows()
+    {
+        var committed = Following(-200, -100);
+
+        // The fresh plan covers the demand it now sees: still "cover the demand", with new shares.
+        var stillCovering = JointBatteryTickSelector.Select(new(Now, committed, Plan(Following(-1500, -1300)), null));
+        // The fresh plan leaves demand to the grid on purpose: its watts apply, nothing is raised.
+        var partial = JointBatteryTickSelector.Select(new(Now, committed, Plan(Slot(-400, 0, null)), null));
+        // And back: a committed fixed discharge starts following when the fresh plan covers the demand.
+        var newlyCovering = JointBatteryTickSelector.Select(new(Now, Slot(-400, 0, null), Plan(Following(-300, -300)), null));
+
+        Assert.Equal(JointBatteryTickOutcome.UpdatedTargets, stillCovering.Outcome);
+        Assert.True(stillCovering.Command.FollowsDemand);
+        Assert.Equal(-1500, stillCovering.Command.VictronWatts);
+        Assert.Equal(JointBatteryTickOutcome.UpdatedTargets, partial.Outcome);
+        Assert.Equal(new JointBatteryCommand(-400, 0, null, Current.EndsAtUtc, "Plan"), partial.Command);
+        Assert.True(newlyCovering.Command.FollowsDemand);
+    }
+
+    [Fact]
+    public void FreshPlanWithAnotherBasicActionKeepsTheCommittedWattsButStopsFollowing()
+    {
+        var committed = Following(-200, -100);
+
+        // Hold in the fresh plan does not cancel the started discharge (commitment), but its watts are no longer raised.
+        var hold = JointBatteryTickSelector.Select(new(Now, committed, Plan(Slot(0, 0, null)), null));
+        var charge = JointBatteryTickSelector.Select(new(Now, committed, Plan(Slot(1000, 0, BatteryChargeSource.Grid)), null));
+        var smallHold = JointBatteryTickSelector.Select(new(Now, Following(-60, -40), Plan(Slot(0, 0, null)), null));
+
+        var expected = new JointBatteryCommand(-200, -100, null, Current.EndsAtUtc, "Plan");
+        Assert.Equal(JointBatteryTickOutcome.CommittedDespiteDeviation, hold.Outcome);
+        Assert.Equal(expected, hold.Command);
+        Assert.Same(committed, hold.CommittedSlot);
+        Assert.Equal(JointBatteryTickOutcome.CommittedDespiteDeviation, charge.Outcome);
+        Assert.Equal(expected, charge.Command);
+        Assert.Equal(JointBatteryTickOutcome.Committed, smallHold.Outcome);
+        Assert.False(smallHold.Command.FollowsDemand);
+    }
+
+    [Fact]
+    public void VanishedPvSurplusIsReplacedByAFollowingDischargeWhenTheFreshPlanCoversTheDemand()
+    {
+        var committed = Slot(0, 0, null) with { ExpectedPvKwh = .5m, ExpectedConsumptionKwh = .4m };
+        var fresh = Following(-1500, -1200) with { ExpectedPvKwh = .305m, ExpectedConsumptionKwh = 1.0075m };
+
+        var selection = JointBatteryTickSelector.Select(new(Now, committed, Plan(fresh), null));
+
+        Assert.Equal(JointBatteryTickOutcome.NetDemandReplacement, selection.Outcome);
+        Assert.True(selection.Command.FollowsDemand);
+        Assert.True(selection.CommittedSlot!.FollowsDemand);
+    }
+
     [Fact]
     public void ExpiredCommitmentWithoutUsablePlanFallsBackAndKeepsTheOldSlotAsIs()
     {

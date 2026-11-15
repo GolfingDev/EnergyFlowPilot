@@ -51,6 +51,20 @@ public static class JointBatterySlotCommitment
         return fresh with { Reason = "Die PV reicht aktuell nicht fuer den Hausbedarf. " + fresh.Reason };
     }
 
+    /// <summary>
+    /// Whether a committed quarter hour that continues without a same-action update may still follow the measured
+    /// demand. "Cover the demand" is part of the committed decision, so it survives a missing or stale plan. A usable
+    /// plan that contains this quarter hour but was not accepted as an update proposes another basic action (hold or
+    /// charge): the committed watts then continue exactly as before this rule existed, without being raised against
+    /// the newer plan.
+    /// </summary>
+    public static bool KeepsFollowingDemand(JointBatterySlot committed, JointBatteryPlan? plan, DateTimeOffset nowUtc)
+    {
+        if (!committed.FollowsDemand) return false;
+        if (plan is null || plan.CalculatedAtUtc > nowUtc || nowUtc - plan.CalculatedAtUtc > TimeSpan.FromSeconds(75)) return true;
+        return plan.Slots.All(s => s.TimeSlot != committed.TimeSlot);
+    }
+
     /// <summary>True when a newer plan proposes a notably different action for the committed quarter hour.</summary>
     public static bool PlanDeviates(JointBatterySlot committed, JointBatteryPlan? plan)
     {

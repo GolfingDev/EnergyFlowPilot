@@ -53,10 +53,11 @@ public static class JointBatteryTickSelector
                 return new(JointBatteryTickOutcome.UpdatedTargets, CommandFrom(updated), updated, committed);
             if (JointBatterySlotCommitment.NetDemandReplacement(committed, plan, now) is { } replacement)
                 return new(JointBatteryTickOutcome.NetDemandReplacement, CommandFrom(replacement), replacement, committed);
+            var command = CommandFrom(committed, JointBatterySlotCommitment.KeepsFollowingDemand(committed, plan, now));
             return JointBatterySlotCommitment.PlanDeviates(committed, plan)
-                ? new(JointBatteryTickOutcome.CommittedDespiteDeviation, CommandFrom(committed), committed, committed,
+                ? new(JointBatteryTickOutcome.CommittedDespiteDeviation, command, committed, committed,
                     plan!.Slots.First(s => s.TimeSlot == committed.TimeSlot))
-                : new(JointBatteryTickOutcome.Committed, CommandFrom(committed), committed, committed);
+                : new(JointBatteryTickOutcome.Committed, command, committed, committed);
         }
 
         var fallbackCause = plan is null ? input.PlanUnavailableReason ?? "Die Planung laeuft noch."
@@ -85,7 +86,20 @@ public static class JointBatteryTickSelector
             "Notbetrieb ohne gueltigen Plan: Hausbedarf aus den Akkus decken, PV-Ueberschuss speichern, keine Netzladung. Ursache: " + cause);
 
     // Valid until the end of its quarter hour; every step rebuilds and re-limits the command from live data anyway.
-    private static JointBatteryCommand CommandFrom(JointBatterySlot slot) =>
-        new(slot.Targets.Single(t => t.Id == "victron").SignedPowerWatts, slot.Targets.Single(t => t.Id == "e3dc").SignedPowerWatts,
-            slot.ChargeSource, slot.TimeSlot.EndsAtUtc, slot.Reason);
+    private static JointBatteryCommand CommandFrom(JointBatterySlot slot) => CommandFrom(slot, slot.FollowsDemand);
+
+    /// <param name="followDemand">
+    /// The slot's decision is "cover the house demand" (set by the planner, see <see cref="JointBatterySlot.FollowsDemand"/>).
+    /// The command keeps the planned watts as shares; the live limiter raises them to the measured demand. Between two
+    /// plans (about 30 s plus calculation) the planned watts are those of a load that may have changed long ago.
+    /// </param>
+    private static JointBatteryCommand CommandFrom(JointBatterySlot slot, bool followDemand)
+    {
+        var victron = slot.Targets.Single(t => t.Id == "victron").SignedPowerWatts;
+        var e3dc = slot.Targets.Single(t => t.Id == "e3dc").SignedPowerWatts;
+        // Re-checked here although the planner marks discharges only: a slot that charges or holds never follows.
+        var follow = followDemand && slot.ChargeSource is null && victron <= 0 && e3dc <= 0 && victron + e3dc < 0;
+        return new(victron, e3dc, slot.ChargeSource, slot.TimeSlot.EndsAtUtc,
+            follow ? slot.Reason + " Die Akkus folgen dabei dem gemessenen Hausbedarf." : slot.Reason) { FollowsDemand = follow };
+    }
 }

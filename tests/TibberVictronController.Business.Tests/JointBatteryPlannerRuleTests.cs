@@ -86,6 +86,80 @@ public sealed class JointBatteryPlannerRuleTests
     }
 
     [Fact]
+    public void DischargeThatCoversTheWholeAssumedDemandIsMarkedAsDemandFollowing()
+    {
+        // Plenty of energy and no later use for it: 1 kW net demand is covered completely in every slot.
+        var plan = Plan([Unit("victron", 80), Unit("e3dc", 80)], Slots(4), _ => 0.30m, _ => 0.25m);
+
+        Assert.All(plan.Slots, slot =>
+        {
+            Assert.True(slot.FollowsDemand);
+            Assert.InRange(slot.Targets.Sum(t => t.SignedPowerWatts), -1000, -998);
+            Assert.Null(slot.ChargeSource);
+        });
+    }
+
+    [Fact]
+    public void DeliberatePartialDischargeIsNotMarked()
+    {
+        // About 0.76 kWh deliverable against 0.5 kWh (2 kW) demand per slot: the cheaper first slot gets only part,
+        // the rest is kept for the expensive second slot. Raising the first slot would take that energy away.
+        var plan = Plan([Unit("victron", 14), Unit("e3dc", 14)], Slots(2), i => i == 0 ? 0.30m : 0.50m, _ => 0.5m);
+
+        Assert.InRange(plan.Slots[0].Targets.Sum(t => t.SignedPowerWatts), -1500, -500);
+        Assert.All(plan.Slots[0].Targets, target => Assert.True(target.SocAfterPercent > 11));
+        Assert.False(plan.Slots[0].FollowsDemand);
+        // The second slot empties both batteries to their reserve and still leaves demand uncovered: not marked either.
+        Assert.InRange(plan.Slots[1].Targets.Sum(t => t.SignedPowerWatts), -1990, -1500);
+        Assert.False(plan.Slots[1].FollowsDemand);
+    }
+
+    [Fact]
+    public void OneBatteryCoveringTheDemandAloneIsMarkedAndTheOtherStaysAtZero()
+    {
+        var plan = Plan([Unit("victron", 10), Unit("e3dc", 80)], Slots(2), _ => 0.30m, _ => 0.25m);
+
+        Assert.Equal(0, plan.Slots[0].Targets[0].SignedPowerWatts);
+        Assert.InRange(plan.Slots[0].Targets[1].SignedPowerWatts, -1000, -999);
+        Assert.True(plan.Slots[0].FollowsDemand);
+    }
+
+    [Fact]
+    public void ShortfallAtThePowerLimitOrAtTheReserveIsNotMarked()
+    {
+        // 8 kW net demand against 2 x 3 kW: the batteries deliver all they can, the rest is planned grid import.
+        var powerLimited = Plan([Unit("victron", 80), Unit("e3dc", 80)], Slots(1), _ => 0.30m, _ => 2m);
+        // 1 % above the reserve each: the last energy goes out, most of the 4 kW demand stays on the grid.
+        var atReserve = Plan([Unit("victron", 11), Unit("e3dc", 11)], Slots(1), _ => 0.30m, _ => 1m);
+        // Nothing above the reserve at all: hold.
+        var empty = Plan([Unit("victron", 10), Unit("e3dc", 10)], Slots(1), _ => 0.30m, _ => 1m);
+
+        Assert.InRange(powerLimited.Slots[0].Targets.Sum(t => t.SignedPowerWatts), -6000, -5990);
+        Assert.False(powerLimited.Slots[0].FollowsDemand);
+        Assert.InRange(atReserve.Slots[0].Targets.Sum(t => t.SignedPowerWatts), -1000, -1);
+        Assert.False(atReserve.Slots[0].FollowsDemand);
+        Assert.Equal(0, empty.Slots[0].Targets.Sum(t => t.SignedPowerWatts));
+        Assert.False(empty.Slots[0].FollowsDemand);
+    }
+
+    [Fact]
+    public void HoldGridChargeAndPvChargeAreNeverMarked()
+    {
+        // Hold: scarce energy is kept for the slightly more expensive later slots.
+        var hold = Plan([Unit("victron", 15), Unit("e3dc", 15)], Slots(8), i => i == 0 ? 0.300m : 0.302m, _ => 0.25m);
+        var gridCharge = Plan([Unit("victron", 12), Unit("e3dc", 12)], Slots(6), i => i == 0 ? 0.10m : 0.40m, _ => 0.25m);
+        // PV surplus now, demand without PV afterwards and nearly empty batteries: the surplus is stored.
+        var pvCharge = Plan([Unit("victron", 12), Unit("e3dc", 12)], Slots(6), _ => 0.30m, _ => 0.25m, i => i == 0 ? 0.75m : 0m);
+
+        Assert.Equal(0, hold.Slots[0].Targets.Sum(t => t.SignedPowerWatts));
+        Assert.False(hold.Slots[0].FollowsDemand);
+        Assert.Equal(BatteryChargeSource.Grid, gridCharge.Slots[0].ChargeSource);
+        Assert.False(gridCharge.Slots[0].FollowsDemand);
+        Assert.Equal(BatteryChargeSource.PV, pvCharge.Slots[0].ChargeSource);
+        Assert.False(pvCharge.Slots[0].FollowsDemand);
+    }
+
+    [Fact]
     public void GridChargingNeedsMoreThanTheHurdleAndWearCost()
     {
         // 3 ct hurdle + 2 ct wear per grid-charged kWh: a 4 ct spread (after losses less) does not pay, 20 ct does.

@@ -6,6 +6,12 @@ namespace TibberVictronController.Business.Decisions;
 public sealed class JointBatteryPlanner
 {
     private const double Eps = 1e-8;
+
+    /// <summary>
+    /// Largest planned grid import (kW) at which a discharge still counts as covering the whole demand. The optimiser
+    /// has an explicit candidate with exactly zero grid exchange; 1 W only absorbs floating-point noise.
+    /// </summary>
+    private const double FullCoverToleranceKw = 0.001;
     private sealed record Unit(JointBatteryUnit Source)
     {
         internal double Capacity => (double)Source.Configuration.TotalCapacityKwh;
@@ -118,8 +124,14 @@ public sealed class JointBatteryPlanner
                     (decimal)MarginalValue(costs[i + 1], ga, gb, afterA, afterB, b.Capacity, firstDimension: false)) };
             var total = wa + wb;
             BatteryChargeSource? source = total <= 0 ? null : net[i] + total / 1000d * .25 > Eps ? BatteryChargeSource.Grid : BatteryChargeSource.PV;
+            // "Cover the demand" is known only here: the chosen discharge leaves no grid import for the net demand
+            // assumed for this slot. Any remaining import means the optimiser kept energy for later or a battery was
+            // at its power limit or reserve; those slots keep their planned watts (not marked when in doubt).
+            // Judged on the unrounded action, because the watts above are rounded towards zero per battery.
+            var followsDemand = total < 0 && wa <= 0 && wb <= 0 &&
+                Math.Abs(net[i] / .25 + action.A + action.B) <= FullCoverToleranceKw;
             slots.Add(new(prices[i].TimeSlot, prices[i].TotalPricePerKwh, prices[i].Currency, prices[i].IsEstimated, source, targets, string.Empty, false,
-                pv[prices[i].TimeSlot], load[prices[i].TimeSlot]));
+                pv[prices[i].TimeSlot], load[prices[i].TimeSlot]) { FollowsDemand = followsDemand });
             currentA = afterA; currentB = afterB;
         }
         var plan = new JointBatteryPlan(input.NowUtc, input.Batteries, slots, input.MaximumGridImportWatts,

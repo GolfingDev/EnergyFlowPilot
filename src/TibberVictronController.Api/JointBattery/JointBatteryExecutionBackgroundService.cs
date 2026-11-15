@@ -262,7 +262,7 @@ public sealed class JointBatteryExecutionBackgroundService(IServiceScopeFactory 
                 fallbackLoggedCause = null;
                 var planned = selection.CommittedSlot!;
                 await SavePlanEventAsync(services, "Planentscheidung fuer die Viertelstunde festgeschrieben.",
-                    new { planned.TimeSlot, planned.Targets, planned.ChargeSource, planned.PricePerKwh, planned.Reason }, token);
+                    new { planned.TimeSlot, planned.Targets, planned.ChargeSource, planned.PricePerKwh, planned.Reason, planned.FollowsDemand }, token);
                 break;
         }
         return (selection.Command, selectedAt, null, []);

@@ -6,7 +6,14 @@ public sealed record JointBatteryLiveSnapshot(DateTimeOffset MeasuredAtUtc, IRea
     IReadOnlyList<int> PhaseGridWatts, IReadOnlyList<int> AcOutWatts, int PrimaryAcBatteryWatts,
     int E3dcOperatingMode, JointBatteryElectricalLimits Limits);
 public sealed record JointBatteryCommand(int VictronWatts, int E3dcWatts, BatteryChargeSource? ChargeSource,
-    DateTimeOffset ValidUntilUtc, string Reason);
+    DateTimeOffset ValidUntilUtc, string Reason)
+{
+    /// <summary>
+    /// Discharge only: the watts are the plan's shares, and the live limiter may raise them in that proportion up to
+    /// the measured house demand and each battery's own limits. A battery with 0 W stays at 0 W.
+    /// </summary>
+    public bool FollowsDemand { get; init; }
+}
 public sealed record JointBatteryExecutionSnapshot(string Status, string Message, DateTimeOffset UpdatedAtUtc,
     bool OwnsControl, int VictronTargetWatts = 0, int E3dcTargetWatts = 0,
     int VictronMeasuredWatts = 0, int E3dcMeasuredWatts = 0, DateTimeOffset? ValidUntilUtc = null)

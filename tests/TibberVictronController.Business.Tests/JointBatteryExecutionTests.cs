@@ -340,6 +340,202 @@ public sealed class JointBatteryExecutionTests
         Assert.Contains(hardware.Commands, c => c.StartsWith("E3dc:ChargeGrid", StringComparison.Ordinal));
     }
 
+    private static JointBatteryCommand Following(int a, int b) => Command(a, b) with { ChargeSource = null, FollowsDemand = true };
+
+    /// <summary>Site with the given house load on L1; the grid meter sees the load plus what both batteries exchange.</summary>
+    private static JointBatteryLiveSnapshot Site(int houseLoad, int primary = 0, int secondary = 0, decimal primarySoc = 50, decimal secondarySoc = 50) =>
+        Live(primary, secondary) with
+        {
+            Batteries = [Unit("victron", primary, primarySoc), Unit("e3dc", secondary, secondarySoc)],
+            PhaseGridWatts = [houseLoad + primary + secondary, 0, 0]
+        };
+
+    [Fact]
+    public void DemandFollowingDischargeRisesToTheMeasuredDemandInThePlannedProportion()
+    {
+        // The plan saw 300 W; now the house draws 3 kW.
+        var limited = JointBatteryLiveLimiter.Limit(Following(-200, -100), Site(3000), Now);
+
+        Assert.InRange(-(limited.VictronWatts + limited.E3dcWatts), 2890, 2900);
+        Assert.InRange(limited.VictronWatts, -1934, -1930);
+        Assert.InRange(limited.E3dcWatts, -967, -965);
+        // Without the mark the planned watts stay the upper bound, as before.
+        var capped = JointBatteryLiveLimiter.Limit(Command(-200, -100) with { ChargeSource = null }, Site(3000), Now);
+        Assert.Equal((-200, -100), (capped.VictronWatts, capped.E3dcWatts));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(90)]
+    [InlineData(250)]
+    [InlineData(1500)]
+    public void DemandBelowThePlanCutsAFollowingDischargeExactlyLikeAnyOther(int houseLoad)
+    {
+        var following = JointBatteryLiveLimiter.Limit(Following(-1000, -1000), Site(houseLoad), Now);
+        var planned = JointBatteryLiveLimiter.Limit(Command(-1000, -1000) with { ChargeSource = null }, Site(houseLoad), Now);
+
+        Assert.Equal((planned.VictronWatts, planned.E3dcWatts), (following.VictronWatts, following.E3dcWatts));
+        Assert.InRange(-(following.VictronWatts + following.E3dcWatts), 0, Math.Max(0, houseLoad - 100));
+    }
+
+    [Fact]
+    public void FollowingNeverExceedsDemandMinusMarginNorABatterysOwnLimit()
+    {
+        foreach (var shares in new[] { (-200, -100), (-1, -40), (-300, 0), (0, -300), (-2500, -2500) })
+        for (var houseLoad = 0; houseLoad <= 9000; houseLoad += 137)
+        {
+            var limited = JointBatteryLiveLimiter.Limit(Following(shares.Item1, shares.Item2), Site(houseLoad), Now);
+
+            Assert.True(limited.VictronWatts <= 0 && limited.E3dcWatts <= 0);
+            Assert.True(-(limited.VictronWatts + limited.E3dcWatts) <= Math.Max(0, houseLoad - 100), $"Last {houseLoad}: {limited}");
+            Assert.True(limited.VictronWatts >= -3000 && limited.E3dcWatts >= -3000, $"Last {houseLoad}: {limited}");
+            // The plan's choice of batteries is kept.
+            if (shares.Item1 == 0) Assert.Equal(0, limited.VictronWatts);
+            if (shares.Item2 == 0) Assert.Equal(0, limited.E3dcWatts);
+        }
+    }
+
+    [Fact]
+    public void FollowingDoesNotMoveTheShortfallOfABatteryAtItsPowerLimitToTheOther()
+    {
+        // 9 kW demand, shares 5:1: the Victron stops at its 3 kW, the E3/DC keeps its share of the demand.
+        var limited = JointBatteryLiveLimiter.Limit(Following(-500, -100), Site(9000), Now);
+
+        Assert.Equal(-3000, limited.VictronWatts);
+        Assert.InRange(limited.E3dcWatts, -1484, -1482);
+    }
+
+    [Fact]
+    public void FollowingRespectsTheReserveAndTheActiveDeviceLimit()
+    {
+        // Victron at its reserve: no share, nothing to raise. The E3/DC alone follows.
+        var atReserve = JointBatteryLiveLimiter.Limit(Following(-200, -100), Site(3000, primarySoc: 10), Now);
+        Assert.Equal(0, atReserve.VictronWatts);
+        Assert.InRange(atReserve.E3dcWatts, -2900, -2890);
+
+        // 1 Wh above the reserve bounds the power (energy over the 10 s the allocator looks ahead).
+        var nearlyEmpty = JointBatteryLiveLimiter.Limit(Following(-200, -100), Site(6000, primarySoc: 10.01m), Now);
+        Assert.InRange(nearlyEmpty.VictronWatts, -400, 0);
+
+        // The limit the E3/DC reports (or the operator's own E3/DC limit) stays the cap.
+        var live = Site(6000);
+        live = live with { Batteries = [live.Batteries[0], live.Batteries[1] with { AvailableDischargeWatts = 700 }] };
+        var deviceLimited = JointBatteryLiveLimiter.Limit(Following(-200, -100), live, Now);
+        Assert.Equal(-700, deviceLimited.E3dcWatts);
+        Assert.True(deviceLimited.VictronWatts >= -3000);
+    }
+
+    [Fact]
+    public void FeedInStopAndPvSurplusRulesAreUnchangedForAFollowingDischarge()
+    {
+        // Export while a battery discharges: stop, whatever the plan wants.
+        var export = Live(-2000, 0) with { PhaseGridWatts = [-1000, 0, 0] };
+        var stopped = JointBatteryLiveLimiter.Limit(Following(-500, -500), export, Now);
+        Assert.Equal((0, 0), (stopped.VictronWatts, stopped.E3dcWatts));
+        Assert.Contains("Netzeinspeisung gestoppt", stopped.Reason);
+
+        // PV surplus is stored instead.
+        var surplus = Live() with { PhaseGridWatts = [-1000, -1000, -1000] };
+        var stored = JointBatteryLiveLimiter.Limit(Following(-500, -500), surplus, Now);
+        Assert.Equal(BatteryChargeSource.PV, stored.ChargeSource);
+        Assert.True(stored.VictronWatts > 0 && stored.E3dcWatts > 0);
+    }
+
+    [Fact]
+    public void OpposingTargetsStayAFaultForAFollowingCommand()
+    {
+        var opposing = new JointBatteryCommand(-500, 500, null, Now.AddMinutes(1), "Testvorgabe") { FollowsDemand = true };
+        Assert.Throws<InvalidOperationException>(() => JointBatteryLiveLimiter.Limit(opposing, Site(3000), Now));
+    }
+
+    private static (Hardware Hardware, JointBatteryExecutionState State, JointBatteryExecutionCoordinator Coordinator, int[] HouseLoad) DischargingAt(
+        int victron, int e3dc, int houseLoad)
+    {
+        var load = new[] { houseLoad };
+        var hardware = new Hardware { Primary = victron, Secondary = e3dc };
+        hardware.Adjust = live => live with { PhaseGridWatts = [load[0] + hardware.Primary + hardware.Secondary, 0, 0] };
+        var state = new JointBatteryExecutionState { NeutralSamples = 2, Direction = -1, SettlingSinceUtc = Now.AddSeconds(-100) };
+        state.Set(new("Active", "", Now, true, victron, e3dc));
+        return (hardware, state, new JointBatteryExecutionCoordinator(hardware, state, new Clock()), load);
+    }
+
+    [Fact]
+    public async Task RisingLoadRaisesAFollowingDischargeByTheRampUntilTheDemandIsCovered()
+    {
+        // Plan and batteries at 300 W; the oven adds 2.7 kW.
+        var (hardware, state, coordinator, load) = DischargingAt(-200, -100, houseLoad: 400);
+        load[0] = 3000;
+
+        await coordinator.StepAsync(Following(-200, -100), CancellationToken.None);
+        Assert.Equal((-450, -350), (state.Current.VictronTargetWatts, state.Current.E3dcTargetWatts));
+        await coordinator.StepAsync(Following(-200, -100), CancellationToken.None);
+        Assert.Equal((-700, -600), (state.Current.VictronTargetWatts, state.Current.E3dcTargetWatts));
+
+        for (var i = 0; i < 10; i++)
+        {
+            await coordinator.StepAsync(Following(-200, -100), CancellationToken.None);
+            Assert.Equal("Active", state.Current.Status);
+            // The batteries never deliver more than the house draws.
+            Assert.True(load[0] + hardware.Primary + hardware.Secondary >= 0);
+        }
+        var delivered = -(state.Current.VictronTargetWatts + state.Current.E3dcTargetWatts);
+        Assert.InRange(delivered, 2750, 2900);
+        // Shares of the plan (2:1), no neutral transition on the way.
+        Assert.InRange(state.Current.VictronTargetWatts, -1940, -1820);
+        Assert.DoesNotContain("Victron:0", hardware.Commands);
+        Assert.DoesNotContain("E3dc:Idle:0", hardware.Commands);
+    }
+
+    [Fact]
+    public async Task WithoutTheMarkARisingLoadLeavesThePlannedWattsInPlace()
+    {
+        var (_, state, coordinator, load) = DischargingAt(-200, -100, houseLoad: 400);
+        load[0] = 3000;
+
+        for (var i = 0; i < 5; i++) await coordinator.StepAsync(Command(-200, -100) with { ChargeSource = null }, CancellationToken.None);
+
+        Assert.Equal((-200, -100), (state.Current.VictronTargetWatts, state.Current.E3dcTargetWatts));
+    }
+
+    [Fact]
+    public async Task FallingLoadCutsAFollowingDischargeAtOnceAndALargeDropStopsIt()
+    {
+        var (hardware, state, coordinator, load) = DischargingAt(-1900, -950, houseLoad: 3000);
+
+        // 300 W less: the same step lowers both targets, no ramp downwards.
+        load[0] = 2700;
+        await coordinator.StepAsync(Following(-200, -100), CancellationToken.None);
+        Assert.Equal("Active", state.Current.Status);
+        Assert.InRange(-(state.Current.VictronTargetWatts + state.Current.E3dcTargetWatts), 2450, 2600);
+        Assert.True(load[0] + hardware.Primary + hardware.Secondary >= 0);
+
+        // The oven switches off: the batteries are exporting when the step measures, so the existing feed-in stop
+        // takes both to neutral in this very step.
+        load[0] = 300;
+        hardware.Commands.Clear();
+        await coordinator.StepAsync(Following(-200, -100), CancellationToken.None);
+        Assert.Equal("Transition", state.Current.Status);
+        Assert.Equal(["Victron:0", "E3dc:Idle:0"], hardware.Commands);
+        Assert.Equal((0, 0), (hardware.Primary, hardware.Secondary));
+    }
+
+    [Fact]
+    public async Task ABatteryThePlanLeftAtZeroStaysAtZeroWhileTheOtherFollows()
+    {
+        var (hardware, state, coordinator, load) = DischargingAt(0, -300, houseLoad: 400);
+        load[0] = 5000;
+
+        for (var i = 0; i < 15; i++)
+        {
+            await coordinator.StepAsync(Following(0, -300), CancellationToken.None);
+            Assert.Equal(0, state.Current.VictronTargetWatts);
+        }
+
+        // The E3/DC stops at its own 3 kW; the remaining 2 kW stay on the grid until the next plan.
+        Assert.Equal(-3000, state.Current.E3dcTargetWatts);
+        Assert.DoesNotContain(hardware.Commands, c => c.StartsWith("Victron:", StringComparison.Ordinal) && c != "Victron:0");
+    }
+
     private sealed class Clock : IUtcClock { public DateTimeOffset UtcNow => Now; }
     private sealed class MovingClock : IUtcClock { public DateTimeOffset UtcNow { get; set; } = Now; }
     private sealed class Hardware : IJointBatteryHardware
